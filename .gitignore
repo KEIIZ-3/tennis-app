@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual env
+.venv/
+
+# Local DB
+db.sqlite3
+*.sqlite3
+
+# Django static output
+staticfiles/
+
+# Windows
+Thumbs.db
