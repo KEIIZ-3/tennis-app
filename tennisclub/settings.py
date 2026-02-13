@@ -72,7 +72,6 @@ LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/login/"
 
-# --- Render本番用：管理者ユーザー自動作成 ---
 import os
 from django.contrib.auth import get_user_model
 
@@ -84,4 +83,5 @@ if os.environ.get("DJANGO_SUPERUSER_CREATE") == "1":
 
     if not User.objects.filter(username=username).exists():
         User.objects.create_superuser(username, email, password)
+
 
