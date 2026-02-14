@@ -4,33 +4,148 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Tennis Club{% endblock %}</title>
+
   <style>
-    body{font-family:sans-serif; margin:0; background:#fafafa;}
-    .wrap{max-width:820px; margin:0 auto; padding:16px;}
-    .topbar{background:#fff; border-bottom:1px solid #eee; position:sticky; top:0;}
-    .topbar .wrap{display:flex; justify-content:space-between; align-items:center; gap:12px;}
-    a{color:#111; text-decoration:none;}
-    .nav a{margin-left:12px;}
-    .card{background:#fff; border:1px solid #eee; border-radius:12px; padding:14px;}
-    .btn{display:inline-block; padding:10px 14px; border-radius:10px; border:0; font-weight:700; cursor:pointer;}
-    .btn-danger{background:#ffe6e6;}
-    .btn-primary{background:#e8f0ff;}
-    .msg{background:#fff; border:1px solid #eee; padding:10px 12px; border-radius:10px; margin:10px 0;}
-    .muted{color:#666;}
-    .grid{display:grid; gap:12px;}
-    .field label{display:block; font-size:14px; margin-bottom:6px;}
-    .field input,.field select{width:100%; padding:10px; border:1px solid #ddd; border-radius:10px; background:#fff;}
-    @media(min-width:720px){ .grid.two{grid-template-columns:1fr 1fr;} }
-    .tabs{display:flex; gap:8px; margin:12px 0;}
-    .tab{padding:8px 12px; border-radius:999px; border:1px solid #ddd; background:#fff;}
-    .tab.active{border-color:#111;}
-    .pill{font-size:12px; padding:3px 8px; border-radius:999px; border:1px solid #ddd; background:#fff; margin-left:6px;}
+    body{
+      font-family:sans-serif;
+      margin:0;
+      background:#fafafa;
+    }
+
+    .wrap{
+      max-width:820px;
+      margin:0 auto;
+      padding:16px;
+    }
+
+    .topbar{
+      background:#fff;
+      border-bottom:1px solid #eee;
+      position:sticky;
+      top:0;
+      z-index:10;
+    }
+
+    .topbar .wrap{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+    }
+
+    a{
+      color:#111;
+      text-decoration:none;
+    }
+
+    .nav a{
+      margin-left:12px;
+    }
+
+    /* ★カード重なり防止ここ重要 */
+    .card{
+      display:block;
+      background:#fff;
+      border:1px solid #eee;
+      border-radius:12px;
+      padding:14px;
+      box-sizing:border-box;
+    }
+
+    .btn{
+      display:inline-block;
+      padding:10px 14px;
+      border-radius:10px;
+      border:0;
+      font-weight:700;
+      cursor:pointer;
+    }
+
+    .btn-danger{
+      background:#ffe6e6;
+    }
+
+    .btn-primary{
+      background:#e8f0ff;
+    }
+
+    .msg{
+      background:#fff;
+      border:1px solid #eee;
+      padding:10px 12px;
+      border-radius:10px;
+      margin:10px 0;
+    }
+
+    .muted{
+      color:#666;
+    }
+
+    .grid{
+      display:grid;
+      gap:12px;
+    }
+
+    @media(min-width:720px){
+      .grid.two{
+        grid-template-columns:1fr 1fr;
+      }
+    }
+
+    .field label{
+      display:block;
+      font-size:14px;
+      margin-bottom:6px;
+    }
+
+    .field input,
+    .field select{
+      width:100%;
+      padding:10px;
+      border:1px solid #ddd;
+      border-radius:10px;
+      background:#fff;
+    }
+
+    .tabs{
+      display:flex;
+      gap:8px;
+      margin:12px 0;
+    }
+
+    .tab{
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid #ddd;
+      background:#fff;
+    }
+
+    .tab.active{
+      border-color:#111;
+      font-weight:bold;
+    }
+
+    .pill{
+      font-size:12px;
+      padding:3px 8px;
+      border-radius:999px;
+      border:1px solid #ddd;
+      background:#fff;
+      margin-left:6px;
+    }
   </style>
 </head>
+
 <body>
+
   <div class="topbar">
     <div class="wrap">
-      <div><a href="{% url 'club:home' %}"><b>Tennis Club</b></a></div>
+      <div>
+        <a href="{% url 'club:home' %}">
+          <b>Tennis Club</b>
+        </a>
+      </div>
+
       <div class="nav">
         {% if user.is_authenticated %}
           <a href="{% url 'club:reservation_create' %}">予約する</a>
@@ -44,13 +159,18 @@
   </div>
 
   <div class="wrap">
+
     {% if messages %}
       {% for message in messages %}
-        <div class="msg">{{ message }}</div>
+        <div class="msg">
+          {{ message }}
+        </div>
       {% endfor %}
     {% endif %}
 
     {% block content %}{% endblock %}
+
   </div>
+
 </body>
 </html>
