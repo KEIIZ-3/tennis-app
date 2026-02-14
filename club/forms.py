@@ -18,33 +18,14 @@ class ReservationCreateForm(forms.ModelForm):
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.user = user
+        if self.user is not None:
+            # is_valid中のモデルcleanでcustomerが必要になっても落ちないようにセット
+            self.instance.customer = self.user
 
     def clean(self):
         cleaned = super().clean()
         if self.user is None:
             return cleaned
-
-        court = cleaned.get("court")
-        date = cleaned.get("date")
-        start_time = cleaned.get("start_time")
-        end_time = cleaned.get("end_time")
-        if not all([court, date, start_time, end_time]):
-            return cleaned
-
-        tmp = Reservation(
-            customer=self.user,
-            court=court,
-            date=date,
-            start_time=start_time,
-            end_time=end_time,
-            status="booked",
-        )
-
-        try:
-            tmp.clean()
-        except ValidationError as e:
-            raise forms.ValidationError(e.messages)
-
         return cleaned
 
     def save(self, commit=True):
@@ -69,31 +50,15 @@ class CoachAvailabilityForm(forms.ModelForm):
     def __init__(self, *args, coach=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.coach = coach
+        if self.coach is not None:
+            # ★これが重要：is_valid中にモデルcleanが走っても落ちない
+            self.instance.coach = self.coach
+            self.instance.status = "available"
 
     def clean(self):
         cleaned = super().clean()
         if self.coach is None:
-            return cleaned
-
-        date = cleaned.get("date")
-        start_time = cleaned.get("start_time")
-        end_time = cleaned.get("end_time")
-        if not all([date, start_time, end_time]):
-            return cleaned
-
-        tmp = CoachAvailability(
-            coach=self.coach,
-            date=date,
-            start_time=start_time,
-            end_time=end_time,
-            status="available",
-        )
-
-        try:
-            tmp.clean()
-        except ValidationError as e:
-            raise forms.ValidationError(e.messages)
-
+            raise forms.ValidationError("coach が未設定です（ログイン状態を確認してください）。")
         return cleaned
 
     def save(self, commit=True):
@@ -103,3 +68,4 @@ class CoachAvailabilityForm(forms.ModelForm):
         if commit:
             obj.save()
         return obj
+
