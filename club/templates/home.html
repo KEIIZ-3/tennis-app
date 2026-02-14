@@ -14,4 +14,13 @@
       <span class="muted">未来/過去・キャンセル</span>
     </a>
   </div>
+
+  {% if user.role == "coach" %}
+    <div style="margin-top:12px;">
+      <a class="card" href="{% url 'club:coach_availability_list' %}">
+        <b>（コーチ）空き時間管理</b><br>
+        <span class="muted">自分の空き時間を登録・削除</span>
+      </a>
+    </div>
+  {% endif %}
 {% endblock %}
