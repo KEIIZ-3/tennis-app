@@ -2,7 +2,7 @@
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.shortcuts import get_object_or_404, render, redirect
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -10,6 +10,10 @@ from django.views.decorators.http import require_POST
 from .forms import ReservationCreateForm, CoachAvailabilityForm
 from .models import Reservation, CoachAvailability
 
+
+# -------------------------
+# Auth
+# -------------------------
 
 def login_view(request):
     if request.user.is_authenticated:
@@ -37,7 +41,9 @@ def home(request):
     return render(request, "home.html")
 
 
-# -------- 予約 --------
+# -------------------------
+# Reservation (Customer)
+# -------------------------
 
 @login_required
 def reservation_create(request):
@@ -51,6 +57,7 @@ def reservation_create(request):
     if request.method == "POST":
         form = ReservationCreateForm(request.POST, user=request.user)
 
+        # 入力された日付で、その日の予約状況（Bookedのみ）を表示
         date_str = request.POST.get("date")
         if date_str:
             day_reservations = (
@@ -60,12 +67,21 @@ def reservation_create(request):
             )
 
         if form.is_valid():
-            form.save()
-            messages.success(request, "予約を作成しました。")
-            return redirect("club:reservation_list")
+            try:
+                form.save()
+            except ValidationError as e:
+                # モデルsave()内 full_clean() が投げた場合も画面に出す（500防止）
+                form.add_error(None, e.messages)
+            except Exception as e:
+                form.add_error(None, f"保存に失敗しました: {e}")
+            else:
+                messages.success(request, "予約を作成しました。")
+                return redirect("club:reservation_list")
 
     else:
         form = ReservationCreateForm(user=request.user)
+
+        # 初期表示は今日のBooked予約
         today = timezone.localdate()
         day_reservations = (
             Reservation.objects.filter(date=today, status="booked")
@@ -121,7 +137,9 @@ def reservation_cancel(request, pk: int):
     return redirect("club:reservation_list")
 
 
-# -------- コーチ空き --------
+# -------------------------
+# Coach Availability
+# -------------------------
 
 def _require_coach(user):
     return getattr(user, "role", None) == "coach"
@@ -153,9 +171,16 @@ def coach_availability_create(request):
     if request.method == "POST":
         form = CoachAvailabilityForm(request.POST, coach=request.user)
         if form.is_valid():
-            form.save()
-            messages.success(request, "空き時間を登録しました。")
-            return redirect("club:coach_availability_list")
+            try:
+                form.save()
+            except ValidationError as e:
+                # モデルsave()内 full_clean() が投げた場合も画面に出す（500防止）
+                form.add_error(None, e.messages)
+            except Exception as e:
+                form.add_error(None, f"保存に失敗しました: {e}")
+            else:
+                messages.success(request, "空き時間を登録しました。")
+                return redirect("club:coach_availability_list")
     else:
         form = CoachAvailabilityForm(coach=request.user)
 
