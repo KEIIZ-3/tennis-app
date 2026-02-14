@@ -9,6 +9,52 @@ from django.views.decorators.http import require_POST
 
 from .forms import ReservationCreateForm
 from .models import Reservation
+from .forms import CoachAvailabilityForm
+from .models import CoachAvailability
+
+def _require_coach(user):
+    return getattr(user, "role", None) == "coach"
+
+
+@login_required
+def coach_availability_create(request):
+    if not _require_coach(request.user):
+        raise PermissionDenied
+
+    if request.method == "POST":
+        form = CoachAvailabilityForm(request.POST, coach=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "空き時間を登録しました。")
+            return redirect("club:coach_availability_list")
+    else:
+        form = CoachAvailabilityForm(coach=request.user)
+
+    return render(request, "coach/availability_create.html", {"form": form})
+
+
+@login_required
+def coach_availability_list(request):
+    if not _require_coach(request.user):
+        raise PermissionDenied
+
+    qs = (
+        CoachAvailability.objects.filter(coach=request.user)
+        .order_by("-date", "-start_time")
+    )
+    return render(request, "coach/availability_list.html", {"items": qs})
+
+
+@require_POST
+@login_required
+def coach_availability_delete(request, pk: int):
+    if not _require_coach(request.user):
+        raise PermissionDenied
+
+    item = get_object_or_404(CoachAvailability, pk=pk, coach=request.user)
+    item.delete()
+    messages.info(request, "空き時間を削除しました。")
+    return redirect("club:coach_availability_list")
 
 
 def login_view(request):
@@ -126,3 +172,4 @@ def reservation_cancel(request, pk: int):
         messages.info(request, "この予約は既にキャンセル済みです。")
 
     return redirect("club:reservation_list")
+
