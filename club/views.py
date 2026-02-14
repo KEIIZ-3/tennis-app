@@ -41,16 +41,50 @@ def home(request):
 
 @login_required
 def reservation_create(request):
+    """
+    予約作成フォーム + その日のBooked予約表示
+
+    - GET: 今日のBooked予約を表示
+    - POST: 送信されたdateのBooked予約を表示（入力中でも状況が見える）
+    """
+    day_reservations = None
+
     if request.method == "POST":
         form = ReservationCreateForm(request.POST, user=request.user)
+
+        # POSTされた日付で、その日のBooked予約を表示
+        date_str = request.POST.get("date")
+        if date_str:
+            day_reservations = (
+                Reservation.objects.filter(date=date_str, status="booked")
+                .select_related("court", "customer")
+                .order_by("court__name", "start_time")
+            )
+
         if form.is_valid():
             form.save()
             messages.success(request, "予約を作成しました。")
             return redirect("club:reservation_list")
+
     else:
         form = ReservationCreateForm(user=request.user)
 
-    return render(request, "reservations/create.html", {"form": form})
+        # 初期表示は今日のBooked予約
+        today = timezone.localdate()
+        day_reservations = (
+            Reservation.objects.filter(date=today, status="booked")
+            .select_related("court", "customer")
+            .order_by("court__name", "start_time")
+        )
+
+    return render(
+        request,
+        "reservations/create.html",
+        {
+            "form": form,
+            "day_reservations": day_reservations,
+        },
+    )
 
 
 @login_required
