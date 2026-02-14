@@ -1,45 +1,39 @@
-<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>予約一覧</title>
-</head>
-<body>
-  <p><a href="{% url 'club:home' %}">← Home</a></p>
+{% extends "base.html" %}
+{% block title %}予約一覧{% endblock %}
+{% block content %}
   <h1>予約一覧</h1>
 
-  {% if messages %}
-    {% for message in messages %}
-      <p>{{ message }}</p>
-    {% endfor %}
-  {% endif %}
-
-  <p>
-    <a href="{% url 'club:reservation_list' %}?tab=future">未来</a> |
-    <a href="{% url 'club:reservation_list' %}?tab=past">過去</a>
-  </p>
+  <div class="tabs">
+    <a class="tab {% if tab != 'past' %}active{% endif %}" href="{% url 'club:reservation_list' %}?tab=future">未来</a>
+    <a class="tab {% if tab == 'past' %}active{% endif %}" href="{% url 'club:reservation_list' %}?tab=past">過去</a>
+  </div>
 
   {% if reservations %}
-    <ul>
+    <div class="grid">
       {% for r in reservations %}
-        <li>
-          {{ r.date }} {{ r.start_time }}-{{ r.end_time }} / {{ r.court }}
-          {% if r.status == "cancelled" %}
-            （キャンセル済み）
-          {% else %}
-            <form method="post" action="{% url 'club:reservation_cancel' r.pk %}" style="display:inline;">
-              {% csrf_token %}
-              <button type="submit">キャンセル</button>
-            </form>
-          {% endif %}
-        </li>
-      {% endfor %}
-    </ul>
-  {% else %}
-    <p>予約はありません。</p>
-  {% endif %}
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; gap:12px; align-items:center;">
+            <div>
+              <b>{{ r.court }}</b><br>
+              {{ r.date }} {{ r.start_time }} - {{ r.end_time }}
+              {% if r.status == "cancelled" %}
+                <span class="pill" style="opacity:.7;">キャンセル済み</span>
+              {% else %}
+                <span class="pill">予約中</span>
+              {% endif %}
+            </div>
 
-  <p><a href="{% url 'club:reservation_create' %}">＋予約する</a></p>
-</body>
-</html>
+            {% if r.status == "booked" %}
+              <form method="post" action="{% url 'club:reservation_cancel' r.pk %}">
+                {% csrf_token %}
+                <button class="btn btn-danger" type="submit">キャンセル</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted">予約はありません。</p>
+  {% endif %}
+{% endblock %}
