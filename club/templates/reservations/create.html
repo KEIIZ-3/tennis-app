@@ -1,52 +1,59 @@
-<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>予約作成</title>
-</head>
-<body>
-  <p><a href="{% url 'club:home' %}">← Home</a></p>
+{% extends "base.html" %}
+{% block title %}予約作成{% endblock %}
+{% block content %}
   <h1>予約作成</h1>
 
-  {% if messages %}
-    {% for message in messages %}
-      <p>{{ message }}</p>
-    {% endfor %}
-  {% endif %}
-
-  <form method="post">
+  <form method="post" class="card">
     {% csrf_token %}
 
     {% if form.non_field_errors %}
-      <div>{{ form.non_field_errors }}</div>
+      <div class="msg" style="border-color:#f5c2c2; background:#fff5f5;">
+        {{ form.non_field_errors }}
+      </div>
     {% endif %}
 
-    <div>
-      <label>コート</label><br>
-      {{ form.court }}<br>
-      {{ form.court.errors }}
+    <div class="grid two">
+      <div class="field">
+        <label>コート</label>
+        {{ form.court }}
+        {{ form.court.errors }}
+      </div>
+      <div class="field">
+        <label>日付</label>
+        {{ form.date }}
+        {{ form.date.errors }}
+      </div>
+      <div class="field">
+        <label>開始</label>
+        {{ form.start_time }}
+        {{ form.start_time.errors }}
+      </div>
+      <div class="field">
+        <label>終了</label>
+        {{ form.end_time }}
+        {{ form.end_time.errors }}
+      </div>
     </div>
 
-    <div>
-      <label>日付</label><br>
-      {{ form.date }}<br>
-      {{ form.date.errors }}
-    </div>
-
-    <div>
-      <label>開始</label><br>
-      {{ form.start_time }}<br>
-      {{ form.start_time.errors }}
-    </div>
-
-    <div>
-      <label>終了</label><br>
-      {{ form.end_time }}<br>
-      {{ form.end_time.errors }}
-    </div>
-
-    <button type="submit">予約する</button>
+    <button class="btn btn-primary" type="submit">予約する</button>
   </form>
-</body>
-</html>
+
+  {% if day_reservations is not None %}
+    <h2 style="margin-top:18px;">その日の予約（Bookedのみ）</h2>
+    <div class="card">
+      {% if day_reservations %}
+        <ul style="margin:0; padding-left:18px;">
+          {% for r in day_reservations %}
+            <li>
+              {{ r.court }}：{{ r.start_time }} - {{ r.end_time }}
+              <span class="muted">（{{ r.customer.username }}）</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted" style="margin:0;">予約はまだありません。</p>
+      {% endif %}
+    </div>
+    <p class="muted">※空き時間の“計算表示”は次のステップで入れます。</p>
+  {% endif %}
+{% endblock %}
