@@ -7,54 +7,8 @@ from django.shortcuts import get_object_or_404, render, redirect
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .forms import ReservationCreateForm
-from .models import Reservation
-from .forms import CoachAvailabilityForm
-from .models import CoachAvailability
-
-def _require_coach(user):
-    return getattr(user, "role", None) == "coach"
-
-
-@login_required
-def coach_availability_create(request):
-    if not _require_coach(request.user):
-        raise PermissionDenied
-
-    if request.method == "POST":
-        form = CoachAvailabilityForm(request.POST, coach=request.user)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "空き時間を登録しました。")
-            return redirect("club:coach_availability_list")
-    else:
-        form = CoachAvailabilityForm(coach=request.user)
-
-    return render(request, "coach/availability_create.html", {"form": form})
-
-
-@login_required
-def coach_availability_list(request):
-    if not _require_coach(request.user):
-        raise PermissionDenied
-
-    qs = (
-        CoachAvailability.objects.filter(coach=request.user)
-        .order_by("-date", "-start_time")
-    )
-    return render(request, "coach/availability_list.html", {"items": qs})
-
-
-@require_POST
-@login_required
-def coach_availability_delete(request, pk: int):
-    if not _require_coach(request.user):
-        raise PermissionDenied
-
-    item = get_object_or_404(CoachAvailability, pk=pk, coach=request.user)
-    item.delete()
-    messages.info(request, "空き時間を削除しました。")
-    return redirect("club:coach_availability_list")
+from .forms import ReservationCreateForm, CoachAvailabilityForm
+from .models import Reservation, CoachAvailability
 
 
 def login_view(request):
@@ -89,16 +43,14 @@ def home(request):
 def reservation_create(request):
     """
     予約作成フォーム + その日のBooked予約表示
-
     - GET: 今日のBooked予約を表示
-    - POST: 送信されたdateのBooked予約を表示（入力中でも状況が見える）
+    - POST: 送信されたdateのBooked予約を表示
     """
     day_reservations = None
 
     if request.method == "POST":
         form = ReservationCreateForm(request.POST, user=request.user)
 
-        # POSTされた日付で、その日のBooked予約を表示
         date_str = request.POST.get("date")
         if date_str:
             day_reservations = (
@@ -114,8 +66,6 @@ def reservation_create(request):
 
     else:
         form = ReservationCreateForm(user=request.user)
-
-        # 初期表示は今日のBooked予約
         today = timezone.localdate()
         day_reservations = (
             Reservation.objects.filter(date=today, status="booked")
@@ -126,10 +76,7 @@ def reservation_create(request):
     return render(
         request,
         "reservations/create.html",
-        {
-            "form": form,
-            "day_reservations": day_reservations,
-        },
+        {"form": form, "day_reservations": day_reservations},
     )
 
 
@@ -173,3 +120,55 @@ def reservation_cancel(request, pk: int):
 
     return redirect("club:reservation_list")
 
+
+# -------- コーチ空き --------
+
+def _require_coach(user):
+    return getattr(user, "role", None) == "coach"
+
+
+@login_required
+def coach_availability_list(request):
+    if not _require_coach(request.user):
+        raise PermissionDenied
+
+    tab = request.GET.get("tab", "future")
+    today = timezone.localdate()
+
+    base_qs = CoachAvailability.objects.filter(coach=request.user).order_by("date", "start_time")
+
+    if tab == "past":
+        items = base_qs.filter(date__lt=today).order_by("-date", "-start_time")
+    else:
+        items = base_qs.filter(date__gte=today)
+
+    return render(request, "coach/availability_list.html", {"items": items, "tab": tab})
+
+
+@login_required
+def coach_availability_create(request):
+    if not _require_coach(request.user):
+        raise PermissionDenied
+
+    if request.method == "POST":
+        form = CoachAvailabilityForm(request.POST, coach=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "空き時間を登録しました。")
+            return redirect("club:coach_availability_list")
+    else:
+        form = CoachAvailabilityForm(coach=request.user)
+
+    return render(request, "coach/availability_create.html", {"form": form})
+
+
+@require_POST
+@login_required
+def coach_availability_delete(request, pk: int):
+    if not _require_coach(request.user):
+        raise PermissionDenied
+
+    item = get_object_or_404(CoachAvailability, pk=pk, coach=request.user)
+    item.delete()
+    messages.info(request, "空き時間を削除しました。")
+    return redirect("club:coach_availability_list")
