@@ -2,9 +2,10 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth import get_user_model
 
-from .models import Court, Reservation  # ★追加
+from .models import Court, Reservation, CoachAvailability  # ← CoachAvailability追加
 
 User = get_user_model()
+
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
@@ -30,4 +31,12 @@ class ReservationAdmin(admin.ModelAdmin):
     list_display = ("date", "start_time", "end_time", "court", "customer", "status", "created_at")
     list_filter = ("date", "court", "status")
     search_fields = ("customer__username", "customer__email", "court__name")
+    ordering = ("-date", "-start_time")
+
+
+@admin.register(CoachAvailability)
+class CoachAvailabilityAdmin(admin.ModelAdmin):
+    list_display = ("date", "start_time", "end_time", "coach", "status", "created_at")
+    list_filter = ("date", "status")
+    search_fields = ("coach__username", "coach__email")
     ordering = ("-date", "-start_time")
