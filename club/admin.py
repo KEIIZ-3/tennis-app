@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth import get_user_model
 
-from .models import Court, Reservation, CoachAvailability  # ← CoachAvailability追加
+from .models import Court, Reservation, CoachAvailability
 
 User = get_user_model()
 
