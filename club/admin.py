@@ -7,6 +7,9 @@ from .models import Court, Reservation, CoachAvailability
 User = get_user_model()
 
 
+# -----------------------
+# User
+# -----------------------
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     fieldsets = BaseUserAdmin.fieldsets + (
@@ -19,6 +22,9 @@ class UserAdmin(BaseUserAdmin):
     list_filter = ("role", "is_staff", "is_superuser")
 
 
+# -----------------------
+# Court
+# -----------------------
 @admin.register(Court)
 class CourtAdmin(admin.ModelAdmin):
     list_display = ("name", "is_active")
@@ -26,17 +32,48 @@ class CourtAdmin(admin.ModelAdmin):
     search_fields = ("name",)
 
 
+# -----------------------
+# Reservation
+# -----------------------
 @admin.register(Reservation)
 class ReservationAdmin(admin.ModelAdmin):
-    list_display = ("date", "start_time", "end_time", "court", "customer", "status", "created_at")
-    list_filter = ("date", "court", "status")
-    search_fields = ("customer__username", "customer__email", "court__name")
+    list_display = (
+        "date",
+        "start_time",
+        "end_time",
+        "court",
+        "coach",     # ★追加
+        "customer",
+        "status",
+        "created_at",
+    )
+    list_filter = ("date", "court", "coach", "status")
+    search_fields = (
+        "customer__username",
+        "customer__email",
+        "court__name",
+        "coach__username",
+        "coach__email",
+    )
     ordering = ("-date", "-start_time")
 
 
+# -----------------------
+# CoachAvailability
+# -----------------------
 @admin.register(CoachAvailability)
 class CoachAvailabilityAdmin(admin.ModelAdmin):
-    list_display = ("date", "start_time", "end_time", "coach", "status", "created_at")
-    list_filter = ("date", "status")
-    search_fields = ("coach__username", "coach__email")
+    list_display = (
+        "date",
+        "start_time",
+        "end_time",
+        "coach",
+        "status",
+        "created_at",
+    )
+    list_filter = ("date", "coach", "status")
+    search_fields = (
+        "coach__username",
+        "coach__email",
+    )
     ordering = ("-date", "-start_time")
