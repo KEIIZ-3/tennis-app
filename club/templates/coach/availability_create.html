@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}空き時間登録{% endblock %}
+{% block content %}
+  <h1>空き時間登録</h1>
+
+  <form method="post" class="card">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="msg" style="border-color:#f5c2c2; background:#fff5f5;">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+
+    <div class="grid two">
+      <div class="field">
+        <label>日付</label>
+        {{ form.date }}{{ form.date.errors }}
+      </div>
+      <div class="field">
+        <label>開始</label>
+        {{ form.start_time }}{{ form.start_time.errors }}
+      </div>
+      <div class="field">
+        <label>終了</label>
+        {{ form.end_time }}{{ form.end_time.errors }}
+      </div>
+    </div>
+
+    <button class="btn btn-primary" type="submit">登録</button>
+  </form>
+
+  <p style="margin-top:12px;">
+    <a href="{% url 'club:coach_availability_list' %}">← 一覧へ</a>
+  </p>
+{% endblock %}
