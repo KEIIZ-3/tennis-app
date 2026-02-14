@@ -18,20 +18,29 @@
         {{ form.court }}
         {{ form.court.errors }}
       </div>
+
       <div class="field">
         <label>日付</label>
         {{ form.date }}
         {{ form.date.errors }}
       </div>
+
       <div class="field">
         <label>開始</label>
         {{ form.start_time }}
         {{ form.start_time.errors }}
       </div>
+
       <div class="field">
         <label>終了</label>
         {{ form.end_time }}
         {{ form.end_time.errors }}
+      </div>
+
+      <div class="field">
+        <label>コーチ</label>
+        {{ form.coach }}
+        {{ form.coach.errors }}
       </div>
     </div>
 
@@ -46,6 +55,9 @@
           {% for r in day_reservations %}
             <li>
               {{ r.court }}：{{ r.start_time }} - {{ r.end_time }}
+              {% if r.coach %}
+                <span class="muted">（コーチ：{{ r.coach.username }}）</span>
+              {% endif %}
               <span class="muted">（{{ r.customer.username }}）</span>
             </li>
           {% endfor %}
