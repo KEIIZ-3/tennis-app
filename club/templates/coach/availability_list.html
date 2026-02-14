@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}空き時間一覧{% endblock %}
+{% block content %}
+  <h1>空き時間一覧</h1>
+
+  <p>
+    <a class="btn btn-primary" href="{% url 'club:coach_availability_create' %}">＋空き時間を追加</a>
+  </p>
+
+  {% if items %}
+    <div class="grid">
+      {% for a in items %}
+        <div class="card" style="display:flex; justify-content:space-between; gap:12px; align-items:center;">
+          <div>
+            <b>{{ a.date }}</b><br>
+            {{ a.start_time }} - {{ a.end_time }}
+          </div>
+          <form method="post" action="{% url 'club:coach_availability_delete' a.pk %}">
+            {% csrf_token %}
+            <button class="btn btn-danger" type="submit">削除</button>
+          </form>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted">まだ空き時間はありません。</p>
+  {% endif %}
+{% endblock %}
