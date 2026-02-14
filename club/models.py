@@ -26,6 +26,16 @@ class Reservation(models.Model):
         on_delete=models.CASCADE,
         related_name="reservations",
     )
+
+    # ★追加：コーチ（将来必須にしたくなったら null/blank を外せばOK）
+    coach = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="coach_reservations",
+        null=True,
+        blank=True,
+    )
+
     court = models.ForeignKey(Court, on_delete=models.PROTECT, related_name="reservations")
     date = models.DateField()
     start_time = models.TimeField()
@@ -49,25 +59,48 @@ class Reservation(models.Model):
         ]
 
     def clean(self):
+        # 時刻の整合
         if self.end_time <= self.start_time:
             raise ValidationError("終了時刻は開始時刻より後にしてください。")
 
-        qs = Reservation.objects.filter(
+        # コートの重複予約（時間帯）
+        qs_court = Reservation.objects.filter(
             court=self.court,
             date=self.date,
             status="booked",
         ).exclude(pk=self.pk)
 
-        overlap = qs.filter(start_time__lt=self.end_time, end_time__gt=self.start_time).exists()
-        if overlap:
+        overlap_court = qs_court.filter(
+            start_time__lt=self.end_time,
+            end_time__gt=self.start_time
+        ).exists()
+
+        if overlap_court:
             raise ValidationError("同じコート・同じ時間帯に既に予約があります。")
+
+        # ★コーチの重複予約（時間帯）も防止
+        if self.coach_id:
+            qs_coach = Reservation.objects.filter(
+                coach_id=self.coach_id,
+                date=self.date,
+                status="booked",
+            ).exclude(pk=self.pk)
+
+            overlap_coach = qs_coach.filter(
+                start_time__lt=self.end_time,
+                end_time__gt=self.start_time
+            ).exists()
+
+            if overlap_coach:
+                raise ValidationError("同じコーチが同じ時間帯に既に予約されています。")
 
     def save(self, *args, **kwargs):
         self.full_clean()
         return super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.date} {self.start_time}-{self.end_time} {self.court} ({self.customer})"
+        coach_part = f" coach={self.coach}" if self.coach_id else ""
+        return f"{self.date} {self.start_time}-{self.end_time} {self.court} ({self.customer}){coach_part}"
 
 
 class CoachAvailability(models.Model):
