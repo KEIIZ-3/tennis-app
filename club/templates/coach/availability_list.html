@@ -3,6 +3,11 @@
 {% block content %}
   <h1>空き時間一覧</h1>
 
+  <div class="tabs">
+    <a class="tab {% if tab != 'past' %}active{% endif %}" href="{% url 'club:coach_availability_list' %}?tab=future">未来</a>
+    <a class="tab {% if tab == 'past' %}active{% endif %}" href="{% url 'club:coach_availability_list' %}?tab=past">過去</a>
+  </div>
+
   <p>
     <a class="btn btn-primary" href="{% url 'club:coach_availability_create' %}">＋空き時間を追加</a>
   </p>
@@ -14,6 +19,9 @@
           <div>
             <b>{{ a.date }}</b><br>
             {{ a.start_time }} - {{ a.end_time }}
+            {% if a.status != "available" %}
+              <span class="pill" style="opacity:.7;">{{ a.get_status_display }}</span>
+            {% endif %}
           </div>
           <form method="post" action="{% url 'club:coach_availability_delete' a.pk %}">
             {% csrf_token %}
