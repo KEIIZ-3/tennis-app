@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>予約作成</title>
+</head>
+<body>
+  <p><a href="{% url 'club:home' %}">← Home</a></p>
+  <h1>予約作成</h1>
+
+  {% if messages %}
+    {% for message in messages %}
+      <p>{{ message }}</p>
+    {% endfor %}
+  {% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div>{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <div>
+      <label>コート</label><br>
+      {{ form.court }}<br>
+      {{ form.court.errors }}
+    </div>
+
+    <div>
+      <label>日付</label><br>
+      {{ form.date }}<br>
+      {{ form.date.errors }}
+    </div>
+
+    <div>
+      <label>開始</label><br>
+      {{ form.start_time }}<br>
+      {{ form.start_time.errors }}
+    </div>
+
+    <div>
+      <label>終了</label><br>
+      {{ form.end_time }}<br>
+      {{ form.end_time.errors }}
+    </div>
+
+    <button type="submit">予約する</button>
+  </form>
+</body>
+</html>
