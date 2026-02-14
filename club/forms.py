@@ -3,6 +3,29 @@ from django import forms
 from django.core.exceptions import ValidationError
 
 from .models import Reservation
+from .models import CoachAvailability
+
+class CoachAvailabilityForm(forms.ModelForm):
+    class Meta:
+        model = CoachAvailability
+        fields = ["date", "start_time", "end_time"]
+        widgets = {
+            "date": forms.DateInput(attrs={"type": "date"}),
+            "start_time": forms.TimeInput(attrs={"type": "time"}),
+            "end_time": forms.TimeInput(attrs={"type": "time"}),
+        }
+
+    def __init__(self, *args, coach=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.coach = coach
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        obj.coach = self.coach
+        obj.status = "available"
+        if commit:
+            obj.save()
+        return obj
 
 
 class ReservationCreateForm(forms.ModelForm):
