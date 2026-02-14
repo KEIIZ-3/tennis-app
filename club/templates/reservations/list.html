@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>予約一覧</title>
+</head>
+<body>
+  <p><a href="{% url 'club:home' %}">← Home</a></p>
+  <h1>予約一覧</h1>
+
+  {% if messages %}
+    {% for message in messages %}
+      <p>{{ message }}</p>
+    {% endfor %}
+  {% endif %}
+
+  <p>
+    <a href="{% url 'club:reservation_list' %}?tab=future">未来</a> |
+    <a href="{% url 'club:reservation_list' %}?tab=past">過去</a>
+  </p>
+
+  {% if reservations %}
+    <ul>
+      {% for r in reservations %}
+        <li>
+          {{ r.date }} {{ r.start_time }}-{{ r.end_time }} / {{ r.court }}
+          {% if r.status == "cancelled" %}
+            （キャンセル済み）
+          {% else %}
+            <form method="post" action="{% url 'club:reservation_cancel' r.pk %}" style="display:inline;">
+              {% csrf_token %}
+              <button type="submit">キャンセル</button>
+            </form>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>予約はありません。</p>
+  {% endif %}
+
+  <p><a href="{% url 'club:reservation_create' %}">＋予約する</a></p>
+</body>
+</html>
