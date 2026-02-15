@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="cal-wrap">
+  <div class="cal-head">
+    <div class="cal-title">
+      <h2>{{ title }}</h2>
+      <div class="cal-switch">
+        <a class="btn-lite" href="{% url 'club:coach_calendar' %}">月</a>
+        <a class="btn-lite" href="{% url 'club:coach_calendar' %}?view=week&date={{ today|date:'Y-m-d' }}">週</a>
+      </div>
+    </div>
+
+    <div class="cal-nav">
+      <a class="btn" href="{% url 'club:coach_calendar' %}{% if nav.prev.view == 'week' %}?view=week&date={{ nav.prev.date }}{% else %}?year={{ nav.prev.year }}&month={{ nav.prev.month }}{% endif %}">←</a>
+      <a class="btn" href="{% url 'club:coach_calendar' %}{% if nav.today.view == 'week' %}?view=week&date={{ nav.today.date }}{% else %}?year={{ nav.today.year }}&month={{ nav.today.month }}{% endif %}">Today</a>
+      <a class="btn" href="{% url 'club:coach_calendar' %}{% if nav.next.view == 'week' %}?view=week&date={{ nav.next.date }}{% else %}?year={{ nav.next.year }}&month={{ nav.next.month }}{% endif %}">→</a>
+    </div>
+  </div>
+
+  <div class="cal-grid {% if mode == 'week' %}week{% else %}month{% endif %}">
+    <div class="dow">Mon</div><div class="dow">Tue</div><div class="dow">Wed</div><div class="dow">Thu</div><div class="dow">Fri</div><div class="dow">Sat</div><div class="dow">Sun</div>
+
+    {% for week in grid %}
+      {% for d in week %}
+        <div class="cell {% if d == today %}is-today{% endif %} {% if mode == 'month' and d|date:'m' != grid.0.0|date:'m' %}is-other{% endif %}">
+          <div class="cell-top">
+            <div class="date">{{ d|date:"n/j" }}</div>
+          </div>
+
+          <div class="slots">
+            {% with slots=slots_by_day.d %}
+            {% endwith %}
+            {% for s in slots_by_day|get_item:d %}
+              <a class="slot"
+                 href="/reservations/new/?coach={{ s.coach_id }}&date={{ s.day|date:'Y-m-d' }}&start={{ s.start|time:'H:i' }}&end={{ s.end|time:'H:i' }}">
+                <div class="slot-name">{{ s.coach_name }}</div>
+                <div class="slot-time">{{ s.start|time:"H:i" }}–{{ s.end|time:"H:i" }}</div>
+              </a>
+            {% empty %}
+              <div class="slot-empty">—</div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    {% endfor %}
+  </div>
+</div>
+
+<style>
+  /* 依存なしの軽量CSS。必要ならあなたのCSSに移植OK */
+  .cal-wrap { max-width: 1100px; margin: 0 auto; padding: 12px; }
+  .cal-head { display:flex; gap:12px; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; }
+  .cal-title { display:flex; align-items:flex-end; gap:12px; }
+  .cal-title h2 { margin:0; font-size: 22px; }
+  .cal-switch { display:flex; gap:8px; }
+  .cal-nav { display:flex; gap:8px; }
+
+  .btn, .btn-lite { display:inline-block; padding:8px 10px; border-radius:10px; text-decoration:none; border:1px solid #ddd; }
+  .btn { background:#111; color:#fff; border-color:#111; }
+  .btn-lite { background:#fff; color:#111; }
+
+  .cal-grid { display:grid; grid-template-columns: repeat(7, 1fr); gap:8px; margin-top:12px; }
+  .dow { font-weight:600; font-size:12px; color:#444; padding:4px 6px; }
+
+  .cell { border:1px solid #eee; border-radius:14px; padding:8px; min-height:120px; background:#fff; display:flex; flex-direction:column; }
+  .cell.is-today { outline:2px solid #111; }
+  .cell.is-other { opacity:0.45; }
+
+  .cell-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .date { font-size:12px; color:#333; }
+
+  .slots { display:flex; flex-direction:column; gap:6px; }
+  .slot { border:1px solid #eee; border-radius:12px; padding:8px; text-decoration:none; color:inherit; }
+  .slot:hover { border-color:#bbb; }
+  .slot-name { font-weight:600; font-size:12px; }
+  .slot-time { font-size:12px; color:#555; }
+
+  .slot-empty { color:#bbb; font-size:12px; padding:6px 2px; }
+
+  /* スマホ最適化：週表示っぽい見え方に寄せる */
+  @media (max-width: 720px) {
+    .cal-grid { grid-template-columns: 1fr; }
+    .dow { display:none; }
+    .cell { min-height:auto; }
+    .cell-top .date { font-size:14px; font-weight:700; }
+  }
+</style>
+{% endblock %}
