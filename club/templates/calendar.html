@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="cal-page">
+  <div class="cal-toolbar">
+    <div class="cal-title">
+      <h2>カレンダー</h2>
+      <div class="cal-hint">空き枠をクリックすると予約作成へ進みます</div>
+    </div>
+
+    <form method="get" class="cal-controls">
+      <label class="cal-label">コーチ</label>
+      <select name="coach" class="cal-select" onchange="this.form.submit()">
+        {% for c in coaches %}
+          <option value="{{ c.id }}" {% if selected_coach_id == c.id|stringformat:"s" %}selected{% endif %}>
+            {{ c.username }}
+          </option>
+        {% endfor %}
+      </select>
+      <noscript><button type="submit" class="cal-btn">表示</button></noscript>
+    </form>
+  </div>
+
+  <div id="calendar" class="cal-box"></div>
+</div>
+
+<!-- FullCalendar (CDN) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css">
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+
+<style>
+  .cal-page { max-width: 1100px; margin: 0 auto; padding: 12px; }
+  .cal-toolbar { display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; }
+  .cal-title h2 { margin:0; font-size: 22px; }
+  .cal-hint { color:#666; font-size:12px; margin-top:4px; }
+  .cal-controls { display:flex; align-items:center; gap:8px; }
+  .cal-label { font-size: 12px; color:#444; }
+  .cal-select { padding:8px 10px; border:1px solid #ddd; border-radius:10px; }
+  .cal-btn { padding:8px 10px; border:1px solid #111; background:#111; color:#fff; border-radius:10px; cursor:pointer; }
+
+  .cal-box { margin-top: 12px; background:#fff; border:1px solid #eee; border-radius:14px; padding: 8px; }
+  @media (max-width: 720px) { .cal-box { padding: 4px; } }
+</style>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const calendarEl = document.getElementById("calendar");
+  const coachId = "{{ selected_coach_id|default:'' }}";
+
+  if (!coachId) {
+    calendarEl.innerHTML = "<div style='padding:12px;color:#666'>コーチが選択されていません</div>";
+    return;
+  }
+
+  const isMobile = window.matchMedia && window.matchMedia("(max-width: 720px)").matches;
+
+  const calendar = new FullCalendar.Calendar(calendarEl, {
+    initialView: isMobile ? "timeGridWeek" : "dayGridMonth",
+    locale: "ja",
+    firstDay: 1, // Monday
+    height: isMobile ? "auto" : 720,
+
+    headerToolbar: {
+      left: "prev,next today",
+      center: "title",
+      right: "dayGridMonth,timeGridWeek"
+    },
+
+    buttonText: { today: "今日", month: "月", week: "週" },
+    navLinks: true,
+    nowIndicator: true,
+
+    events: function(fetchInfo, successCallback, failureCallback) {
+      const params = new URLSearchParams({
+        coach_id: coachId,
+        start: fetchInfo.startStr,
+        end: fetchInfo.endStr
+      });
+
+      fetch("{% url 'club:calendar_events_api' %}?" + params.toString(), {
+        credentials: "same-origin"
+      })
+      .then(r => r.json())
+      .then(data => successCallback(data))
+      .catch(err => failureCallback(err));
+    },
+
+    // ✅ 「空き」をクリックしたら予約作成へ遷移
+    eventClick: function(info) {
+      const p = info.event.extendedProps || {};
+
+      // APIが reservation_url を返す場合（推奨）
+      if (p.reservation_url) {
+        window.location.href = p.reservation_url;
+        return;
+      }
+
+      // 保険：title が「空き」ならURLを組み立てる
+      if (info.event.title === "空き") {
+        const start = info.event.start;
+        const end = info.event.end;
+        if (!start || !end) return;
+
+        const pad2 = (n) => String(n).padStart(2, "0");
+        const ymd = `${start.getFullYear()}-${pad2(start.getMonth()+1)}-${pad2(start.getDate())}`;
+        const st = `${pad2(start.getHours())}:${pad2(start.getMinutes())}`;
+        const et = `${pad2(end.getHours())}:${pad2(end.getMinutes())}`;
+
+        const url = "{% url 'club:reservation_create' %}"
+          + `?coach=${encodeURIComponent(coachId)}`
+          + `&date=${encodeURIComponent(ymd)}`
+          + `&start=${encodeURIComponent(st)}`
+          + `&end=${encodeURIComponent(et)}`;
+
+        window.location.href = url;
+      }
+    }
+  });
+
+  calendar.render();
+});
+</script>
+{% endblock %}
