@@ -27,7 +27,6 @@ class Reservation(models.Model):
         related_name="reservations",
     )
 
-    # ★追加：コーチ（将来必須にしたくなったら null/blank を外せばOK）
     coach = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -78,21 +77,45 @@ class Reservation(models.Model):
         if overlap_court:
             raise ValidationError("同じコート・同じ時間帯に既に予約があります。")
 
-        # ★コーチの重複予約（時間帯）も防止
+        # ★コーチの重複予約：capacity（空き枠の定員）を超えたらNG
         if self.coach_id:
+            # この予約が収まる「空き枠」を取って capacity を見る
+            from .models import CoachAvailability  # 循環対策（同一ファイル内だが明示）
+
+            slot = CoachAvailability.objects.filter(
+                coach_id=self.coach_id,
+                date=self.date,
+                status="available",
+                start_time__lte=self.start_time,
+                end_time__gte=self.end_time,
+            ).order_by("start_time").first()
+
+            # 空き枠が見つからない場合は安全側でNG（フォーム側でも通常は弾く）
+            if slot is None:
+                raise ValidationError("選択したコーチの空き時間外です。")
+
+            try:
+                capacity = int(slot.capacity or 1)
+            except Exception:
+                capacity = 1
+            if capacity < 1:
+                capacity = 1
+
             qs_coach = Reservation.objects.filter(
                 coach_id=self.coach_id,
                 date=self.date,
                 status="booked",
             ).exclude(pk=self.pk)
 
-            overlap_coach = qs_coach.filter(
+            # 同時間帯 overlap の予約数を数える
+            overlap_count = qs_coach.filter(
                 start_time__lt=self.end_time,
                 end_time__gt=self.start_time
-            ).exists()
+            ).count()
 
-            if overlap_coach:
-                raise ValidationError("同じコーチが同じ時間帯に既に予約されています。")
+            # 自分を含めると +1 なので、すでに capacity 件あるならNG
+            if overlap_count >= capacity:
+                raise ValidationError(f"このコーチ枠は満員です（{overlap_count}/{capacity}）。")
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -113,6 +136,9 @@ class CoachAvailability(models.Model):
     start_time = models.TimeField()
     end_time = models.TimeField()
 
+    # ✅ 追加：定員（枠ごと）
+    capacity = models.PositiveIntegerField(default=1)
+
     STATUS_CHOICES = (
         ("available", "Available"),
         ("unavailable", "Unavailable"),
@@ -127,6 +153,9 @@ class CoachAvailability(models.Model):
     def clean(self):
         if self.end_time <= self.start_time:
             raise ValidationError("終了時刻は開始時刻より後にしてください。")
+
+        if self.capacity is None or self.capacity < 1:
+            raise ValidationError("定員は1以上にしてください。")
 
         qs = CoachAvailability.objects.filter(
             coach=self.coach,
@@ -143,4 +172,4 @@ class CoachAvailability(models.Model):
         return super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.date} {self.start_time}-{self.end_time} ({self.coach})"
+        return f"{self.date} {self.start_time}-{self.end_time} ({self.coach}) cap={self.capacity}"
