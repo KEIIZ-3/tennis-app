@@ -242,15 +242,35 @@ def calendar_view(request):
 def calendar_events_api(request):
     """
     FullCalendar 用イベントAPI
-    - CoachAvailability（available）をクリック可能イベントとして返す（予約作成へ遷移できる）
-    - Reservation（booked）を通常 event として返す
-    - 色分け：空き=緑、予約=ブルー
+
+    追加仕様：
+    - 枠ごとに「予約数/定員」を表示
+    - 予約数が定員に達したら「満員」表示 + 赤色 + 予約遷移なし（クリック不可）
+    - （capacity=1の場合）予約が入った枠は自動で満員=空きが出ない、と同義になる
+
+    色：
+    - 空き（予約可能）= 緑
+    - 満員 = 赤
+    - 予約（個別）= ブルー
     """
+    from django.conf import settings
+    from django.db.models import Count
+
     coach_id = request.GET.get("coach_id")
     if not coach_id:
         return JsonResponse({"error": "coach_id is required"}, status=400)
 
     coach = get_object_or_404(User, id=coach_id, role="coach")
+
+    # ---- 定員(capacity)の決め方： coach.slot_capacity → settings.COACH_SLOT_CAPACITY → 1
+    default_capacity = getattr(settings, "COACH_SLOT_CAPACITY", 1)
+    capacity = getattr(coach, "slot_capacity", default_capacity) or default_capacity
+    try:
+        capacity = int(capacity)
+    except Exception:
+        capacity = 1
+    if capacity < 1:
+        capacity = 1
 
     start = request.GET.get("start")
     end = request.GET.get("end")
@@ -270,7 +290,23 @@ def calendar_events_api(request):
 
     events = []
 
-    # 1) 空き（緑）
+    # ---- 枠単位で予約数を集計（date + start_time + end_time）
+    booked_counts_qs = (
+        Reservation.objects.filter(
+            coach=coach,
+            status="booked",
+            date__gte=start_date,
+            date__lt=end_date,
+        )
+        .values("date", "start_time", "end_time")
+        .annotate(booked=Count("id"))
+    )
+    booked_map = {
+        (row["date"], row["start_time"], row["end_time"]): row["booked"]
+        for row in booked_counts_qs
+    }
+
+    # 1) 空き枠（空き or 満員）
     avail_qs = CoachAvailability.objects.filter(
         coach=coach,
         status="available",
@@ -281,27 +317,54 @@ def calendar_events_api(request):
     for a in avail_qs:
         start_dt = datetime.combine(a.date, a.start_time)
         end_dt = datetime.combine(a.date, a.end_time)
-        events.append(
-            {
-                "title": "空き",
-                "start": start_dt.isoformat(),
-                "end": end_dt.isoformat(),
-                "backgroundColor": "#2ecc71",
-                "borderColor": "#27ae60",
-                "textColor": "#ffffff",
-                "extendedProps": {
-                    "kind": "availability",
-                    "reservation_url": (
-                        f"/reservations/new/?coach={coach.id}"
-                        f"&date={a.date.isoformat()}"
-                        f"&start={a.start_time.strftime('%H:%M')}"
-                        f"&end={a.end_time.strftime('%H:%M')}"
-                    ),
-                },
-            }
-        )
 
-    # 2) 予約（ブルー）
+        booked = booked_map.get((a.date, a.start_time, a.end_time), 0)
+        remaining = max(capacity - booked, 0)
+
+        if remaining <= 0:
+            # 満員（赤）→ 予約URLを付けない = クリックしても予約作れない
+            events.append(
+                {
+                    "title": f"満員 {booked}/{capacity}",
+                    "start": start_dt.isoformat(),
+                    "end": end_dt.isoformat(),
+                    "backgroundColor": "#e74c3c",
+                    "borderColor": "#c0392b",
+                    "textColor": "#ffffff",
+                    "extendedProps": {
+                        "kind": "full",
+                        "capacity": capacity,
+                        "booked": booked,
+                        "remaining": remaining,
+                    },
+                }
+            )
+        else:
+            # 空き（緑）→ 予約URLあり
+            events.append(
+                {
+                    "title": f"空き {booked}/{capacity}",
+                    "start": start_dt.isoformat(),
+                    "end": end_dt.isoformat(),
+                    "backgroundColor": "#2ecc71",
+                    "borderColor": "#27ae60",
+                    "textColor": "#ffffff",
+                    "extendedProps": {
+                        "kind": "availability",
+                        "capacity": capacity,
+                        "booked": booked,
+                        "remaining": remaining,
+                        "reservation_url": (
+                            f"/reservations/new/?coach={coach.id}"
+                            f"&date={a.date.isoformat()}"
+                            f"&start={a.start_time.strftime('%H:%M')}"
+                            f"&end={a.end_time.strftime('%H:%M')}"
+                        ),
+                    },
+                }
+            )
+
+    # 2) 予約（個別・ブルー）は今まで通り
     res_qs = (
         Reservation.objects.filter(
             coach=coach,
