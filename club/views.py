@@ -178,7 +178,6 @@ def coach_availability_list(request):
     else:
         items = base_qs.filter(date__gte=today)
 
-    # ※あなたのテンプレ構成が coach/availability_list.html なので合わせる
     return render(request, "coach/availability_list.html", {"items": items, "tab": tab})
 
 
@@ -243,8 +242,9 @@ def calendar_view(request):
 def calendar_events_api(request):
     """
     FullCalendar 用イベントAPI
-    - CoachAvailability（available）を「クリック可能イベント」として返す（予約作成へ遷移できる）
+    - CoachAvailability（available）をクリック可能イベントとして返す（予約作成へ遷移できる）
     - Reservation（booked）を通常 event として返す
+    - 色分け：空き=緑、予約=ブルー
     """
     coach_id = request.GET.get("coach_id")
     if not coach_id:
@@ -252,12 +252,10 @@ def calendar_events_api(request):
 
     coach = get_object_or_404(User, id=coach_id, role="coach")
 
-    # 期間指定（FullCalendarが start/end を投げてくる）
     start = request.GET.get("start")
     end = request.GET.get("end")
 
     def parse_dt(s: str) -> datetime:
-        # "2026-02-15" or "2026-02-15T00:00:00+09:00"
         if "T" in s:
             s = s.split("T", 1)[0]
         return datetime.strptime(s, "%Y-%m-%d")
@@ -266,19 +264,18 @@ def calendar_events_api(request):
         start_date = parse_dt(start).date()
         end_date = parse_dt(end).date()
     else:
-        # 保険：指定が来ない場合は前後1ヶ月
         today = timezone.localdate()
         start_date = today.replace(day=1)
         end_date = today.replace(day=28)
 
     events = []
 
-    # 1) 空き（クリック可能）
+    # 1) 空き（緑）
     avail_qs = CoachAvailability.objects.filter(
         coach=coach,
         status="available",
         date__gte=start_date,
-        date__lt=end_date,  # end は排他的が多いので < に寄せる
+        date__lt=end_date,
     ).order_by("date", "start_time")
 
     for a in avail_qs:
@@ -289,19 +286,22 @@ def calendar_events_api(request):
                 "title": "空き",
                 "start": start_dt.isoformat(),
                 "end": end_dt.isoformat(),
-                # calendar.html 側でこれを見て予約画面へ飛ぶ
+                "backgroundColor": "#2ecc71",
+                "borderColor": "#27ae60",
+                "textColor": "#ffffff",
                 "extendedProps": {
+                    "kind": "availability",
                     "reservation_url": (
                         f"/reservations/new/?coach={coach.id}"
                         f"&date={a.date.isoformat()}"
                         f"&start={a.start_time.strftime('%H:%M')}"
                         f"&end={a.end_time.strftime('%H:%M')}"
-                    )
+                    ),
                 },
             }
         )
 
-    # 2) 予約（ブロック）
+    # 2) 予約（ブルー）
     res_qs = (
         Reservation.objects.filter(
             coach=coach,
@@ -321,6 +321,10 @@ def calendar_events_api(request):
                 "title": f"予約（{r.court}）",
                 "start": start_dt.isoformat(),
                 "end": end_dt.isoformat(),
+                "backgroundColor": "#3498db",
+                "borderColor": "#2980b9",
+                "textColor": "#ffffff",
+                "extendedProps": {"kind": "reservation"},
             }
         )
 
