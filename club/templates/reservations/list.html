@@ -12,15 +12,25 @@
     <div class="grid">
       {% for r in reservations %}
         <div class="card">
-          <div style="display:flex; justify-content:space-between; gap:12px; align-items:center;">
+          <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
             <div>
-              <b>{{ r.court }}</b><br>
-              {{ r.date }} {{ r.start_time }} - {{ r.end_time }}
-              {% if r.status == "cancelled" %}
-                <span class="pill" style="opacity:.7;">キャンセル済み</span>
-              {% else %}
-                <span class="pill">予約中</span>
+              <b>{{ r.court }}</b>
+              {% if r.coach %}
+                <span class="pill" style="opacity:.85;">コーチ：{{ r.coach.username }}</span>
               {% endif %}
+              <br>
+
+              <div style="margin-top:6px;">
+                {{ r.date }} {{ r.start_time }} - {{ r.end_time }}
+              </div>
+
+              <div style="margin-top:6px;">
+                {% if r.status == "cancelled" %}
+                  <span class="pill" style="opacity:.7;">キャンセル済み</span>
+                {% else %}
+                  <span class="pill">予約中</span>
+                {% endif %}
+              </div>
             </div>
 
             {% if r.status == "booked" %}
