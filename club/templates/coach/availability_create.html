@@ -25,6 +25,11 @@
         <label>終了</label>
         {{ form.end_time }}{{ form.end_time.errors }}
       </div>
+      <div class="field">
+        <label>定員</label>
+        {{ form.capacity }}{{ form.capacity.errors }}
+        <div style="color:#666; font-size:12px; margin-top:4px;">例：1（通常） / 2 / 3 ...</div>
+      </div>
     </div>
 
     <button class="btn btn-primary" type="submit">登録</button>
