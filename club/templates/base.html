@@ -40,6 +40,7 @@
 
     .nav a{
       margin-left:12px;
+      white-space:nowrap;
     }
 
     /* ★カード重なり防止ここ重要 */
@@ -133,6 +134,15 @@
       background:#fff;
       margin-left:6px;
     }
+
+    /* モバイルでナビが折り返されても崩れにくく */
+    .nav{
+      display:flex;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+      gap:10px;
+    }
+    .nav a{ margin-left:0; }
   </style>
 </head>
 
@@ -150,6 +160,15 @@
         {% if user.is_authenticated %}
           <a href="{% url 'club:reservation_create' %}">予約する</a>
           <a href="{% url 'club:reservation_list' %}">予約一覧</a>
+
+          <!-- ★追加：カレンダー -->
+          <a href="{% url 'club:calendar' %}">カレンダー</a>
+
+          <!-- ★任意：コーチだけ空き時間管理を出す（URL名が存在する前提） -->
+          {% if user.role == "coach" %}
+            <a href="{% url 'club:coach_availability_list' %}">空き時間管理</a>
+          {% endif %}
+
           <a href="{% url 'club:logout' %}">ログアウト</a>
         {% else %}
           <a href="{% url 'club:login' %}">ログイン</a>
