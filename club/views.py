@@ -51,27 +51,63 @@ def home(request):
 def reservation_create(request):
     # day_reservations 表示（既存仕様）
     day_reservations = None
+
     if request.method == "POST":
         form = ReservationCreateForm(request.POST, user=request.user)
         if form.is_valid():
-            r = form.save()
+            form.save()
             messages.success(request, "予約を作成しました。")
             return redirect("club:reservation_list")
 
         # 失敗時も、その日の予約は出したい
         try:
-            date = form.cleaned_data.get("date")
+            d = form.cleaned_data.get("date")
         except Exception:
-            date = None
+            d = None
 
-        if date:
+        if d:
             day_reservations = (
-                Reservation.objects.filter(date=date, status="booked")
+                Reservation.objects.filter(date=d, status="booked")
                 .select_related("court", "customer", "coach")
                 .order_by("start_time")
             )
+
     else:
-        form = ReservationCreateForm(user=request.user)
+        # ✅ カレンダーからの遷移パラメータを初期値として反映
+        initial = {}
+        coach = request.GET.get("coach")
+        date_s = request.GET.get("date")
+        start = request.GET.get("start")
+        end = request.GET.get("end")
+
+        # ReservationCreateForm のフィールド名が
+        # coach / date / start_time / end_time の想定
+        if coach:
+            initial["coach"] = coach
+        if date_s:
+            initial["date"] = date_s
+        if start:
+            initial["start_time"] = start
+        if end:
+            initial["end_time"] = end
+
+        form = ReservationCreateForm(user=request.user, initial=initial)
+
+        # 初期値があるなら、その日の予約も表示（便利）
+        try:
+            if date_s:
+                d = datetime.strptime(date_s, "%Y-%m-%d").date()
+            else:
+                d = None
+        except Exception:
+            d = None
+
+        if d:
+            day_reservations = (
+                Reservation.objects.filter(date=d, status="booked")
+                .select_related("court", "customer", "coach")
+                .order_by("start_time")
+            )
 
     return render(
         request,
@@ -133,9 +169,8 @@ def coach_availability_list(request):
     tab = request.GET.get("tab", "future")
     today = timezone.localdate()
 
-    base_qs = (
-        CoachAvailability.objects.filter(coach=request.user)
-        .order_by("date", "start_time")
+    base_qs = CoachAvailability.objects.filter(coach=request.user).order_by(
+        "date", "start_time"
     )
 
     if tab == "past":
@@ -143,7 +178,8 @@ def coach_availability_list(request):
     else:
         items = base_qs.filter(date__gte=today)
 
-    return render(request, "availability_list.html", {"items": items, "tab": tab})
+    # ※あなたのテンプレ構成が coach/availability_list.html なので合わせる
+    return render(request, "coach/availability_list.html", {"items": items, "tab": tab})
 
 
 @login_required
@@ -160,7 +196,7 @@ def coach_availability_create(request):
     else:
         form = CoachAvailabilityForm(coach=request.user)
 
-    return render(request, "availability_create.html", {"form": form})
+    return render(request, "coach/availability_create.html", {"form": form})
 
 
 @require_POST
@@ -182,7 +218,7 @@ def coach_availability_delete(request, pk: int):
 def calendar_view(request):
     """
     カレンダー画面：
-    - 顧客：コーチを選んで「空き（背景）」と「予約（ブロック）」を確認
+    - 顧客：コーチを選んで「空き」と「予約」を確認
     - コーチ：自分の予定（空き＋予約）を確認（デフォルト自分）
     """
     coaches = User.objects.filter(role="coach", is_active=True).order_by("username")
@@ -207,14 +243,13 @@ def calendar_view(request):
 def calendar_events_api(request):
     """
     FullCalendar 用イベントAPI
-    - coach availability（available）を background event として返す
+    - CoachAvailability（available）を「クリック可能イベント」として返す（予約作成へ遷移できる）
     - Reservation（booked）を通常 event として返す
     """
     coach_id = request.GET.get("coach_id")
     if not coach_id:
         return JsonResponse({"error": "coach_id is required"}, status=400)
 
-    # コーチ本人以外でも「空き/予約の枠」だけは見える仕様（氏名は出さない）
     coach = get_object_or_404(User, id=coach_id, role="coach")
 
     # 期間指定（FullCalendarが start/end を投げてくる）
@@ -222,7 +257,7 @@ def calendar_events_api(request):
     end = request.GET.get("end")
 
     def parse_dt(s: str) -> datetime:
-        # 例: "2026-02-15" or "2026-02-15T00:00:00+09:00" が来るので、日付だけ拾う
+        # "2026-02-15" or "2026-02-15T00:00:00+09:00"
         if "T" in s:
             s = s.split("T", 1)[0]
         return datetime.strptime(s, "%Y-%m-%d")
@@ -238,12 +273,12 @@ def calendar_events_api(request):
 
     events = []
 
-    # 1) 空き（背景）
+    # 1) 空き（クリック可能）
     avail_qs = CoachAvailability.objects.filter(
         coach=coach,
         status="available",
         date__gte=start_date,
-        date__lt=end_date,  # FullCalendarは end が排他的なことが多いので < に寄せる
+        date__lt=end_date,  # end は排他的が多いので < に寄せる
     ).order_by("date", "start_time")
 
     for a in avail_qs:
@@ -254,17 +289,29 @@ def calendar_events_api(request):
                 "title": "空き",
                 "start": start_dt.isoformat(),
                 "end": end_dt.isoformat(),
-                "display": "background",
+                # calendar.html 側でこれを見て予約画面へ飛ぶ
+                "extendedProps": {
+                    "reservation_url": (
+                        f"/reservations/new/?coach={coach.id}"
+                        f"&date={a.date.isoformat()}"
+                        f"&start={a.start_time.strftime('%H:%M')}"
+                        f"&end={a.end_time.strftime('%H:%M')}"
+                    )
+                },
             }
         )
 
     # 2) 予約（ブロック）
-    res_qs = Reservation.objects.filter(
-        coach=coach,
-        status="booked",
-        date__gte=start_date,
-        date__lt=end_date,
-    ).select_related("court").order_by("date", "start_time")
+    res_qs = (
+        Reservation.objects.filter(
+            coach=coach,
+            status="booked",
+            date__gte=start_date,
+            date__lt=end_date,
+        )
+        .select_related("court")
+        .order_by("date", "start_time")
+    )
 
     for r in res_qs:
         start_dt = datetime.combine(r.date, r.start_time)
