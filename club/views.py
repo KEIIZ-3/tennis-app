@@ -1,29 +1,22 @@
-# club/views.py
-import traceback
+from __future__ import annotations
+
+from datetime import datetime
 
 from django.contrib import messages
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, login, logout, get_user_model
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied, ValidationError
-from django.http import HttpResponseServerError
+from django.core.exceptions import PermissionDenied
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render, redirect
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from .forms import ReservationCreateForm, CoachAvailabilityForm
 from .models import Reservation, CoachAvailability
 
 
-def _log_exception(prefix: str):
-    # Renderのログ（Live tail）に必ず出る
-    print(f"\n=== {prefix} ===")
-    print(traceback.format_exc())
-    print("=== /exception ===\n")
+User = get_user_model()
 
-
-# -------------------------
-# Auth
-# -------------------------
 
 def login_view(request):
     if request.user.is_authenticated:
@@ -51,168 +44,237 @@ def home(request):
     return render(request, "home.html")
 
 
-# -------------------------
-# Reservation
-# -------------------------
-
+# -----------------------------
+# 予約
+# -----------------------------
 @login_required
 def reservation_create(request):
+    # day_reservations 表示（既存仕様）
     day_reservations = None
-    try:
-        if request.method == "POST":
-            form = ReservationCreateForm(request.POST, user=request.user)
+    if request.method == "POST":
+        form = ReservationCreateForm(request.POST, user=request.user)
+        if form.is_valid():
+            r = form.save()
+            messages.success(request, "予約を作成しました。")
+            return redirect("club:reservation_list")
 
-            date_str = request.POST.get("date")
-            if date_str:
-                day_reservations = (
-                    Reservation.objects.filter(date=date_str, status="booked")
-                    .select_related("court", "customer")
-                    .order_by("court__name", "start_time")
-                )
+        # 失敗時も、その日の予約は出したい
+        try:
+            date = form.cleaned_data.get("date")
+        except Exception:
+            date = None
 
-            if form.is_valid():
-                try:
-                    form.save()
-                except ValidationError as e:
-                    form.add_error(None, e.messages)
-                else:
-                    messages.success(request, "予約を作成しました。")
-                    return redirect("club:reservation_list")
-        else:
-            form = ReservationCreateForm(user=request.user)
-            today = timezone.localdate()
+        if date:
             day_reservations = (
-                Reservation.objects.filter(date=today, status="booked")
-                .select_related("court", "customer")
-                .order_by("court__name", "start_time")
+                Reservation.objects.filter(date=date, status="booked")
+                .select_related("court", "customer", "coach")
+                .order_by("start_time")
             )
+    else:
+        form = ReservationCreateForm(user=request.user)
 
-        return render(
-            request,
-            "reservations/create.html",
-            {"form": form, "day_reservations": day_reservations},
-        )
-    except Exception:
-        _log_exception("reservation_create crashed")
-        return HttpResponseServerError("Server Error (reservation_create). Check Render logs.")
+    return render(
+        request,
+        "reservations/create.html",
+        {"form": form, "day_reservations": day_reservations},
+    )
 
 
 @login_required
 def reservation_list(request):
-    try:
-        tab = request.GET.get("tab", "future")
-        today = timezone.localdate()
+    tab = request.GET.get("tab", "future")
+    today = timezone.localdate()
 
-        base_qs = (
-            Reservation.objects.filter(customer=request.user)
-            .select_related("court")
-            .order_by("date", "start_time")
-        )
+    base_qs = (
+        Reservation.objects.filter(customer=request.user)
+        .select_related("court", "coach")
+        .order_by("date", "start_time")
+    )
 
-        if tab == "past":
-            reservations = base_qs.filter(date__lt=today).order_by("-date", "-start_time")
-        else:
-            reservations = base_qs.filter(date__gte=today)
+    if tab == "past":
+        reservations = base_qs.filter(date__lt=today).order_by("-date", "-start_time")
+    else:
+        reservations = base_qs.filter(date__gte=today)
 
-        return render(
-            request,
-            "reservations/list.html",
-            {"reservations": reservations, "tab": tab},
-        )
-    except Exception:
-        _log_exception("reservation_list crashed")
-        return HttpResponseServerError("Server Error (reservation_list). Check Render logs.")
+    return render(
+        request,
+        "reservations/list.html",
+        {"reservations": reservations, "tab": tab},
+    )
 
 
 @require_POST
 @login_required
 def reservation_cancel(request, pk: int):
-    try:
-        r = get_object_or_404(Reservation, pk=pk)
+    r = get_object_or_404(Reservation, pk=pk)
 
-        if r.customer_id != request.user.id:
-            raise PermissionDenied
+    if r.customer_id != request.user.id:
+        raise PermissionDenied
 
-        if r.status == "booked":
-            r.status = "cancelled"
-            r.save(update_fields=["status"])
-            messages.info(request, "予約をキャンセルしました。")
-        else:
-            messages.info(request, "この予約は既にキャンセル済みです。")
+    if r.status == "booked":
+        r.status = "cancelled"
+        r.save(update_fields=["status"])
+        messages.info(request, "予約をキャンセルしました。")
+    else:
+        messages.info(request, "この予約は既にキャンセル済みです。")
 
-        return redirect("club:reservation_list")
-    except Exception:
-        _log_exception("reservation_cancel crashed")
-        return HttpResponseServerError("Server Error (reservation_cancel). Check Render logs.")
+    return redirect("club:reservation_list")
 
 
-# -------------------------
-# Coach Availability
-# -------------------------
-
-def _require_coach(user):
-    return getattr(user, "role", None) == "coach"
-
-
+# -----------------------------
+# コーチ空き時間
+# -----------------------------
 @login_required
 def coach_availability_list(request):
-    try:
-        if not _require_coach(request.user):
-            raise PermissionDenied
+    # コーチ以外は拒否（運用上）
+    if getattr(request.user, "role", "") != "coach":
+        raise PermissionDenied
 
-        tab = request.GET.get("tab", "future")
-        today = timezone.localdate()
+    tab = request.GET.get("tab", "future")
+    today = timezone.localdate()
 
-        base_qs = CoachAvailability.objects.filter(coach=request.user).order_by("date", "start_time")
+    base_qs = (
+        CoachAvailability.objects.filter(coach=request.user)
+        .order_by("date", "start_time")
+    )
 
-        if tab == "past":
-            items = base_qs.filter(date__lt=today).order_by("-date", "-start_time")
-        else:
-            items = base_qs.filter(date__gte=today)
+    if tab == "past":
+        items = base_qs.filter(date__lt=today).order_by("-date", "-start_time")
+    else:
+        items = base_qs.filter(date__gte=today)
 
-        return render(request, "coach/availability_list.html", {"items": items, "tab": tab})
-    except Exception:
-        _log_exception("coach_availability_list crashed")
-        return HttpResponseServerError("Server Error (coach_availability_list). Check Render logs.")
+    return render(request, "availability_list.html", {"items": items, "tab": tab})
 
 
 @login_required
 def coach_availability_create(request):
-    try:
-        if not _require_coach(request.user):
-            raise PermissionDenied
+    if getattr(request.user, "role", "") != "coach":
+        raise PermissionDenied
 
-        if request.method == "POST":
-            form = CoachAvailabilityForm(request.POST, coach=request.user)
-            if form.is_valid():
-                try:
-                    form.save()
-                except ValidationError as e:
-                    form.add_error(None, e.messages)
-                else:
-                    messages.success(request, "空き時間を登録しました。")
-                    return redirect("club:coach_availability_list")
-        else:
-            form = CoachAvailabilityForm(coach=request.user)
+    if request.method == "POST":
+        form = CoachAvailabilityForm(request.POST, coach=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "空き時間を登録しました。")
+            return redirect("club:coach_availability_list")
+    else:
+        form = CoachAvailabilityForm(coach=request.user)
 
-        return render(request, "coach/availability_create.html", {"form": form})
-    except Exception:
-        _log_exception("coach_availability_create crashed")
-        return HttpResponseServerError("Server Error (coach_availability_create). Check Render logs.")
+    return render(request, "availability_create.html", {"form": form})
 
 
 @require_POST
 @login_required
 def coach_availability_delete(request, pk: int):
-    try:
-        if not _require_coach(request.user):
-            raise PermissionDenied
+    if getattr(request.user, "role", "") != "coach":
+        raise PermissionDenied
 
-        item = get_object_or_404(CoachAvailability, pk=pk, coach=request.user)
-        item.delete()
-        messages.info(request, "空き時間を削除しました。")
-        return redirect("club:coach_availability_list")
-    except Exception:
-        _log_exception("coach_availability_delete crashed")
-        return HttpResponseServerError("Server Error (coach_availability_delete). Check Render logs.")
+    a = get_object_or_404(CoachAvailability, pk=pk, coach=request.user)
+    a.delete()
+    messages.info(request, "空き時間を削除しました。")
+    return redirect("club:coach_availability_list")
 
+
+# -----------------------------
+# カレンダー
+# -----------------------------
+@login_required
+def calendar_view(request):
+    """
+    カレンダー画面：
+    - 顧客：コーチを選んで「空き（背景）」と「予約（ブロック）」を確認
+    - コーチ：自分の予定（空き＋予約）を確認（デフォルト自分）
+    """
+    coaches = User.objects.filter(role="coach", is_active=True).order_by("username")
+
+    # デフォルト選択
+    selected_coach_id = request.GET.get("coach")
+    if getattr(request.user, "role", "") == "coach":
+        selected_coach_id = str(request.user.id)
+    else:
+        if not selected_coach_id and coaches.exists():
+            selected_coach_id = str(coaches.first().id)
+
+    return render(
+        request,
+        "calendar.html",
+        {"coaches": coaches, "selected_coach_id": selected_coach_id},
+    )
+
+
+@require_GET
+@login_required
+def calendar_events_api(request):
+    """
+    FullCalendar 用イベントAPI
+    - coach availability（available）を background event として返す
+    - Reservation（booked）を通常 event として返す
+    """
+    coach_id = request.GET.get("coach_id")
+    if not coach_id:
+        return JsonResponse({"error": "coach_id is required"}, status=400)
+
+    # コーチ本人以外でも「空き/予約の枠」だけは見える仕様（氏名は出さない）
+    coach = get_object_or_404(User, id=coach_id, role="coach")
+
+    # 期間指定（FullCalendarが start/end を投げてくる）
+    start = request.GET.get("start")
+    end = request.GET.get("end")
+
+    def parse_dt(s: str) -> datetime:
+        # 例: "2026-02-15" or "2026-02-15T00:00:00+09:00" が来るので、日付だけ拾う
+        if "T" in s:
+            s = s.split("T", 1)[0]
+        return datetime.strptime(s, "%Y-%m-%d")
+
+    if start and end:
+        start_date = parse_dt(start).date()
+        end_date = parse_dt(end).date()
+    else:
+        # 保険：指定が来ない場合は前後1ヶ月
+        today = timezone.localdate()
+        start_date = today.replace(day=1)
+        end_date = today.replace(day=28)
+
+    events = []
+
+    # 1) 空き（背景）
+    avail_qs = CoachAvailability.objects.filter(
+        coach=coach,
+        status="available",
+        date__gte=start_date,
+        date__lt=end_date,  # FullCalendarは end が排他的なことが多いので < に寄せる
+    ).order_by("date", "start_time")
+
+    for a in avail_qs:
+        start_dt = datetime.combine(a.date, a.start_time)
+        end_dt = datetime.combine(a.date, a.end_time)
+        events.append(
+            {
+                "title": "空き",
+                "start": start_dt.isoformat(),
+                "end": end_dt.isoformat(),
+                "display": "background",
+            }
+        )
+
+    # 2) 予約（ブロック）
+    res_qs = Reservation.objects.filter(
+        coach=coach,
+        status="booked",
+        date__gte=start_date,
+        date__lt=end_date,
+    ).select_related("court").order_by("date", "start_time")
+
+    for r in res_qs:
+        start_dt = datetime.combine(r.date, r.start_time)
+        end_dt = datetime.combine(r.date, r.end_time)
+        events.append(
+            {
+                "title": f"予約（{r.court}）",
+                "start": start_dt.isoformat(),
+                "end": end_dt.isoformat(),
+            }
+        )
+
+    return JsonResponse(events, safe=False)
