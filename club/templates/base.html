@@ -6,6 +6,10 @@
   <title>{% block title %}Tennis Club{% endblock %}</title>
 
   <style>
+    :root{
+      --page-max-width: 820px; /* ✅ ページごとに上書き可能 */
+    }
+
     body{
       font-family:sans-serif;
       margin:0;
@@ -13,7 +17,7 @@
     }
 
     .wrap{
-      max-width:820px;
+      max-width: var(--page-max-width);
       margin:0 auto;
       padding:16px;
     }
@@ -160,11 +164,8 @@
         {% if user.is_authenticated %}
           <a href="{% url 'club:reservation_create' %}">予約する</a>
           <a href="{% url 'club:reservation_list' %}">予約一覧</a>
-
-          <!-- ★追加：カレンダー -->
           <a href="{% url 'club:calendar' %}">カレンダー</a>
 
-          <!-- ★任意：コーチだけ空き時間管理を出す（URL名が存在する前提） -->
           {% if user.role == "coach" %}
             <a href="{% url 'club:coach_availability_list' %}">空き時間管理</a>
           {% endif %}
