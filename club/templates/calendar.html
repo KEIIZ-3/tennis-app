@@ -2,6 +2,66 @@
 {% load static %}
 
 {% block content %}
+<style>
+  :root { --page-max-width: 1100px; } /* ✅ カレンダーだけ横幅を広げる */
+
+  .cal-page { max-width: 1100px; margin: 0 auto; padding: 12px; }
+  .cal-toolbar { display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; }
+  .cal-title h2 { margin:0; font-size: 22px; }
+  .cal-hint { color:#666; font-size:12px; margin-top:4px; }
+
+  .cal-legend { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .badge { display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid #eee; background:#fff; color:#333; }
+  .badge::before { content:""; width:10px; height:10px; border-radius:999px; display:inline-block; }
+  .badge-avail::before { background:#2ecc71; }
+  .badge-full::before { background:#e74c3c; }
+  .badge-resv::before { background:#3498db; }
+
+  .cal-controls { display:flex; align-items:center; gap:8px; }
+  .cal-label { font-size: 12px; color:#444; }
+  .cal-select { padding:8px 10px; border:1px solid #ddd; border-radius:10px; }
+  .cal-btn { padding:8px 10px; border:1px solid #111; background:#111; color:#fff; border-radius:10px; cursor:pointer; }
+
+  .cal-box { margin-top: 12px; background:#fff; border:1px solid #eee; border-radius:14px; padding: 8px; }
+  @media (max-width: 720px) { .cal-box { padding: 4px; } }
+
+  @media (max-width: 720px) {
+    .fc .fc-toolbar-title { font-size: 16px; }
+    .fc .fc-button { padding: 6px 8px; }
+  }
+
+  /* ✅ 点表示（dot）を殺して、色付きブロックを強制 */
+  .fc .fc-daygrid-event { display:block !important; }
+  .fc .fc-daygrid-event-dot { display:none !important; }
+  .fc .fc-daygrid-event-harness { margin-top: 2px; margin-bottom: 2px; }
+
+  /* ✅ FullCalendarのCSS変数から背景/枠色を必ず反映（backgroundColorが薄い/出ない対策） */
+  .fc .fc-event {
+    background: var(--fc-event-bg-color) !important;
+    border: 1px solid var(--fc-event-border-color) !important;
+  }
+  .fc .fc-event .fc-event-main {
+    color: var(--fc-event-text-color) !important;
+  }
+
+  .fc .fc-daygrid-event,
+  .fc .fc-timegrid-event {
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .fc .fc-daygrid-event .fc-event-main,
+  .fc .fc-timegrid-event .fc-event-main {
+    padding: 2px 6px;
+  }
+  .fc .fc-daygrid-event .fc-event-title,
+  .fc .fc-daygrid-event .fc-event-time,
+  .fc .fc-timegrid-event .fc-event-title,
+  .fc .fc-timegrid-event .fc-event-time {
+    font-size: 11px;
+    line-height: 1.2;
+  }
+</style>
+
 <div class="cal-page">
   <div class="cal-toolbar">
     <div class="cal-title">
@@ -36,51 +96,6 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css">
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
-<style>
-  .cal-page { max-width: 1100px; margin: 0 auto; padding: 12px; }
-  .cal-toolbar { display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; }
-  .cal-title h2 { margin:0; font-size: 22px; }
-  .cal-hint { color:#666; font-size:12px; margin-top:4px; }
-
-  .cal-legend { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
-  .badge { display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid #eee; background:#fff; color:#333; }
-  .badge::before { content:""; width:10px; height:10px; border-radius:999px; display:inline-block; }
-  .badge-avail::before { background:#2ecc71; }
-  .badge-full::before { background:#e74c3c; }
-  .badge-resv::before { background:#3498db; }
-
-  .cal-controls { display:flex; align-items:center; gap:8px; }
-  .cal-label { font-size: 12px; color:#444; }
-  .cal-select { padding:8px 10px; border:1px solid #ddd; border-radius:10px; }
-  .cal-btn { padding:8px 10px; border:1px solid #111; background:#111; color:#fff; border-radius:10px; cursor:pointer; }
-
-  .cal-box { margin-top: 12px; background:#fff; border:1px solid #eee; border-radius:14px; padding: 8px; }
-  @media (max-width: 720px) { .cal-box { padding: 4px; } }
-
-  @media (max-width: 720px) {
-    .fc .fc-toolbar-title { font-size: 16px; }
-    .fc .fc-button { padding: 6px 8px; }
-  }
-
-  /* ブロック表示をより見やすく */
-  .fc .fc-daygrid-event,
-  .fc .fc-timegrid-event {
-    border-radius: 8px;
-    overflow: hidden;
-  }
-  .fc .fc-daygrid-event .fc-event-main,
-  .fc .fc-timegrid-event .fc-event-main {
-    padding: 2px 6px;
-  }
-  .fc .fc-daygrid-event .fc-event-title,
-  .fc .fc-daygrid-event .fc-event-time,
-  .fc .fc-timegrid-event .fc-event-title,
-  .fc .fc-timegrid-event .fc-event-time {
-    font-size: 11px;
-    line-height: 1.2;
-  }
-</style>
-
 <script>
 document.addEventListener("DOMContentLoaded", function() {
   const calendarEl = document.getElementById("calendar");
@@ -112,10 +127,8 @@ document.addEventListener("DOMContentLoaded", function() {
     navLinks: true,
     nowIndicator: true,
 
-    // ✅ これが本命：月表示でも「点」ではなく色付きブロックにする
     eventDisplay: "block",
 
-    // ✅ 月表示で枠の時間も出す（枠＝空き/満員）
     eventContent: function(arg) {
       const ev = arg.event;
       const p = ev.extendedProps || {};
@@ -140,7 +153,6 @@ document.addEventListener("DOMContentLoaded", function() {
       return { domNodes: [wrap] };
     },
 
-    // ✅ クリックできるのは「空き」だけ。カーソルも変える
     eventDidMount: function(info) {
       const p = info.event.extendedProps || {};
       if (p.kind === "availability" && p.reservation_url) {
@@ -165,7 +177,6 @@ document.addEventListener("DOMContentLoaded", function() {
       .catch(err => failureCallback(err));
     },
 
-    // ✅ 空き（緑）だけ予約作成へ。満員（赤）・予約（青）は無効。
     eventClick: function(info) {
       const ev = info.event;
       const p = ev.extendedProps || {};
