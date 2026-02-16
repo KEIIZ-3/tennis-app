@@ -36,6 +36,14 @@
             {% if r.status == "booked" %}
               <form method="post" action="{% url 'club:reservation_cancel' r.pk %}">
                 {% csrf_token %}
+
+                {# ✅ キャンセル後にカレンダーへ戻す（コーチ指定） #}
+                {% if r.coach_id %}
+                  <input type="hidden" name="next" value="{% url 'club:calendar' %}?coach={{ r.coach_id }}">
+                {% else %}
+                  <input type="hidden" name="next" value="{% url 'club:calendar' %}">
+                {% endif %}
+
                 <button class="btn btn-danger" type="submit">キャンセル</button>
               </form>
             {% endif %}
