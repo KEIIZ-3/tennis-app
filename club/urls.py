@@ -24,4 +24,8 @@ urlpatterns = [
     # カレンダー
     path("calendar/", views.calendar_view, name="calendar"),
     path("api/calendar/events/", views.calendar_events_api, name="calendar_events_api"),
+    path("api/calendar/event_detail/", views.calendar_event_detail_api, name="calendar_event_detail_api"),
+
+    # ⑤ 管理者向け
+    path("manage/reservations/", views.manage_reservations, name="manage_reservations"),
 ]
