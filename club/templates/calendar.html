@@ -62,9 +62,20 @@
     .fc .fc-button { padding: 6px 8px; }
   }
 
-  /* 月表示で文字が詰まりやすいので少し見やすく */
-  .fc-daygrid-event .fc-event-title,
-  .fc-daygrid-event .fc-event-time {
+  /* ブロック表示をより見やすく */
+  .fc .fc-daygrid-event,
+  .fc .fc-timegrid-event {
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .fc .fc-daygrid-event .fc-event-main,
+  .fc .fc-timegrid-event .fc-event-main {
+    padding: 2px 6px;
+  }
+  .fc .fc-daygrid-event .fc-event-title,
+  .fc .fc-daygrid-event .fc-event-time,
+  .fc .fc-timegrid-event .fc-event-title,
+  .fc .fc-timegrid-event .fc-event-time {
     font-size: 11px;
     line-height: 1.2;
   }
@@ -101,7 +112,10 @@ document.addEventListener("DOMContentLoaded", function() {
     navLinks: true,
     nowIndicator: true,
 
-    // ✅ 月表示でも時間を見やすく（枠は start-end を出す）
+    // ✅ これが本命：月表示でも「点」ではなく色付きブロックにする
+    eventDisplay: "block",
+
+    // ✅ 月表示で枠の時間も出す（枠＝空き/満員）
     eventContent: function(arg) {
       const ev = arg.event;
       const p = ev.extendedProps || {};
@@ -109,24 +123,31 @@ document.addEventListener("DOMContentLoaded", function() {
       const start = ev.start;
       const end = ev.end;
 
-      // time表示：枠（空き/満員）は「HH:MM-HH:MM」
-      let timeText = "";
+      let prefix = "";
       if (start && end && (p.kind === "availability" || p.kind === "full")) {
-        timeText = `${fmtHM(start)}-${fmtHM(end)} `;
+        prefix = `${fmtHM(start)}-${fmtHM(end)} `;
       } else if (arg.timeText) {
-        // 予約（青）などは FullCalendar標準の timeText を使う
-        timeText = arg.timeText ? (arg.timeText + " ") : "";
+        prefix = arg.timeText ? (arg.timeText + " ") : "";
       }
 
-      // 表示用ノードを返す
       const wrap = document.createElement("div");
       wrap.style.whiteSpace = "normal";
 
       const t = document.createElement("span");
-      t.textContent = timeText + title;
+      t.textContent = prefix + title;
       wrap.appendChild(t);
 
       return { domNodes: [wrap] };
+    },
+
+    // ✅ クリックできるのは「空き」だけ。カーソルも変える
+    eventDidMount: function(info) {
+      const p = info.event.extendedProps || {};
+      if (p.kind === "availability" && p.reservation_url) {
+        info.el.style.cursor = "pointer";
+      } else {
+        info.el.style.cursor = "default";
+      }
     },
 
     events: function(fetchInfo, successCallback, failureCallback) {
@@ -160,7 +181,6 @@ document.addEventListener("DOMContentLoaded", function() {
         return;
       }
 
-      // 保険：タイトルが「空き」で始まる場合だけURLを組み立てる
       if (title.startsWith("空き")) {
         const start = ev.start;
         const end = ev.end;
