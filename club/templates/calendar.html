@@ -4,12 +4,10 @@
 {% block content %}
 <style>
   :root { --page-max-width: 1100px; }
-
   .cal-page { max-width: 1100px; margin: 0 auto; padding: 12px; }
   .cal-toolbar { display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; }
   .cal-title h2 { margin:0; font-size: 22px; }
   .cal-hint { color:#666; font-size:12px; margin-top:4px; }
-
   .cal-legend { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
   .badge2 { display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid #eee; background:#fff; color:#333; }
   .dot { width:10px; height:10px; border-radius:999px; display:inline-block; }
@@ -23,46 +21,24 @@
 
   .cal-box { margin-top: 12px; background:#fff; border:1px solid #eee; border-radius:14px; padding: 8px; }
   @media (max-width: 720px) { .cal-box { padding: 4px; } }
-
   @media (max-width: 720px) {
     .fc .fc-toolbar-title { font-size: 16px; }
     .fc .fc-button { padding: 6px 8px; }
   }
-
   .fc .fc-daygrid-event-dot { display:none !important; }
   .fc .fc-daygrid-event { display:block !important; }
   .fc .fc-daygrid-event-harness { margin-top: 2px; margin-bottom: 2px; }
+  .fc .fc-daygrid-event, .fc .fc-timegrid-event { border-radius: 8px; overflow: hidden; }
+  .fc .fc-daygrid-event .fc-event-main, .fc .fc-timegrid-event .fc-event-main { padding: 2px 6px; }
+  .fc .fc-daygrid-event .fc-event-title, .fc .fc-daygrid-event .fc-event-time,
+  .fc .fc-timegrid-event .fc-event-title, .fc .fc-timegrid-event .fc-event-time { font-size: 11px; line-height: 1.2; }
 
-  .fc .fc-daygrid-event,
-  .fc .fc-timegrid-event {
-    border-radius: 8px;
-    overflow: hidden;
-  }
-  .fc .fc-daygrid-event .fc-event-main,
-  .fc .fc-timegrid-event .fc-event-main {
-    padding: 2px 6px;
-  }
-  .fc .fc-daygrid-event .fc-event-title,
-  .fc .fc-daygrid-event .fc-event-time,
-  .fc .fc-timegrid-event .fc-event-title,
-  .fc .fc-timegrid-event .fc-event-time {
-    font-size: 11px;
-    line-height: 1.2;
-  }
-
-  /* Modal */
-  .modal-backdrop {
-    position: fixed; inset: 0; background: rgba(0,0,0,.45);
-  }
-  .modal {
-    position: fixed; inset: 0; display:none; align-items: center; justify-content: center; padding: 14px;
-  }
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); }
+  .modal { position: fixed; inset: 0; display:none; align-items: center; justify-content: center; padding: 14px; }
   .modal.show { display:flex; }
   .modal-card {
-    width: 100%; max-width: 520px;
-    background:#fff; border-radius: 14px; border:1px solid #eee;
-    box-shadow: 0 10px 30px rgba(0,0,0,.15);
-    overflow:hidden;
+    width: 100%; max-width: 520px; background:#fff; border-radius: 14px; border:1px solid #eee;
+    box-shadow: 0 10px 30px rgba(0,0,0,.15); overflow:hidden;
   }
   .modal-head { padding: 12px 14px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; gap:10px; align-items:center; }
   .modal-title { margin:0; font-size: 16px; }
@@ -70,9 +46,7 @@
   .modal-row { margin: 8px 0; }
   .muted { color:#666; font-size:12px; }
   .modal-foot { padding: 12px 14px; border-top:1px solid #eee; display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
-  .btn {
-    border:1px solid #111; background:#111; color:#fff; padding:8px 10px; border-radius:10px; cursor:pointer; font-size: 13px;
-  }
+  .btn { border:1px solid #111; background:#111; color:#fff; padding:8px 10px; border-radius:10px; cursor:pointer; font-size: 13px; }
   .btn.outline { background:#fff; color:#111; }
   .btn.danger { background:#e74c3c; border-color:#e74c3c; }
   .pill { display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid #eee; background:#fff; color:#333; }
@@ -108,7 +82,6 @@
   <div id="calendar" class="cal-box"></div>
 </div>
 
-<!-- ② モーダル -->
 <div id="modal" class="modal" aria-hidden="true">
   <div class="modal-backdrop" id="modalBg"></div>
   <div class="modal-card" role="dialog" aria-modal="true">
@@ -121,15 +94,20 @@
         <span class="pill"><span class="dot" id="mCoachDot" style="background:#2ecc71;"></span><span id="mCoachName">coach</span></span>
       </div>
       <div class="modal-row muted" id="mTime"></div>
-
       <div class="modal-row" id="mLine1"></div>
       <div class="modal-row" id="mLine2"></div>
-
       <div class="modal-row muted" id="mWarn" style="display:none;"></div>
     </div>
     <div class="modal-foot">
       <button class="btn outline" id="mDismiss">閉じる</button>
       <a class="btn" id="mReserveBtn" href="#" style="display:none;">予約作成へ</a>
+
+      <!-- 自分の予約ならキャンセル -->
+      <form id="mCancelForm" method="post" action="#" style="display:none;">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="/calendar/?coach={{ selected_coach_id }}">
+        <button class="btn danger" type="submit">予約キャンセル</button>
+      </form>
     </div>
   </div>
 </div>
@@ -152,7 +130,6 @@ document.addEventListener("DOMContentLoaded", function() {
   const fmtHM = (d) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   const fmtYMD = (d) => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
 
-  // modal helpers
   const modal = document.getElementById("modal");
   const closeEls = [document.getElementById("mClose"), document.getElementById("mDismiss"), document.getElementById("modalBg")];
   closeEls.forEach(el => el.addEventListener("click", () => modal.classList.remove("show")));
@@ -165,6 +142,7 @@ document.addEventListener("DOMContentLoaded", function() {
   const mLine2 = document.getElementById("mLine2");
   const mWarn = document.getElementById("mWarn");
   const mReserveBtn = document.getElementById("mReserveBtn");
+  const mCancelForm = document.getElementById("mCancelForm");
 
   async function openDetail(ev) {
     const p = ev.extendedProps || {};
@@ -175,7 +153,6 @@ document.addEventListener("DOMContentLoaded", function() {
     if (kind === "reservation") {
       params.set("reservation_id", p.reservation_id);
     } else {
-      // availability/full
       params.set("date", p.date || fmtYMD(ev.start));
       params.set("start_time", p.start_time || fmtHM(ev.start));
       params.set("end_time", p.end_time || fmtHM(ev.end));
@@ -189,21 +166,18 @@ document.addEventListener("DOMContentLoaded", function() {
     mCoachDot.style.background = data.coachColor || "#2ecc71";
     document.getElementById("dotCoach").style.background = data.coachColor || "#2ecc71";
 
-    // time text
-    if (data.kind === "reservation") {
-      mTime.textContent = `${data.start} - ${data.end.split(" ").pop()}`;
-    } else {
-      mTime.textContent = `${data.date} ${data.start_time}-${data.end_time}`;
-    }
-
     mWarn.style.display = "none";
     mWarn.textContent = "";
 
     mReserveBtn.style.display = "none";
     mReserveBtn.href = "#";
 
+    mCancelForm.style.display = "none";
+    mCancelForm.action = "#";
+
     if (data.kind === "reservation") {
-      // 顧客には個人情報を出さない（viewsで制御済み）
+      mTime.textContent = `${data.start} - ${data.end.split(" ").pop()}`;
+
       if (data.court && data.customer) {
         mLine1.innerHTML = `<b>コート：</b>${data.court}`;
         mLine2.innerHTML = `<b>予約者：</b>${data.customer}`;
@@ -211,7 +185,13 @@ document.addEventListener("DOMContentLoaded", function() {
         mLine1.innerHTML = "予約があります";
         mLine2.innerHTML = "";
       }
+
+      if (data.can_cancel && data.cancel_url) {
+        mCancelForm.style.display = "inline-block";
+        mCancelForm.action = data.cancel_url;
+      }
     } else {
+      mTime.textContent = `${data.date} ${data.start_time}-${data.end_time}`;
       mLine1.innerHTML = `<b>定員：</b>${data.booked} / ${data.capacity}`;
       mLine2.innerHTML = `<b>残り：</b>${data.remaining}`;
 
@@ -232,12 +212,7 @@ document.addEventListener("DOMContentLoaded", function() {
     locale: "ja",
     firstDay: 1,
     height: isMobile ? "auto" : 720,
-
-    headerToolbar: {
-      left: "prev,next today",
-      center: "title",
-      right: "dayGridMonth,timeGridWeek"
-    },
+    headerToolbar: { left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek" },
     buttonText: { today: "今日", month: "月", week: "週" },
     navLinks: true,
     nowIndicator: true,
@@ -266,12 +241,7 @@ document.addEventListener("DOMContentLoaded", function() {
     },
 
     events: function(fetchInfo, successCallback, failureCallback) {
-      const params = new URLSearchParams({
-        coach_id: coachId,
-        start: fetchInfo.startStr,
-        end: fetchInfo.endStr
-      });
-
+      const params = new URLSearchParams({ coach_id: coachId, start: fetchInfo.startStr, end: fetchInfo.endStr });
       fetch("{% url 'club:calendar_events_api' %}?" + params.toString(), { credentials: "same-origin" })
         .then(r => r.json())
         .then(data => successCallback(data))
@@ -280,11 +250,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     eventClick: async function(info) {
       info.jsEvent.preventDefault();
-      try {
-        await openDetail(info.event);
-      } catch (e) {
-        console.error(e);
-      }
+      try { await openDetail(info.event); } catch (e) { console.error(e); }
     }
   });
 
@@ -292,9 +258,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
   // ③ 自動更新（15秒）＋タブ復帰
   setInterval(() => calendar.refetchEvents(), 15000);
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) calendar.refetchEvents();
-  });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) calendar.refetchEvents(); });
 });
 </script>
 {% endblock %}
