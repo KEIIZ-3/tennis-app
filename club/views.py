@@ -6,7 +6,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout, get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404, render, redirect
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
@@ -14,10 +14,19 @@ from django.views.decorators.http import require_GET, require_POST
 from .forms import ReservationCreateForm, CoachAvailabilityForm
 from .models import Reservation, CoachAvailability
 
-
 User = get_user_model()
 
 
+# -----------------------------
+# Health check（ログイン不要）
+# -----------------------------
+def healthz(request):
+    return HttpResponse("ok")
+
+
+# -----------------------------
+# Auth / Home
+# -----------------------------
 def login_view(request):
     if request.user.is_authenticated:
         return redirect("club:home")
@@ -49,7 +58,14 @@ def home(request):
 # -----------------------------
 @login_required
 def reservation_create(request):
-    # day_reservations 表示（既存仕様）
+    """
+    GET:
+      - カレンダーから ?coach=&date=&start=&end= が来たら初期値に反映
+      - 可能ならその日の予約も表示
+    POST:
+      - 予約作成
+      - 失敗時もその日の予約は表示
+    """
     day_reservations = None
 
     if request.method == "POST":
@@ -59,7 +75,6 @@ def reservation_create(request):
             messages.success(request, "予約を作成しました。")
             return redirect("club:reservation_list")
 
-        # 失敗時も、その日の予約は出したい
         try:
             d = form.cleaned_data.get("date")
         except Exception:
@@ -91,7 +106,7 @@ def reservation_create(request):
 
         form = ReservationCreateForm(user=request.user, initial=initial)
 
-        # 初期値があるなら、その日の予約も表示（便利）
+        # 初期値があるなら、その日の予約も表示
         try:
             if date_s:
                 d = datetime.strptime(date_s, "%Y-%m-%d").date()
@@ -212,6 +227,10 @@ def coach_availability_delete(request, pk: int):
 # -----------------------------
 @login_required
 def calendar_view(request):
+    """
+    - 顧客：コーチを選んで「空き/満員」と「予約」を確認
+    - コーチ：自分の予定（空き/満員＋予約）を確認（デフォルト自分）
+    """
     coaches = User.objects.filter(role="coach", is_active=True).order_by("username")
 
     selected_coach_id = request.GET.get("coach")
@@ -232,7 +251,7 @@ def calendar_view(request):
 @login_required
 def calendar_events_api(request):
     """
-    FullCalendar 用イベントAPI（枠ごとcapacity対応）
+    FullCalendar用イベントAPI（枠ごとのcapacity対応）
 
     - CoachAvailability（available）を枠イベントとして返す
       - booked/capacity をタイトルに表示
@@ -252,6 +271,7 @@ def calendar_events_api(request):
     end = request.GET.get("end")
 
     def parse_dt(s: str) -> datetime:
+        # "2026-02-15" or "2026-02-15T00:00:00+09:00"
         if "T" in s:
             s = s.split("T", 1)[0]
         return datetime.strptime(s, "%Y-%m-%d")
@@ -264,7 +284,7 @@ def calendar_events_api(request):
         start_date = today.replace(day=1)
         end_date = today.replace(day=28)
 
-    events = []
+    events: list[dict] = []
 
     # 枠単位で予約数を集計（date + start_time + end_time）
     booked_counts_qs = (
@@ -282,7 +302,7 @@ def calendar_events_api(request):
         for row in booked_counts_qs
     }
 
-    # 1) 空き枠（空き or 満員）※枠ごとのcapacityを使う
+    # 1) 枠（空き or 満員）
     avail_qs = CoachAvailability.objects.filter(
         coach=coach,
         status="available",
@@ -305,6 +325,7 @@ def calendar_events_api(request):
         remaining = max(capacity - booked, 0)
 
         if remaining <= 0:
+            # 満員（赤）→ 予約URLなし（クリックしても遷移させない）
             events.append(
                 {
                     "title": f"満員 {booked}/{capacity}",
@@ -322,6 +343,7 @@ def calendar_events_api(request):
                 }
             )
         else:
+            # 空き（緑）→ 予約URLあり
             events.append(
                 {
                     "title": f"空き {booked}/{capacity}",
@@ -345,7 +367,7 @@ def calendar_events_api(request):
                 }
             )
 
-    # 2) 予約（個別・ブルー）
+    # 2) 予約（ブルー）
     res_qs = (
         Reservation.objects.filter(
             coach=coach,
