@@ -6,10 +6,13 @@
   .card { background:#fff; border:1px solid #eee; border-radius:14px; padding: 12px; }
   .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
   .inp, .sel { padding:8px 10px; border:1px solid #ddd; border-radius:10px; }
-  .btn { border:1px solid #111; background:#111; color:#fff; padding:8px 10px; border-radius:10px; cursor:pointer; }
+  .btn { border:1px solid #111; background:#111; color:#fff; padding:8px 10px; border-radius:10px; cursor:pointer; font-size: 13px; }
+  .btn.outline { background:#fff; color:#111; }
+  .btn.danger { background:#e74c3c; border-color:#e74c3c; }
+  .btn.ok { background:#2ecc71; border-color:#2ecc71; }
   table { width:100%; border-collapse: collapse; }
-  th, td { padding: 8px; border-bottom:1px solid #eee; font-size: 13px; }
-  th { text-align:left; color:#555; }
+  th, td { padding: 8px; border-bottom:1px solid #eee; font-size: 13px; vertical-align: top; }
+  th { text-align:left; color:#555; white-space: nowrap; }
   .muted { color:#666; font-size:12px; }
   @media (max-width: 720px){
     th:nth-child(4), td:nth-child(4) { display:none; }
@@ -28,7 +31,7 @@
         <option value="cancelled" {% if status == "cancelled" %}selected{% endif %}>cancelled</option>
       </select>
       <button class="btn" type="submit">検索</button>
-      <a class="btn" href="{% url 'club:calendar' %}" style="background:#fff;color:#111;">カレンダーへ</a>
+      <a class="btn outline" href="{% url 'club:calendar' %}">カレンダーへ</a>
     </form>
 
     <div class="muted" style="margin-top:10px;">最新400件まで表示</div>
@@ -42,6 +45,7 @@
             <th>coach</th>
             <th>court</th>
             <th>status</th>
+            <th>操作</th>
           </tr>
         </thead>
         <tbody>
@@ -52,9 +56,20 @@
               <td>{% if r.coach %}{{ r.coach.username }}{% else %}-{% endif %}</td>
               <td>{{ r.court.name }}</td>
               <td>{{ r.status }}</td>
+              <td>
+                <form method="post" action="{% url 'club:manage_reservation_set_status' r.id %}" style="display:flex;gap:6px;flex-wrap:wrap;">
+                  {% csrf_token %}
+                  <input type="hidden" name="next" value="{% url 'club:manage_reservations' %}?q={{ q|urlencode }}&status={{ status|urlencode }}">
+                  {% if r.status == "booked" %}
+                    <button class="btn danger" name="status" value="cancelled" type="submit">キャンセル</button>
+                  {% else %}
+                    <button class="btn ok" name="status" value="booked" type="submit">復活</button>
+                  {% endif %}
+                </form>
+              </td>
             </tr>
           {% empty %}
-            <tr><td colspan="5" class="muted">データなし</td></tr>
+            <tr><td colspan="6" class="muted">データなし</td></tr>
           {% endfor %}
         </tbody>
       </table>
