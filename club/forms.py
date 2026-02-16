@@ -18,12 +18,10 @@ class ReservationCreateForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.user = user
 
-        # customerは必ずセット（モデルcleanが走っても落ちないため）
         if self.user is not None:
             self.instance.customer = self.user
             self.instance.status = "booked"
 
-        # coach候補は role=coach のみ
         self.fields["coach"].queryset = User.objects.filter(
             role="coach", is_active=True
         ).order_by("username")
@@ -43,7 +41,7 @@ class ReservationCreateForm(forms.ModelForm):
         if not all([court, date, start_time, end_time, coach]):
             return cleaned
 
-        # 1) コーチの空き時間に「完全に収まっている」かチェック（slotも取る）
+        # 1) 空き枠に収まるか（該当枠を取る）
         slot = CoachAvailability.objects.filter(
             coach=coach,
             date=date,
@@ -52,20 +50,14 @@ class ReservationCreateForm(forms.ModelForm):
             end_time__gte=end_time,
         ).order_by("start_time").first()
 
-        if slot is None:
-            raise forms.ValidationError(
-                "選択したコーチの空き時間外です（空き時間に収まる時間で予約してください）。"
-            )
+        if not slot:
+            raise forms.ValidationError("選択したコーチの空き時間外です（空き時間に収まる時間で予約してください）。")
 
-        # 1.5) ✅ 定員チェック（満員なら予約不可）※枠ごとの capacity を使用
-        try:
-            capacity = int(slot.capacity or 1)
-        except Exception:
-            capacity = 1
+        # 2) ✅ 定員チェック（枠ごとのcapacity）
+        capacity = int(getattr(slot, "capacity", 1) or 1)
         if capacity < 1:
             capacity = 1
 
-        # 同時間帯（完全一致）の予約数をカウント
         booked_count = Reservation.objects.filter(
             coach=coach,
             status="booked",
@@ -77,7 +69,7 @@ class ReservationCreateForm(forms.ModelForm):
         if booked_count >= capacity:
             raise forms.ValidationError(f"この枠は満員です（{booked_count}/{capacity}）。")
 
-        # 2) Reservationモデル側の検証（コート重複・コーチ枠capacity超過）も事前に通す
+        # 3) 既存の重複チェック（コート/コーチの時間帯重複）
         tmp = Reservation(
             customer=self.user,
             coach=coach,
@@ -111,38 +103,28 @@ class CoachAvailabilityForm(forms.ModelForm):
             "date": forms.DateInput(attrs={"type": "date"}),
             "start_time": forms.TimeInput(attrs={"type": "time"}),
             "end_time": forms.TimeInput(attrs={"type": "time"}),
-            "capacity": forms.NumberInput(attrs={"min": 1, "step": 1}),
         }
+
+    capacity = forms.IntegerField(min_value=1, initial=1, required=True)
 
     def __init__(self, *args, coach=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.coach = coach
 
-        # is_valid中に model.clean が動いても落ちないようにセット
         if self.coach is not None:
             self.instance.coach = self.coach
             self.instance.status = "available"
-
-        if self.fields.get("capacity") and self.fields["capacity"].initial is None:
-            self.fields["capacity"].initial = 1
 
     def clean(self):
         cleaned = super().clean()
         if self.coach is None:
             raise forms.ValidationError("coach が未設定です（ログイン状態を確認してください）。")
-
-        cap = cleaned.get("capacity") or 1
-        if cap < 1:
-            raise forms.ValidationError("定員は1以上にしてください。")
-
         return cleaned
 
     def save(self, commit=True):
         obj = super().save(commit=False)
         obj.coach = self.coach
         obj.status = "available"
-        if not getattr(obj, "capacity", None):
-            obj.capacity = 1
         if commit:
             obj.save()
         return obj
