@@ -7,10 +7,13 @@
     <div class="cal-title">
       <h2>カレンダー</h2>
       <div class="cal-hint">空き枠（緑）をクリックすると予約作成へ進みます</div>
+
       <div class="cal-legend">
         <span class="badge badge-avail">空き</span>
         <span class="badge badge-full">満員</span>
-        <span class="badge badge-resv">予約</span>
+        {% if is_coach_user %}
+          <span class="badge badge-resv">予約</span>
+        {% endif %}
       </div>
     </div>
 
@@ -30,7 +33,6 @@
   <div id="calendar" class="cal-box"></div>
 </div>
 
-<!-- FullCalendar (CDN) -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css">
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
@@ -55,10 +57,16 @@
   .cal-box { margin-top: 12px; background:#fff; border:1px solid #eee; border-radius:14px; padding: 8px; }
   @media (max-width: 720px) { .cal-box { padding: 4px; } }
 
-  /* モバイルでタイトルが詰まるのを少し緩和 */
   @media (max-width: 720px) {
     .fc .fc-toolbar-title { font-size: 16px; }
     .fc .fc-button { padding: 6px 8px; }
+  }
+
+  /* 月表示で文字が詰まりやすいので少し見やすく */
+  .fc-daygrid-event .fc-event-title,
+  .fc-daygrid-event .fc-event-time {
+    font-size: 11px;
+    line-height: 1.2;
   }
 </style>
 
@@ -74,10 +82,13 @@ document.addEventListener("DOMContentLoaded", function() {
 
   const isMobile = window.matchMedia && window.matchMedia("(max-width: 720px)").matches;
 
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const fmtHM = (d) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+
   const calendar = new FullCalendar.Calendar(calendarEl, {
     initialView: isMobile ? "timeGridWeek" : "dayGridMonth",
     locale: "ja",
-    firstDay: 1, // Monday
+    firstDay: 1,
     height: isMobile ? "auto" : 720,
 
     headerToolbar: {
@@ -89,6 +100,34 @@ document.addEventListener("DOMContentLoaded", function() {
     buttonText: { today: "今日", month: "月", week: "週" },
     navLinks: true,
     nowIndicator: true,
+
+    // ✅ 月表示でも時間を見やすく（枠は start-end を出す）
+    eventContent: function(arg) {
+      const ev = arg.event;
+      const p = ev.extendedProps || {};
+      const title = (ev.title || "").trim();
+      const start = ev.start;
+      const end = ev.end;
+
+      // time表示：枠（空き/満員）は「HH:MM-HH:MM」
+      let timeText = "";
+      if (start && end && (p.kind === "availability" || p.kind === "full")) {
+        timeText = `${fmtHM(start)}-${fmtHM(end)} `;
+      } else if (arg.timeText) {
+        // 予約（青）などは FullCalendar標準の timeText を使う
+        timeText = arg.timeText ? (arg.timeText + " ") : "";
+      }
+
+      // 表示用ノードを返す
+      const wrap = document.createElement("div");
+      wrap.style.whiteSpace = "normal";
+
+      const t = document.createElement("span");
+      t.textContent = timeText + title;
+      wrap.appendChild(t);
+
+      return { domNodes: [wrap] };
+    },
 
     events: function(fetchInfo, successCallback, failureCallback) {
       const params = new URLSearchParams({
@@ -105,37 +144,31 @@ document.addEventListener("DOMContentLoaded", function() {
       .catch(err => failureCallback(err));
     },
 
-    // ✅ 空き（緑）だけ予約作成へ。満員（赤）は絶対に遷移させない。
+    // ✅ 空き（緑）だけ予約作成へ。満員（赤）・予約（青）は無効。
     eventClick: function(info) {
       const ev = info.event;
       const p = ev.extendedProps || {};
       const title = (ev.title || "").trim();
 
-      // 1) APIが kind を返している場合はそれを最優先
-      // kind: "availability" / "full" / "reservation"
       if (p.kind === "full" || p.kind === "reservation") {
-        // 満員/予約は何もしない（クリック無効）
         info.jsEvent.preventDefault();
         return;
       }
 
-      // 2) APIが reservation_url を返す場合（空きだけ付いている想定）
       if (p.reservation_url) {
         window.location.href = p.reservation_url;
         return;
       }
 
-      // 3) 保険：タイトルが「空き」で始まる場合だけURLを組み立てる
-      // 例: "空き" / "空き 0/3" など
+      // 保険：タイトルが「空き」で始まる場合だけURLを組み立てる
       if (title.startsWith("空き")) {
         const start = ev.start;
         const end = ev.end;
         if (!start || !end) return;
 
-        const pad2 = (n) => String(n).padStart(2, "0");
         const ymd = `${start.getFullYear()}-${pad2(start.getMonth()+1)}-${pad2(start.getDate())}`;
-        const st = `${pad2(start.getHours())}:${pad2(start.getMinutes())}`;
-        const et = `${pad2(end.getHours())}:${pad2(end.getMinutes())}`;
+        const st = fmtHM(start);
+        const et = fmtHM(end);
 
         const url = "{% url 'club:reservation_create' %}"
           + `?coach=${encodeURIComponent(coachId)}`
@@ -147,7 +180,6 @@ document.addEventListener("DOMContentLoaded", function() {
         return;
       }
 
-      // 4) それ以外は無反応（安全）
       info.jsEvent.preventDefault();
     }
   });
