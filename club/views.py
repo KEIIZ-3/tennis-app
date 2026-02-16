@@ -6,7 +6,8 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout, get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.http import JsonResponse, HttpResponse
+from django.db.models import Count
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render, redirect
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
@@ -14,19 +15,10 @@ from django.views.decorators.http import require_GET, require_POST
 from .forms import ReservationCreateForm, CoachAvailabilityForm
 from .models import Reservation, CoachAvailability
 
+
 User = get_user_model()
 
 
-# -----------------------------
-# Health check（ログイン不要）
-# -----------------------------
-def healthz(request):
-    return HttpResponse("ok")
-
-
-# -----------------------------
-# Auth / Home
-# -----------------------------
 def login_view(request):
     if request.user.is_authenticated:
         return redirect("club:home")
@@ -78,8 +70,8 @@ def reservation_create(request):
                 .select_related("court", "customer", "coach")
                 .order_by("start_time")
             )
+
     else:
-        # ✅ カレンダーからの遷移パラメータを初期値として反映
         initial = {}
         coach = request.GET.get("coach")
         date_s = request.GET.get("date")
@@ -97,12 +89,8 @@ def reservation_create(request):
 
         form = ReservationCreateForm(user=request.user, initial=initial)
 
-        # 初期値があるなら、その日の予約も表示（便利）
         try:
-            if date_s:
-                d = datetime.strptime(date_s, "%Y-%m-%d").date()
-            else:
-                d = None
+            d = datetime.strptime(date_s, "%Y-%m-%d").date() if date_s else None
         except Exception:
             d = None
 
@@ -158,6 +146,11 @@ def reservation_cancel(request, pk: int):
     else:
         messages.info(request, "この予約は既にキャンセル済みです。")
 
+    # ✅ ①用：テンプレ側から next を渡せば、キャンセル後にカレンダーへ戻せる
+    nxt = request.POST.get("next") or ""
+    if nxt.startswith("/"):
+        return redirect(nxt)
+
     return redirect("club:reservation_list")
 
 
@@ -172,9 +165,7 @@ def coach_availability_list(request):
     tab = request.GET.get("tab", "future")
     today = timezone.localdate()
 
-    base_qs = CoachAvailability.objects.filter(coach=request.user).order_by(
-        "date", "start_time"
-    )
+    base_qs = CoachAvailability.objects.filter(coach=request.user).order_by("date", "start_time")
 
     if tab == "past":
         items = base_qs.filter(date__lt=today).order_by("-date", "-start_time")
@@ -227,15 +218,13 @@ def calendar_view(request):
         if not selected_coach_id and coaches.exists():
             selected_coach_id = str(coaches.first().id)
 
-    is_coach_user = getattr(request.user, "role", "") == "coach"
-
     return render(
         request,
         "calendar.html",
         {
             "coaches": coaches,
             "selected_coach_id": selected_coach_id,
-            "is_coach_user": is_coach_user,  # ✅ テンプレで凡例/表示を切替可能に
+            "is_coach_user": getattr(request.user, "role", "") == "coach",
         },
     )
 
@@ -244,15 +233,12 @@ def calendar_view(request):
 @login_required
 def calendar_events_api(request):
     """
-    FullCalendar 用イベントAPI（枠ごとの capacity 対応）
-
-    追加：
-    - 顧客(customer)には「予約（青）」の個別イベントを返さない（情報漏れ防止）
-      → 枠イベント（空き/満員）だけで状況が分かる
-    - コーチ(coach)には枠＋予約（青）も返す
+    仕様：
+    - 枠ごとに「予約数/定員(capacity)」表示
+    - 予約数>=定員 → 満員(赤)＆クリック不可
+    - 空き(緑)はクリックで予約作成へ
+    - 予約（青）はコート名も表示
     """
-    from django.db.models import Count
-
     coach_id = request.GET.get("coach_id")
     if not coach_id:
         return JsonResponse({"error": "coach_id is required"}, status=400)
@@ -275,9 +261,9 @@ def calendar_events_api(request):
         start_date = today.replace(day=1)
         end_date = today.replace(day=28)
 
-    events: list[dict] = []
+    events = []
 
-    # 枠単位で予約数を集計（date + start_time + end_time）
+    # 枠単位の予約数集計（date + start_time + end_time）
     booked_counts_qs = (
         Reservation.objects.filter(
             coach=coach,
@@ -293,7 +279,7 @@ def calendar_events_api(request):
         for row in booked_counts_qs
     }
 
-    # 1) 枠（空き or 満員）
+    # 1) 空き枠（空き/満員）…枠ごとの capacity を使用
     avail_qs = CoachAvailability.objects.filter(
         coach=coach,
         status="available",
@@ -305,10 +291,7 @@ def calendar_events_api(request):
         start_dt = datetime.combine(a.date, a.start_time)
         end_dt = datetime.combine(a.date, a.end_time)
 
-        try:
-            capacity = int(getattr(a, "capacity", 1) or 1)
-        except Exception:
-            capacity = 1
+        capacity = int(getattr(a, "capacity", 1) or 1)
         if capacity < 1:
             capacity = 1
 
@@ -356,32 +339,34 @@ def calendar_events_api(request):
                 }
             )
 
-    # 2) 予約（青）は “コーチだけ” に返す（顧客には返さない）
-    if getattr(request.user, "role", "") == "coach":
-        res_qs = (
-            Reservation.objects.filter(
-                coach=coach,
-                status="booked",
-                date__gte=start_date,
-                date__lt=end_date,
-            )
-            .select_related("court")
-            .order_by("date", "start_time")
+    # 2) 予約（個別・青）…コート名をはっきり表示
+    res_qs = (
+        Reservation.objects.filter(
+            coach=coach,
+            status="booked",
+            date__gte=start_date,
+            date__lt=end_date,
         )
+        .select_related("court")
+        .order_by("date", "start_time")
+    )
 
-        for r in res_qs:
-            start_dt = datetime.combine(r.date, r.start_time)
-            end_dt = datetime.combine(r.date, r.end_time)
-            events.append(
-                {
-                    "title": f"予約（{r.court}）",
-                    "start": start_dt.isoformat(),
-                    "end": end_dt.isoformat(),
-                    "backgroundColor": "#3498db",
-                    "borderColor": "#2980b9",
-                    "textColor": "#ffffff",
-                    "extendedProps": {"kind": "reservation"},
-                }
-            )
+    for r in res_qs:
+        start_dt = datetime.combine(r.date, r.start_time)
+        end_dt = datetime.combine(r.date, r.end_time)
+        events.append(
+            {
+                "title": f"予約（{r.court}）",
+                "start": start_dt.isoformat(),
+                "end": end_dt.isoformat(),
+                "backgroundColor": "#3498db",
+                "borderColor": "#2980b9",
+                "textColor": "#ffffff",
+                "extendedProps": {
+                    "kind": "reservation",
+                    "court": str(r.court),
+                },
+            }
+        )
 
     return JsonResponse(events, safe=False)
