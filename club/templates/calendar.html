@@ -6,7 +6,12 @@
   <div class="cal-toolbar">
     <div class="cal-title">
       <h2>カレンダー</h2>
-      <div class="cal-hint">空き枠をクリックすると予約作成へ進みます</div>
+      <div class="cal-hint">空き枠（緑）をクリックすると予約作成へ進みます</div>
+      <div class="cal-legend">
+        <span class="badge badge-avail">空き</span>
+        <span class="badge badge-full">満員</span>
+        <span class="badge badge-resv">予約</span>
+      </div>
     </div>
 
     <form method="get" class="cal-controls">
@@ -34,6 +39,14 @@
   .cal-toolbar { display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; }
   .cal-title h2 { margin:0; font-size: 22px; }
   .cal-hint { color:#666; font-size:12px; margin-top:4px; }
+
+  .cal-legend { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .badge { display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid #eee; background:#fff; color:#333; }
+  .badge::before { content:""; width:10px; height:10px; border-radius:999px; display:inline-block; }
+  .badge-avail::before { background:#2ecc71; }
+  .badge-full::before { background:#e74c3c; }
+  .badge-resv::before { background:#3498db; }
+
   .cal-controls { display:flex; align-items:center; gap:8px; }
   .cal-label { font-size: 12px; color:#444; }
   .cal-select { padding:8px 10px; border:1px solid #ddd; border-radius:10px; }
@@ -41,6 +54,12 @@
 
   .cal-box { margin-top: 12px; background:#fff; border:1px solid #eee; border-radius:14px; padding: 8px; }
   @media (max-width: 720px) { .cal-box { padding: 4px; } }
+
+  /* モバイルでタイトルが詰まるのを少し緩和 */
+  @media (max-width: 720px) {
+    .fc .fc-toolbar-title { font-size: 16px; }
+    .fc .fc-button { padding: 6px 8px; }
+  }
 </style>
 
 <script>
@@ -86,20 +105,31 @@ document.addEventListener("DOMContentLoaded", function() {
       .catch(err => failureCallback(err));
     },
 
-    // ✅ 「空き」をクリックしたら予約作成へ遷移
+    // ✅ 空き（緑）だけ予約作成へ。満員（赤）は絶対に遷移させない。
     eventClick: function(info) {
-      const p = info.event.extendedProps || {};
+      const ev = info.event;
+      const p = ev.extendedProps || {};
+      const title = (ev.title || "").trim();
 
-      // APIが reservation_url を返す場合（推奨）
+      // 1) APIが kind を返している場合はそれを最優先
+      // kind: "availability" / "full" / "reservation"
+      if (p.kind === "full" || p.kind === "reservation") {
+        // 満員/予約は何もしない（クリック無効）
+        info.jsEvent.preventDefault();
+        return;
+      }
+
+      // 2) APIが reservation_url を返す場合（空きだけ付いている想定）
       if (p.reservation_url) {
         window.location.href = p.reservation_url;
         return;
       }
 
-      // 保険：title が「空き」ならURLを組み立てる
-      if (info.event.title === "空き") {
-        const start = info.event.start;
-        const end = info.event.end;
+      // 3) 保険：タイトルが「空き」で始まる場合だけURLを組み立てる
+      // 例: "空き" / "空き 0/3" など
+      if (title.startsWith("空き")) {
+        const start = ev.start;
+        const end = ev.end;
         if (!start || !end) return;
 
         const pad2 = (n) => String(n).padStart(2, "0");
@@ -114,7 +144,11 @@ document.addEventListener("DOMContentLoaded", function() {
           + `&end=${encodeURIComponent(et)}`;
 
         window.location.href = url;
+        return;
       }
+
+      // 4) それ以外は無反応（安全）
+      info.jsEvent.preventDefault();
     }
   });
 
