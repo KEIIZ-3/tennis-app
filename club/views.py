@@ -19,6 +19,17 @@ from .models import Reservation, CoachAvailability
 User = get_user_model()
 
 
+# -----------------------------
+# health check
+# -----------------------------
+@require_GET
+def healthz(request):
+    return JsonResponse({"ok": True})
+
+
+# -----------------------------
+# auth
+# -----------------------------
 def login_view(request):
     if request.user.is_authenticated:
         return redirect("club:home")
@@ -72,6 +83,7 @@ def reservation_create(request):
             )
 
     else:
+        # カレンダーからの遷移パラメータを初期値として反映
         initial = {}
         coach = request.GET.get("coach")
         date_s = request.GET.get("date")
@@ -89,6 +101,7 @@ def reservation_create(request):
 
         form = ReservationCreateForm(user=request.user, initial=initial)
 
+        # 初期値があるなら、その日の予約も表示（便利）
         try:
             d = datetime.strptime(date_s, "%Y-%m-%d").date() if date_s else None
         except Exception:
@@ -146,7 +159,7 @@ def reservation_cancel(request, pk: int):
     else:
         messages.info(request, "この予約は既にキャンセル済みです。")
 
-    # ✅ ①用：テンプレ側から next を渡せば、キャンセル後にカレンダーへ戻せる
+    # ✅ next があればそこへ戻る（/calendar/?coach=... 用）
     nxt = request.POST.get("next") or ""
     if nxt.startswith("/"):
         return redirect(nxt)
@@ -165,7 +178,9 @@ def coach_availability_list(request):
     tab = request.GET.get("tab", "future")
     today = timezone.localdate()
 
-    base_qs = CoachAvailability.objects.filter(coach=request.user).order_by("date", "start_time")
+    base_qs = CoachAvailability.objects.filter(coach=request.user).order_by(
+        "date", "start_time"
+    )
 
     if tab == "past":
         items = base_qs.filter(date__lt=today).order_by("-date", "-start_time")
@@ -233,7 +248,6 @@ def calendar_view(request):
 @login_required
 def calendar_events_api(request):
     """
-    仕様：
     - 枠ごとに「予約数/定員(capacity)」表示
     - 予約数>=定員 → 満員(赤)＆クリック不可
     - 空き(緑)はクリックで予約作成へ
@@ -263,7 +277,6 @@ def calendar_events_api(request):
 
     events = []
 
-    # 枠単位の予約数集計（date + start_time + end_time）
     booked_counts_qs = (
         Reservation.objects.filter(
             coach=coach,
@@ -279,7 +292,7 @@ def calendar_events_api(request):
         for row in booked_counts_qs
     }
 
-    # 1) 空き枠（空き/満員）…枠ごとの capacity を使用
+    # 空き枠（空き/満員）
     avail_qs = CoachAvailability.objects.filter(
         coach=coach,
         status="available",
@@ -339,7 +352,7 @@ def calendar_events_api(request):
                 }
             )
 
-    # 2) 予約（個別・青）…コート名をはっきり表示
+    # 予約（個別・青）
     res_qs = (
         Reservation.objects.filter(
             coach=coach,
