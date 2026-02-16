@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  .box { max-width: 1100px; margin: 0 auto; padding: 12px; }
+  .card { background:#fff; border:1px solid #eee; border-radius:14px; padding: 12px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .inp, .sel { padding:8px 10px; border:1px solid #ddd; border-radius:10px; }
+  .btn { border:1px solid #111; background:#111; color:#fff; padding:8px 10px; border-radius:10px; cursor:pointer; }
+  table { width:100%; border-collapse: collapse; }
+  th, td { padding: 8px; border-bottom:1px solid #eee; font-size: 13px; }
+  th { text-align:left; color:#555; }
+  .muted { color:#666; font-size:12px; }
+  @media (max-width: 720px){
+    th:nth-child(4), td:nth-child(4) { display:none; }
+  }
+</style>
+
+<div class="box">
+  <h2 style="margin:0 0 10px 0;">予約管理（管理者）</h2>
+
+  <div class="card">
+    <form class="row" method="get">
+      <input class="inp" name="q" value="{{ q }}" placeholder="customer/coach/court 検索" />
+      <select class="sel" name="status">
+        <option value="">全ステータス</option>
+        <option value="booked" {% if status == "booked" %}selected{% endif %}>booked</option>
+        <option value="cancelled" {% if status == "cancelled" %}selected{% endif %}>cancelled</option>
+      </select>
+      <button class="btn" type="submit">検索</button>
+      <a class="btn" href="{% url 'club:calendar' %}" style="background:#fff;color:#111;">カレンダーへ</a>
+    </form>
+
+    <div class="muted" style="margin-top:10px;">最新400件まで表示</div>
+
+    <div style="overflow:auto; margin-top:10px;">
+      <table>
+        <thead>
+          <tr>
+            <th>日時</th>
+            <th>customer</th>
+            <th>coach</th>
+            <th>court</th>
+            <th>status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td>{{ r.date }} {{ r.start_time }}-{{ r.end_time }}</td>
+              <td>{{ r.customer.username }}</td>
+              <td>{% if r.coach %}{{ r.coach.username }}{% else %}-{% endif %}</td>
+              <td>{{ r.court.name }}</td>
+              <td>{{ r.status }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5" class="muted">データなし</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
