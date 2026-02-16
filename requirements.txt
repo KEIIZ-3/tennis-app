@@ -3,3 +3,10 @@ gunicorn
 whitenoise
 dj-database-url
 psycopg2-binary
+
+# background jobs / notifications
+celery
+redis
+
+# optional (管理UI強化で使う場合のみ。使わないなら消してOK)
+django-htmx
