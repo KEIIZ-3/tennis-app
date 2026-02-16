@@ -3,7 +3,7 @@
 
 {% block content %}
 <style>
-  :root { --page-max-width: 1100px; } /* カレンダーだけ横幅を広げる */
+  :root { --page-max-width: 1100px; }
 
   .cal-page { max-width: 1100px; margin: 0 auto; padding: 12px; }
   .cal-toolbar { display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; }
@@ -11,11 +11,10 @@
   .cal-hint { color:#666; font-size:12px; margin-top:4px; }
 
   .cal-legend { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
-  .badge { display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid #eee; background:#fff; color:#333; }
-  .badge::before { content:""; width:10px; height:10px; border-radius:999px; display:inline-block; }
-  .badge-avail::before { background:#2ecc71; }
-  .badge-full::before { background:#e74c3c; }
-  .badge-resv::before { background:#3498db; }
+  .badge2 { display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid #eee; background:#fff; color:#333; }
+  .dot { width:10px; height:10px; border-radius:999px; display:inline-block; }
+  .dot-full { background:#e74c3c; }
+  .dot-resv { background:#3498db; }
 
   .cal-controls { display:flex; align-items:center; gap:8px; }
   .cal-label { font-size: 12px; color:#444; }
@@ -30,12 +29,10 @@
     .fc .fc-button { padding: 6px 8px; }
   }
 
-  /* ✅ 月表示の “点表示(dot)” を消してブロック表示に寄せる */
   .fc .fc-daygrid-event-dot { display:none !important; }
   .fc .fc-daygrid-event { display:block !important; }
   .fc .fc-daygrid-event-harness { margin-top: 2px; margin-bottom: 2px; }
 
-  /* ブロックを見やすく */
   .fc .fc-daygrid-event,
   .fc .fc-timegrid-event {
     border-radius: 8px;
@@ -52,20 +49,45 @@
     font-size: 11px;
     line-height: 1.2;
   }
+
+  /* Modal */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,.45);
+  }
+  .modal {
+    position: fixed; inset: 0; display:none; align-items: center; justify-content: center; padding: 14px;
+  }
+  .modal.show { display:flex; }
+  .modal-card {
+    width: 100%; max-width: 520px;
+    background:#fff; border-radius: 14px; border:1px solid #eee;
+    box-shadow: 0 10px 30px rgba(0,0,0,.15);
+    overflow:hidden;
+  }
+  .modal-head { padding: 12px 14px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; gap:10px; align-items:center; }
+  .modal-title { margin:0; font-size: 16px; }
+  .modal-body { padding: 12px 14px; }
+  .modal-row { margin: 8px 0; }
+  .muted { color:#666; font-size:12px; }
+  .modal-foot { padding: 12px 14px; border-top:1px solid #eee; display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+  .btn {
+    border:1px solid #111; background:#111; color:#fff; padding:8px 10px; border-radius:10px; cursor:pointer; font-size: 13px;
+  }
+  .btn.outline { background:#fff; color:#111; }
+  .btn.danger { background:#e74c3c; border-color:#e74c3c; }
+  .pill { display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid #eee; background:#fff; color:#333; }
 </style>
 
 <div class="cal-page">
   <div class="cal-toolbar">
     <div class="cal-title">
       <h2>カレンダー</h2>
-      <div class="cal-hint">空き枠（緑）をクリックすると予約作成へ進みます</div>
+      <div class="cal-hint">空き枠をクリックすると詳細が出ます（そこから予約作成へ）</div>
 
       <div class="cal-legend">
-        <span class="badge badge-avail">空き</span>
-        <span class="badge badge-full">満員</span>
-        {% if is_coach_user %}
-          <span class="badge badge-resv">予約</span>
-        {% endif %}
+        <span class="badge2"><span class="dot" id="dotCoach" style="background:#2ecc71;"></span>空き（コーチ色）</span>
+        <span class="badge2"><span class="dot dot-full"></span>満員</span>
+        <span class="badge2"><span class="dot dot-resv"></span>予約</span>
       </div>
     </div>
 
@@ -82,7 +104,34 @@
     </form>
   </div>
 
+  <div class="muted" style="margin-top:6px;">自動更新：15秒 / タブ復帰で更新</div>
   <div id="calendar" class="cal-box"></div>
+</div>
+
+<!-- ② モーダル -->
+<div id="modal" class="modal" aria-hidden="true">
+  <div class="modal-backdrop" id="modalBg"></div>
+  <div class="modal-card" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <h3 class="modal-title" id="mTitle">詳細</h3>
+      <button class="btn outline" id="mClose">閉じる</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-row">
+        <span class="pill"><span class="dot" id="mCoachDot" style="background:#2ecc71;"></span><span id="mCoachName">coach</span></span>
+      </div>
+      <div class="modal-row muted" id="mTime"></div>
+
+      <div class="modal-row" id="mLine1"></div>
+      <div class="modal-row" id="mLine2"></div>
+
+      <div class="modal-row muted" id="mWarn" style="display:none;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn outline" id="mDismiss">閉じる</button>
+      <a class="btn" id="mReserveBtn" href="#" style="display:none;">予約作成へ</a>
+    </div>
+  </div>
 </div>
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css">
@@ -92,16 +141,91 @@
 document.addEventListener("DOMContentLoaded", function() {
   const calendarEl = document.getElementById("calendar");
   const coachId = "{{ selected_coach_id|default:'' }}";
+  const isMobile = window.matchMedia && window.matchMedia("(max-width: 720px)").matches;
 
   if (!coachId) {
     calendarEl.innerHTML = "<div style='padding:12px;color:#666'>コーチが選択されていません</div>";
     return;
   }
 
-  const isMobile = window.matchMedia && window.matchMedia("(max-width: 720px)").matches;
-
   const pad2 = (n) => String(n).padStart(2, "0");
   const fmtHM = (d) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  const fmtYMD = (d) => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+
+  // modal helpers
+  const modal = document.getElementById("modal");
+  const closeEls = [document.getElementById("mClose"), document.getElementById("mDismiss"), document.getElementById("modalBg")];
+  closeEls.forEach(el => el.addEventListener("click", () => modal.classList.remove("show")));
+
+  const mTitle = document.getElementById("mTitle");
+  const mCoachDot = document.getElementById("mCoachDot");
+  const mCoachName = document.getElementById("mCoachName");
+  const mTime = document.getElementById("mTime");
+  const mLine1 = document.getElementById("mLine1");
+  const mLine2 = document.getElementById("mLine2");
+  const mWarn = document.getElementById("mWarn");
+  const mReserveBtn = document.getElementById("mReserveBtn");
+
+  async function openDetail(ev) {
+    const p = ev.extendedProps || {};
+    const kind = p.kind;
+
+    const params = new URLSearchParams({ kind, coach_id: coachId });
+
+    if (kind === "reservation") {
+      params.set("reservation_id", p.reservation_id);
+    } else {
+      // availability/full
+      params.set("date", p.date || fmtYMD(ev.start));
+      params.set("start_time", p.start_time || fmtHM(ev.start));
+      params.set("end_time", p.end_time || fmtHM(ev.end));
+    }
+
+    const res = await fetch("{% url 'club:calendar_event_detail_api' %}?" + params.toString(), { credentials: "same-origin" });
+    const data = await res.json();
+
+    mTitle.textContent = data.title || "詳細";
+    mCoachName.textContent = data.coachName || "";
+    mCoachDot.style.background = data.coachColor || "#2ecc71";
+    document.getElementById("dotCoach").style.background = data.coachColor || "#2ecc71";
+
+    // time text
+    if (data.kind === "reservation") {
+      mTime.textContent = `${data.start} - ${data.end.split(" ").pop()}`;
+    } else {
+      mTime.textContent = `${data.date} ${data.start_time}-${data.end_time}`;
+    }
+
+    mWarn.style.display = "none";
+    mWarn.textContent = "";
+
+    mReserveBtn.style.display = "none";
+    mReserveBtn.href = "#";
+
+    if (data.kind === "reservation") {
+      // 顧客には個人情報を出さない（viewsで制御済み）
+      if (data.court && data.customer) {
+        mLine1.innerHTML = `<b>コート：</b>${data.court}`;
+        mLine2.innerHTML = `<b>予約者：</b>${data.customer}`;
+      } else {
+        mLine1.innerHTML = "予約があります";
+        mLine2.innerHTML = "";
+      }
+    } else {
+      mLine1.innerHTML = `<b>定員：</b>${data.booked} / ${data.capacity}`;
+      mLine2.innerHTML = `<b>残り：</b>${data.remaining}`;
+
+      if (data.remaining > 0 && data.reservation_url) {
+        mReserveBtn.style.display = "inline-block";
+        mReserveBtn.href = data.reservation_url;
+      } else {
+        mWarn.style.display = "block";
+        mWarn.textContent = "満員のため予約できません。";
+      }
+    }
+
+    modal.classList.add("show");
+  }
 
   const calendar = new FullCalendar.Calendar(calendarEl, {
     initialView: isMobile ? "timeGridWeek" : "dayGridMonth",
@@ -114,11 +238,9 @@ document.addEventListener("DOMContentLoaded", function() {
       center: "title",
       right: "dayGridMonth,timeGridWeek"
     },
-
     buttonText: { today: "今日", month: "月", week: "週" },
     navLinks: true,
     nowIndicator: true,
-
     eventDisplay: "block",
 
     eventContent: function(arg) {
@@ -137,21 +259,10 @@ document.addEventListener("DOMContentLoaded", function() {
 
       const wrap = document.createElement("div");
       wrap.style.whiteSpace = "normal";
-
       const t = document.createElement("span");
       t.textContent = prefix + title;
       wrap.appendChild(t);
-
       return { domNodes: [wrap] };
-    },
-
-    eventDidMount: function(info) {
-      const p = info.event.extendedProps || {};
-      if (p.kind === "availability" && p.reservation_url) {
-        info.el.style.cursor = "pointer";
-      } else {
-        info.el.style.cursor = "default";
-      }
     },
 
     events: function(fetchInfo, successCallback, failureCallback) {
@@ -161,53 +272,29 @@ document.addEventListener("DOMContentLoaded", function() {
         end: fetchInfo.endStr
       });
 
-      fetch("{% url 'club:calendar_events_api' %}?" + params.toString(), {
-        credentials: "same-origin"
-      })
-      .then(r => r.json())
-      .then(data => successCallback(data))
-      .catch(err => failureCallback(err));
+      fetch("{% url 'club:calendar_events_api' %}?" + params.toString(), { credentials: "same-origin" })
+        .then(r => r.json())
+        .then(data => successCallback(data))
+        .catch(err => failureCallback(err));
     },
 
-    eventClick: function(info) {
-      const ev = info.event;
-      const p = ev.extendedProps || {};
-      const title = (ev.title || "").trim();
-
-      if (p.kind === "full" || p.kind === "reservation") {
-        info.jsEvent.preventDefault();
-        return;
-      }
-
-      if (p.reservation_url) {
-        window.location.href = p.reservation_url;
-        return;
-      }
-
-      if (title.startsWith("空き")) {
-        const start = ev.start;
-        const end = ev.end;
-        if (!start || !end) return;
-
-        const ymd = `${start.getFullYear()}-${pad2(start.getMonth()+1)}-${pad2(start.getDate())}`;
-        const st = fmtHM(start);
-        const et = fmtHM(end);
-
-        const url = "{% url 'club:reservation_create' %}"
-          + `?coach=${encodeURIComponent(coachId)}`
-          + `&date=${encodeURIComponent(ymd)}`
-          + `&start=${encodeURIComponent(st)}`
-          + `&end=${encodeURIComponent(et)}`;
-
-        window.location.href = url;
-        return;
-      }
-
+    eventClick: async function(info) {
       info.jsEvent.preventDefault();
+      try {
+        await openDetail(info.event);
+      } catch (e) {
+        console.error(e);
+      }
     }
   });
 
   calendar.render();
+
+  // ③ 自動更新（15秒）＋タブ復帰
+  setInterval(() => calendar.refetchEvents(), 15000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) calendar.refetchEvents();
+  });
 });
 </script>
 {% endblock %}
