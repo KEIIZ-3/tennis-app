@@ -4,7 +4,7 @@ from datetime import datetime
 
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout, get_user_model
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count
 from django.http import JsonResponse
@@ -83,7 +83,6 @@ def reservation_create(request):
             )
 
     else:
-        # カレンダーからの遷移パラメータを初期値として反映
         initial = {}
         coach = request.GET.get("coach")
         date_s = request.GET.get("date")
@@ -101,7 +100,6 @@ def reservation_create(request):
 
         form = ReservationCreateForm(user=request.user, initial=initial)
 
-        # 初期値があるなら、その日の予約も表示（便利）
         try:
             d = datetime.strptime(date_s, "%Y-%m-%d").date() if date_s else None
         except Exception:
@@ -159,7 +157,6 @@ def reservation_cancel(request, pk: int):
     else:
         messages.info(request, "この予約は既にキャンセル済みです。")
 
-    # ✅ next があればそこへ戻る（/calendar/?coach=... 用）
     nxt = request.POST.get("next") or ""
     if nxt.startswith("/"):
         return redirect(nxt)
@@ -178,9 +175,7 @@ def coach_availability_list(request):
     tab = request.GET.get("tab", "future")
     today = timezone.localdate()
 
-    base_qs = CoachAvailability.objects.filter(coach=request.user).order_by(
-        "date", "start_time"
-    )
+    base_qs = CoachAvailability.objects.filter(coach=request.user).order_by("date", "start_time")
 
     if tab == "past":
         items = base_qs.filter(date__lt=today).order_by("-date", "-start_time")
@@ -235,7 +230,8 @@ def calendar_view(request):
 
     return render(
         request,
-        "calendar.html",
+        # テンプレ配置に合わせて統一（スクショの templates/reservations/calendar.html）
+        "reservations/calendar.html",
         {
             "coaches": coaches,
             "selected_coach_id": selected_coach_id,
@@ -249,9 +245,9 @@ def calendar_view(request):
 def calendar_events_api(request):
     """
     - 枠ごとに「予約数/定員(capacity)」表示
-    - 予約数>=定員 → 満員(赤)＆クリック不可
-    - 空き(緑)はクリックで予約作成へ
-    - 予約（青）はコート名も表示
+    - 予約数>=定員 → 満員(赤)
+    - 空き(コーチ色)はクリックでモーダル→予約作成へ
+    - 予約（青）はモーダルで詳細（※顧客には個人情報を出さない）
     """
     coach_id = request.GET.get("coach_id")
     if not coach_id:
@@ -300,6 +296,8 @@ def calendar_events_api(request):
         date__lt=end_date,
     ).order_by("date", "start_time")
 
+    coach_color = getattr(coach, "color", "#2ecc71") or "#2ecc71"
+
     for a in avail_qs:
         start_dt = datetime.combine(a.date, a.start_time)
         end_dt = datetime.combine(a.date, a.end_time)
@@ -325,6 +323,8 @@ def calendar_events_api(request):
                         "capacity": capacity,
                         "booked": booked,
                         "remaining": remaining,
+                        "coachColor": coach_color,
+                        "coachName": coach.username,
                     },
                 }
             )
@@ -334,20 +334,26 @@ def calendar_events_api(request):
                     "title": f"空き {booked}/{capacity}",
                     "start": start_dt.isoformat(),
                     "end": end_dt.isoformat(),
-                    "backgroundColor": "#2ecc71",
-                    "borderColor": "#27ae60",
+                    "backgroundColor": coach_color,  # ① コーチ別カラー
+                    "borderColor": coach_color,
                     "textColor": "#ffffff",
                     "extendedProps": {
                         "kind": "availability",
                         "capacity": capacity,
                         "booked": booked,
                         "remaining": remaining,
+                        "coachColor": coach_color,
+                        "coachName": coach.username,
                         "reservation_url": (
                             f"/reservations/new/?coach={coach.id}"
                             f"&date={a.date.isoformat()}"
                             f"&start={a.start_time.strftime('%H:%M')}"
                             f"&end={a.end_time.strftime('%H:%M')}"
                         ),
+                        # モーダル用キー
+                        "date": a.date.isoformat(),
+                        "start_time": a.start_time.strftime("%H:%M"),
+                        "end_time": a.end_time.strftime("%H:%M"),
                     },
                 }
             )
@@ -360,7 +366,7 @@ def calendar_events_api(request):
             date__gte=start_date,
             date__lt=end_date,
         )
-        .select_related("court")
+        .select_related("court", "customer")
         .order_by("date", "start_time")
     )
 
@@ -369,7 +375,7 @@ def calendar_events_api(request):
         end_dt = datetime.combine(r.date, r.end_time)
         events.append(
             {
-                "title": f"予約（{r.court}）",
+                "title": "予約",
                 "start": start_dt.isoformat(),
                 "end": end_dt.isoformat(),
                 "backgroundColor": "#3498db",
@@ -377,9 +383,134 @@ def calendar_events_api(request):
                 "textColor": "#ffffff",
                 "extendedProps": {
                     "kind": "reservation",
-                    "court": str(r.court),
+                    "reservation_id": r.id,  # ② モーダル詳細用
+                    "coachColor": coach_color,
+                    "coachName": coach.username,
                 },
             }
         )
 
     return JsonResponse(events, safe=False)
+
+
+@require_GET
+@login_required
+def calendar_event_detail_api(request):
+    """
+    ② モーダル用詳細API
+    - reservation: is_coach_user のみ customer/court を返す
+    - availability: capacity/booked/remaining と予約作成URLを返す
+    """
+    kind = request.GET.get("kind")
+    coach_id = request.GET.get("coach_id")
+    if not kind or not coach_id:
+        return JsonResponse({"error": "kind and coach_id required"}, status=400)
+
+    coach = get_object_or_404(User, id=coach_id, role="coach")
+    is_coach_user = getattr(request.user, "role", "") == "coach" and request.user.id == coach.id
+
+    if kind == "reservation":
+        rid = request.GET.get("reservation_id")
+        if not rid:
+            return JsonResponse({"error": "reservation_id required"}, status=400)
+
+        r = get_object_or_404(Reservation.objects.select_related("court", "customer", "coach"), id=rid, coach=coach, status="booked")
+
+        payload = {
+            "kind": "reservation",
+            "title": "予約",
+            "start": f"{r.date} {r.start_time}",
+            "end": f"{r.date} {r.end_time}",
+            "coachName": coach.username,
+            "coachColor": getattr(coach, "color", "#2ecc71") or "#2ecc71",
+        }
+
+        if is_coach_user:
+            payload.update({
+                "court": str(r.court),
+                "customer": getattr(r.customer, "username", ""),
+            })
+        else:
+            # 顧客には個人情報を出さない
+            payload.update({
+                "court": None,
+                "customer": None,
+            })
+
+        return JsonResponse(payload)
+
+    if kind in ("availability", "full"):
+        date_s = request.GET.get("date")
+        st = request.GET.get("start_time")
+        et = request.GET.get("end_time")
+        if not date_s or not st or not et:
+            return JsonResponse({"error": "date/start_time/end_time required"}, status=400)
+
+        # 予約数を計算
+        booked = Reservation.objects.filter(
+            coach=coach,
+            status="booked",
+            date=date_s,
+            start_time=st,
+            end_time=et,
+        ).count()
+
+        # capacity は availability モデルから拾う（無ければ1）
+        a = CoachAvailability.objects.filter(
+            coach=coach, status="available", date=date_s, start_time=st, end_time=et
+        ).first()
+        capacity = int(getattr(a, "capacity", 1) or 1)
+        remaining = max(capacity - booked, 0)
+
+        return JsonResponse({
+            "kind": "availability",
+            "title": "空き枠" if remaining > 0 else "満員",
+            "date": date_s,
+            "start_time": st,
+            "end_time": et,
+            "capacity": capacity,
+            "booked": booked,
+            "remaining": remaining,
+            "coachName": coach.username,
+            "coachColor": getattr(coach, "color", "#2ecc71") or "#2ecc71",
+            "reservation_url": (
+                f"/reservations/new/?coach={coach.id}"
+                f"&date={date_s}&start={st}&end={et}"
+            ),
+        })
+
+    return JsonResponse({"error": "unknown kind"}, status=400)
+
+
+# -----------------------------
+# ⑤ 管理者向け予約管理UI（is_staff）
+# -----------------------------
+def _is_staff(u):
+    return u.is_authenticated and u.is_staff
+
+@user_passes_test(_is_staff)
+def manage_reservations(request):
+    q = (request.GET.get("q") or "").strip()
+    status = (request.GET.get("status") or "").strip()
+
+    qs = Reservation.objects.select_related("court", "customer", "coach").order_by("-date", "-start_time")
+
+    if status in ("booked", "cancelled"):
+        qs = qs.filter(status=status)
+
+    if q:
+        qs = qs.filter(
+            customer__username__icontains=q
+        ) | qs.filter(
+            coach__username__icontains=q
+        ) | qs.filter(
+            court__name__icontains=q
+        )
+
+    qs = qs[:400]
+
+    return render(request, "admin/reservations_manage.html", {
+        "rows": qs,
+        "q": q,
+        "status": status,
+    })
