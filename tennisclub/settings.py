@@ -12,6 +12,14 @@ ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
 if RENDER_HOSTNAME:
     ALLOWED_HOSTS.append(RENDER_HOSTNAME)
 
+# Renderはリバプロ配下なので https 判定を正しくする
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# CSRF（Renderドメインを許可）
+CSRF_TRUSTED_ORIGINS = []
+if RENDER_HOSTNAME:
+    CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_HOSTNAME}")
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -19,8 +27,6 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-
-    # signals を確実に読み込むため
     "club.apps.ClubConfig",
 ]
 
@@ -31,6 +37,7 @@ MIDDLEWARE = [
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
+
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
 ]
@@ -79,6 +86,15 @@ LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/login/"
 
+# 本番セキュリティ（DEBUG=0の時だけ強める）
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_SSL_REDIRECT = False  # Render側でTLS終端するので通常FalseでOK
+    SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "0"))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_HSTS_PRELOAD = False
+
 # ----------------------------
 # Email 通知（ENVで設定）
 # ----------------------------
@@ -98,9 +114,28 @@ LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 LINE_TO_USER_ID = os.environ.get("LINE_TO_USER_ID", "")
 
 # ----------------------------
-# Celery / Redis（RenderのRedisを使う）
+# Redisキャッシュ（あれば使う：④運用最適化）
+# ない場合はlocmemへフォールバック
 # ----------------------------
-REDIS_URL = os.environ.get("REDIS_URL", os.environ.get("REDIS_TLS_URL", "redis://localhost:6379/0"))
-CELERY_BROKER_URL = REDIS_URL
-CELERY_RESULT_BACKEND = REDIS_URL
-CELERY_TIMEZONE = "Asia/Tokyo"
+REDIS_URL = os.environ.get("REDIS_URL") or os.environ.get("REDIS_TLS_URL", "")
+if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+            "TIMEOUT": 30,
+        }
+    }
+else:
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+
+# ----------------------------
+# ログ（RenderのLogsに出る）
+# ----------------------------
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "root": {"handlers": ["console"], "level": LOG_LEVEL},
+}
