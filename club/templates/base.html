@@ -7,7 +7,12 @@
 
   <style>
     :root{
-      --page-max-width: 820px; /* ✅ ページごとに上書き可能 */
+      --page-max-width: 820px;
+    }
+
+    /* ✅ これで「端が重なる」系がほぼ消える */
+    *, *::before, *::after{
+      box-sizing: border-box;
     }
 
     body{
@@ -47,7 +52,6 @@
       white-space:nowrap;
     }
 
-    /* ★カード重なり防止ここ重要 */
     .card{
       display:block;
       background:#fff;
@@ -110,6 +114,8 @@
       border:1px solid #ddd;
       border-radius:10px;
       background:#fff;
+      box-sizing: border-box; /* ✅ 念押し */
+      min-width: 0;
     }
 
     .tabs{
@@ -139,7 +145,6 @@
       margin-left:6px;
     }
 
-    /* モバイルでナビが折り返されても崩れにくく */
     .nav{
       display:flex;
       flex-wrap:wrap;
