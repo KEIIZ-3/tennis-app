@@ -8,6 +8,9 @@ urlpatterns = [
     path("login/", views.login_view, name="login"),
     path("logout/", views.logout_view, name="logout"),
 
+    # health check
+    path("healthz/", views.healthz, name="healthz"),
+
     # 予約
     path("reservations/new/", views.reservation_create, name="reservation_create"),
     path("reservations/", views.reservation_list, name="reservation_list"),
