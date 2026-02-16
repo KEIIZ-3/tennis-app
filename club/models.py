@@ -11,6 +11,10 @@ class User(AbstractUser):
     )
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default="customer")
 
+    # ① コーチ別カラー（FullCalendar表示用）
+    # coach以外にも入るが、運用上coachだけ設定すればOK
+    color = models.CharField(max_length=7, default="#2ecc71")  # "#RRGGBB"
+
 
 class Court(models.Model):
     name = models.CharField(max_length=50, unique=True)
@@ -47,6 +51,7 @@ class Reservation(models.Model):
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="booked")
 
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)  # 通知・監査用
 
     class Meta:
         ordering = ["-date", "-start_time"]
