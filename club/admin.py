@@ -2,7 +2,15 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth import get_user_model
 
-from .models import Court, Reservation, CoachAvailability
+from .models import (
+    Court,
+    Reservation,
+    CoachAvailability,
+    BusinessHours,
+    FacilityClosure,
+    TicketWallet,
+    TicketTransaction,
+)
 
 User = get_user_model()
 
@@ -13,13 +21,14 @@ User = get_user_model()
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     fieldsets = BaseUserAdmin.fieldsets + (
-        ("Role", {"fields": ("role",)}),
+        ("Role", {"fields": ("role", "color")}),
     )
     add_fieldsets = BaseUserAdmin.add_fieldsets + (
-        ("Role", {"fields": ("role",)}),
+        ("Role", {"fields": ("role", "color")}),
     )
-    list_display = ("username", "email", "role", "is_staff", "is_superuser")
+    list_display = ("username", "email", "role", "color", "is_staff", "is_superuser")
     list_filter = ("role", "is_staff", "is_superuser")
+    search_fields = ("username", "email")
 
 
 # -----------------------
@@ -42,18 +51,22 @@ class ReservationAdmin(admin.ModelAdmin):
         "start_time",
         "end_time",
         "court",
-        "coach",     # ★追加
+        "coach",
         "customer",
+        "kind",
+        "tickets_used",
         "status",
+        "updated_at",
         "created_at",
     )
-    list_filter = ("date", "court", "coach", "status")
+    list_filter = ("date", "court", "coach", "kind", "status")
     search_fields = (
         "customer__username",
         "customer__email",
         "court__name",
         "coach__username",
         "coach__email",
+        "note",
     )
     ordering = ("-date", "-start_time")
 
@@ -68,6 +81,7 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
         "start_time",
         "end_time",
         "coach",
+        "capacity",
         "status",
         "created_at",
     )
@@ -77,3 +91,35 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
         "coach__email",
     )
     ordering = ("-date", "-start_time")
+
+
+# -----------------------
+# BusinessHours / FacilityClosure
+# -----------------------
+@admin.register(BusinessHours)
+class BusinessHoursAdmin(admin.ModelAdmin):
+    list_display = ("weekday", "open_time", "close_time", "is_closed")
+    ordering = ("weekday",)
+
+
+@admin.register(FacilityClosure)
+class FacilityClosureAdmin(admin.ModelAdmin):
+    list_display = ("date", "reason")
+    ordering = ("-date",)
+
+
+# -----------------------
+# Tickets
+# -----------------------
+@admin.register(TicketWallet)
+class TicketWalletAdmin(admin.ModelAdmin):
+    list_display = ("user", "balance", "updated_at")
+    search_fields = ("user__username", "user__email")
+
+
+@admin.register(TicketTransaction)
+class TicketTransactionAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "user", "delta", "reason", "reservation", "note")
+    list_filter = ("reason",)
+    search_fields = ("user__username", "user__email", "note")
+    ordering = ("-created_at",)
