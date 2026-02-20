@@ -1,13 +1,18 @@
 from django import forms
 from django.core.exceptions import ValidationError
 
-from .models import Reservation, CoachAvailability, User
+from .models import (
+    Reservation,
+    CoachAvailability,
+    User,
+    TicketWallet,
+)
 
 
 class ReservationCreateForm(forms.ModelForm):
     class Meta:
         model = Reservation
-        fields = ["court", "date", "start_time", "end_time", "coach"]
+        fields = ["kind", "tickets_used", "note", "court", "date", "start_time", "end_time", "coach"]
         widgets = {
             "date": forms.DateInput(attrs={"type": "date"}),
             "start_time": forms.TimeInput(attrs={"type": "time"}),
@@ -32,16 +37,31 @@ class ReservationCreateForm(forms.ModelForm):
         if self.user is None:
             return cleaned
 
+        kind = cleaned.get("kind")
+        tickets_used = cleaned.get("tickets_used") or 0
+
         court = cleaned.get("court")
         date = cleaned.get("date")
         start_time = cleaned.get("start_time")
         end_time = cleaned.get("end_time")
         coach = cleaned.get("coach")
 
-        if not all([court, date, start_time, end_time, coach]):
+        if not all([court, date, start_time, end_time, coach, kind]):
             return cleaned
 
-        # 1) 空き枠に収まるか（該当枠を取る）
+        # ---- チケット系（⑤）----
+        if kind in ("private_lesson", "group_lesson"):
+            if tickets_used < 1:
+                raise forms.ValidationError("レッスン予約は tickets_used を1以上にしてください。")
+
+            wallet, _ = TicketWallet.objects.get_or_create(user=self.user)
+            if wallet.balance < tickets_used:
+                raise forms.ValidationError(f"チケット残数が足りません（残:{wallet.balance} / 必要:{tickets_used}）。")
+        else:
+            # court_rental
+            cleaned["tickets_used"] = 0
+
+        # ---- 1) 空き枠に収まるか（該当枠を取る）----
         slot = CoachAvailability.objects.filter(
             coach=coach,
             date=date,
@@ -53,23 +73,26 @@ class ReservationCreateForm(forms.ModelForm):
         if not slot:
             raise forms.ValidationError("選択したコーチの空き時間外です（空き時間に収まる時間で予約してください）。")
 
-        # 2) ✅ 定員チェック（枠ごとのcapacity）
+        # ---- 2) 定員チェック（枠ごとのcapacity）----
         capacity = int(getattr(slot, "capacity", 1) or 1)
         if capacity < 1:
             capacity = 1
 
-        booked_count = Reservation.objects.filter(
-            coach=coach,
-            status="booked",
-            date=date,
-            start_time=start_time,
-            end_time=end_time,
-        ).count()
+        # group_lesson だけ capacity を適用（privateは原則1枠）
+        if kind == "group_lesson":
+            booked_count = Reservation.objects.filter(
+                coach=coach,
+                status="booked",
+                date=date,
+                start_time=start_time,
+                end_time=end_time,
+                kind="group_lesson",
+            ).count()
 
-        if booked_count >= capacity:
-            raise forms.ValidationError(f"この枠は満員です（{booked_count}/{capacity}）。")
+            if booked_count >= capacity:
+                raise forms.ValidationError(f"この枠は満員です（{booked_count}/{capacity}）。")
 
-        # 3) 既存の重複チェック（コート/コーチの時間帯重複）
+        # ---- 3) 既存の重複チェック（コート/コーチの時間帯重複）----
         tmp = Reservation(
             customer=self.user,
             coach=coach,
@@ -78,6 +101,9 @@ class ReservationCreateForm(forms.ModelForm):
             start_time=start_time,
             end_time=end_time,
             status="booked",
+            kind=kind,
+            tickets_used=cleaned.get("tickets_used") or 0,
+            note=cleaned.get("note") or "",
         )
         try:
             tmp.clean()
@@ -90,8 +116,13 @@ class ReservationCreateForm(forms.ModelForm):
         obj = super().save(commit=False)
         obj.customer = self.user
         obj.status = "booked"
+
+        # court_rental はチケット0に寄せる
+        if obj.kind == "court_rental":
+            obj.tickets_used = 0
+
         if commit:
-            obj.save()
+            obj.save()  # models.saveでチケット消費も走る
         return obj
 
 
