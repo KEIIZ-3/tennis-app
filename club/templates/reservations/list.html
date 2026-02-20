@@ -1,57 +1,63 @@
 {% extends "base.html" %}
-{% block title %}予約一覧{% endblock %}
-{% block content %}
-  <h1>予約一覧</h1>
 
-  <div class="tabs">
-    <a class="tab {% if tab != 'past' %}active{% endif %}" href="{% url 'club:reservation_list' %}?tab=future">未来</a>
-    <a class="tab {% if tab == 'past' %}active{% endif %}" href="{% url 'club:reservation_list' %}?tab=past">過去</a>
+{% block content %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;">
+    <div>
+      <h2 style="margin:0;">予約一覧</h2>
+      {% if wallet %}
+        <div style="margin-top:6px;color:#444;">チケット残数：<b>{{ wallet.balance }}</b></div>
+      {% endif %}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <a class="btn" href="{% url 'club:reservation_create' %}">新規予約</a>
+      <a class="btn outline" href="{% url 'club:calendar' %}">カレンダー</a>
+      <a class="btn outline" href="{% url 'club:business_rules' %}">営業時間</a>
+    </div>
   </div>
 
-  {% if reservations %}
-    <div class="grid">
+  <div style="margin-top:10px;">
+    <a class="btn outline" href="?tab=future" {% if tab != "past" %}style="opacity:1"{% else %}style="opacity:.6"{% endif %}>これから</a>
+    <a class="btn outline" href="?tab=past" {% if tab == "past" %}style="opacity:1"{% else %}style="opacity:.6"{% endif %}>過去</a>
+  </div>
+
+  <table class="table" style="margin-top:12px;">
+    <thead>
+      <tr>
+        <th>日付</th>
+        <th>時間</th>
+        <th>コーチ</th>
+        <th>コート</th>
+        <th>種別</th>
+        <th>チケット</th>
+        <th>状態</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
       {% for r in reservations %}
-        <div class="card">
-          <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
-            <div>
-              <b>{{ r.court }}</b>
-              {% if r.coach %}
-                <span class="pill" style="opacity:.85;">コーチ：{{ r.coach.username }}</span>
-              {% endif %}
-              <br>
-
-              <div style="margin-top:6px;">
-                {{ r.date }} {{ r.start_time }} - {{ r.end_time }}
-              </div>
-
-              <div style="margin-top:6px;">
-                {% if r.status == "cancelled" %}
-                  <span class="pill" style="opacity:.7;">キャンセル済み</span>
-                {% else %}
-                  <span class="pill">予約中</span>
-                {% endif %}
-              </div>
-            </div>
-
+        <tr>
+          <td>{{ r.date }}</td>
+          <td>{{ r.start_time }}-{{ r.end_time }}</td>
+          <td>{{ r.coach }}</td>
+          <td>{{ r.court }}</td>
+          <td>{{ r.get_kind_display }}</td>
+          <td>{{ r.tickets_used }}</td>
+          <td>{{ r.get_status_display }}</td>
+          <td>
             {% if r.status == "booked" %}
-              <form method="post" action="{% url 'club:reservation_cancel' r.pk %}">
+              <form method="post" action="{% url 'club:reservation_cancel' r.id %}">
                 {% csrf_token %}
-
-                {# ✅ キャンセル後にカレンダーへ戻す（コーチ指定） #}
-                {% if r.coach_id %}
-                  <input type="hidden" name="next" value="{% url 'club:calendar' %}?coach={{ r.coach_id }}">
-                {% else %}
-                  <input type="hidden" name="next" value="{% url 'club:calendar' %}">
-                {% endif %}
-
-                <button class="btn btn-danger" type="submit">キャンセル</button>
+                <input type="hidden" name="next" value="/reservations/?tab={{ tab }}">
+                <button class="btn danger" type="submit">キャンセル</button>
               </form>
             {% endif %}
-          </div>
-        </div>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" style="color:#666;">予約はありません</td></tr>
       {% endfor %}
-    </div>
-  {% else %}
-    <p class="muted">予約はありません。</p>
-  {% endif %}
+    </tbody>
+  </table>
+</div>
 {% endblock %}
