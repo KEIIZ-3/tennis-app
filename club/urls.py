@@ -24,4 +24,7 @@ urlpatterns = [
 
     path("manage/reservations/", views.manage_reservations, name="manage_reservations"),
     path("manage/reservations/<int:pk>/status/", views.manage_reservation_set_status, name="manage_reservation_set_status"),
+
+    # ③ 営業時間/休館日
+    path("business/", views.business_rules, name="business_rules"),
 ]
