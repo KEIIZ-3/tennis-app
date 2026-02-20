@@ -13,7 +13,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from .forms import ReservationCreateForm, CoachAvailabilityForm
-from .models import Reservation, CoachAvailability
+from .models import Reservation, CoachAvailability, BusinessHours, FacilityClosure, TicketWallet
 
 User = get_user_model()
 
@@ -24,9 +24,7 @@ def _coach_color(coach) -> str:
     adminで色を設定すればそれが優先。
     """
     c = (getattr(coach, "color", "") or "").strip()
-    # ちゃんと#RRGGBBならそれを優先
     if len(c) == 7 and c.startswith("#"):
-        # デフォルト緑の場合は自動割当を優先（好みで外してOK）
         if c.lower() != "#2ecc71":
             return c
 
@@ -75,6 +73,7 @@ def home(request):
 @login_required
 def reservation_create(request):
     day_reservations = None
+    wallet, _ = TicketWallet.objects.get_or_create(user=request.user)
 
     if request.method == "POST":
         form = ReservationCreateForm(request.POST, user=request.user)
@@ -128,7 +127,7 @@ def reservation_create(request):
     return render(
         request,
         "reservations/create.html",
-        {"form": form, "day_reservations": day_reservations},
+        {"form": form, "day_reservations": day_reservations, "wallet": wallet},
     )
 
 
@@ -148,10 +147,12 @@ def reservation_list(request):
     else:
         reservations = base_qs.filter(date__gte=today)
 
+    wallet, _ = TicketWallet.objects.get_or_create(user=request.user)
+
     return render(
         request,
         "reservations/list.html",
-        {"reservations": reservations, "tab": tab},
+        {"reservations": reservations, "tab": tab, "wallet": wallet},
     )
 
 
@@ -165,6 +166,7 @@ def reservation_cancel(request, pk: int):
 
     if r.status == "booked":
         r.status = "cancelled"
+        # save() を呼ぶ（models.save で返却処理が走る）
         r.save(update_fields=["status"])
         messages.info(request, "予約をキャンセルしました。")
     else:
@@ -422,7 +424,12 @@ def calendar_event_detail_api(request):
         }
 
         if is_coach_user:
-            payload.update({"court": str(r.court), "customer": getattr(r.customer, "username", "")})
+            payload.update({
+                "court": str(r.court),
+                "customer": getattr(r.customer, "username", ""),
+                "kind_label": getattr(r, "kind", ""),
+                "tickets_used": getattr(r, "tickets_used", 0),
+            })
         else:
             payload.update({"court": None, "customer": None})
 
@@ -503,7 +510,17 @@ def manage_reservation_set_status(request, pk: int):
 
     if r.status != new_status:
         r.status = new_status
-        r.save(update_fields=["status"])
+        r.save(update_fields=["status"])  # models.saveでチケット返却も走る
         messages.info(request, f"予約ステータスを {new_status} に変更しました。")
 
     return redirect(request.POST.get("next") or "club:manage_reservations")
+
+
+@login_required
+def business_rules(request):
+    """
+    ③ 営業時間/休館日（閲覧）
+    """
+    bhs = BusinessHours.objects.all()
+    closures = FacilityClosure.objects.all()[:200]
+    return render(request, "business_rules.html", {"bhs": bhs, "closures": closures})
