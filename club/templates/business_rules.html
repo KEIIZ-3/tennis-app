@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}営業時間・休館日{% endblock %}
+{% block content %}
+  <div class="card">
+    <h2>営業時間</h2>
+    <p>設定は管理画面（admin）で行います。</p>
+
+    <table class="table">
+      <thead><tr><th>曜日</th><th>開始</th><th>終了</th><th>定休</th></tr></thead>
+      <tbody>
+      {% for b in bhs %}
+        <tr>
+          <td>{{ b.get_weekday_display }}</td>
+          <td>{{ b.open_time }}</td>
+          <td>{{ b.close_time }}</td>
+          <td>{{ b.is_closed }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4">未設定です（adminで曜日7件を作成してください）</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    <h2 style="margin-top:18px;">休館日</h2>
+    <table class="table">
+      <thead><tr><th>日付</th><th>理由</th></tr></thead>
+      <tbody>
+      {% for c in closures %}
+        <tr><td>{{ c.date }}</td><td>{{ c.reason }}</td></tr>
+      {% empty %}
+        <tr><td colspan="2">登録がありません</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}
