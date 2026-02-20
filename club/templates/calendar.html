@@ -4,10 +4,12 @@
 {% block content %}
 <style>
   :root { --page-max-width: 1100px; }
+
   .cal-page { max-width: 1100px; margin: 0 auto; padding: 12px; }
   .cal-toolbar { display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; }
   .cal-title h2 { margin:0; font-size: 22px; }
   .cal-hint { color:#666; font-size:12px; margin-top:4px; }
+
   .cal-legend { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
   .badge2 { display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid #eee; background:#fff; color:#333; }
   .dot { width:10px; height:10px; border-radius:999px; display:inline-block; }
@@ -21,10 +23,12 @@
 
   .cal-box { margin-top: 12px; background:#fff; border:1px solid #eee; border-radius:14px; padding: 8px; }
   @media (max-width: 720px) { .cal-box { padding: 4px; } }
+
   @media (max-width: 720px) {
     .fc .fc-toolbar-title { font-size: 16px; }
     .fc .fc-button { padding: 6px 8px; }
   }
+
   .fc .fc-daygrid-event-dot { display:none !important; }
   .fc .fc-daygrid-event { display:block !important; }
   .fc .fc-daygrid-event-harness { margin-top: 2px; margin-bottom: 2px; }
@@ -33,19 +37,49 @@
   .fc .fc-daygrid-event .fc-event-title, .fc .fc-daygrid-event .fc-event-time,
   .fc .fc-timegrid-event .fc-event-title, .fc .fc-timegrid-event .fc-event-time { font-size: 11px; line-height: 1.2; }
 
-  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); }
-  .modal { position: fixed; inset: 0; display:none; align-items: center; justify-content: center; padding: 14px; }
-  .modal.show { display:flex; }
-  .modal-card {
-    width: 100%; max-width: 520px; background:#fff; border-radius: 14px; border:1px solid #eee;
-    box-shadow: 0 10px 30px rgba(0,0,0,.15); overflow:hidden;
+  /* -------------------
+     ✅ モーダル（重なりフリーズ対策）
+     - z-indexを強制的に最前面へ
+     - 背面クリック/スクロールを止める
+  ------------------- */
+  body.modal-open { overflow: hidden; touch-action: none; }
+
+  .modal {
+    position: fixed;
+    inset: 0;
+    display:none;
+    align-items: center;
+    justify-content: center;
+    padding: 14px;
+    z-index: 9999;            /* ★最重要 */
   }
+  .modal.show { display:flex; }
+
+  .modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,.45);
+  }
+
+  .modal-card {
+    position: relative;
+    width: 100%;
+    max-width: 520px;
+    background:#fff;
+    border-radius: 14px;
+    border:1px solid #eee;
+    box-shadow: 0 10px 30px rgba(0,0,0,.15);
+    overflow:hidden;
+    z-index: 10000;           /* ★最重要 */
+  }
+
   .modal-head { padding: 12px 14px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; gap:10px; align-items:center; }
   .modal-title { margin:0; font-size: 16px; }
   .modal-body { padding: 12px 14px; }
   .modal-row { margin: 8px 0; }
   .muted { color:#666; font-size:12px; }
   .modal-foot { padding: 12px 14px; border-top:1px solid #eee; display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+
   .btn { border:1px solid #111; background:#111; color:#fff; padding:8px 10px; border-radius:10px; cursor:pointer; font-size: 13px; }
   .btn.outline { background:#fff; color:#111; }
   .btn.danger { background:#e74c3c; border-color:#e74c3c; }
@@ -56,7 +90,7 @@
   <div class="cal-toolbar">
     <div class="cal-title">
       <h2>カレンダー</h2>
-      <div class="cal-hint">空き枠をクリックすると詳細が出ます（そこから予約作成へ）</div>
+      <div class="cal-hint">枠をクリックすると詳細が出ます（空きなら予約作成へ）</div>
 
       <div class="cal-legend">
         <span class="badge2"><span class="dot" id="dotCoach" style="background:#2ecc71;"></span>空き（コーチ色）</span>
@@ -87,7 +121,7 @@
   <div class="modal-card" role="dialog" aria-modal="true">
     <div class="modal-head">
       <h3 class="modal-title" id="mTitle">詳細</h3>
-      <button class="btn outline" id="mClose">閉じる</button>
+      <button class="btn outline" id="mClose" type="button">閉じる</button>
     </div>
     <div class="modal-body">
       <div class="modal-row">
@@ -99,10 +133,9 @@
       <div class="modal-row muted" id="mWarn" style="display:none;"></div>
     </div>
     <div class="modal-foot">
-      <button class="btn outline" id="mDismiss">閉じる</button>
+      <button class="btn outline" id="mDismiss" type="button">閉じる</button>
       <a class="btn" id="mReserveBtn" href="#" style="display:none;">予約作成へ</a>
 
-      <!-- 自分の予約ならキャンセル -->
       <form id="mCancelForm" method="post" action="#" style="display:none;">
         {% csrf_token %}
         <input type="hidden" name="next" value="/calendar/?coach={{ selected_coach_id }}">
@@ -131,9 +164,6 @@ document.addEventListener("DOMContentLoaded", function() {
   const fmtYMD = (d) => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
 
   const modal = document.getElementById("modal");
-  const closeEls = [document.getElementById("mClose"), document.getElementById("mDismiss"), document.getElementById("modalBg")];
-  closeEls.forEach(el => el.addEventListener("click", () => modal.classList.remove("show")));
-
   const mTitle = document.getElementById("mTitle");
   const mCoachDot = document.getElementById("mCoachDot");
   const mCoachName = document.getElementById("mCoachName");
@@ -143,6 +173,23 @@ document.addEventListener("DOMContentLoaded", function() {
   const mWarn = document.getElementById("mWarn");
   const mReserveBtn = document.getElementById("mReserveBtn");
   const mCancelForm = document.getElementById("mCancelForm");
+
+  function openModal() {
+    modal.classList.add("show");
+    document.body.classList.add("modal-open");
+  }
+  function closeModal() {
+    modal.classList.remove("show");
+    document.body.classList.remove("modal-open");
+  }
+
+  document.getElementById("mClose").addEventListener("click", closeModal);
+  document.getElementById("mDismiss").addEventListener("click", closeModal);
+  document.getElementById("modalBg").addEventListener("click", closeModal);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modal.classList.contains("show")) closeModal();
+  });
 
   async function openDetail(ev) {
     const p = ev.extendedProps || {};
@@ -204,7 +251,7 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     }
 
-    modal.classList.add("show");
+    openModal();
   }
 
   const calendar = new FullCalendar.Calendar(calendarEl, {
