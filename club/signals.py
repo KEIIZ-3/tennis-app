@@ -4,12 +4,16 @@ from django.dispatch import receiver
 from .models import Reservation
 from .tasks import notify_email, notify_line_notify, notify_line_messaging_api
 
+
 def _msg(action: str, r: Reservation) -> str:
     return (
         f"[{action}] "
         f"{r.date} {r.start_time}-{r.end_time} / court={r.court} / "
         f"coach={getattr(r.coach, 'username', '-') } / customer={getattr(r.customer, 'username', '-')}"
+        f" / kind={getattr(r, 'kind', '-')}"
+        f" / tickets={getattr(r, 'tickets_used', '-')}"
     )
+
 
 @receiver(pre_save, sender=Reservation)
 def reservation_pre_save(sender, instance: Reservation, **kwargs):
@@ -23,9 +27,12 @@ def reservation_pre_save(sender, instance: Reservation, **kwargs):
     else:
         instance._old_status = None
 
+
 @receiver(post_save, sender=Reservation)
 def reservation_post_save(sender, instance: Reservation, created: bool, **kwargs):
-    # created=新規 booked、または booked→cancelled に変わった時だけ通知
+    """
+    created=新規 booked、または booked→cancelled に変わった時だけ通知
+    """
     old_status = getattr(instance, "_old_status", None)
 
     if created and instance.status == "booked":
@@ -40,7 +47,11 @@ def reservation_post_save(sender, instance: Reservation, created: bool, **kwargs
     # ---- 同期送信（Worker不要）----
     try:
         if instance.customer and instance.customer.email:
-            notify_email(subject="テニスクラブ通知", message=message, to_email=instance.customer.email)
+            notify_email(
+                subject="テニスクラブ通知",
+                message=message,
+                to_email=instance.customer.email,
+            )
     except Exception:
         pass
 
