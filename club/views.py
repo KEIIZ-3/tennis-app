@@ -18,6 +18,29 @@ from .models import Reservation, CoachAvailability
 User = get_user_model()
 
 
+def _coach_color(coach) -> str:
+    """
+    coach.color が未設定/デフォルトっぽい時でも、IDから安定した色を割り当てる（保険）。
+    adminで色を設定すればそれが優先。
+    """
+    c = (getattr(coach, "color", "") or "").strip()
+    # ちゃんと#RRGGBBならそれを優先
+    if len(c) == 7 and c.startswith("#"):
+        # デフォルト緑の場合は自動割当を優先（好みで外してOK）
+        if c.lower() != "#2ecc71":
+            return c
+
+    palette = [
+        "#2ecc71", "#e67e22", "#9b59b6", "#1abc9c", "#f1c40f",
+        "#e84393", "#0984e3", "#6c5ce7", "#00b894", "#d63031",
+    ]
+    try:
+        idx = int(getattr(coach, "id", 0) or 0) % len(palette)
+    except Exception:
+        idx = 0
+    return palette[idx]
+
+
 @require_GET
 def healthz(request):
     return JsonResponse({"ok": True})
@@ -154,9 +177,6 @@ def reservation_cancel(request, pk: int):
     return redirect("club:reservation_list")
 
 
-# -----------------------------
-# コーチ空き時間
-# -----------------------------
 @login_required
 def coach_availability_list(request):
     if getattr(request.user, "role", "") != "coach":
@@ -204,9 +224,6 @@ def coach_availability_delete(request, pk: int):
     return redirect("club:coach_availability_list")
 
 
-# -----------------------------
-# カレンダー
-# -----------------------------
 @login_required
 def calendar_view(request):
     coaches = User.objects.filter(role="coach", is_active=True).order_by("username")
@@ -220,7 +237,7 @@ def calendar_view(request):
 
     return render(
         request,
-        "calendar.html",  # club/templates/calendar.html
+        "calendar.html",
         {
             "coaches": coaches,
             "selected_coach_id": selected_coach_id,
@@ -255,7 +272,7 @@ def calendar_events_api(request):
         end_date = today.replace(day=28)
 
     events = []
-    coach_color = getattr(coach, "color", "#2ecc71") or "#2ecc71"
+    coach_color = _coach_color(coach)
 
     booked_counts_qs = (
         Reservation.objects.filter(
@@ -379,7 +396,7 @@ def calendar_event_detail_api(request):
 
     coach = get_object_or_404(User, id=coach_id, role="coach")
     is_coach_user = getattr(request.user, "role", "") == "coach" and request.user.id == coach.id
-    coach_color = getattr(coach, "color", "#2ecc71") or "#2ecc71"
+    coach_color = _coach_color(coach)
 
     if kind == "reservation":
         rid = request.GET.get("reservation_id")
@@ -448,9 +465,6 @@ def calendar_event_detail_api(request):
     return JsonResponse({"error": "unknown kind"}, status=400)
 
 
-# -----------------------------
-# ⑤ 管理者向け予約管理UI（is_staff）
-# -----------------------------
 def _is_staff(u):
     return u.is_authenticated and u.is_staff
 
