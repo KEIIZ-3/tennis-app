@@ -1,71 +1,50 @@
 {% extends "base.html" %}
-{% block title %}予約作成{% endblock %}
-{% block content %}
-  <h1>予約作成</h1>
 
-  <form method="post" class="card">
+{% block content %}
+<div class="card">
+  <h2>予約作成</h2>
+
+  {% if wallet %}
+    <p style="color:#444;">チケット残数：<b>{{ wallet.balance }}</b></p>
+  {% endif %}
+
+  {% if form.non_field_errors %}
+    <div style="color:#b00020;">{{ form.non_field_errors }}</div>
+  {% endif %}
+
+  <form method="post">
     {% csrf_token %}
 
-    {% if form.non_field_errors %}
-      <div class="msg" style="border-color:#f5c2c2; background:#fff5f5;">
-        {{ form.non_field_errors }}
-      </div>
-    {% endif %}
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;max-width:720px;">
+      <div>{{ form.kind.label_tag }}<br>{{ form.kind }}</div>
+      <div>{{ form.tickets_used.label_tag }}<br>{{ form.tickets_used }}</div>
 
-    <div class="grid two">
-      <div class="field">
-        <label>コート</label>
-        {{ form.court }}
-        {{ form.court.errors }}
-      </div>
+      <div style="grid-column:1/-1;">{{ form.note.label_tag }}<br>{{ form.note }}</div>
 
-      <div class="field">
-        <label>日付</label>
-        {{ form.date }}
-        {{ form.date.errors }}
-      </div>
+      <div>{{ form.coach.label_tag }}<br>{{ form.coach }}</div>
+      <div>{{ form.court.label_tag }}<br>{{ form.court }}</div>
 
-      <div class="field">
-        <label>開始</label>
-        {{ form.start_time }}
-        {{ form.start_time.errors }}
-      </div>
+      <div>{{ form.date.label_tag }}<br>{{ form.date }}</div>
+      <div></div>
 
-      <div class="field">
-        <label>終了</label>
-        {{ form.end_time }}
-        {{ form.end_time.errors }}
-      </div>
-
-      <div class="field">
-        <label>コーチ</label>
-        {{ form.coach }}
-        {{ form.coach.errors }}
-      </div>
+      <div>{{ form.start_time.label_tag }}<br>{{ form.start_time }}</div>
+      <div>{{ form.end_time.label_tag }}<br>{{ form.end_time }}</div>
     </div>
 
-    <button class="btn btn-primary" type="submit">予約する</button>
+    <div style="margin-top:12px;">
+      <button class="btn" type="submit">作成</button>
+      <a class="btn outline" href="{% url 'club:calendar' %}">カレンダーへ</a>
+    </div>
   </form>
 
-  {% if day_reservations is not None %}
-    <h2 style="margin-top:18px;">その日の予約（Bookedのみ）</h2>
-    <div class="card">
-      {% if day_reservations %}
-        <ul style="margin:0; padding-left:18px;">
-          {% for r in day_reservations %}
-            <li>
-              {{ r.court }}：{{ r.start_time }} - {{ r.end_time }}
-              {% if r.coach %}
-                <span class="muted">（コーチ：{{ r.coach.username }}）</span>
-              {% endif %}
-              <span class="muted">（{{ r.customer.username }}）</span>
-            </li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p class="muted" style="margin:0;">予約はまだありません。</p>
-      {% endif %}
-    </div>
-    <p class="muted">※空き時間の“計算表示”は次のステップで入れます。</p>
+  {% if day_reservations %}
+    <hr style="margin:16px 0; border:0; border-top:1px solid #eee;">
+    <h3>同日の予約（参考）</h3>
+    <ul style="margin:0; padding-left:18px;">
+      {% for r in day_reservations %}
+        <li>{{ r.start_time }}-{{ r.end_time }} / {{ r.court }} / coach={{ r.coach }} / {{ r.customer }}</li>
+      {% endfor %}
+    </ul>
   {% endif %}
+</div>
 {% endblock %}
