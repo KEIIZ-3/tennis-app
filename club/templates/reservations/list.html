@@ -1,121 +1,48 @@
 {% extends "base.html" %}
+{% block title %}予約一覧{% endblock %}
 
 {% block content %}
-<style>
-  .list-wrap { max-width: 1100px; margin: 0 auto; }
-  .list-card { background:#fff; border:1px solid #eee; border-radius:14px; padding:16px; }
-  .list-head { display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; }
-  .list-actions, .list-tabs { display:flex; gap:8px; flex-wrap:wrap; }
-  .btn { border:1px solid #111; background:#111; color:#fff; padding:8px 10px; border-radius:10px; cursor:pointer; text-decoration:none; }
-  .btn.outline { background:#fff; color:#111; }
-  .btn.danger { background:#e74c3c; border-color:#e74c3c; }
-  .btn.disabled {
-    background:#f3f4f6;
-    color:#9ca3af;
-    border-color:#d1d5db;
-    cursor:not-allowed;
-  }
-  .muted { color:#666; font-size:12px; }
-  .table-wrap { overflow-x:auto; margin-top:12px; }
-  .table { width:100%; border-collapse:collapse; min-width:980px; }
-  .table th, .table td { padding:10px 8px; border-bottom:1px solid #eee; vertical-align:top; text-align:left; }
-  .status-pill {
-    display:inline-block;
-    padding:4px 8px;
-    border-radius:999px;
-    font-size:12px;
-    border:1px solid #e5e7eb;
-    background:#fff;
-  }
-  .status-booked { color:#0f766e; }
-  .status-cancelled { color:#b91c1c; }
-</style>
+<div class="card">
+  <h2>予約一覧</h2>
 
-<div class="list-wrap">
-  <div class="list-card">
-    <div class="list-head">
-      <div>
-        <h2 style="margin:0;">予約一覧</h2>
-        {% if wallet %}
-          <div style="margin-top:6px;color:#444;">チケット残数：<b>{{ wallet.balance }}</b></div>
-        {% endif %}
-      </div>
-
-      <div class="list-actions">
-        <a class="btn" href="{% url 'club:reservation_create' %}">新規予約</a>
-        <a class="btn outline" href="{% url 'club:calendar' %}">カレンダー</a>
-        <a class="btn outline" href="{% url 'club:business_rules' %}">営業時間</a>
-      </div>
-    </div>
-
-    <div class="list-tabs" style="margin-top:12px;">
-      <a class="btn outline" href="?tab=future" {% if tab == "future" %}style="opacity:1"{% else %}style="opacity:.6"{% endif %}>これから</a>
-      <a class="btn outline" href="?tab=past" {% if tab == "past" %}style="opacity:1"{% else %}style="opacity:.6"{% endif %}>過去</a>
-      <a class="btn outline" href="?tab=cancelled" {% if tab == "cancelled" %}style="opacity:1"{% else %}style="opacity:.6"{% endif %}>キャンセル済み</a>
-    </div>
-
-    <div class="table-wrap">
-      <table class="table">
-        <thead>
+  {% if reservations %}
+    <table>
+      <thead>
+        <tr>
+          <th>日時</th>
+          <th>コーチ</th>
+          <th>コート</th>
+          <th>状態</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for reservation in reservations %}
           <tr>
-            <th>日付</th>
-            <th>時間</th>
-            <th>コーチ</th>
-            <th>コート</th>
-            <th>種別</th>
-            <th>チケット</th>
-            <th>状態</th>
-            <th>メモ</th>
-            <th>操作</th>
+            <td>{{ reservation.start_at|date:"Y-m-d H:i" }} - {{ reservation.end_at|date:"H:i" }}</td>
+            <td>{{ reservation.coach.username }}</td>
+            <td>{{ reservation.court.name }}</td>
+            <td>{{ reservation.status }}</td>
+            <td>
+              {% if reservation.status == "active" %}
+                <form method="post" action="{% url 'club:reservation_cancel' reservation.pk %}">
+                  {% csrf_token %}
+                  <button type="submit">キャンセル</button>
+                </form>
+              {% else %}
+                -
+              {% endif %}
+            </td>
           </tr>
-        </thead>
-        <tbody>
-          {% for r in reservations %}
-            <tr>
-              <td>{{ r.date }}</td>
-              <td>{{ r.start_time }}-{{ r.end_time }}</td>
-              <td>{{ r.coach|default:"-" }}</td>
-              <td>{{ r.court }}</td>
-              <td>{{ r.get_kind_display }}</td>
-              <td>{{ r.tickets_used }}</td>
-              <td>
-                {% if r.status == "booked" %}
-                  <span class="status-pill status-booked">{{ r.get_status_display }}</span>
-                {% else %}
-                  <span class="status-pill status-cancelled">{{ r.get_status_display }}</span>
-                {% endif %}
-              </td>
-              <td>{{ r.note|default:"-" }}</td>
-              <td>
-                {% if r.status == "booked" %}
-                  {% if r.can_cancel_now %}
-                    <form method="post" action="{% url 'club:reservation_cancel' r.id %}">
-                      {% csrf_token %}
-                      <input type="hidden" name="next" value="/reservations/?tab={{ tab }}">
-                      <button class="btn danger" type="submit">キャンセル</button>
-                    </form>
-                    <div class="muted" style="margin-top:6px;">
-                      締切: {{ r.cancel_deadline_at|date:"Y-m-d H:i" }}
-                    </div>
-                  {% else %}
-                    <button class="btn disabled" type="button" disabled>キャンセル不可</button>
-                    <div class="muted" style="margin-top:6px;">
-                      締切経過
-                    </div>
-                  {% endif %}
-                {% else %}
-                  <span class="muted">-</span>
-                {% endif %}
-              </td>
-            </tr>
-          {% empty %}
-            <tr>
-              <td colspan="9" style="color:#666;">予約はありません</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>予約はまだありません。</p>
+  {% endif %}
+
+  <p style="margin-top:16px;">
+    <a href="{% url 'club:home' %}">ホームへ戻る</a>
+  </p>
 </div>
 {% endblock %}
