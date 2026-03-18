@@ -10,6 +10,8 @@ urlpatterns = [
     path("logout/", views.logout_view, name="logout"),
     path("healthz/", views.healthz, name="healthz"),
 
+    path("calendar/events/", views.calendar_events, name="calendar_events"),
+
     path("reservations/new/", views.reservation_create, name="reservation_create"),
     path("reservations/", views.reservation_list, name="reservation_list"),
     path("reservations/<int:pk>/cancel/", views.reservation_cancel, name="reservation_cancel"),
@@ -18,12 +20,6 @@ urlpatterns = [
     path("coach/availability/new/", views.coach_availability_create, name="coach_availability_create"),
     path("coach/availability/<int:pk>/delete/", views.coach_availability_delete, name="coach_availability_delete"),
 
-    path("calendar/", views.calendar_view, name="calendar"),
-    path("api/calendar/events/", views.calendar_events_api, name="calendar_events_api"),
-    path("api/calendar/event_detail/", views.calendar_event_detail_api, name="calendar_event_detail_api"),
-
-    path("manage/reservations/", views.manage_reservations, name="manage_reservations"),
-    path("manage/reservations/<int:pk>/status/", views.manage_reservation_set_status, name="manage_reservation_set_status"),
-
-    path("business/", views.business_rules, name="business_rules"),
+    path("line/connect/", views.line_connect_view, name="line_connect"),
+    path("line/webhook/", views.line_webhook, name="line_webhook"),
 ]
