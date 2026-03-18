@@ -35,7 +35,6 @@ if CUSTOM_ALLOWED_HOSTS:
 
 ALLOWED_HOSTS = list(dict.fromkeys(ALLOWED_HOSTS))
 
-# Render はリバースプロキシ配下
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 CSRF_TRUSTED_ORIGINS = []
@@ -49,7 +48,6 @@ if CUSTOM_CSRF_ORIGINS:
     )
 
 CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(CSRF_TRUSTED_ORIGINS))
-
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -92,7 +90,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "tennisclub.wsgi.application"
 
-
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 
 if DATABASE_URL:
@@ -111,12 +108,10 @@ else:
         }
     }
 
-
 LANGUAGE_CODE = "ja"
 TIME_ZONE = "Asia/Tokyo"
 USE_I18N = True
 USE_TZ = True
-
 
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
@@ -130,6 +125,9 @@ LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/login/"
 
+RESERVATION_CANCEL_DEADLINE_HOURS = int(
+    os.environ.get("RESERVATION_CANCEL_DEADLINE_HOURS", "2")
+)
 
 if not DEBUG:
     SESSION_COOKIE_SECURE = True
@@ -139,7 +137,6 @@ if not DEBUG:
     SECURE_HSTS_INCLUDE_SUBDOMAINS = False
     SECURE_HSTS_PRELOAD = False
     SECURE_CONTENT_TYPE_NOSNIFF = True
-    SECURE_BROWSER_XSS_FILTER = True
     X_FRAME_OPTIONS = "DENY"
 else:
     SESSION_COOKIE_SECURE = False
