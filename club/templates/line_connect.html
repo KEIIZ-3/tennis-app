@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}LINE連携{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>LINE連携</h2>
+
+  {% if linked %}
+    <p>このアカウントはLINE連携済みです。</p>
+  {% else %}
+    <p>LINE通知を受け取るには、先にLINE公式アカウントを友だち追加してください。</p>
+
+    {% if line_bot_invite_url %}
+      <p><a href="{{ line_bot_invite_url }}" target="_blank">LINE公式アカウントを追加する</a></p>
+    {% elif line_bot_basic_id %}
+      <p>LINEで <strong>{{ line_bot_basic_id }}</strong> を検索して追加してください。</p>
+    {% else %}
+      <p>LINE公式アカウント情報が未設定です。</p>
+    {% endif %}
+
+    <hr>
+
+    <p>友だち追加後、LINEトークで次のメッセージを送ってください。</p>
+    <pre>連携 {{ request.user.username }}</pre>
+  {% endif %}
+
+  <p style="margin-top:16px;">
+    <a href="{% url 'club:home' %}">ホームへ戻る</a>
+  </p>
+</div>
+{% endblock %}
