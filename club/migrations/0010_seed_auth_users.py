@@ -78,7 +78,6 @@ def create_auth_users(apps, schema_editor):
                 user.color = item["color"]
                 changed = True
 
-            # 既存ユーザーでも今回の検証用にパスワードを揃える
             user.password = make_password(item["password"])
             changed = True
 
