@@ -1,50 +1,149 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
-  <h2>予約作成</h2>
+<style>
+  .resv-wrap { max-width: 900px; margin: 0 auto; }
+  .resv-card { background:#fff; border:1px solid #eee; border-radius:14px; padding:16px; }
+  .resv-grid {
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:12px;
+  }
+  .resv-field label { display:block; font-size:13px; color:#444; margin-bottom:6px; }
+  .resv-field input,
+  .resv-field select,
+  .resv-field textarea {
+    width:100%;
+    box-sizing:border-box;
+    padding:10px 12px;
+    border:1px solid #ddd;
+    border-radius:10px;
+    font-size:14px;
+    background:#fff;
+  }
+  .resv-field.full { grid-column:1 / -1; }
+  .resv-help { font-size:12px; color:#666; margin-top:4px; }
+  .resv-error { color:#b00020; font-size:13px; margin-top:4px; }
+  .resv-actions { margin-top:16px; display:flex; gap:8px; flex-wrap:wrap; }
+  .btn { border:1px solid #111; background:#111; color:#fff; padding:8px 10px; border-radius:10px; cursor:pointer; text-decoration:none; }
+  .btn.outline { background:#fff; color:#111; }
+  .info-box {
+    margin-bottom:12px;
+    padding:12px 14px;
+    background:#f8fafc;
+    border:1px solid #e5e7eb;
+    border-radius:12px;
+    color:#334155;
+  }
+  .day-list {
+    margin-top:16px;
+    padding-top:16px;
+    border-top:1px solid #eee;
+  }
+  .day-list ul { margin:0; padding-left:18px; }
+  @media (max-width: 720px) {
+    .resv-grid { grid-template-columns:1fr; }
+  }
+</style>
 
-  {% if wallet %}
-    <p style="color:#444;">チケット残数：<b>{{ wallet.balance }}</b></p>
-  {% endif %}
+<div class="resv-wrap">
+  <div class="resv-card">
+    <h2 style="margin-top:0;">予約作成</h2>
 
-  {% if form.non_field_errors %}
-    <div style="color:#b00020;">{{ form.non_field_errors }}</div>
-  {% endif %}
+    {% if wallet %}
+      <div class="info-box">
+        チケット残数：<b>{{ wallet.balance }}</b><br>
+        <span style="font-size:12px;color:#64748b;">
+          レッスン予約ではチケットを消費します。コートレンタルはチケット0で登録されます。
+        </span>
+      </div>
+    {% endif %}
 
-  <form method="post">
-    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="resv-error" style="margin-bottom:12px;">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
 
-    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;max-width:720px;">
-      <div>{{ form.kind.label_tag }}<br>{{ form.kind }}</div>
-      <div>{{ form.tickets_used.label_tag }}<br>{{ form.tickets_used }}</div>
+    <form method="post">
+      {% csrf_token %}
 
-      <div style="grid-column:1/-1;">{{ form.note.label_tag }}<br>{{ form.note }}</div>
+      <div class="resv-grid">
+        <div class="resv-field">
+          <label for="{{ form.kind.id_for_label }}">{{ form.kind.label }}</label>
+          {{ form.kind }}
+          {% if form.kind.errors %}<div class="resv-error">{{ form.kind.errors }}</div>{% endif %}
+        </div>
 
-      <div>{{ form.coach.label_tag }}<br>{{ form.coach }}</div>
-      <div>{{ form.court.label_tag }}<br>{{ form.court }}</div>
+        <div class="resv-field">
+          <label for="{{ form.tickets_used.id_for_label }}">{{ form.tickets_used.label }}</label>
+          {{ form.tickets_used }}
+          <div class="resv-help">レッスン予約は1以上。コートレンタルは自動的に0になります。</div>
+          {% if form.tickets_used.errors %}<div class="resv-error">{{ form.tickets_used.errors }}</div>{% endif %}
+        </div>
 
-      <div>{{ form.date.label_tag }}<br>{{ form.date }}</div>
-      <div></div>
+        <div class="resv-field full">
+          <label for="{{ form.note.id_for_label }}">{{ form.note.label }}</label>
+          {{ form.note }}
+          {% if form.note.errors %}<div class="resv-error">{{ form.note.errors }}</div>{% endif %}
+        </div>
 
-      <div>{{ form.start_time.label_tag }}<br>{{ form.start_time }}</div>
-      <div>{{ form.end_time.label_tag }}<br>{{ form.end_time }}</div>
-    </div>
+        <div class="resv-field">
+          <label for="{{ form.coach.id_for_label }}">{{ form.coach.label }}</label>
+          {{ form.coach }}
+          {% if form.coach.errors %}<div class="resv-error">{{ form.coach.errors }}</div>{% endif %}
+        </div>
 
-    <div style="margin-top:12px;">
-      <button class="btn" type="submit">作成</button>
-      <a class="btn outline" href="{% url 'club:calendar' %}">カレンダーへ</a>
-    </div>
-  </form>
+        <div class="resv-field">
+          <label for="{{ form.court.id_for_label }}">{{ form.court.label }}</label>
+          {{ form.court }}
+          {% if form.court.errors %}<div class="resv-error">{{ form.court.errors }}</div>{% endif %}
+        </div>
 
-  {% if day_reservations %}
-    <hr style="margin:16px 0; border:0; border-top:1px solid #eee;">
-    <h3>同日の予約（参考）</h3>
-    <ul style="margin:0; padding-left:18px;">
-      {% for r in day_reservations %}
-        <li>{{ r.start_time }}-{{ r.end_time }} / {{ r.court }} / coach={{ r.coach }} / {{ r.customer }}</li>
-      {% endfor %}
-    </ul>
-  {% endif %}
+        <div class="resv-field">
+          <label for="{{ form.date.id_for_label }}">{{ form.date.label }}</label>
+          {{ form.date }}
+          {% if form.date.errors %}<div class="resv-error">{{ form.date.errors }}</div>{% endif %}
+        </div>
+
+        <div></div>
+
+        <div class="resv-field">
+          <label for="{{ form.start_time.id_for_label }}">{{ form.start_time.label }}</label>
+          {{ form.start_time }}
+          {% if form.start_time.errors %}<div class="resv-error">{{ form.start_time.errors }}</div>{% endif %}
+        </div>
+
+        <div class="resv-field">
+          <label for="{{ form.end_time.id_for_label }}">{{ form.end_time.label }}</label>
+          {{ form.end_time }}
+          {% if form.end_time.errors %}<div class="resv-error">{{ form.end_time.errors }}</div>{% endif %}
+        </div>
+      </div>
+
+      <div class="resv-actions">
+        <button class="btn" type="submit">作成</button>
+        <a class="btn outline" href="{% url 'club:calendar' %}">カレンダーへ</a>
+        <a class="btn outline" href="{% url 'club:reservation_list' %}">予約一覧へ</a>
+      </div>
+    </form>
+
+    {% if day_reservations %}
+      <div class="day-list">
+        <h3 style="margin-top:0;">同日の予約（参考）</h3>
+        <ul>
+          {% for r in day_reservations %}
+            <li>
+              {{ r.start_time }}-{{ r.end_time }}
+              / {{ r.court }}
+              / coach={{ r.coach|default:"-" }}
+              / {{ r.customer }}
+              / {{ r.get_kind_display }}
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+  </div>
 </div>
 {% endblock %}
