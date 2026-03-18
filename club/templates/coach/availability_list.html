@@ -1,36 +1,51 @@
 {% extends "base.html" %}
-{% block title %}空き時間一覧{% endblock %}
-{% block content %}
-  <h1>空き時間一覧</h1>
+{% block title %}コーチ空き時間管理{% endblock %}
 
-  <div class="tabs">
-    <a class="tab {% if tab != 'past' %}active{% endif %}" href="{% url 'club:coach_availability_list' %}?tab=future">未来</a>
-    <a class="tab {% if tab == 'past' %}active{% endif %}" href="{% url 'club:coach_availability_list' %}?tab=past">過去</a>
+{% block content %}
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+    <h2>コーチ空き時間管理</h2>
+    <a href="{% url 'club:coach_availability_create' %}">新規登録</a>
   </div>
 
-  <p>
-    <a class="btn btn-primary" href="{% url 'club:coach_availability_create' %}">＋空き時間を追加</a>
-  </p>
-
-  {% if items %}
-    <div class="grid">
-      {% for a in items %}
-        <div class="card" style="display:flex; justify-content:space-between; gap:12px; align-items:center;">
-          <div>
-            <b>{{ a.date }}</b><br>
-            {{ a.start_time }} - {{ a.end_time }}
-            {% if a.status != "available" %}
-              <span class="pill" style="opacity:.7;">{{ a.get_status_display }}</span>
-            {% endif %}
-          </div>
-          <form method="post" action="{% url 'club:coach_availability_delete' a.pk %}">
-            {% csrf_token %}
-            <button class="btn btn-danger" type="submit">削除</button>
-          </form>
-        </div>
-      {% endfor %}
-    </div>
+  {% if availabilities %}
+    <table>
+      <thead>
+        <tr>
+          <th>コーチ</th>
+          <th>コート</th>
+          <th>開始</th>
+          <th>終了</th>
+          <th>定員</th>
+          <th>メモ</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in availabilities %}
+          <tr>
+            <td>{{ item.coach.username }}</td>
+            <td>{{ item.court.name }}</td>
+            <td>{{ item.start_at|date:"Y-m-d H:i" }}</td>
+            <td>{{ item.end_at|date:"Y-m-d H:i" }}</td>
+            <td>{{ item.capacity }}</td>
+            <td>{{ item.note|default:"-" }}</td>
+            <td>
+              <form method="post" action="{% url 'club:coach_availability_delete' item.pk %}">
+                {% csrf_token %}
+                <button type="submit">削除</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   {% else %}
-    <p class="muted">まだ空き時間はありません。</p>
+    <p>まだ登録された空き時間はありません。</p>
   {% endif %}
+
+  <p style="margin-top:16px;">
+    <a href="{% url 'club:home' %}">ホームへ戻る</a>
+  </p>
+</div>
 {% endblock %}
