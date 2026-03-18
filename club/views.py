@@ -1,441 +1,215 @@
-from __future__ import annotations
-
-from datetime import datetime
+import json
+import os
+from datetime import datetime, timedelta
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth import authenticate, get_user_model, login, logout
-from django.contrib.auth.decorators import login_required, user_passes_test
-from django.core.exceptions import PermissionDenied
-from django.db.models import Count, Q
-from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
+from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
-from .forms import CoachAvailabilityForm, ReservationCreateForm
-from .models import (
-    BusinessHours,
-    CoachAvailability,
-    FacilityClosure,
-    Reservation,
-    TicketWallet,
-)
+from .forms import CoachAvailabilityForm, LoginForm, ReservationCreateForm
+from .models import CoachAvailability, Court, LineAccountLink, Reservation
 from .services.notifications import (
-    send_reservation_cancelled_notifications,
-    send_reservation_created_notifications,
+    build_reservation_canceled_message,
+    build_reservation_created_message,
+    notify_user,
+    verify_line_signature,
 )
 
 User = get_user_model()
 
 
-def _coach_color(coach) -> str:
-    c = (getattr(coach, "color", "") or "").strip()
-    if len(c) == 7 and c.startswith("#"):
-        return c
+def _is_coach_or_admin(user):
+    return user.is_authenticated and (user.is_superuser or getattr(user, "role", "") == "coach")
 
+
+def _color_for_coach(coach_id: int) -> str:
     palette = [
-        "#2ecc71",
-        "#e67e22",
-        "#9b59b6",
-        "#1abc9c",
-        "#f1c40f",
-        "#e84393",
-        "#0984e3",
-        "#6c5ce7",
-        "#00b894",
-        "#d63031",
+        "#2563eb",
+        "#16a34a",
+        "#7c3aed",
+        "#ea580c",
+        "#0891b2",
+        "#db2777",
+        "#4f46e5",
+        "#65a30d",
     ]
-    try:
-        idx = int(getattr(coach, "id", 0) or 0) % len(palette)
-    except Exception:
-        idx = 0
-    return palette[idx]
+    return palette[coach_id % len(palette)]
 
 
-def _is_coach(user) -> bool:
-    return user.is_authenticated and getattr(user, "role", "") == "coach"
+def _parse_iso_datetime(value: str):
+    if not value:
+        return None
+    value = value.replace("Z", "+00:00")
+    dt = datetime.fromisoformat(value)
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt)
+    return dt
 
 
-def _is_staff(user) -> bool:
-    return user.is_authenticated and user.is_staff
+def _hour_slots(start_at, end_at):
+    current = start_at
+    while current < end_at:
+        next_time = current + timedelta(hours=1)
+        yield current, next_time
+        current = next_time
 
 
-@require_GET
-def healthz(request):
-    return JsonResponse({"ok": True})
+def home(request):
+    if not request.user.is_authenticated:
+        return redirect("club:login")
+
+    coaches = User.objects.filter(role="coach").order_by("username")
+    return render(
+        request,
+        "home.html",
+        {
+            "coaches": coaches,
+            "is_coach_or_admin": _is_coach_or_admin(request.user),
+        },
+    )
 
 
 def login_view(request):
     if request.user.is_authenticated:
         return redirect("club:home")
 
-    if request.method == "POST":
-        username = request.POST.get("username", "")
-        password = request.POST.get("password", "")
+    form = LoginForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        username = form.cleaned_data["username"]
+        password = form.cleaned_data["password"]
         user = authenticate(request, username=username, password=password)
-        if user:
+        if user is not None:
             login(request, user)
             return redirect("club:home")
-        return render(request, "login.html", {"error": "ログインに失敗しました"})
+        messages.error(request, "ログインに失敗しました。")
 
-    return render(request, "login.html")
+    return render(request, "login.html", {"form": form})
 
 
+@login_required
 def logout_view(request):
     logout(request)
     return redirect("club:login")
 
 
-@login_required
-def home(request):
-    return render(request, "home.html")
+def healthz(request):
+    return HttpResponse("ok")
 
 
 @login_required
-def reservation_create(request):
-    day_reservations = None
-    wallet, _ = TicketWallet.objects.get_or_create(user=request.user)
-
-    if request.method == "POST":
-        form = ReservationCreateForm(request.POST, user=request.user)
-        if form.is_valid():
-            reservation = form.save()
-            send_reservation_created_notifications(reservation)
-            messages.success(request, "予約を作成しました。")
-            return redirect("club:reservation_list")
-
-        try:
-            selected_date = form.cleaned_data.get("date")
-        except Exception:
-            selected_date = None
-    else:
-        initial = {}
-        coach = request.GET.get("coach")
-        date_s = request.GET.get("date")
-        start = request.GET.get("start")
-        end = request.GET.get("end")
-
-        if coach:
-            initial["coach"] = coach
-        if date_s:
-            initial["date"] = date_s
-        if start:
-            initial["start_time"] = start
-        if end:
-            initial["end_time"] = end
-
-        form = ReservationCreateForm(user=request.user, initial=initial)
-
-        try:
-            selected_date = datetime.strptime(date_s, "%Y-%m-%d").date() if date_s else None
-        except Exception:
-            selected_date = None
-
-    if selected_date:
-        day_reservations = (
-            Reservation.objects.filter(date=selected_date, status="booked")
-            .select_related("court", "customer", "coach")
-            .order_by("start_time", "court__name")
-        )
-
-    return render(
-        request,
-        "reservations/create.html",
-        {
-            "form": form,
-            "day_reservations": day_reservations,
-            "wallet": wallet,
-        },
-    )
-
-
-@login_required
-def reservation_list(request):
-    tab = request.GET.get("tab", "future")
-    today = timezone.localdate()
-
-    base_qs = (
-        Reservation.objects.filter(customer=request.user)
-        .select_related("court", "coach")
-        .order_by("date", "start_time")
-    )
-
-    if tab == "past":
-        reservations = base_qs.filter(date__lt=today).order_by("-date", "-start_time")
-    elif tab == "cancelled":
-        reservations = base_qs.filter(status="cancelled").order_by("-date", "-start_time")
-    else:
-        reservations = base_qs.filter(status="booked", date__gte=today)
-
-    wallet, _ = TicketWallet.objects.get_or_create(user=request.user)
-
-    return render(
-        request,
-        "reservations/list.html",
-        {
-            "reservations": reservations,
-            "tab": tab,
-            "wallet": wallet,
-        },
-    )
-
-
-@require_POST
-@login_required
-def reservation_cancel(request, pk: int):
-    reservation = get_object_or_404(Reservation, pk=pk)
-
-    if reservation.customer_id != request.user.id:
-        raise PermissionDenied
-
-    if reservation.status != "booked":
-        messages.info(request, "この予約は既にキャンセル済みです。")
-    elif not reservation.can_cancel_now:
-        messages.error(request, "キャンセル期限を過ぎているため、この予約はキャンセルできません。")
-    else:
-        reservation.status = "cancelled"
-        reservation.save(update_fields=["status"])
-        send_reservation_cancelled_notifications(reservation)
-        messages.info(request, "予約をキャンセルしました。")
-
-    nxt = request.POST.get("next") or ""
-    if nxt.startswith("/"):
-        return redirect(nxt)
-
-    return redirect("club:reservation_list")
-
-
-@login_required
-def coach_availability_list(request):
-    if not _is_coach(request.user):
-        raise PermissionDenied
-
-    tab = request.GET.get("tab", "future")
-    today = timezone.localdate()
-
-    base_qs = (
-        CoachAvailability.objects.filter(coach=request.user)
-        .order_by("date", "start_time")
-    )
-
-    if tab == "past":
-        items = base_qs.filter(date__lt=today).order_by("-date", "-start_time")
-    else:
-        items = base_qs.filter(date__gte=today)
-
-    return render(
-        request,
-        "coach/availability_list.html",
-        {
-            "items": items,
-            "tab": tab,
-        },
-    )
-
-
-@login_required
-def coach_availability_create(request):
-    if not _is_coach(request.user):
-        raise PermissionDenied
-
-    if request.method == "POST":
-        form = CoachAvailabilityForm(request.POST, coach=request.user)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "空き時間を登録しました。")
-            return redirect("club:coach_availability_list")
-    else:
-        form = CoachAvailabilityForm(coach=request.user)
-
-    return render(request, "coach/availability_create.html", {"form": form})
-
-
-@require_POST
-@login_required
-def coach_availability_delete(request, pk: int):
-    if not _is_coach(request.user):
-        raise PermissionDenied
-
-    availability = get_object_or_404(CoachAvailability, pk=pk, coach=request.user)
-    availability.delete()
-    messages.info(request, "空き時間を削除しました。")
-    return redirect("club:coach_availability_list")
-
-
-@login_required
-def calendar_view(request):
-    coaches = User.objects.filter(role="coach", is_active=True).order_by("username")
-
-    selected_coach_id = request.GET.get("coach")
-    if _is_coach(request.user):
-        selected_coach_id = str(request.user.id)
-    elif not selected_coach_id and coaches.exists():
-        selected_coach_id = str(coaches.first().id)
-
-    return render(
-        request,
-        "calendar.html",
-        {
-            "coaches": coaches,
-            "selected_coach_id": selected_coach_id,
-            "is_coach_user": _is_coach(request.user),
-        },
-    )
-
-
 @require_GET
-@login_required
-def calendar_events_api(request):
-    coach_id = request.GET.get("coach_id")
-    if not coach_id:
-        return JsonResponse({"error": "coach_id is required"}, status=400)
+def calendar_events(request):
+    start = _parse_iso_datetime(request.GET.get("start"))
+    end = _parse_iso_datetime(request.GET.get("end"))
+    coach_filter = request.GET.get("coach", "all")
 
-    coach = get_object_or_404(User, id=coach_id, role="coach")
+    if not start or not end:
+        return JsonResponse([], safe=False)
 
-    start = request.GET.get("start")
-    end = request.GET.get("end")
+    availabilities = CoachAvailability.objects.select_related("coach", "court").filter(
+        start_at__lt=end,
+        end_at__gt=start,
+    )
 
-    def parse_dt(value: str) -> datetime:
-        if "T" in value:
-            value = value.split("T", 1)[0]
-        return datetime.strptime(value, "%Y-%m-%d")
+    if coach_filter != "all":
+        availabilities = availabilities.filter(coach_id=coach_filter)
 
-    if start and end:
-        start_date = parse_dt(start).date()
-        end_date = parse_dt(end).date()
-    else:
-        today = timezone.localdate()
-        start_date = today.replace(day=1)
-        end_date = today.replace(day=28)
+    active_reservations = Reservation.objects.select_related("user", "coach", "court").filter(
+        status=Reservation.STATUS_ACTIVE,
+        start_at__lt=end,
+        end_at__gt=start,
+    )
+
+    reservation_count_map = {}
+    for reservation in active_reservations:
+        key = (reservation.coach_id, reservation.court_id, reservation.start_at, reservation.end_at)
+        reservation_count_map[key] = reservation_count_map.get(key, 0) + 1
+
+    my_reservations = active_reservations.filter(user=request.user)
 
     events = []
-    coach_color = _coach_color(coach)
 
-    booked_counts_qs = (
-        Reservation.objects.filter(
-            coach=coach,
-            status="booked",
-            date__gte=start_date,
-            date__lt=end_date,
-        )
-        .values("date", "start_time", "end_time")
-        .annotate(booked=Count("id"))
-    )
-    booked_map = {
-        (row["date"], row["start_time"], row["end_time"]): row["booked"]
-        for row in booked_counts_qs
-    }
+    # 全コーチの空き枠を1時間単位で表示
+    for availability in availabilities:
+        base_color = _color_for_coach(availability.coach_id)
 
-    avail_qs = (
-        CoachAvailability.objects.filter(
-            coach=coach,
-            status="available",
-            date__gte=start_date,
-            date__lt=end_date,
-        )
-        .order_by("date", "start_time")
-    )
+        for slot_start, slot_end in _hour_slots(availability.start_at, availability.end_at):
+            if slot_end <= start or slot_start >= end:
+                continue
 
-    for slot in avail_qs:
-        start_dt = datetime.combine(slot.date, slot.start_time)
-        end_dt = datetime.combine(slot.date, slot.end_time)
+            count = reservation_count_map.get(
+                (availability.coach_id, availability.court_id, slot_start, slot_end),
+                0,
+            )
+            status_label = "満員" if count >= availability.capacity else "空き"
 
-        capacity = int(getattr(slot, "capacity", 1) or 1)
-        booked = booked_map.get((slot.date, slot.start_time, slot.end_time), 0)
-        remaining = max(capacity - booked, 0)
-
-        base_props = {
-            "capacity": capacity,
-            "booked": booked,
-            "remaining": remaining,
-            "coachColor": coach_color,
-            "coachName": coach.username,
-            "date": slot.date.isoformat(),
-            "start_time": slot.start_time.strftime("%H:%M"),
-            "end_time": slot.end_time.strftime("%H:%M"),
-        }
-
-        if remaining <= 0:
-            events.append(
+            params = urlencode(
                 {
-                    "title": f"満員 {booked}/{capacity}",
-                    "start": start_dt.isoformat(),
-                    "end": end_dt.isoformat(),
-                    "display": "block",
-                    "backgroundColor": "#e74c3c",
-                    "borderColor": "#c0392b",
-                    "textColor": "#ffffff",
-                    "extendedProps": {"kind": "full", **base_props},
+                    "coach": availability.coach_id,
+                    "court": availability.court_id,
+                    "start_at": slot_start.isoformat(),
+                    "end_at": slot_end.isoformat(),
                 }
             )
-        else:
+
+            title = (
+                f"{availability.coach.username}\n"
+                f"{availability.court.name}\n"
+                f"{status_label} {count}/{availability.capacity}"
+            )
+
+            background = "#dc2626" if status_label == "満員" else base_color
+
             events.append(
                 {
-                    "title": f"空き {booked}/{capacity}",
-                    "start": start_dt.isoformat(),
-                    "end": end_dt.isoformat(),
-                    "display": "block",
-                    "backgroundColor": coach_color,
-                    "borderColor": coach_color,
+                    "id": f"slot-{availability.id}-{slot_start.isoformat()}",
+                    "title": title,
+                    "start": slot_start.isoformat(),
+                    "end": slot_end.isoformat(),
+                    "backgroundColor": background,
+                    "borderColor": background,
                     "textColor": "#ffffff",
                     "extendedProps": {
-                        "kind": "availability",
-                        "reservation_url": (
-                            f"/reservations/new/?coach={coach.id}"
-                            f"&date={slot.date.isoformat()}"
-                            f"&start={slot.start_time.strftime('%H:%M')}"
-                            f"&end={slot.end_time.strftime('%H:%M')}"
-                        ),
-                        **base_props,
+                        "eventType": "availability_slot",
+                        "coachId": availability.coach_id,
+                        "coachName": availability.coach.username,
+                        "courtId": availability.court_id,
+                        "courtName": availability.court.name,
+                        "capacity": availability.capacity,
+                        "reservedCount": count,
+                        "statusLabel": status_label,
+                        "note": availability.note,
+                        "bookable": status_label == "空き",
+                        "reservationUrl": f"{reverse('club:reservation_create')}?{params}",
                     },
                 }
             )
 
-    res_qs = (
-        Reservation.objects.filter(
-            coach=coach,
-            status="booked",
-            date__gte=start_date,
-            date__lt=end_date,
-        )
-        .select_related("court", "customer", "coach")
-        .order_by("date", "start_time")
-    )
-
-    for reservation in res_qs:
-        start_dt = datetime.combine(reservation.date, reservation.start_time)
-        end_dt = datetime.combine(reservation.date, reservation.end_time)
-
-        is_mine = reservation.customer_id == request.user.id
-        title = "自分の予約" if is_mine else "予約"
-
-        if reservation.kind == "group_lesson":
-            bg = "#8e44ad" if is_mine else "#9b59b6"
-            border = "#6c3483"
-        elif reservation.kind == "court_rental":
-            bg = "#16a085" if is_mine else "#1abc9c"
-            border = "#117a65"
-        else:
-            bg = "#2980b9" if is_mine else "#3498db"
-            border = "#1f618d"
-
+    # 自分の予約を別色で重ねる
+    for reservation in my_reservations:
         events.append(
             {
-                "title": title,
-                "start": start_dt.isoformat(),
-                "end": end_dt.isoformat(),
-                "display": "block",
-                "backgroundColor": bg,
-                "borderColor": border,
+                "id": f"my-reservation-{reservation.id}",
+                "title": f"あなたの予約\n{reservation.coach.username}\n{reservation.court.name}",
+                "start": reservation.start_at.isoformat(),
+                "end": reservation.end_at.isoformat(),
+                "backgroundColor": "#1d4ed8",
+                "borderColor": "#1d4ed8",
                 "textColor": "#ffffff",
                 "extendedProps": {
-                    "kind": "reservation",
-                    "reservation_id": reservation.id,
-                    "coachColor": coach_color,
-                    "coachName": coach.username,
-                    "is_mine": is_mine,
-                    "kind_label": reservation.get_kind_display(),
-                    "court_name": str(reservation.court),
+                    "eventType": "my_reservation",
+                    "coachName": reservation.coach.username,
+                    "courtName": reservation.court.name,
+                    "statusLabel": "予約済み",
+                    "reservationId": reservation.id,
+                    "cancelUrl": reverse("club:reservation_cancel", args=[reservation.id]),
                 },
             }
         )
@@ -443,185 +217,214 @@ def calendar_events_api(request):
     return JsonResponse(events, safe=False)
 
 
-@require_GET
 @login_required
-def calendar_event_detail_api(request):
-    kind = request.GET.get("kind")
-    coach_id = request.GET.get("coach_id")
+def reservation_create(request):
+    initial = {}
 
-    if not kind or not coach_id:
-        return JsonResponse({"error": "kind and coach_id required"}, status=400)
+    coach_id = request.GET.get("coach")
+    court_id = request.GET.get("court")
+    start_at = request.GET.get("start_at")
+    end_at = request.GET.get("end_at")
 
-    coach = get_object_or_404(User, id=coach_id, role="coach")
-    is_coach_user = _is_coach(request.user) and request.user.id == coach.id
-    coach_color = _coach_color(coach)
+    if coach_id:
+        initial["coach"] = coach_id
+    if court_id:
+        initial["court"] = court_id
+    if start_at:
+        initial["start_at"] = _parse_iso_datetime(start_at)
+    if end_at:
+        initial["end_at"] = _parse_iso_datetime(end_at)
 
-    if kind == "reservation":
-        reservation_id = request.GET.get("reservation_id")
-        if not reservation_id:
-            return JsonResponse({"error": "reservation_id required"}, status=400)
+    if request.method == "POST":
+        form = ReservationCreateForm(request.POST, request_user=request.user)
+        if form.is_valid():
+            reservation = form.save(commit=False)
+            reservation.user = request.user
+            reservation.save()
 
-        reservation = get_object_or_404(
-            Reservation.objects.select_related("court", "customer", "coach"),
-            id=reservation_id,
-            coach=coach,
-            status="booked",
-        )
+            subject, message_text = build_reservation_created_message(reservation)
+            notify_user(request.user, subject, message_text)
 
-        payload = {
-            "kind": "reservation",
-            "title": "予約",
-            "start": f"{reservation.date} {reservation.start_time}",
-            "end": f"{reservation.date} {reservation.end_time}",
-            "coachName": coach.username,
-            "coachColor": coach_color,
-            "can_cancel": reservation.customer_id == request.user.id and reservation.can_cancel_now,
-            "cancel_url": f"/reservations/{reservation.id}/cancel/",
-            "is_mine": reservation.customer_id == request.user.id,
-            "kind_label": reservation.get_kind_display(),
-        }
+            if reservation.coach != request.user:
+                notify_user(
+                    reservation.coach,
+                    "【テニスクラブ】新しい予約が入りました",
+                    message_text,
+                )
 
-        if is_coach_user or reservation.customer_id == request.user.id:
-            payload.update(
-                {
-                    "court": str(reservation.court),
-                    "customer": getattr(reservation.customer, "username", ""),
-                    "tickets_used": getattr(reservation, "tickets_used", 0),
-                    "note": reservation.note,
-                }
-            )
-        else:
-            payload.update(
-                {
-                    "court": str(reservation.court),
-                    "customer": None,
-                    "tickets_used": None,
-                    "note": "",
-                }
-            )
+            messages.success(request, "予約を作成しました。")
+            return redirect("club:reservation_list")
+    else:
+        form = ReservationCreateForm(initial=initial, request_user=request.user)
 
-        return JsonResponse(payload)
-
-    if kind in ("availability", "full"):
-        date_s = request.GET.get("date")
-        start_time = request.GET.get("start_time")
-        end_time = request.GET.get("end_time")
-
-        if not date_s or not start_time or not end_time:
-            return JsonResponse({"error": "date/start_time/end_time required"}, status=400)
-
-        booked = Reservation.objects.filter(
-            coach=coach,
-            status="booked",
-            date=date_s,
-            start_time=start_time,
-            end_time=end_time,
-        ).count()
-
-        availability = CoachAvailability.objects.filter(
-            coach=coach,
-            status="available",
-            date=date_s,
-            start_time=start_time,
-            end_time=end_time,
-        ).first()
-
-        capacity = int(getattr(availability, "capacity", 1) or 1)
-        remaining = max(capacity - booked, 0)
-
-        return JsonResponse(
-            {
-                "kind": "availability",
-                "title": "空き枠" if remaining > 0 else "満員",
-                "date": date_s,
-                "start_time": start_time,
-                "end_time": end_time,
-                "capacity": capacity,
-                "booked": booked,
-                "remaining": remaining,
-                "coachName": coach.username,
-                "coachColor": coach_color,
-                "reservation_url": (
-                    f"/reservations/new/?coach={coach.id}"
-                    f"&date={date_s}&start={start_time}&end={end_time}"
-                ),
-            }
-        )
-
-    return JsonResponse({"error": "unknown kind"}, status=400)
+    return render(request, "reservations/create.html", {"form": form})
 
 
-@user_passes_test(_is_staff)
-def manage_reservations(request):
-    q = (request.GET.get("q") or "").strip()
-    status = (request.GET.get("status") or "").strip()
-    kind = (request.GET.get("kind") or "").strip()
+@login_required
+def reservation_list(request):
+    reservations = Reservation.objects.select_related("coach", "court").filter(
+        user=request.user
+    ).order_by("-start_at")
+    return render(request, "reservations/list.html", {"reservations": reservations})
 
-    qs = (
-        Reservation.objects.select_related("court", "customer", "coach")
-        .order_by("-date", "-start_time")
+
+@login_required
+@require_POST
+def reservation_cancel(request, pk):
+    reservation = get_object_or_404(
+        Reservation.objects.select_related("coach", "court"),
+        pk=pk,
+        user=request.user,
+        status=Reservation.STATUS_ACTIVE,
     )
 
-    if status in ("booked", "cancelled"):
-        qs = qs.filter(status=status)
+    reservation.status = Reservation.STATUS_CANCELED
+    reservation.save(update_fields=["status"])
 
-    if kind in ("private_lesson", "group_lesson", "court_rental"):
-        qs = qs.filter(kind=kind)
+    subject, message_text = build_reservation_canceled_message(reservation)
+    notify_user(request.user, subject, message_text)
 
-    if q:
-        qs = qs.filter(
-            Q(customer__username__icontains=q)
-            | Q(customer__email__icontains=q)
-            | Q(coach__username__icontains=q)
-            | Q(coach__email__icontains=q)
-            | Q(court__name__icontains=q)
-            | Q(note__icontains=q)
+    if reservation.coach != request.user:
+        notify_user(
+            reservation.coach,
+            "【テニスクラブ】予約キャンセルがありました",
+            message_text,
         )
 
-    qs = qs[:400]
+    messages.success(request, "予約をキャンセルしました。")
+    return redirect("club:reservation_list")
+
+
+@login_required
+def coach_availability_list(request):
+    if not _is_coach_or_admin(request.user):
+        messages.error(request, "権限がありません。")
+        return redirect("club:home")
+
+    availabilities = CoachAvailability.objects.select_related("coach", "court").all()
+
+    if not request.user.is_superuser and getattr(request.user, "role", "") == "coach":
+        availabilities = availabilities.filter(coach=request.user)
+
+    availabilities = availabilities.order_by("start_at", "coach__username")
+    return render(
+        request,
+        "coach/availability_list.html",
+        {"availabilities": availabilities},
+    )
+
+
+@login_required
+def coach_availability_create(request):
+    if not _is_coach_or_admin(request.user):
+        messages.error(request, "権限がありません。")
+        return redirect("club:home")
+
+    if request.method == "POST":
+        form = CoachAvailabilityForm(request.POST, request_user=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "コーチ空き時間を登録しました。")
+            return redirect("club:coach_availability_list")
+    else:
+        form = CoachAvailabilityForm(request_user=request.user)
 
     return render(
         request,
-        "admin/reservations_manage.html",
+        "coach/availability_form.html",
+        {"form": form},
+    )
+
+
+@login_required
+@require_POST
+def coach_availability_delete(request, pk):
+    if not _is_coach_or_admin(request.user):
+        messages.error(request, "権限がありません。")
+        return redirect("club:home")
+
+    availability = get_object_or_404(CoachAvailability, pk=pk)
+
+    if not request.user.is_superuser and getattr(request.user, "role", "") == "coach":
+        if availability.coach_id != request.user.id:
+            messages.error(request, "自分以外の空き時間は削除できません。")
+            return redirect("club:coach_availability_list")
+
+    availability.delete()
+    messages.success(request, "コーチ空き時間を削除しました。")
+    return redirect("club:coach_availability_list")
+
+
+@login_required
+def line_connect_view(request):
+    return render(
+        request,
+        "line_connect.html",
         {
-            "rows": qs,
-            "q": q,
-            "status": status,
-            "kind": kind,
+            "line_bot_basic_id": os.getenv("LINE_BOT_BASIC_ID", ""),
+            "line_bot_invite_url": os.getenv("LINE_BOT_INVITE_URL", ""),
+            "linked": hasattr(request.user, "line_link"),
         },
     )
 
 
-@require_POST
-@user_passes_test(_is_staff)
-def manage_reservation_set_status(request, pk: int):
-    reservation = get_object_or_404(Reservation, pk=pk)
-    new_status = request.POST.get("status")
+@csrf_exempt
+def line_webhook(request):
+    if request.method != "POST":
+        return HttpResponseBadRequest("POST only")
 
-    if new_status not in ("booked", "cancelled"):
-        return redirect("club:manage_reservations")
+    body = request.body
+    signature = request.headers.get("X-Line-Signature", "")
 
-    if reservation.status != new_status:
-        reservation.status = new_status
-        reservation.save(update_fields=["status"])
+    if not verify_line_signature(body, signature):
+        return HttpResponseBadRequest("Invalid signature")
 
-        if new_status == "cancelled":
-            send_reservation_cancelled_notifications(reservation)
+    payload = json.loads(body.decode("utf-8"))
+    events = payload.get("events", [])
 
-        messages.info(request, f"予約ステータスを {new_status} に変更しました。")
+    for event in events:
+        event_type = event.get("type")
+        source = event.get("source", {})
+        line_user_id = source.get("userId")
 
-    return redirect(request.POST.get("next") or "club:manage_reservations")
+        if not line_user_id:
+            continue
 
+        if event_type == "message":
+            text = event.get("message", {}).get("text", "").strip()
 
-@login_required
-def business_rules(request):
-    bhs = BusinessHours.objects.all()
-    closures = FacilityClosure.objects.all()[:200]
-    return render(
-        request,
-        "business_rules.html",
-        {
-            "bhs": bhs,
-            "closures": closures,
+            if text.startswith("連携 "):
+                username = text.replace("連携 ", "", 1).strip()
+                user = User.objects.filter(username=username).first()
+                if user:
+                    LineAccountLink.objects.update_or_create(
+                        user=user,
+                        defaults={
+                            "line_user_id": line_user_id,
+                            "is_active": True,
+                            "last_event_at": timezone.now(),
+                        },
+                    )
+            else:
+                link = LineAccountLink.objects.filter(line_user_id=line_user_id).first()
+                if link:
+                    link.last_event_at = timezone.now()
+                    link.save(update_fields=["last_event_at"])
+
+        elif event_type == "follow":
+            link = LineAccountLink.objects.filter(line_user_id=line_user_id).first()
+            if link:
+                link.is_active = True
+                link.last_event_at = timezone.now()
+                link.save(update_fields=["is_active", "last_event_at"])
+
+        elif event_type == "unfollow":
+            link = LineAccountLink.objects.filter(line_user_id=line_user_id).first()
+            if link:
+                link.is_active = False
+                link.last_event_at = timezone.now()
+                link.save(update_fields=["is_active", "last_event_at"])
+
+    return JsonResponse({"ok": True})
         },
     )
