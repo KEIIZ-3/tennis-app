@@ -2,28 +2,38 @@
 {% block title %}ログイン{% endblock %}
 
 {% block content %}
-<div class="card">
-  <h2>ログイン</h2>
+  <h1>ログイン</h1>
 
-  <form method="post">
+  {% if error %}
+    <div class="msg" style="border-color:#f5c2c2; background:#fff5f5;">
+      {{ error }}
+    </div>
+  {% endif %}
+
+  <form method="post" class="card">
     {% csrf_token %}
-    {{ form.non_field_errors }}
+    <div class="grid">
+      <div class="field">
+        <label>ユーザー名</label>
+        {% if form %}
+          {{ form.username }}
+          {{ form.username.errors }}
+        {% else %}
+          <input name="username" required>
+        {% endif %}
+      </div>
 
-    <div>
-      <label>ユーザー名</label>
-      {{ form.username }}
-      {{ form.username.errors }}
-    </div>
+      <div class="field">
+        <label>パスワード</label>
+        {% if form %}
+          {{ form.password }}
+          {{ form.password.errors }}
+        {% else %}
+          <input type="password" name="password" required>
+        {% endif %}
+      </div>
 
-    <div>
-      <label>パスワード</label>
-      {{ form.password }}
-      {{ form.password.errors }}
-    </div>
-
-    <div style="margin-top:16px;">
-      <button type="submit">ログイン</button>
+      <button class="btn btn-primary" type="submit">ログイン</button>
     </div>
   </form>
-</div>
 {% endblock %}
