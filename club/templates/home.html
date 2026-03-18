@@ -1,26 +1,257 @@
 {% extends "base.html" %}
 {% block title %}ホーム{% endblock %}
+
 {% block content %}
-  <h1>ホーム</h1>
-  <p>ログイン成功です。</p>
+<div class="page-grid">
+  <section class="main-panel">
+    <div class="card toolbar-card">
+      <div class="toolbar-row">
+        <div>
+          <label for="coachFilter"><strong>コーチ表示</strong></label>
+          <select id="coachFilter">
+            <option value="all">全コーチ</option>
+            {% for coach in coaches %}
+              <option value="{{ coach.id }}">{{ coach.username }}</option>
+            {% endfor %}
+          </select>
+        </div>
 
-  <div class="grid two">
-    <a class="card" href="{% url 'club:reservation_create' %}">
-      <b>予約する</b><br>
-      <span class="muted">コート・日付・時間を入力</span>
-    </a>
-    <a class="card" href="{% url 'club:reservation_list' %}">
-      <b>予約一覧</b><br>
-      <span class="muted">未来/過去・キャンセル</span>
-    </a>
-  </div>
+        <div class="legend">
+          <span class="legend-item legend-available">空き</span>
+          <span class="legend-item legend-full">満員</span>
+          <span class="legend-item legend-mine">あなたの予約</span>
+        </div>
+      </div>
 
-  {% if user.role == "coach" %}
-    <div style="margin-top:12px;">
-      <a class="card" href="{% url 'club:coach_availability_list' %}">
-        <b>（コーチ）空き時間管理</b><br>
-        <span class="muted">自分の空き時間を登録・削除</span>
-      </a>
+      <div class="toolbar-links">
+        <a href="{% url 'club:reservation_list' %}">予約一覧</a>
+        <a href="{% url 'club:line_connect' %}">LINE連携</a>
+        {% if is_coach_or_admin %}
+          <a href="{% url 'club:coach_availability_list' %}">コーチ空き時間管理</a>
+        {% endif %}
+      </div>
     </div>
-  {% endif %}
+
+    <div class="card calendar-card">
+      <div id="calendar"></div>
+    </div>
+  </section>
+
+  <aside class="side-panel">
+    <div class="card detail-card">
+      <h3>詳細</h3>
+      <div id="detailPanel">
+        <p>カレンダー上の枠をクリックしてください。</p>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/locales-all.global.min.js"></script>
+
+<style>
+  .page-grid{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) 320px;
+    gap:16px;
+    align-items:start;
+  }
+  .toolbar-card, .calendar-card, .detail-card{
+    padding:16px;
+  }
+  .toolbar-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+  .toolbar-links{
+    margin-top:12px;
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+  .legend{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  .legend-item{
+    display:inline-block;
+    padding:6px 10px;
+    border-radius:999px;
+    color:#fff;
+    font-size:12px;
+  }
+  .legend-available{ background:#16a34a; }
+  .legend-full{ background:#dc2626; }
+  .legend-mine{ background:#1d4ed8; }
+
+  #calendar{
+    min-height:720px;
+  }
+
+  .fc .fc-event{
+    white-space:pre-line;
+    cursor:pointer;
+    border-radius:8px;
+    padding:2px 4px;
+  }
+
+  .detail-table{
+    width:100%;
+    border-collapse:collapse;
+  }
+  .detail-table th,
+  .detail-table td{
+    text-align:left;
+    padding:6px 0;
+    vertical-align:top;
+    border-bottom:1px solid #eee;
+  }
+  .detail-actions{
+    margin-top:16px;
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  .btn{
+    display:inline-block;
+    padding:10px 14px;
+    border-radius:8px;
+    text-decoration:none;
+    border:1px solid #ddd;
+    background:#fff;
+    color:#111;
+    cursor:pointer;
+  }
+  .btn-primary{
+    background:#111;
+    color:#fff;
+    border-color:#111;
+  }
+  .btn-danger{
+    background:#b91c1c;
+    color:#fff;
+    border-color:#b91c1c;
+  }
+
+  @media (max-width: 960px){
+    .page-grid{
+      grid-template-columns:1fr;
+    }
+    #calendar{
+      min-height:560px;
+    }
+  }
+</style>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const calendarEl = document.getElementById("calendar");
+    const detailPanel = document.getElementById("detailPanel");
+    const coachFilter = document.getElementById("coachFilter");
+    const isMobile = window.innerWidth < 768;
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function renderAvailabilityDetail(event) {
+      const props = event.extendedProps;
+      detailPanel.innerHTML = `
+        <table class="detail-table">
+          <tr><th>種別</th><td>コーチ空き枠</td></tr>
+          <tr><th>コーチ</th><td>${escapeHtml(props.coachName)}</td></tr>
+          <tr><th>コート</th><td>${escapeHtml(props.courtName)}</td></tr>
+          <tr><th>時間</th><td>${escapeHtml(event.start.toLocaleString("ja-JP"))} - ${escapeHtml(event.end.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }))}</td></tr>
+          <tr><th>状態</th><td>${escapeHtml(props.statusLabel)}</td></tr>
+          <tr><th>予約数</th><td>${escapeHtml(props.reservedCount)} / ${escapeHtml(props.capacity)}</td></tr>
+          <tr><th>メモ</th><td>${escapeHtml(props.note || "-")}</td></tr>
+        </table>
+        <div class="detail-actions">
+          ${props.bookable ? `<a class="btn btn-primary" href="${props.reservationUrl}">この枠を予約する</a>` : `<span class="btn">この枠は満員です</span>`}
+        </div>
+      `;
+    }
+
+    function renderMyReservationDetail(event) {
+      const props = event.extendedProps;
+      detailPanel.innerHTML = `
+        <table class="detail-table">
+          <tr><th>種別</th><td>あなたの予約</td></tr>
+          <tr><th>コーチ</th><td>${escapeHtml(props.coachName)}</td></tr>
+          <tr><th>コート</th><td>${escapeHtml(props.courtName)}</td></tr>
+          <tr><th>時間</th><td>${escapeHtml(event.start.toLocaleString("ja-JP"))} - ${escapeHtml(event.end.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }))}</td></tr>
+          <tr><th>状態</th><td>${escapeHtml(props.statusLabel)}</td></tr>
+        </table>
+        <div class="detail-actions">
+          <form method="post" action="${props.cancelUrl}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger">予約をキャンセル</button>
+          </form>
+        </div>
+      `;
+    }
+
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+      locale: "ja",
+      initialView: isMobile ? "timeGridDay" : "timeGridWeek",
+      headerToolbar: {
+        left: "prev,next today",
+        center: "title",
+        right: isMobile ? "timeGridDay,listDay" : "timeGridWeek,dayGridMonth,listWeek"
+      },
+      allDaySlot: false,
+      nowIndicator: true,
+      height: "auto",
+      expandRows: true,
+      slotMinTime: "06:00:00",
+      slotMaxTime: "23:00:00",
+      slotDuration: "01:00:00",
+      slotLabelInterval: "01:00:00",
+      dayMaxEvents: true,
+      navLinks: true,
+      eventTimeFormat: {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      },
+      events: function(fetchInfo, successCallback, failureCallback) {
+        const coach = coachFilter.value || "all";
+        const url = new URL("{% url 'club:calendar_events' %}", window.location.origin);
+        url.searchParams.set("start", fetchInfo.startStr);
+        url.searchParams.set("end", fetchInfo.endStr);
+        url.searchParams.set("coach", coach);
+
+        fetch(url)
+          .then(response => response.json())
+          .then(data => successCallback(data))
+          .catch(error => failureCallback(error));
+      },
+      eventClick: function(info) {
+        if (info.event.extendedProps.eventType === "my_reservation") {
+          renderMyReservationDetail(info.event);
+        } else {
+          renderAvailabilityDetail(info.event);
+        }
+      }
+    });
+
+    coachFilter.addEventListener("change", function() {
+      calendar.refetchEvents();
+      detailPanel.innerHTML = "<p>カレンダー上の枠をクリックしてください。</p>";
+    });
+
+    calendar.render();
+  });
+</script>
 {% endblock %}
