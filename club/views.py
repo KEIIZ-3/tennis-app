@@ -14,7 +14,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from .forms import CoachAvailabilityForm, LoginForm, ReservationCreateForm
-from .models import CoachAvailability, Court, LineAccountLink, Reservation
+from .models import CoachAvailability, LineAccountLink, Reservation
 from .services.notifications import (
     build_reservation_canceled_message,
     build_reservation_created_message,
@@ -29,7 +29,7 @@ def _is_coach_or_admin(user):
     return user.is_authenticated and (user.is_superuser or getattr(user, "role", "") == "coach")
 
 
-def _color_for_coach(coach_id: int) -> str:
+def _color_for_coach(coach_id):
     palette = [
         "#2563eb",
         "#16a34a",
@@ -43,9 +43,10 @@ def _color_for_coach(coach_id: int) -> str:
     return palette[coach_id % len(palette)]
 
 
-def _parse_iso_datetime(value: str):
+def _parse_iso_datetime(value):
     if not value:
         return None
+
     value = value.replace("Z", "+00:00")
     dt = datetime.fromisoformat(value)
     if timezone.is_naive(dt):
@@ -81,16 +82,32 @@ def login_view(request):
         return redirect("club:home")
 
     form = LoginForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        username = form.cleaned_data["username"]
-        password = form.cleaned_data["password"]
+    error = None
+
+    if request.method == "POST":
+        if form.is_valid():
+            username = form.cleaned_data["username"]
+            password = form.cleaned_data["password"]
+        else:
+            username = request.POST.get("username", "")
+            password = request.POST.get("password", "")
+
         user = authenticate(request, username=username, password=password)
         if user is not None:
             login(request, user)
             return redirect("club:home")
-        messages.error(request, "ログインに失敗しました。")
 
-    return render(request, "login.html", {"form": form})
+        error = "ログインに失敗しました。"
+        messages.error(request, error)
+
+    return render(
+        request,
+        "login.html",
+        {
+            "form": form,
+            "error": error,
+        },
+    )
 
 
 @login_required
@@ -136,7 +153,6 @@ def calendar_events(request):
 
     events = []
 
-    # 全コーチの空き枠を1時間単位で表示
     for availability in availabilities:
         base_color = _color_for_coach(availability.coach_id)
 
@@ -192,7 +208,6 @@ def calendar_events(request):
                 }
             )
 
-    # 自分の予約を別色で重ねる
     for reservation in my_reservations:
         events.append(
             {
@@ -331,7 +346,7 @@ def coach_availability_create(request):
 
     return render(
         request,
-        "coach/availability_form.html",
+        "coach/availability_create.html",
         {"form": form},
     )
 
@@ -357,13 +372,19 @@ def coach_availability_delete(request, pk):
 
 @login_required
 def line_connect_view(request):
+    linked = False
+    try:
+        linked = hasattr(request.user, "line_link")
+    except Exception:
+        linked = False
+
     return render(
         request,
         "line_connect.html",
         {
             "line_bot_basic_id": os.getenv("LINE_BOT_BASIC_ID", ""),
             "line_bot_invite_url": os.getenv("LINE_BOT_INVITE_URL", ""),
-            "linked": hasattr(request.user, "line_link"),
+            "linked": linked,
         },
     )
 
@@ -426,5 +447,3 @@ def line_webhook(request):
                 link.save(update_fields=["is_active", "last_event_at"])
 
     return JsonResponse({"ok": True})
-        },
-    )
