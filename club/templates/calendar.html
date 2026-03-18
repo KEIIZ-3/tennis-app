@@ -15,6 +15,7 @@
   .dot { width:10px; height:10px; border-radius:999px; display:inline-block; }
   .dot-full { background:#e74c3c; }
   .dot-resv { background:#3498db; }
+  .dot-my { background:#2980b9; }
 
   .cal-controls { display:flex; align-items:center; gap:8px; }
   .cal-label { font-size: 12px; color:#444; }
@@ -37,11 +38,6 @@
   .fc .fc-daygrid-event .fc-event-title, .fc .fc-daygrid-event .fc-event-time,
   .fc .fc-timegrid-event .fc-event-title, .fc .fc-timegrid-event .fc-event-time { font-size: 11px; line-height: 1.2; }
 
-  /* -------------------
-     ✅ モーダル（重なりフリーズ対策）
-     - z-indexを強制的に最前面へ
-     - 背面クリック/スクロールを止める
-  ------------------- */
   body.modal-open { overflow: hidden; touch-action: none; }
 
   .modal {
@@ -51,7 +47,7 @@
     align-items: center;
     justify-content: center;
     padding: 14px;
-    z-index: 9999;            /* ★最重要 */
+    z-index: 9999;
   }
   .modal.show { display:flex; }
 
@@ -64,13 +60,13 @@
   .modal-card {
     position: relative;
     width: 100%;
-    max-width: 520px;
+    max-width: 560px;
     background:#fff;
     border-radius: 14px;
     border:1px solid #eee;
     box-shadow: 0 10px 30px rgba(0,0,0,.15);
     overflow:hidden;
-    z-index: 10000;           /* ★最重要 */
+    z-index: 10000;
   }
 
   .modal-head { padding: 12px 14px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; gap:10px; align-items:center; }
@@ -80,22 +76,32 @@
   .muted { color:#666; font-size:12px; }
   .modal-foot { padding: 12px 14px; border-top:1px solid #eee; display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
 
-  .btn { border:1px solid #111; background:#111; color:#fff; padding:8px 10px; border-radius:10px; cursor:pointer; font-size: 13px; }
+  .btn { border:1px solid #111; background:#111; color:#fff; padding:8px 10px; border-radius:10px; cursor:pointer; font-size: 13px; text-decoration:none; }
   .btn.outline { background:#fff; color:#111; }
   .btn.danger { background:#e74c3c; border-color:#e74c3c; }
   .pill { display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid #eee; background:#fff; color:#333; }
+
+  .detail-grid {
+    display:grid;
+    grid-template-columns: 120px 1fr;
+    gap:8px 12px;
+    margin-top:10px;
+  }
+  .detail-label { color:#666; font-size:12px; }
+  .detail-value { color:#111; font-size:14px; word-break:break-word; }
 </style>
 
 <div class="cal-page">
   <div class="cal-toolbar">
     <div class="cal-title">
       <h2>カレンダー</h2>
-      <div class="cal-hint">枠をクリックすると詳細が出ます（空きなら予約作成へ）</div>
+      <div class="cal-hint">枠をクリックすると詳細が表示されます。空き枠ならそのまま予約作成へ進めます。</div>
 
       <div class="cal-legend">
         <span class="badge2"><span class="dot" id="dotCoach" style="background:#2ecc71;"></span>空き（コーチ色）</span>
         <span class="badge2"><span class="dot dot-full"></span>満員</span>
         <span class="badge2"><span class="dot dot-resv"></span>予約</span>
+        <span class="badge2"><span class="dot dot-my"></span>自分の予約</span>
       </div>
     </div>
 
@@ -112,7 +118,7 @@
     </form>
   </div>
 
-  <div class="muted" style="margin-top:6px;">自動更新：15秒 / タブ復帰で更新</div>
+  <div class="muted" style="margin-top:6px;">自動更新：15秒 / タブ復帰時にも再取得</div>
   <div id="calendar" class="cal-box"></div>
 </div>
 
@@ -127,9 +133,32 @@
       <div class="modal-row">
         <span class="pill"><span class="dot" id="mCoachDot" style="background:#2ecc71;"></span><span id="mCoachName">coach</span></span>
       </div>
+
       <div class="modal-row muted" id="mTime"></div>
-      <div class="modal-row" id="mLine1"></div>
-      <div class="modal-row" id="mLine2"></div>
+
+      <div class="detail-grid">
+        <div class="detail-label">種別</div>
+        <div class="detail-value" id="mKind">-</div>
+
+        <div class="detail-label">コート</div>
+        <div class="detail-value" id="mCourt">-</div>
+
+        <div class="detail-label">予約者</div>
+        <div class="detail-value" id="mCustomer">-</div>
+
+        <div class="detail-label">定員 / 予約数</div>
+        <div class="detail-value" id="mCap">-</div>
+
+        <div class="detail-label">残り</div>
+        <div class="detail-value" id="mRemain">-</div>
+
+        <div class="detail-label">チケット</div>
+        <div class="detail-value" id="mTickets">-</div>
+
+        <div class="detail-label">メモ</div>
+        <div class="detail-value" id="mNote">-</div>
+      </div>
+
       <div class="modal-row muted" id="mWarn" style="display:none;"></div>
     </div>
     <div class="modal-foot">
@@ -168,8 +197,13 @@ document.addEventListener("DOMContentLoaded", function() {
   const mCoachDot = document.getElementById("mCoachDot");
   const mCoachName = document.getElementById("mCoachName");
   const mTime = document.getElementById("mTime");
-  const mLine1 = document.getElementById("mLine1");
-  const mLine2 = document.getElementById("mLine2");
+  const mKind = document.getElementById("mKind");
+  const mCourt = document.getElementById("mCourt");
+  const mCustomer = document.getElementById("mCustomer");
+  const mCap = document.getElementById("mCap");
+  const mRemain = document.getElementById("mRemain");
+  const mTickets = document.getElementById("mTickets");
+  const mNote = document.getElementById("mNote");
   const mWarn = document.getElementById("mWarn");
   const mReserveBtn = document.getElementById("mReserveBtn");
   const mCancelForm = document.getElementById("mCancelForm");
@@ -178,9 +212,30 @@ document.addEventListener("DOMContentLoaded", function() {
     modal.classList.add("show");
     document.body.classList.add("modal-open");
   }
+
   function closeModal() {
     modal.classList.remove("show");
     document.body.classList.remove("modal-open");
+  }
+
+  function resetModal() {
+    mTitle.textContent = "詳細";
+    mCoachName.textContent = "";
+    mCoachDot.style.background = "#2ecc71";
+    mTime.textContent = "";
+    mKind.textContent = "-";
+    mCourt.textContent = "-";
+    mCustomer.textContent = "-";
+    mCap.textContent = "-";
+    mRemain.textContent = "-";
+    mTickets.textContent = "-";
+    mNote.textContent = "-";
+    mWarn.style.display = "none";
+    mWarn.textContent = "";
+    mReserveBtn.style.display = "none";
+    mReserveBtn.href = "#";
+    mCancelForm.style.display = "none";
+    mCancelForm.action = "#";
   }
 
   document.getElementById("mClose").addEventListener("click", closeModal);
@@ -192,6 +247,8 @@ document.addEventListener("DOMContentLoaded", function() {
   });
 
   async function openDetail(ev) {
+    resetModal();
+
     const p = ev.extendedProps || {};
     const kind = p.kind;
 
@@ -213,34 +270,30 @@ document.addEventListener("DOMContentLoaded", function() {
     mCoachDot.style.background = data.coachColor || "#2ecc71";
     document.getElementById("dotCoach").style.background = data.coachColor || "#2ecc71";
 
-    mWarn.style.display = "none";
-    mWarn.textContent = "";
-
-    mReserveBtn.style.display = "none";
-    mReserveBtn.href = "#";
-
-    mCancelForm.style.display = "none";
-    mCancelForm.action = "#";
-
     if (data.kind === "reservation") {
       mTime.textContent = `${data.start} - ${data.end.split(" ").pop()}`;
-
-      if (data.court && data.customer) {
-        mLine1.innerHTML = `<b>コート：</b>${data.court}`;
-        mLine2.innerHTML = `<b>予約者：</b>${data.customer}`;
-      } else {
-        mLine1.innerHTML = "予約があります";
-        mLine2.innerHTML = "";
-      }
+      mKind.textContent = data.kind_label || "予約";
+      mCourt.textContent = data.court || "-";
+      mCustomer.textContent = data.customer || "非表示";
+      mTickets.textContent = (data.tickets_used ?? "-");
+      mNote.textContent = data.note || "-";
 
       if (data.can_cancel && data.cancel_url) {
         mCancelForm.style.display = "inline-block";
         mCancelForm.action = data.cancel_url;
+      } else if (data.is_mine) {
+        mWarn.style.display = "block";
+        mWarn.textContent = "この予約はキャンセル期限を過ぎているためキャンセルできません。";
       }
     } else {
       mTime.textContent = `${data.date} ${data.start_time}-${data.end_time}`;
-      mLine1.innerHTML = `<b>定員：</b>${data.booked} / ${data.capacity}`;
-      mLine2.innerHTML = `<b>残り：</b>${data.remaining}`;
+      mKind.textContent = "空き枠";
+      mCap.textContent = `${data.booked} / ${data.capacity}`;
+      mRemain.textContent = `${data.remaining}`;
+      mCourt.textContent = "-";
+      mCustomer.textContent = "-";
+      mTickets.textContent = "-";
+      mNote.textContent = "-";
 
       if (data.remaining > 0 && data.reservation_url) {
         mReserveBtn.style.display = "inline-block";
@@ -288,7 +341,12 @@ document.addEventListener("DOMContentLoaded", function() {
     },
 
     events: function(fetchInfo, successCallback, failureCallback) {
-      const params = new URLSearchParams({ coach_id: coachId, start: fetchInfo.startStr, end: fetchInfo.endStr });
+      const params = new URLSearchParams({
+        coach_id: coachId,
+        start: fetchInfo.startStr,
+        end: fetchInfo.endStr
+      });
+
       fetch("{% url 'club:calendar_events_api' %}?" + params.toString(), { credentials: "same-origin" })
         .then(r => r.json())
         .then(data => successCallback(data))
@@ -297,15 +355,20 @@ document.addEventListener("DOMContentLoaded", function() {
 
     eventClick: async function(info) {
       info.jsEvent.preventDefault();
-      try { await openDetail(info.event); } catch (e) { console.error(e); }
+      try {
+        await openDetail(info.event);
+      } catch (e) {
+        console.error(e);
+      }
     }
   });
 
   calendar.render();
 
-  // ③ 自動更新（15秒）＋タブ復帰
   setInterval(() => calendar.refetchEvents(), 15000);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) calendar.refetchEvents(); });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) calendar.refetchEvents();
+  });
 });
 </script>
 {% endblock %}
