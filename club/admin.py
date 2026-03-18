@@ -14,11 +14,11 @@ class CoachAvailabilityAdminForm(forms.ModelForm):
         fields = "__all__"
         widgets = {
             "start_at": AdminHourDateTimeInput(
-                format="%Y-%m-%dT%H:00",
+                format="%Y-%m-%dT%H:%M",
                 attrs={"step": 3600},
             ),
             "end_at": AdminHourDateTimeInput(
-                format="%Y-%m-%dT%H:00",
+                format="%Y-%m-%dT%H:%M",
                 attrs={"step": 3600},
             ),
         }
