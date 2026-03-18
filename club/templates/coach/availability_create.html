@@ -1,41 +1,58 @@
 {% extends "base.html" %}
-{% block title %}空き時間登録{% endblock %}
+{% block title %}コーチ空き時間登録{% endblock %}
+
 {% block content %}
-  <h1>空き時間登録</h1>
+<div class="card">
+  <h2>コーチ空き時間登録</h2>
 
-  <form method="post" class="card">
+  <form method="post">
     {% csrf_token %}
+    {{ form.non_field_errors }}
 
-    {% if form.non_field_errors %}
-      <div class="msg" style="border-color:#f5c2c2; background:#fff5f5;">
-        {{ form.non_field_errors }}
-      </div>
-    {% endif %}
-
-    <div class="grid two">
-      <div class="field">
-        <label>日付</label>
-        {{ form.date }}{{ form.date.errors }}
-      </div>
-      <div class="field">
-        <label>開始</label>
-        {{ form.start_time }}{{ form.start_time.errors }}
-      </div>
-      <div class="field">
-        <label>終了</label>
-        {{ form.end_time }}{{ form.end_time.errors }}
-      </div>
-      <div class="field">
-        <label>定員</label>
-        {{ form.capacity }}{{ form.capacity.errors }}
-        <div style="color:#666; font-size:12px; margin-top:4px;">例：1（通常） / 2 / 3 ...</div>
-      </div>
+    <div>
+      <label>コーチ</label>
+      {{ form.coach }}
+      {{ form.coach.errors }}
     </div>
 
-    <button class="btn btn-primary" type="submit">登録</button>
+    <div>
+      <label>コート</label>
+      {{ form.court }}
+      {{ form.court.errors }}
+    </div>
+
+    <div>
+      <label>開始日時</label>
+      {{ form.start_at }}
+      {{ form.start_at.errors }}
+    </div>
+
+    <div>
+      <label>終了日時</label>
+      {{ form.end_at }}
+      {{ form.end_at.errors }}
+    </div>
+
+    <div>
+      <label>定員</label>
+      {{ form.capacity }}
+      {{ form.capacity.errors }}
+    </div>
+
+    <div>
+      <label>メモ</label>
+      {{ form.note }}
+      {{ form.note.errors }}
+    </div>
+
+    <div style="margin-top:16px;">
+      <button type="submit">登録する</button>
+      <a href="{% url 'club:coach_availability_list' %}">戻る</a>
+    </div>
   </form>
 
-  <p style="margin-top:12px;">
-    <a href="{% url 'club:coach_availability_list' %}">← 一覧へ</a>
+  <p style="margin-top:16px; color:#666;">
+    空き時間は1時間単位で登録してください。
   </p>
+</div>
 {% endblock %}
