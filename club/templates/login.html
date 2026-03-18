@@ -1,26 +1,29 @@
 {% extends "base.html" %}
 {% block title %}ログイン{% endblock %}
+
 {% block content %}
-  <h1>ログイン</h1>
+<div class="card">
+  <h2>ログイン</h2>
 
-  {% if error %}
-    <div class="msg" style="border-color:#f5c2c2; background:#fff5f5;">
-      {{ error }}
-    </div>
-  {% endif %}
-
-  <form method="post" class="card">
+  <form method="post">
     {% csrf_token %}
-    <div class="grid">
-      <div class="field">
-        <label>ユーザー名</label>
-        <input name="username" required>
-      </div>
-      <div class="field">
-        <label>パスワード</label>
-        <input type="password" name="password" required>
-      </div>
-      <button class="btn btn-primary" type="submit">ログイン</button>
+    {{ form.non_field_errors }}
+
+    <div>
+      <label>ユーザー名</label>
+      {{ form.username }}
+      {{ form.username.errors }}
+    </div>
+
+    <div>
+      <label>パスワード</label>
+      {{ form.password }}
+      {{ form.password.errors }}
+    </div>
+
+    <div style="margin-top:16px;">
+      <button type="submit">ログイン</button>
     </div>
   </form>
+</div>
 {% endblock %}
