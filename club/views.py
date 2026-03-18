@@ -125,7 +125,7 @@ def healthz(request):
 def calendar_events(request):
     start = _parse_iso_datetime(request.GET.get("start"))
     end = _parse_iso_datetime(request.GET.get("end"))
-    coach_filter = request.GET.get("coach", "all")
+    coach_filter = request.GET.get("coach") or request.GET.get("coach_id") or "all"
 
     if not start or not end:
         return JsonResponse([], safe=False)
