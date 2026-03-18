@@ -3,7 +3,6 @@ from datetime import timedelta
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import Q
 from django.utils import timezone
 
 
@@ -63,13 +62,15 @@ class CoachAvailability(models.Model):
         if (
             self.start_at.minute != 0
             or self.start_at.second != 0
+            or self.start_at.microsecond != 0
             or self.end_at.minute != 0
             or self.end_at.second != 0
+            or self.end_at.microsecond != 0
         ):
             raise ValidationError("コーチ空き時間は1時間単位で指定してください。")
 
         duration = self.end_at - self.start_at
-        if duration.total_seconds() % 3600 != 0:
+        if duration.total_seconds() <= 0 or duration.total_seconds() % 3600 != 0:
             raise ValidationError("コーチ空き時間は1時間単位で指定してください。")
 
         if self.capacity < 1:
@@ -140,8 +141,10 @@ class Reservation(models.Model):
         if (
             self.start_at.minute != 0
             or self.start_at.second != 0
+            or self.start_at.microsecond != 0
             or self.end_at.minute != 0
             or self.end_at.second != 0
+            or self.end_at.microsecond != 0
         ):
             raise ValidationError("予約は1時間単位でのみ可能です。")
 
@@ -154,7 +157,6 @@ class Reservation(models.Model):
         if self.status == self.STATUS_CANCELED:
             return
 
-        # 同一ユーザーの時間重複防止
         user_overlap_qs = Reservation.objects.filter(
             user=self.user,
             status=self.STATUS_ACTIVE,
@@ -166,7 +168,6 @@ class Reservation(models.Model):
         if user_overlap_qs.exists():
             raise ValidationError("同じ時間帯にすでに別の予約があります。")
 
-        # 対応する空き時間枠を探す
         availability_qs = CoachAvailability.objects.filter(
             coach=self.coach,
             court=self.court,
@@ -180,7 +181,6 @@ class Reservation(models.Model):
 
         self.availability = availability
 
-        # その1時間枠の予約数を確認
         slot_reservations_qs = Reservation.objects.filter(
             coach=self.coach,
             court=self.court,
