@@ -1,44 +1,47 @@
 {% extends "base.html" %}
-{% block title %}予約一覧{% endblock %}
+{% block title %}コーチ空き時間管理{% endblock %}
 
 {% block content %}
 <div class="card">
-  <h2>予約一覧</h2>
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+    <h2>コーチ空き時間管理</h2>
+    <a href="{% url 'club:coach_availability_create' %}">新規登録</a>
+  </div>
 
-  {% if reservations %}
+  {% if availabilities %}
     <table>
       <thead>
         <tr>
-          <th>日時</th>
           <th>コーチ</th>
           <th>コート</th>
-          <th>状態</th>
+          <th>開始</th>
+          <th>終了</th>
+          <th>定員</th>
+          <th>メモ</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
-        {% for reservation in reservations %}
+        {% for item in availabilities %}
           <tr>
-            <td>{{ reservation.start_at|date:"Y-m-d H:i" }} - {{ reservation.end_at|date:"H:i" }}</td>
-            <td>{{ reservation.coach.username }}</td>
-            <td>{{ reservation.court.name }}</td>
-            <td>{{ reservation.status }}</td>
+            <td>{{ item.coach.username }}</td>
+            <td>{{ item.court.name }}</td>
+            <td>{{ item.start_at|date:"Y-m-d H:i" }}</td>
+            <td>{{ item.end_at|date:"Y-m-d H:i" }}</td>
+            <td>{{ item.capacity }}</td>
+            <td>{{ item.note|default:"-" }}</td>
             <td>
-              {% if reservation.status == "active" %}
-                <form method="post" action="{% url 'club:reservation_cancel' reservation.pk %}">
-                  {% csrf_token %}
-                  <button type="submit">キャンセル</button>
-                </form>
-              {% else %}
-                -
-              {% endif %}
+              <form method="post" action="{% url 'club:coach_availability_delete' item.pk %}">
+                {% csrf_token %}
+                <button type="submit">削除</button>
+              </form>
             </td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
   {% else %}
-    <p>予約はまだありません。</p>
+    <p>まだ登録された空き時間はありません。</p>
   {% endif %}
 
   <p style="margin-top:16px;">
