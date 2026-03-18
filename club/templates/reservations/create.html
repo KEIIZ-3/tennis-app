@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}コーチ空き時間登録{% endblock %}
+{% block title %}予約作成{% endblock %}
 
 {% block content %}
 <div class="card">
-  <h2>コーチ空き時間登録</h2>
+  <h2>予約作成</h2>
 
   <form method="post">
     {% csrf_token %}
@@ -33,26 +33,14 @@
       {{ form.end_at.errors }}
     </div>
 
-    <div>
-      <label>定員</label>
-      {{ form.capacity }}
-      {{ form.capacity.errors }}
-    </div>
-
-    <div>
-      <label>メモ</label>
-      {{ form.note }}
-      {{ form.note.errors }}
-    </div>
-
     <div style="margin-top:16px;">
-      <button type="submit">登録する</button>
-      <a href="{% url 'club:coach_availability_list' %}">戻る</a>
+      <button type="submit">予約する</button>
+      <a href="{% url 'club:home' %}">戻る</a>
     </div>
   </form>
 
   <p style="margin-top:16px; color:#666;">
-    空き時間は1時間単位で登録してください。
+    予約は1時間単位です。
   </p>
 </div>
 {% endblock %}
