@@ -10,13 +10,12 @@ from django.core.mail import send_mail
 
 logger = logging.getLogger(__name__)
 
-
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@example.com")
 
 
-def send_email_notification(subject: str, message: str, recipient_list: list[str]) -> bool:
+def send_email_notification(subject: str, message: str, recipient_list):
     if not recipient_list:
         return False
 
@@ -34,7 +33,7 @@ def send_email_notification(subject: str, message: str, recipient_list: list[str
         return False
 
 
-def send_line_push(line_user_id: str, text: str) -> bool:
+def send_line_push(line_user_id, text):
     if not LINE_CHANNEL_ACCESS_TOKEN or not line_user_id:
         return False
 
@@ -68,7 +67,7 @@ def send_line_push(line_user_id: str, text: str) -> bool:
         return False
 
 
-def verify_line_signature(body: bytes, signature: str) -> bool:
+def verify_line_signature(body, signature):
     if not LINE_CHANNEL_SECRET or not signature:
         return False
 
@@ -81,7 +80,7 @@ def verify_line_signature(body: bytes, signature: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
-def notify_user(user, subject: str, message: str) -> dict:
+def notify_user(user, subject, message):
     result = {"line": False, "email": False}
 
     try:
@@ -98,7 +97,7 @@ def notify_user(user, subject: str, message: str) -> dict:
     return result
 
 
-def build_reservation_created_message(reservation) -> tuple[str, str]:
+def build_reservation_created_message(reservation):
     subject = "【テニスクラブ】予約完了"
     message = (
         "予約が完了しました。\n"
@@ -109,7 +108,7 @@ def build_reservation_created_message(reservation) -> tuple[str, str]:
     return subject, message
 
 
-def build_reservation_canceled_message(reservation) -> tuple[str, str]:
+def build_reservation_canceled_message(reservation):
     subject = "【テニスクラブ】予約キャンセル完了"
     message = (
         "予約キャンセルを受け付けました。\n"
