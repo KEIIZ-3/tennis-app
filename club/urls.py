@@ -10,10 +10,10 @@ urlpatterns = [
     path("logout/", views.logout_view, name="logout"),
     path("healthz/", views.healthz, name="healthz"),
 
-    # 新URL
+    # カレンダーイベントAPI（新）
     path("calendar/events/", views.calendar_events, name="calendar_events"),
 
-    # 旧URL互換
+    # カレンダーイベントAPI（旧URL互換）
     path("api/calendar/events/", views.calendar_events, name="calendar_events_api_legacy"),
 
     path("reservations/new/", views.reservation_create, name="reservation_create"),
