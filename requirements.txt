@@ -2,11 +2,11 @@ Django
 gunicorn
 whitenoise
 dj-database-url
-psycopg2-binary
+psycopg[binary]
 
 # background jobs / notifications
 celery
 redis
 
-# optional (管理UI強化で使う場合のみ。使わないなら消してOK)
+# optional（管理UI強化で使う場合のみ）
 django-htmx
