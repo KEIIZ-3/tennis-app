@@ -3,49 +3,112 @@
 
 {% block content %}
 <div class="card">
-  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-    <h2>コーチ空き時間管理</h2>
-    <a href="{% url 'club:coach_availability_create' %}">新規登録</a>
-  </div>
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h1 style="margin:0;">コーチ空き時間管理</h1>
+      <p class="muted" style="margin:8px 0 0;">
+        登録済みの空き時間を確認できます。
+      </p>
+    </div>
 
+    <div>
+      <a href="{% url 'club:coach_availability_create' %}" class="btn btn-primary">新規登録</a>
+    </div>
+  </div>
+</div>
+
+<div style="height:12px;"></div>
+
+<div class="card">
   {% if availabilities %}
-    <table>
-      <thead>
-        <tr>
-          <th>コーチ</th>
-          <th>コート</th>
-          <th>開始</th>
-          <th>終了</th>
-          <th>定員</th>
-          <th>メモ</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for item in availabilities %}
-          <tr>
-            <td>{{ item.coach.username }}</td>
-            <td>{{ item.court.name }}</td>
-            <td>{{ item.start_at|date:"Y-m-d H:i" }}</td>
-            <td>{{ item.end_at|date:"Y-m-d H:i" }}</td>
-            <td>{{ item.capacity }}</td>
-            <td>{{ item.note|default:"-" }}</td>
-            <td>
-              <form method="post" action="{% url 'club:coach_availability_delete' item.pk %}">
-                {% csrf_token %}
-                <button type="submit">削除</button>
-              </form>
-            </td>
+    <div style="overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr style="border-bottom:1px solid #eee;">
+            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">コーチ</th>
+            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">コート</th>
+            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">開始</th>
+            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">終了</th>
+            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">定員</th>
+            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">メモ</th>
+            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">操作</th>
           </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {% for availability in availabilities %}
+            <tr style="border-bottom:1px solid #f1f1f1;">
+              <td style="padding:10px 8px; white-space:nowrap;">
+                {% if availability.coach %}
+                  {{ availability.coach }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+
+              <td style="padding:10px 8px; white-space:nowrap;">
+                {% if availability.court %}
+                  {{ availability.court }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+
+              <td style="padding:10px 8px; white-space:nowrap;">
+                {% if availability.start_at %}
+                  {{ availability.start_at|date:"Y-m-d H:i" }}
+                {% elif availability.start %}
+                  {{ availability.start|date:"Y-m-d H:i" }}
+                {% elif availability.date and availability.start_time %}
+                  {{ availability.date|date:"Y-m-d" }} {{ availability.start_time|time:"H:i" }}
+                {% elif availability.date %}
+                  {{ availability.date|date:"Y-m-d" }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+
+              <td style="padding:10px 8px; white-space:nowrap;">
+                {% if availability.end_at %}
+                  {{ availability.end_at|date:"Y-m-d H:i" }}
+                {% elif availability.end %}
+                  {{ availability.end|date:"Y-m-d H:i" }}
+                {% elif availability.date and availability.end_time %}
+                  {{ availability.date|date:"Y-m-d" }} {{ availability.end_time|time:"H:i" }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+
+              <td style="padding:10px 8px; white-space:nowrap;">
+                {% if availability.capacity %}
+                  {{ availability.capacity }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+
+              <td style="padding:10px 8px;">
+                {% if availability.note %}
+                  {{ availability.note }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+
+              <td style="padding:10px 8px; white-space:nowrap;">
+                <a href="{% url 'club:coach_availability_delete' availability.pk %}" class="btn btn-danger">削除</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   {% else %}
-    <p>まだ登録された空き時間はありません。</p>
+    <p class="muted" style="margin:0;">まだ登録された空き時間はありません。</p>
   {% endif %}
 
-  <p style="margin-top:16px;">
-    <a href="{% url 'club:home' %}">ホームへ戻る</a>
-  </p>
+  <div style="margin-top:18px;">
+    <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
+  </div>
 </div>
 {% endblock %}
