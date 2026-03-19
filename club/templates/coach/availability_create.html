@@ -3,56 +3,60 @@
 
 {% block content %}
 <div class="card">
-  <h2>コーチ空き時間登録</h2>
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h1 style="margin:0;">コーチ空き時間登録</h1>
+      <p class="muted" style="margin:8px 0 0;">
+        空き時間を新しく登録します。
+      </p>
+    </div>
+  </div>
+</div>
 
+<div style="height:12px;"></div>
+
+<div class="card">
   <form method="post">
     {% csrf_token %}
-    {{ form.non_field_errors }}
 
-    <div>
-      <label>コーチ</label>
-      {{ form.coach }}
-      {{ form.coach.errors }}
+    {% if form.non_field_errors %}
+      <div class="msg">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+
+    <div class="grid two">
+      {% for field in form %}
+        <div class="field">
+          <label for="{{ field.id_for_label }}">
+            {{ field.label }}
+            {% if field.field.required %}
+              <span class="muted">（必須）</span>
+            {% endif %}
+          </label>
+
+          {{ field }}
+
+          {% if field.help_text %}
+            <div class="muted" style="margin-top:6px; font-size:13px;">
+              {{ field.help_text }}
+            </div>
+          {% endif %}
+
+          {% if field.errors %}
+            <div class="msg" style="margin-top:8px;">
+              {{ field.errors }}
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
     </div>
 
-    <div>
-      <label>コート</label>
-      {{ form.court }}
-      {{ form.court.errors }}
-    </div>
-
-    <div>
-      <label>開始日時</label>
-      {{ form.start_at }}
-      {{ form.start_at.errors }}
-    </div>
-
-    <div>
-      <label>終了日時</label>
-      {{ form.end_at }}
-      {{ form.end_at.errors }}
-    </div>
-
-    <div>
-      <label>定員</label>
-      {{ form.capacity }}
-      {{ form.capacity.errors }}
-    </div>
-
-    <div>
-      <label>メモ</label>
-      {{ form.note }}
-      {{ form.note.errors }}
-    </div>
-
-    <div style="margin-top:16px;">
-      <button type="submit">登録する</button>
-      <a href="{% url 'club:coach_availability_list' %}">戻る</a>
+    <div style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap;">
+      <button type="submit" class="btn btn-primary">登録する</button>
+      <a href="{% url 'club:coach_availability_list' %}" class="btn">一覧へ戻る</a>
+      <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
     </div>
   </form>
-
-  <p style="margin-top:16px; color:#666;">
-    空き時間は1時間単位で登録してください。
-  </p>
 </div>
 {% endblock %}
