@@ -1,78 +1,105 @@
 {% extends "base.html" %}
-{% block title %}LINE連携{% endblock %}
+
+{% block title %}LINE連携 | Tennis Club{% endblock %}
 
 {% block content %}
 <div class="card">
-  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
-    <div>
-      <h1 style="margin:0;">LINE連携</h1>
-      <p class="muted" style="margin:8px 0 0;">
-        LINEアカウントとの連携情報を確認・保存します。
-      </p>
+  <h1>LINE連携</h1>
+
+  <p>
+    この画面では、予約通知・開催通知・中止通知・その他お知らせ用の
+    LINE連携を設定できます。
+  </p>
+
+  {% if line_link and line_link.is_active %}
+    <div style="padding:12px; border:1px solid #cfe8cf; background:#f3fff3; border-radius:8px; margin:16px 0;">
+      <strong>現在の状態:</strong> 連携中<br>
+      <strong>LINE userId:</strong> {{ line_link.line_user_id }}
+    </div>
+  {% elif line_link %}
+    <div style="padding:12px; border:1px solid #f0d9a7; background:#fffaf0; border-radius:8px; margin:16px 0;">
+      <strong>現在の状態:</strong> 連携情報あり（無効）
+    </div>
+  {% else %}
+    <div style="padding:12px; border:1px solid #ddd; background:#fafafa; border-radius:8px; margin:16px 0;">
+      <strong>現在の状態:</strong> 未連携
+    </div>
+  {% endif %}
+
+  <hr style="margin:24px 0;">
+
+  <h2>おすすめの連携方法（今後の本番運用向け）</h2>
+  <ol>
+    <li>LINE公式アカウントを友だち追加します</li>
+    <li>下の「連携コード」をLINEトークにそのまま送信します</li>
+    <li>Webhookで自動的に userId を取得して、このアカウントに紐づけます</li>
+  </ol>
+
+  <div style="padding:16px; border:1px solid #ddd; border-radius:8px; background:#fafafa; margin:16px 0;">
+    <div style="font-weight:bold; margin-bottom:8px;">連携コード</div>
+    <div style="word-break:break-all; font-family:monospace; font-size:14px;">
+      {{ line_link_token }}
     </div>
   </div>
-</div>
 
-<div style="height:12px;"></div>
+  <p style="color:#666;">
+    ※ LINE公式アカウント未取得の間は、下の手動入力でも保存できます。<br>
+    ※ この連携コードは一定期間で無効になります。
+  </p>
 
-<div class="card">
-  {% if line_link %}
-    <div class="msg">
-      すでにLINE連携情報が登録されています。
-    </div>
-  {% else %}
-    <div class="msg">
-      まだLINE連携情報は登録されていません。
-    </div>
-  {% endif %}
+  <hr style="margin:24px 0;">
 
-  {% if form %}
-    <form method="post" style="margin-top:12px;">
-      {% csrf_token %}
+  <h2>手動で line_user_id を保存する</h2>
+  <p>
+    LINE Developers / Messaging API の確認用として、
+    一時的に手入力で line_user_id を保存したい場合はこちらを使ってください。
+  </p>
 
-      {% if form.non_field_errors %}
-        <div class="msg">
-          {{ form.non_field_errors }}
-        </div>
-      {% endif %}
+  <form method="post" action="{% url 'club:line_link' %}" style="margin-top:16px;">
+    {% csrf_token %}
 
-      <div class="grid">
-        {% for field in form %}
-          <div class="field">
-            <label for="{{ field.id_for_label }}">
-              {{ field.label }}
-              {% if field.field.required %}
-                <span class="muted">（必須）</span>
-              {% endif %}
-            </label>
+    {% if manual_form %}
+      {{ manual_form.as_p }}
+    {% else %}
+      <p>
+        <label for="id_line_user_id">line_user_id</label><br>
+        <input type="text" name="line_user_id" id="id_line_user_id" style="width:100%;">
+      </p>
+      <p>
+        <label>
+          <input type="checkbox" name="is_active" checked>
+          有効化する
+        </label>
+      </p>
+    {% endif %}
 
-            {{ field }}
+    <button type="submit">保存する</button>
+  </form>
 
-            {% if field.help_text %}
-              <div class="muted" style="margin-top:6px; font-size:13px;">
-                {{ field.help_text }}
-              </div>
-            {% endif %}
+  <hr style="margin:24px 0;">
 
-            {% if field.errors %}
-              <div class="msg" style="margin-top:8px;">
-                {{ field.errors }}
-              </div>
-            {% endif %}
-          </div>
-        {% endfor %}
-      </div>
+  <h2>連携解除</h2>
+  <form method="post" action="{% url 'club:line_link' %}">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="unlink">
+    <button type="submit" style="background:#fff; border:1px solid #d33; color:#d33; padding:8px 12px; border-radius:6px;">
+      LINE連携を解除する
+    </button>
+  </form>
 
-      <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;">
-        <button type="submit" class="btn btn-primary">保存</button>
-        <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
-      </div>
-    </form>
-  {% else %}
-    <p class="muted">現在、この環境ではLINE連携フォームは未設定です。</p>
-    <div style="margin-top:16px;">
-      <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
-    </div>
-  {% endif %}
+  <hr style="margin:24px 0;">
+
+  <h2>Webhook設定時のURL</h2>
+  <p>
+    LINE Developers 側では、Webhook URL に次を設定します。
+  </p>
+  <div style="padding:16px; border:1px solid #ddd; border-radius:8px; background:#fafafa; margin:16px 0; word-break:break-all; font-family:monospace; font-size:14px;">
+    /line/webhook/
+  </div>
+
+  <p style="color:#666;">
+    実際には Render 本番URLを付けた完全URLを設定してください。<br>
+    例: https://あなたのサービスURL/line/webhook/
+  </p>
 </div>
 {% endblock %}
