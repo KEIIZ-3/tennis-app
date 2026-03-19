@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ログイン | Tennis Club</title>
+  <style>
+    body{
+      margin:0;
+      font-family:sans-serif;
+      background:#f7f7f7;
+      color:#222;
+    }
+
+    .wrap{
+      max-width:480px;
+      margin:0 auto;
+      padding:24px 16px 48px;
+    }
+
+    .card{
+      background:#fff;
+      border:1px solid #e5e7eb;
+      border-radius:12px;
+      padding:20px;
+      box-shadow:0 2px 10px rgba(0,0,0,0.04);
+    }
+
+    h1{
+      font-size:24px;
+      margin:0 0 16px;
+      text-align:center;
+    }
+
+    .lead{
+      margin:0 0 20px;
+      text-align:center;
+      color:#666;
+      font-size:14px;
+    }
+
+    .form-row{
+      margin-bottom:16px;
+    }
+
+    label{
+      display:block;
+      margin-bottom:8px;
+      font-weight:700;
+      font-size:14px;
+    }
+
+    input[type="text"],
+    input[type="password"]{
+      width:100%;
+      box-sizing:border-box;
+      padding:12px;
+      border:1px solid #d1d5db;
+      border-radius:8px;
+      font-size:16px;
+      background:#fff;
+    }
+
+    button{
+      width:100%;
+      border:none;
+      border-radius:8px;
+      padding:12px 16px;
+      font-size:16px;
+      font-weight:700;
+      cursor:pointer;
+      background:#111827;
+      color:#fff;
+    }
+
+    .errorlist{
+      margin:8px 0 0;
+      padding-left:18px;
+      color:#dc2626;
+      font-size:14px;
+    }
+
+    .non-field-errors{
+      margin:0 0 16px;
+      padding:12px;
+      border-radius:8px;
+      background:#fef2f2;
+      color:#b91c1c;
+      font-size:14px;
+    }
+
+    .help{
+      margin-top:16px;
+      text-align:center;
+      font-size:13px;
+      color:#666;
+    }
+
+    .messages{
+      margin-bottom:16px;
+      padding:0;
+      list-style:none;
+    }
+
+    .messages li{
+      padding:12px;
+      border-radius:8px;
+      margin-bottom:8px;
+      background:#eff6ff;
+      color:#1d4ed8;
+      font-size:14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>ログイン</h1>
+      <p class="lead">Tennis Club 予約システム</p>
+
+      {% if messages %}
+        <ul class="messages">
+          {% for message in messages %}
+            <li>{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+      {% if form.non_field_errors %}
+        <div class="non-field-errors">
+          {{ form.non_field_errors }}
+        </div>
+      {% endif %}
+
+      <form method="post">
+        {% csrf_token %}
+
+        <div class="form-row">
+          <label for="{{ form.username.id_for_label }}">ユーザー名</label>
+          {{ form.username }}
+          {{ form.username.errors }}
+        </div>
+
+        <div class="form-row">
+          <label for="{{ form.password.id_for_label }}">パスワード</label>
+          {{ form.password }}
+          {{ form.password.errors }}
+        </div>
+
+        <button type="submit">ログイン</button>
+      </form>
+
+      <div class="help">
+        ログイン後、ホーム画面へ移動します。
+      </div>
+    </div>
+  </div>
+</body>
+</html>
