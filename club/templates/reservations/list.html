@@ -3,46 +3,96 @@
 
 {% block content %}
 <div class="card">
-  <h2>予約一覧</h2>
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h1 style="margin:0;">予約一覧</h1>
+      <p class="muted" style="margin:8px 0 0;">
+        登録されている予約を確認できます。
+      </p>
+    </div>
 
+    <div>
+      <a href="{% url 'club:reservation_create' %}" class="btn btn-primary">新規予約</a>
+    </div>
+  </div>
+</div>
+
+<div style="height:12px;"></div>
+
+<div class="card">
   {% if reservations %}
-    <table>
-      <thead>
-        <tr>
-          <th>日時</th>
-          <th>コーチ</th>
-          <th>コート</th>
-          <th>状態</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for reservation in reservations %}
-          <tr>
-            <td>{{ reservation.start_at|date:"Y-m-d H:i" }} - {{ reservation.end_at|date:"H:i" }}</td>
-            <td>{{ reservation.coach.username }}</td>
-            <td>{{ reservation.court.name }}</td>
-            <td>{{ reservation.status }}</td>
-            <td>
-              {% if reservation.status == "active" %}
-                <form method="post" action="{% url 'club:reservation_cancel' reservation.pk %}">
-                  {% csrf_token %}
-                  <button type="submit">キャンセル</button>
-                </form>
-              {% else %}
-                -
-              {% endif %}
-            </td>
+    <div style="overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr style="border-bottom:1px solid #eee;">
+            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">日時</th>
+            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">コーチ</th>
+            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">コート</th>
+            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">状態</th>
+            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">操作</th>
           </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {% for reservation in reservations %}
+            <tr style="border-bottom:1px solid #f1f1f1;">
+              <td style="padding:10px 8px; white-space:nowrap;">
+                {% if reservation.start_at and reservation.end_at %}
+                  {{ reservation.start_at|date:"Y-m-d H:i" }} - {{ reservation.end_at|date:"H:i" }}
+                {% elif reservation.start and reservation.end %}
+                  {{ reservation.start|date:"Y-m-d H:i" }} - {{ reservation.end|date:"H:i" }}
+                {% elif reservation.date and reservation.start_time and reservation.end_time %}
+                  {{ reservation.date|date:"Y-m-d" }} {{ reservation.start_time|time:"H:i" }} - {{ reservation.end_time|time:"H:i" }}
+                {% elif reservation.date and reservation.start_time %}
+                  {{ reservation.date|date:"Y-m-d" }} {{ reservation.start_time|time:"H:i" }}
+                {% elif reservation.start_at %}
+                  {{ reservation.start_at }}
+                {% elif reservation.start %}
+                  {{ reservation.start }}
+                {% elif reservation.date %}
+                  {{ reservation.date }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+
+              <td style="padding:10px 8px; white-space:nowrap;">
+                {% if reservation.coach %}
+                  {{ reservation.coach }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+
+              <td style="padding:10px 8px; white-space:nowrap;">
+                {% if reservation.court %}
+                  {{ reservation.court }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+
+              <td style="padding:10px 8px; white-space:nowrap;">
+                {% if reservation.status %}
+                  {{ reservation.status }}
+                {% else %}
+                  有効
+                {% endif %}
+              </td>
+
+              <td style="padding:10px 8px; white-space:nowrap;">
+                <a href="{% url 'club:reservation_cancel' reservation.pk %}" class="btn btn-danger">キャンセル</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   {% else %}
-    <p>予約はまだありません。</p>
+    <p class="muted" style="margin:0;">予約はまだありません。</p>
   {% endif %}
 
-  <p style="margin-top:16px;">
-    <a href="{% url 'club:home' %}">ホームへ戻る</a>
-  </p>
+  <div style="margin-top:18px;">
+    <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
+  </div>
 </div>
 {% endblock %}
