@@ -2,7 +2,7 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
-from .models import CoachAvailability, Court, Reservation
+from .models import CoachAvailability, Court, Reservation, LineAccountLink
 
 User = get_user_model()
 
@@ -104,3 +104,18 @@ class ReservationCreateForm(forms.ModelForm):
         if timezone.is_naive(value):
             value = timezone.make_aware(value)
         return value.replace(minute=0, second=0, microsecond=0)
+
+
+class LineAccountLinkForm(forms.ModelForm):
+    class Meta:
+        model = LineAccountLink
+        fields = ["line_user_id", "is_active"]
+        widgets = {
+            "line_user_id": forms.TextInput(
+                attrs={"placeholder": "LINE userId を入力"}
+            ),
+        }
+
+
+# views.py との互換用
+ReservationForm = ReservationCreateForm
