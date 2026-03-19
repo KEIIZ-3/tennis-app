@@ -2,148 +2,251 @@ import base64
 import hashlib
 import hmac
 import json
-import logging
 import os
-from urllib import request
+import urllib.error
+import urllib.request
 
-from django.core.mail import send_mail
-
-logger = logging.getLogger(__name__)
-
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
-LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "")
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@example.com")
+from django.apps import apps
 
 
-def send_email_notification(subject: str, message: str, recipient_list):
-    if not recipient_list:
-        return False
+LINE_PUSH_API_URL = "https://api.line.me/v2/bot/message/push"
+LINE_REPLY_API_URL = "https://api.line.me/v2/bot/message/reply"
+
+
+def _get_env(name: str, default: str = "") -> str:
+    return (os.environ.get(name) or default).strip()
+
+
+def _get_channel_access_token() -> str:
+    return _get_env("LINE_CHANNEL_ACCESS_TOKEN")
+
+
+def _get_channel_secret() -> str:
+    return _get_env("LINE_CHANNEL_SECRET")
+
+
+def _line_request(url: str, payload: dict) -> tuple[bool, str]:
+    token = _get_channel_access_token()
+    if not token:
+        return False, "LINE_CHANNEL_ACCESS_TOKEN is not set."
+
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url=url,
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+        },
+        method="POST",
+    )
 
     try:
-        send_mail(
-            subject=subject,
-            message=message,
-            from_email=DEFAULT_FROM_EMAIL,
-            recipient_list=recipient_list,
-            fail_silently=False,
-        )
-        return True
-    except Exception:
-        logger.exception("Email notification failed")
-        return False
+        with urllib.request.urlopen(req, timeout=10) as res:
+            body = res.read().decode("utf-8", errors="ignore")
+            return True, body
+    except urllib.error.HTTPError as e:
+        try:
+            error_body = e.read().decode("utf-8", errors="ignore")
+        except Exception:
+            error_body = str(e)
+        return False, error_body
+    except Exception as e:
+        return False, str(e)
 
 
-def send_line_push(line_user_id, text):
-    if not LINE_CHANNEL_ACCESS_TOKEN or not line_user_id:
-        return False
+def send_line_push(line_user_id: str, message: str) -> tuple[bool, str]:
+    """
+    LINE Push API で1ユーザーへ送信。
+    環境変数未設定でも落とさず False を返す。
+    """
+    if not line_user_id:
+        return False, "line_user_id is empty."
 
-    url = "https://api.line.me/v2/bot/message/push"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
-    }
     payload = {
         "to": line_user_id,
         "messages": [
             {
                 "type": "text",
-                "text": text[:5000],
+                "text": message,
             }
         ],
     }
+    return _line_request(LINE_PUSH_API_URL, payload)
 
-    req = request.Request(
-        url=url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers=headers,
-        method="POST",
-    )
 
-    try:
-        with request.urlopen(req, timeout=10) as resp:
-            return 200 <= resp.status < 300
-    except Exception:
-        logger.exception("LINE push failed")
+def send_line_reply(reply_token: str, message: str) -> tuple[bool, str]:
+    """
+    Webhookイベントへの即時返信。
+    replyToken が無い / 環境変数未設定でも落とさず False を返す。
+    """
+    if not reply_token:
+        return False, "reply_token is empty."
+
+    payload = {
+        "replyToken": reply_token,
+        "messages": [
+            {
+                "type": "text",
+                "text": message,
+            }
+        ],
+    }
+    return _line_request(LINE_REPLY_API_URL, payload)
+
+
+def verify_line_signature(body: bytes, signature: str) -> bool:
+    """
+    LINE Webhook署名検証。
+    secret未設定時は False を返す。
+    """
+    secret = _get_channel_secret()
+    if not secret:
         return False
 
-
-def verify_line_signature(body, signature):
-    if not LINE_CHANNEL_SECRET or not signature:
-        return False
+    if not isinstance(body, (bytes, bytearray)):
+        body = (body or "").encode("utf-8")
 
     digest = hmac.new(
-        LINE_CHANNEL_SECRET.encode("utf-8"),
+        secret.encode("utf-8"),
         body,
         hashlib.sha256,
     ).digest()
-    expected = base64.b64encode(digest).decode("utf-8")
-    return hmac.compare_digest(expected, signature)
+    expected_signature = base64.b64encode(digest).decode("utf-8")
+    return hmac.compare_digest(expected_signature, signature or "")
 
 
-def notify_user(user, subject, message):
-    result = {"line": False, "email": False}
+def _get_line_account_link_model():
+    try:
+        return apps.get_model("club", "LineAccountLink")
+    except Exception:
+        return None
+
+
+def _get_user_display(user) -> str:
+    if not user:
+        return "ユーザー"
+
+    for attr in ("get_full_name",):
+        if hasattr(user, attr):
+            try:
+                value = getattr(user, attr)()
+                if value:
+                    return str(value)
+            except Exception:
+                pass
+
+    for attr in ("full_name", "name", "username", "email"):
+        value = getattr(user, attr, None)
+        if value:
+            return str(value)
+
+    return "ユーザー"
+
+
+def notify_user(user, message: str) -> tuple[bool, str]:
+    """
+    Djangoユーザーに紐づく LineAccountLink を見て通知。
+    LINE未設定・未連携でも落とさず False を返す。
+    """
+    if not user or not message:
+        return False, "user or message is empty."
+
+    LineAccountLink = _get_line_account_link_model()
+    if LineAccountLink is None:
+        return False, "LineAccountLink model not found."
 
     try:
-        link = getattr(user, "line_link", None)
-        if link and getattr(link, "is_active", False):
-            result["line"] = send_line_push(getattr(link, "line_user_id", ""), message)
+        link = LineAccountLink.objects.filter(user=user, is_active=True).first()
+    except Exception as e:
+        return False, f"failed to lookup LineAccountLink: {e}"
+
+    if not link:
+        return False, "active LineAccountLink not found."
+
+    line_user_id = getattr(link, "line_user_id", "") or ""
+    if not line_user_id:
+        return False, "line_user_id is empty."
+
+    return send_line_push(line_user_id=line_user_id, message=message)
+
+
+def _fmt_dt(value) -> str:
+    if not value:
+        return "未設定"
+    try:
+        return value.strftime("%Y-%m-%d %H:%M")
     except Exception:
-        logger.exception("LINE notify failed")
-
-    email = getattr(user, "email", "")
-    if email:
-        result["email"] = send_email_notification(subject, message, [email])
-
-    return result
+        return str(value)
 
 
-def build_reservation_created_message(reservation):
-    start_at = getattr(reservation, "start_at", None)
-    end_at = getattr(reservation, "end_at", None)
-    coach = getattr(reservation, "coach", None)
-    court = getattr(reservation, "court", None)
-
-    subject = "【テニスクラブ】予約完了"
-    message = "予約が完了しました。\n"
-
-    if start_at:
-        message += f"日時: {start_at:%Y-%m-%d %H:%M}"
-        if end_at:
-            message += f" - {end_at:%H:%M}"
-        message += "\n"
-
-    if coach is not None:
-        coach_name = getattr(coach, "username", str(coach))
-        message += f"コーチ: {coach_name}\n"
-
-    if court is not None:
-        court_name = getattr(court, "name", str(court))
-        message += f"コート: {court_name}\n"
-
-    return subject, message
+def _pick_first_attr(obj, names, default=""):
+    for name in names:
+        value = getattr(obj, name, None)
+        if value not in (None, ""):
+            return value
+    return default
 
 
-def build_reservation_canceled_message(reservation):
-    start_at = getattr(reservation, "start_at", None)
-    end_at = getattr(reservation, "end_at", None)
-    coach = getattr(reservation, "coach", None)
-    court = getattr(reservation, "court", None)
+def build_reservation_created_message(reservation) -> str:
+    user = _pick_first_attr(reservation, ["user", "customer", "member", "owner"], None)
+    coach = _pick_first_attr(reservation, ["coach"], None)
+    court = _pick_first_attr(reservation, ["court"], None)
+    start_at = _pick_first_attr(reservation, ["start_at", "start", "starts_at"], None)
+    end_at = _pick_first_attr(reservation, ["end_at", "end", "ends_at"], None)
+    availability = _pick_first_attr(reservation, ["coach_availability", "availability"], None)
 
-    subject = "【テニスクラブ】予約キャンセル完了"
-    message = "予約キャンセルを受け付けました。\n"
+    if not start_at and availability is not None:
+        start_at = _pick_first_attr(availability, ["start_at", "start", "starts_at"], None)
+    if not end_at and availability is not None:
+        end_at = _pick_first_attr(availability, ["end_at", "end", "ends_at"], None)
+    if coach is None and availability is not None:
+        coach = _pick_first_attr(availability, ["coach"], None)
+    if court is None and availability is not None:
+        court = _pick_first_attr(availability, ["court"], None)
 
-    if start_at:
-        message += f"日時: {start_at:%Y-%m-%d %H:%M}"
-        if end_at:
-            message += f" - {end_at:%H:%M}"
-        message += "\n"
+    user_name = _get_user_display(user)
+    coach_name = str(coach) if coach else "未設定"
+    court_name = str(court) if court else "未設定"
 
-    if coach is not None:
-        coach_name = getattr(coach, "username", str(coach))
-        message += f"コーチ: {coach_name}\n"
+    return (
+        "【予約完了】\n"
+        f"ご予約を受け付けました。\n\n"
+        f"利用者: {user_name}\n"
+        f"コーチ: {coach_name}\n"
+        f"コート: {court_name}\n"
+        f"開始: {_fmt_dt(start_at)}\n"
+        f"終了: {_fmt_dt(end_at)}"
+    )
 
-    if court is not None:
-        court_name = getattr(court, "name", str(court))
-        message += f"コート: {court_name}\n"
 
-    return subject, message
+def build_reservation_canceled_message(reservation) -> str:
+    user = _pick_first_attr(reservation, ["user", "customer", "member", "owner"], None)
+    coach = _pick_first_attr(reservation, ["coach"], None)
+    court = _pick_first_attr(reservation, ["court"], None)
+    start_at = _pick_first_attr(reservation, ["start_at", "start", "starts_at"], None)
+    end_at = _pick_first_attr(reservation, ["end_at", "end", "ends_at"], None)
+    availability = _pick_first_attr(reservation, ["coach_availability", "availability"], None)
+
+    if not start_at and availability is not None:
+        start_at = _pick_first_attr(availability, ["start_at", "start", "starts_at"], None)
+    if not end_at and availability is not None:
+        end_at = _pick_first_attr(availability, ["end_at", "end", "ends_at"], None)
+    if coach is None and availability is not None:
+        coach = _pick_first_attr(availability, ["coach"], None)
+    if court is None and availability is not None:
+        court = _pick_first_attr(availability, ["court"], None)
+
+    user_name = _get_user_display(user)
+    coach_name = str(coach) if coach else "未設定"
+    court_name = str(court) if court else "未設定"
+
+    return (
+        "【予約キャンセル】\n"
+        f"ご予約をキャンセルしました。\n\n"
+        f"利用者: {user_name}\n"
+        f"コーチ: {coach_name}\n"
+        f"コート: {court_name}\n"
+        f"開始: {_fmt_dt(start_at)}\n"
+        f"終了: {_fmt_dt(end_at)}"
+    )
