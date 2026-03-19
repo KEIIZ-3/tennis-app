@@ -1,3 +1,4 @@
+cat > club/urls.py <<'PY'
 from django.urls import path
 
 from . import views
@@ -27,3 +28,4 @@ urlpatterns = [
     path("line/connect/", views.line_connect_view, name="line_connect"),
     path("line/webhook/", views.line_webhook, name="line_webhook"),
 ]
+PY
