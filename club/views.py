@@ -1,79 +1,239 @@
-import json
-import os
-from datetime import datetime, timedelta
-from urllib.parse import urlencode
+from datetime import datetime, timedelta, time
 
+from django import forms as django_forms
 from django.contrib import messages
-from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.contrib.auth.forms import AuthenticationForm
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import select_template
 from django.urls import reverse
 from django.utils import timezone
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET
 
-from .forms import CoachAvailabilityForm, LoginForm, ReservationCreateForm
-from .models import CoachAvailability, LineAccountLink, Reservation
-from .services.notifications import (
-    build_reservation_canceled_message,
-    build_reservation_created_message,
-    notify_user,
-    verify_line_signature,
-)
+from . import forms as club_forms
+from . import models as club_models
+
 
 User = get_user_model()
 
 
-def _is_coach_or_admin(user):
-    return user.is_authenticated and (user.is_superuser or getattr(user, "role", "") == "coach")
+Reservation = getattr(club_models, "Reservation", None)
+CoachAvailability = getattr(club_models, "CoachAvailability", None)
+LineAccountLink = getattr(club_models, "LineAccountLink", None)
+
+ReservationForm = getattr(club_forms, "ReservationForm", None)
+CoachAvailabilityForm = getattr(club_forms, "CoachAvailabilityForm", None)
+LineAccountLinkForm = getattr(club_forms, "LineAccountLinkForm", None)
 
 
-def _color_for_coach(coach_id):
-    palette = [
-        "#2563eb",
-        "#16a34a",
-        "#7c3aed",
-        "#ea580c",
-        "#0891b2",
-        "#db2777",
-        "#4f46e5",
-        "#65a30d",
-    ]
-    return palette[coach_id % len(palette)]
+def _pick_template(*template_names):
+    return select_template(template_names).template.name
 
 
-def _parse_iso_datetime(value):
-    if not value:
+def _first_attr(obj, names, default=None):
+    for name in names:
+        if hasattr(obj, name):
+            value = getattr(obj, name)
+            if value is not None:
+                return value
+    return default
+
+
+def _normalize_dt(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if timezone.is_naive(value):
+            return timezone.make_aware(value, timezone.get_current_timezone())
+        return value
+    return None
+
+
+def _combine_date_time(date_value, time_value):
+    if date_value is None:
         return None
 
-    value = value.replace("Z", "+00:00")
-    dt = datetime.fromisoformat(value)
+    if time_value is None:
+        time_value = time(0, 0)
+
+    dt = datetime.combine(date_value, time_value)
     if timezone.is_naive(dt):
-        dt = timezone.make_aware(dt)
+        dt = timezone.make_aware(dt, timezone.get_current_timezone())
     return dt
 
 
-def _hour_slots(start_at, end_at):
-    current = start_at
-    while current < end_at:
-        next_time = current + timedelta(hours=1)
-        yield current, next_time
-        current = next_time
+def _extract_start_end(obj):
+    start_dt = _normalize_dt(
+        _first_attr(
+            obj,
+            [
+                "start",
+                "start_at",
+                "starts_at",
+                "start_datetime",
+                "start_dt",
+            ],
+        )
+    )
+    end_dt = _normalize_dt(
+        _first_attr(
+            obj,
+            [
+                "end",
+                "end_at",
+                "ends_at",
+                "end_datetime",
+                "end_dt",
+            ],
+        )
+    )
+
+    if start_dt is None:
+        date_value = _first_attr(obj, ["date", "day"])
+        start_time_value = _first_attr(obj, ["start_time", "from_time", "time"])
+        start_dt = _combine_date_time(date_value, start_time_value)
+
+    if end_dt is None:
+        date_value = _first_attr(obj, ["date", "day"])
+        end_time_value = _first_attr(obj, ["end_time", "to_time"])
+        if date_value is not None and end_time_value is not None:
+            end_dt = _combine_date_time(date_value, end_time_value)
+
+    if start_dt is not None and end_dt is None:
+        end_dt = start_dt + timedelta(hours=1)
+
+    return start_dt, end_dt
 
 
-def home(request):
-    if not request.user.is_authenticated:
-        return redirect("club:login")
+def _get_user_role(user):
+    return getattr(user, "role", None)
 
-    coaches = User.objects.filter(role="coach").order_by("username")
-    return render(
-        request,
+
+def _is_coach(user):
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser or user.is_staff:
+        return True
+    return _get_user_role(user) == "coach"
+
+
+def _get_coaches():
+    role_field_available = hasattr(User, "role")
+    if role_field_available:
+        return User.objects.filter(role="coach").order_by("id")
+    return User.objects.filter(is_staff=True).order_by("id")
+
+
+def _get_object_coach_id(obj):
+    coach_obj = _first_attr(obj, ["coach"])
+    if coach_obj is not None and hasattr(coach_obj, "pk"):
+        return coach_obj.pk
+
+    coach_id = _first_attr(obj, ["coach_id"])
+    if coach_id is not None:
+        return coach_id
+
+    return None
+
+
+def _get_object_coach_name(obj):
+    coach_obj = _first_attr(obj, ["coach"])
+    if coach_obj is not None:
+        full_name = ""
+        if hasattr(coach_obj, "get_full_name"):
+            full_name = coach_obj.get_full_name() or ""
+        if full_name:
+            return full_name
+        return getattr(coach_obj, "username", str(coach_obj))
+
+    return ""
+
+
+def _get_reservation_owner(obj):
+    return _first_attr(obj, ["user", "member", "customer", "created_by"])
+
+
+def _filter_by_coach(iterable, coach_id):
+    if not coach_id:
+        return list(iterable)
+
+    result = []
+    for obj in iterable:
+        obj_coach_id = _get_object_coach_id(obj)
+        if str(obj_coach_id) == str(coach_id):
+            result.append(obj)
+    return result
+
+
+def _safe_queryset_all(model_class):
+    if model_class is None:
+        return []
+    try:
+        return list(model_class.objects.all())
+    except Exception:
+        return []
+
+
+def _build_reserve_url(coach_id, start_dt):
+    url = reverse("club:reservation_create")
+    params = []
+    if coach_id:
+        params.append(f"coach_id={coach_id}")
+    if start_dt:
+        params.append(f"start={start_dt.isoformat()}")
+    if params:
+        return f"{url}?{'&'.join(params)}"
+    return url
+
+
+def _home_template_name():
+    return _pick_template(
         "home.html",
-        {
-            "coaches": coaches,
-            "is_coach_or_admin": _is_coach_or_admin(request.user),
-        },
+        "club/home.html",
+    )
+
+
+def _reservation_create_template_name():
+    return _pick_template(
+        "reservations/reservation_create.html",
+        "reservations/new.html",
+        "reservation_create.html",
+        "club/reservation_create.html",
+    )
+
+
+def _reservation_list_template_name():
+    return _pick_template(
+        "reservations/reservation_list.html",
+        "reservation_list.html",
+        "club/reservation_list.html",
+    )
+
+
+def _coach_availability_list_template_name():
+    return _pick_template(
+        "coach/availability_list.html",
+        "availability_list.html",
+        "club/availability_list.html",
+    )
+
+
+def _coach_availability_create_template_name():
+    return _pick_template(
+        "coach/availability_create.html",
+        "availability_create.html",
+        "club/availability_create.html",
+    )
+
+
+def _line_link_template_name():
+    return _pick_template(
+        "line/link.html",
+        "line/link_page.html",
+        "line_link.html",
+        "club/line_link.html",
     )
 
 
@@ -81,150 +241,113 @@ def login_view(request):
     if request.user.is_authenticated:
         return redirect("club:home")
 
-    form = LoginForm(request.POST or None)
-    error = None
-
-    if request.method == "POST":
-        if form.is_valid():
-            username = form.cleaned_data["username"]
-            password = form.cleaned_data["password"]
-        else:
-            username = request.POST.get("username", "")
-            password = request.POST.get("password", "")
-
-        user = authenticate(request, username=username, password=password)
-        if user is not None:
-            login(request, user)
-            return redirect("club:home")
-
-        error = "ログインに失敗しました。"
-        messages.error(request, error)
+    form = AuthenticationForm(request, data=request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        login(request, form.get_user())
+        return redirect("club:home")
 
     return render(
         request,
-        "login.html",
-        {
-            "form": form,
-            "error": error,
-        },
+        "registration/login.html" if "registration/login.html" else "registration/login.html",
+        {"form": form},
     )
 
 
-@login_required
 def logout_view(request):
     logout(request)
     return redirect("club:login")
+
+
+@login_required
+def home(request):
+    coaches = _get_coaches()
+    selected_coach = request.GET.get("coach") or request.GET.get("coach_id") or ""
+
+    context = {
+        "coaches": coaches,
+        "selected_coach": str(selected_coach),
+        "line_link_url": reverse("club:line_link"),
+        "calendar_events_url": reverse("club:calendar_events"),
+        "calendar_events_legacy_url": reverse("club:calendar_events_legacy"),
+    }
+    return render(request, _home_template_name(), context)
 
 
 def healthz(request):
     return HttpResponse("ok")
 
 
-@login_required
 @require_GET
+@login_required
 def calendar_events(request):
-    start = _parse_iso_datetime(request.GET.get("start"))
-    end = _parse_iso_datetime(request.GET.get("end"))
-    coach_filter = request.GET.get("coach") or request.GET.get("coach_id") or "all"
+    coach_id = request.GET.get("coach_id") or request.GET.get("coach")
 
-    if not start or not end:
-        return JsonResponse([], safe=False)
-
-    availabilities = CoachAvailability.objects.select_related("coach", "court").filter(
-        start_at__lt=end,
-        end_at__gt=start,
-    )
-
-    if coach_filter != "all":
-        availabilities = availabilities.filter(coach_id=coach_filter)
-
-    active_reservations = Reservation.objects.select_related("user", "coach", "court").filter(
-        status=Reservation.STATUS_ACTIVE,
-        start_at__lt=end,
-        end_at__gt=start,
-    )
-
-    reservation_count_map = {}
-    for reservation in active_reservations:
-        key = (reservation.coach_id, reservation.court_id, reservation.start_at, reservation.end_at)
-        reservation_count_map[key] = reservation_count_map.get(key, 0) + 1
-
-    my_reservations = active_reservations.filter(user=request.user)
+    availability_objects = _filter_by_coach(_safe_queryset_all(CoachAvailability), coach_id)
+    reservation_objects = _filter_by_coach(_safe_queryset_all(Reservation), coach_id)
 
     events = []
 
-    for availability in availabilities:
-        base_color = _color_for_coach(availability.coach_id)
+    for obj in availability_objects:
+        start_dt, end_dt = _extract_start_end(obj)
+        if start_dt is None:
+            continue
 
-        for slot_start, slot_end in _hour_slots(availability.start_at, availability.end_at):
-            if slot_end <= start or slot_start >= end:
-                continue
+        obj_coach_id = _get_object_coach_id(obj)
+        coach_name = _get_object_coach_name(obj)
 
-            count = reservation_count_map.get(
-                (availability.coach_id, availability.court_id, slot_start, slot_end),
-                0,
-            )
-            status_label = "満員" if count >= availability.capacity else "空き"
-
-            params = urlencode(
-                {
-                    "coach": availability.coach_id,
-                    "court": availability.court_id,
-                    "start_at": slot_start.isoformat(),
-                    "end_at": slot_end.isoformat(),
-                }
-            )
-
-            title = (
-                f"{availability.coach.username}\n"
-                f"{availability.court.name}\n"
-                f"{status_label} {count}/{availability.capacity}"
-            )
-
-            background = "#dc2626" if status_label == "満員" else base_color
-
-            events.append(
-                {
-                    "id": f"slot-{availability.id}-{slot_start.isoformat()}",
-                    "title": title,
-                    "start": slot_start.isoformat(),
-                    "end": slot_end.isoformat(),
-                    "backgroundColor": background,
-                    "borderColor": background,
-                    "textColor": "#ffffff",
-                    "extendedProps": {
-                        "eventType": "availability_slot",
-                        "coachId": availability.coach_id,
-                        "coachName": availability.coach.username,
-                        "courtId": availability.court_id,
-                        "courtName": availability.court.name,
-                        "capacity": availability.capacity,
-                        "reservedCount": count,
-                        "statusLabel": status_label,
-                        "note": availability.note,
-                        "bookable": status_label == "空き",
-                        "reservationUrl": f"{reverse('club:reservation_create')}?{params}",
-                    },
-                }
-            )
-
-    for reservation in my_reservations:
         events.append(
             {
-                "id": f"my-reservation-{reservation.id}",
-                "title": f"あなたの予約\n{reservation.coach.username}\n{reservation.court.name}",
-                "start": reservation.start_at.isoformat(),
-                "end": reservation.end_at.isoformat(),
-                "backgroundColor": "#1d4ed8",
-                "borderColor": "#1d4ed8",
+                "id": f"availability-{getattr(obj, 'pk', id(obj))}",
+                "title": "空き" if not coach_name else f"空き（{coach_name}）",
+                "start": start_dt.isoformat(),
+                "end": end_dt.isoformat() if end_dt else None,
+                "backgroundColor": "#22c55e",
+                "borderColor": "#22c55e",
                 "textColor": "#ffffff",
+                "display": "block",
                 "extendedProps": {
-                    "eventType": "my_reservation",
-                    "coachName": reservation.coach.username,
-                    "courtName": reservation.court.name,
-                    "statusLabel": "予約済み",
-                    "reservationId": reservation.id,
-                    "cancelUrl": reverse("club:reservation_cancel", args=[reservation.id]),
+                    "kind": "availability",
+                    "coach_id": obj_coach_id,
+                    "coach_name": coach_name,
+                    "reserve_url": _build_reserve_url(obj_coach_id, start_dt),
+                },
+            }
+        )
+
+    for obj in reservation_objects:
+        start_dt, end_dt = _extract_start_end(obj)
+        if start_dt is None:
+            continue
+
+        owner = _get_reservation_owner(obj)
+        is_mine = bool(owner and request.user.is_authenticated and getattr(owner, "pk", None) == request.user.pk)
+
+        title = "あなたの予約" if is_mine else "予約済み"
+        bg = "#3b82f6" if is_mine else "#ef4444"
+
+        cancel_url = None
+        if is_mine:
+            try:
+                cancel_url = reverse("club:reservation_cancel", kwargs={"pk": obj.pk})
+            except Exception:
+                cancel_url = None
+
+        events.append(
+            {
+                "id": f"reservation-{getattr(obj, 'pk', id(obj))}",
+                "title": title,
+                "start": start_dt.isoformat(),
+                "end": end_dt.isoformat() if end_dt else None,
+                "backgroundColor": bg,
+                "borderColor": bg,
+                "textColor": "#ffffff",
+                "display": "block",
+                "extendedProps": {
+                    "kind": "reservation",
+                    "coach_id": _get_object_coach_id(obj),
+                    "coach_name": _get_object_coach_name(obj),
+                    "is_mine": is_mine,
+                    "cancel_url": cancel_url,
                 },
             }
         )
@@ -234,216 +357,250 @@ def calendar_events(request):
 
 @login_required
 def reservation_create(request):
-    initial = {}
+    if Reservation is None or ReservationForm is None:
+        raise Http404("Reservation feature is not available.")
 
-    coach_id = request.GET.get("coach")
-    court_id = request.GET.get("court")
-    start_at = request.GET.get("start_at")
-    end_at = request.GET.get("end_at")
+    initial = {}
+    coach_id = request.GET.get("coach_id") or request.GET.get("coach")
+    start_value = request.GET.get("start")
 
     if coach_id:
         initial["coach"] = coach_id
-    if court_id:
-        initial["court"] = court_id
-    if start_at:
-        initial["start_at"] = _parse_iso_datetime(start_at)
-    if end_at:
-        initial["end_at"] = _parse_iso_datetime(end_at)
 
-    if request.method == "POST":
-        form = ReservationCreateForm(request.POST, request_user=request.user)
-        if form.is_valid():
-            reservation = form.save(commit=False)
+    if start_value:
+        try:
+            parsed = datetime.fromisoformat(start_value)
+            if timezone.is_naive(parsed):
+                parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+
+            if "start_at" in getattr(ReservationForm, "base_fields", {}):
+                initial["start_at"] = parsed
+            elif "start" in getattr(ReservationForm, "base_fields", {}):
+                initial["start"] = parsed
+            elif "date" in getattr(ReservationForm, "base_fields", {}):
+                initial["date"] = parsed.date()
+                if "start_time" in getattr(ReservationForm, "base_fields", {}):
+                    initial["start_time"] = parsed.time().replace(second=0, microsecond=0)
+                if "end_time" in getattr(ReservationForm, "base_fields", {}):
+                    initial["end_time"] = (parsed + timedelta(hours=1)).time().replace(second=0, microsecond=0)
+        except Exception:
+            pass
+
+    form = ReservationForm(request.POST or None, initial=initial)
+
+    if request.method == "POST" and form.is_valid():
+        reservation = form.save(commit=False)
+
+        if hasattr(reservation, "user_id") and not getattr(reservation, "user_id", None):
             reservation.user = request.user
-            reservation.save()
+        elif hasattr(reservation, "member_id") and not getattr(reservation, "member_id", None):
+            reservation.member = request.user
+        elif hasattr(reservation, "customer_id") and not getattr(reservation, "customer_id", None):
+            reservation.customer = request.user
+        elif hasattr(reservation, "created_by_id") and not getattr(reservation, "created_by_id", None):
+            reservation.created_by = request.user
 
-            subject, message_text = build_reservation_created_message(reservation)
-            notify_user(request.user, subject, message_text)
+        reservation.save()
+        messages.success(request, "予約を作成しました。")
+        return redirect("club:reservation_list")
 
-            if reservation.coach != request.user:
-                notify_user(
-                    reservation.coach,
-                    "【テニスクラブ】新しい予約が入りました",
-                    message_text,
-                )
-
-            messages.success(request, "予約を作成しました。")
-            return redirect("club:reservation_list")
-    else:
-        form = ReservationCreateForm(initial=initial, request_user=request.user)
-
-    return render(request, "reservations/create.html", {"form": form})
+    return render(
+        request,
+        _reservation_create_template_name(),
+        {
+            "form": form,
+        },
+    )
 
 
 @login_required
 def reservation_list(request):
-    reservations = Reservation.objects.select_related("coach", "court").filter(
-        user=request.user
-    ).order_by("-start_at")
-    return render(request, "reservations/list.html", {"reservations": reservations})
+    if Reservation is None:
+        raise Http404("Reservation feature is not available.")
+
+    qs = Reservation.objects.all().order_by("-id")
+
+    if not (request.user.is_superuser or request.user.is_staff or _is_coach(request.user)):
+        if hasattr(Reservation, "user"):
+            qs = qs.filter(user=request.user)
+        elif hasattr(Reservation, "member"):
+            qs = qs.filter(member=request.user)
+        elif hasattr(Reservation, "customer"):
+            qs = qs.filter(customer=request.user)
+        elif hasattr(Reservation, "created_by"):
+            qs = qs.filter(created_by=request.user)
+
+    return render(
+        request,
+        _reservation_list_template_name(),
+        {
+            "reservations": qs,
+        },
+    )
 
 
 @login_required
-@require_POST
 def reservation_cancel(request, pk):
-    reservation = get_object_or_404(
-        Reservation.objects.select_related("coach", "court"),
-        pk=pk,
-        user=request.user,
-        status=Reservation.STATUS_ACTIVE,
+    if Reservation is None:
+        raise Http404("Reservation feature is not available.")
+
+    reservation = get_object_or_404(Reservation, pk=pk)
+
+    owner = _get_reservation_owner(reservation)
+    can_manage = (
+        request.user.is_superuser
+        or request.user.is_staff
+        or _is_coach(request.user)
+        or (owner is not None and getattr(owner, "pk", None) == request.user.pk)
     )
 
-    reservation.status = Reservation.STATUS_CANCELED
-    reservation.save(update_fields=["status"])
+    if not can_manage:
+        raise Http404()
 
-    subject, message_text = build_reservation_canceled_message(reservation)
-    notify_user(request.user, subject, message_text)
+    if request.method == "POST":
+        if hasattr(reservation, "status"):
+            reservation.status = "cancelled"
+            reservation.save(update_fields=["status"])
+        else:
+            reservation.delete()
 
-    if reservation.coach != request.user:
-        notify_user(
-            reservation.coach,
-            "【テニスクラブ】予約キャンセルがありました",
-            message_text,
-        )
+        messages.success(request, "予約をキャンセルしました。")
+        return redirect("club:reservation_list")
 
-    messages.success(request, "予約をキャンセルしました。")
-    return redirect("club:reservation_list")
+    return render(
+        request,
+        _pick_template(
+            "reservations/reservation_cancel.html",
+            "reservation_cancel.html",
+            "club/reservation_cancel.html",
+        ),
+        {
+            "reservation": reservation,
+        },
+    )
 
 
 @login_required
 def coach_availability_list(request):
-    if not _is_coach_or_admin(request.user):
-        messages.error(request, "権限がありません。")
-        return redirect("club:home")
+    if CoachAvailability is None:
+        raise Http404("Coach availability feature is not available.")
 
-    availabilities = CoachAvailability.objects.select_related("coach", "court").all()
+    qs = CoachAvailability.objects.all().order_by("-id")
 
-    if not request.user.is_superuser and getattr(request.user, "role", "") == "coach":
-        availabilities = availabilities.filter(coach=request.user)
+    if _is_coach(request.user) and not (request.user.is_superuser or request.user.is_staff):
+        if hasattr(CoachAvailability, "coach"):
+            qs = qs.filter(coach=request.user)
 
-    availabilities = availabilities.order_by("start_at", "coach__username")
     return render(
         request,
-        "coach/availability_list.html",
-        {"availabilities": availabilities},
+        _coach_availability_list_template_name(),
+        {
+            "availabilities": qs,
+        },
     )
 
 
 @login_required
 def coach_availability_create(request):
-    if not _is_coach_or_admin(request.user):
-        messages.error(request, "権限がありません。")
-        return redirect("club:home")
+    if CoachAvailability is None or CoachAvailabilityForm is None:
+        raise Http404("Coach availability feature is not available.")
 
-    if request.method == "POST":
-        form = CoachAvailabilityForm(request.POST, request_user=request.user)
-        if form.is_valid():
-            form.save()
-            messages.success(request, "コーチ空き時間を登録しました。")
-            return redirect("club:coach_availability_list")
-    else:
-        form = CoachAvailabilityForm(request_user=request.user)
+    if not _is_coach(request.user):
+        raise Http404()
 
-    return render(
-        request,
-        "coach/availability_create.html",
-        {"form": form},
-    )
+    form = CoachAvailabilityForm(request.POST or None)
 
+    if request.method == "POST" and form.is_valid():
+        availability = form.save(commit=False)
 
-@login_required
-@require_POST
-def coach_availability_delete(request, pk):
-    if not _is_coach_or_admin(request.user):
-        messages.error(request, "権限がありません。")
-        return redirect("club:home")
+        if hasattr(availability, "coach_id") and not getattr(availability, "coach_id", None):
+            availability.coach = request.user
 
-    availability = get_object_or_404(CoachAvailability, pk=pk)
-
-    if not request.user.is_superuser and getattr(request.user, "role", "") == "coach":
-        if availability.coach_id != request.user.id:
-            messages.error(request, "自分以外の空き時間は削除できません。")
-            return redirect("club:coach_availability_list")
-
-    availability.delete()
-    messages.success(request, "コーチ空き時間を削除しました。")
-    return redirect("club:coach_availability_list")
-
-
-@login_required
-def line_connect_view(request):
-    linked = False
-    try:
-        linked = hasattr(request.user, "line_link")
-    except Exception:
-        linked = False
+        availability.save()
+        messages.success(request, "空き枠を作成しました。")
+        return redirect("club:coach_availability_list")
 
     return render(
         request,
-        "line_connect.html",
+        _coach_availability_create_template_name(),
         {
-            "line_bot_basic_id": os.getenv("LINE_BOT_BASIC_ID", ""),
-            "line_bot_invite_url": os.getenv("LINE_BOT_INVITE_URL", ""),
-            "linked": linked,
+            "form": form,
         },
     )
 
 
-@csrf_exempt
-def line_webhook(request):
-    if request.method != "POST":
-        return HttpResponseBadRequest("POST only")
+@login_required
+def coach_availability_delete(request, pk):
+    if CoachAvailability is None:
+        raise Http404("Coach availability feature is not available.")
 
-    body = request.body
-    signature = request.headers.get("X-Line-Signature", "")
+    availability = get_object_or_404(CoachAvailability, pk=pk)
 
-    if not verify_line_signature(body, signature):
-        return HttpResponseBadRequest("Invalid signature")
+    owner_coach_id = _get_object_coach_id(availability)
+    can_delete = (
+        request.user.is_superuser
+        or request.user.is_staff
+        or str(owner_coach_id) == str(request.user.pk)
+    )
 
-    payload = json.loads(body.decode("utf-8"))
-    events = payload.get("events", [])
+    if not can_delete:
+        raise Http404()
 
-    for event in events:
-        event_type = event.get("type")
-        source = event.get("source", {})
-        line_user_id = source.get("userId")
+    if request.method == "POST":
+        availability.delete()
+        messages.success(request, "空き枠を削除しました。")
+        return redirect("club:coach_availability_list")
 
-        if not line_user_id:
-            continue
+    return render(
+        request,
+        _pick_template(
+            "coach/availability_delete.html",
+            "availability_delete.html",
+            "club/availability_delete.html",
+        ),
+        {
+            "availability": availability,
+        },
+    )
 
-        if event_type == "message":
-            text = event.get("message", {}).get("text", "").strip()
 
-            if text.startswith("連携 "):
-                username = text.replace("連携 ", "", 1).strip()
-                user = User.objects.filter(username=username).first()
-                if user:
-                    LineAccountLink.objects.update_or_create(
-                        user=user,
-                        defaults={
-                            "line_user_id": line_user_id,
-                            "is_active": True,
-                            "last_event_at": timezone.now(),
-                        },
-                    )
-            else:
-                link = LineAccountLink.objects.filter(line_user_id=line_user_id).first()
-                if link:
-                    link.last_event_at = timezone.now()
-                    link.save(update_fields=["last_event_at"])
+@login_required
+def line_link_page(request):
+    link = None
 
-        elif event_type == "follow":
-            link = LineAccountLink.objects.filter(line_user_id=line_user_id).first()
-            if link:
-                link.is_active = True
-                link.last_event_at = timezone.now()
-                link.save(update_fields=["is_active", "last_event_at"])
+    if LineAccountLink is not None:
+        user_field_name = None
+        for candidate in ["user", "member", "customer"]:
+            if hasattr(LineAccountLink, candidate):
+                user_field_name = candidate
+                break
 
-        elif event_type == "unfollow":
-            link = LineAccountLink.objects.filter(line_user_id=line_user_id).first()
-            if link:
-                link.is_active = False
-                link.last_event_at = timezone.now()
-                link.save(update_fields=["is_active", "last_event_at"])
+        if user_field_name:
+            try:
+                link = LineAccountLink.objects.filter(**{user_field_name: request.user}).first()
+            except Exception:
+                link = None
 
-    return JsonResponse({"ok": True})
+    form = None
+    if LineAccountLinkForm is not None:
+        form = LineAccountLinkForm(request.POST or None, instance=link)
+        if request.method == "POST" and form.is_valid():
+            obj = form.save(commit=False)
+
+            for candidate in ["user", "member", "customer"]:
+                if hasattr(obj, f"{candidate}_id") and not getattr(obj, f"{candidate}_id", None):
+                    setattr(obj, candidate, request.user)
+                    break
+
+            obj.save()
+            messages.success(request, "LINE連携情報を保存しました。")
+            return redirect("club:line_link")
+
+    return render(
+        request,
+        _line_link_template_name(),
+        {
+            "form": form,
+            "line_link": link,
+        },
+    )
