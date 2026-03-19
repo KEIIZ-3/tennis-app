@@ -6,27 +6,29 @@
   <section class="main-panel">
     <div class="card toolbar-card">
       <div class="toolbar-row">
-        <div>
+        <div class="filter-block">
           <label for="coachFilter"><strong>コーチ表示</strong></label>
           <select id="coachFilter">
-            <option value="all">全コーチ</option>
+            <option value="">全コーチ</option>
             {% for coach in coaches %}
-              <option value="{{ coach.id }}">{{ coach.username }}</option>
+              <option value="{{ coach.id }}" {% if selected_coach == coach.id|stringformat:"s" %}selected{% endif %}>
+                {{ coach.username }}
+              </option>
             {% endfor %}
           </select>
         </div>
 
         <div class="legend">
           <span class="legend-item legend-available">空き</span>
-          <span class="legend-item legend-full">満員</span>
+          <span class="legend-item legend-reserved">予約済み</span>
           <span class="legend-item legend-mine">あなたの予約</span>
         </div>
       </div>
 
       <div class="toolbar-links">
         <a href="{% url 'club:reservation_list' %}">予約一覧</a>
-        <a href="{% url 'club:line_connect' %}">LINE連携</a>
-        {% if is_coach_or_admin %}
+        <a href="{% url 'club:line_link' %}">LINE連携</a>
+        {% if user.is_staff or user.is_superuser or user.role == "coach" %}
           <a href="{% url 'club:coach_availability_list' %}">コーチ空き時間管理</a>
         {% endif %}
       </div>
@@ -58,9 +60,13 @@
     gap:16px;
     align-items:start;
   }
-  .toolbar-card, .calendar-card, .detail-card{
+
+  .toolbar-card,
+  .calendar-card,
+  .detail-card{
     padding:16px;
   }
+
   .toolbar-row{
     display:flex;
     justify-content:space-between;
@@ -68,17 +74,24 @@
     gap:12px;
     flex-wrap:wrap;
   }
+
+  .filter-block{
+    min-width:220px;
+  }
+
   .toolbar-links{
     margin-top:12px;
     display:flex;
     gap:12px;
     flex-wrap:wrap;
   }
+
   .legend{
     display:flex;
     gap:8px;
     flex-wrap:wrap;
   }
+
   .legend-item{
     display:inline-block;
     padding:6px 10px;
@@ -86,9 +99,18 @@
     color:#fff;
     font-size:12px;
   }
-  .legend-available{ background:#16a34a; }
-  .legend-full{ background:#dc2626; }
-  .legend-mine{ background:#1d4ed8; }
+
+  .legend-available{
+    background:#22c55e;
+  }
+
+  .legend-reserved{
+    background:#ef4444;
+  }
+
+  .legend-mine{
+    background:#3b82f6;
+  }
 
   #calendar{
     min-height:720px;
@@ -105,6 +127,7 @@
     width:100%;
     border-collapse:collapse;
   }
+
   .detail-table th,
   .detail-table td{
     text-align:left;
@@ -112,12 +135,14 @@
     vertical-align:top;
     border-bottom:1px solid #eee;
   }
+
   .detail-actions{
     margin-top:16px;
     display:flex;
     gap:8px;
     flex-wrap:wrap;
   }
+
   .btn{
     display:inline-block;
     padding:10px 14px;
@@ -128,11 +153,13 @@
     color:#111;
     cursor:pointer;
   }
+
   .btn-primary{
     background:#111;
     color:#fff;
     border-color:#111;
   }
+
   .btn-danger{
     background:#b91c1c;
     color:#fff;
@@ -143,6 +170,7 @@
     .page-grid{
       grid-template-columns:1fr;
     }
+
     #calendar{
       min-height:560px;
     }
@@ -165,39 +193,67 @@
         .replaceAll("'", "&#039;");
     }
 
+    function formatDateTimeRange(start, end) {
+      const startText = start
+        ? start.toLocaleString("ja-JP", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false
+          })
+        : "-";
+
+      const endText = end
+        ? end.toLocaleTimeString("ja-JP", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false
+          })
+        : "-";
+
+      return `${escapeHtml(startText)} - ${escapeHtml(endText)}`;
+    }
+
     function renderAvailabilityDetail(event) {
-      const props = event.extendedProps;
+      const props = event.extendedProps || {};
       detailPanel.innerHTML = `
         <table class="detail-table">
           <tr><th>種別</th><td>コーチ空き枠</td></tr>
-          <tr><th>コーチ</th><td>${escapeHtml(props.coachName)}</td></tr>
-          <tr><th>コート</th><td>${escapeHtml(props.courtName)}</td></tr>
-          <tr><th>時間</th><td>${escapeHtml(event.start.toLocaleString("ja-JP"))} - ${escapeHtml(event.end.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }))}</td></tr>
-          <tr><th>状態</th><td>${escapeHtml(props.statusLabel)}</td></tr>
-          <tr><th>予約数</th><td>${escapeHtml(props.reservedCount)} / ${escapeHtml(props.capacity)}</td></tr>
-          <tr><th>メモ</th><td>${escapeHtml(props.note || "-")}</td></tr>
+          <tr><th>コーチ</th><td>${escapeHtml(props.coach_name || "-")}</td></tr>
+          <tr><th>時間</th><td>${formatDateTimeRange(event.start, event.end)}</td></tr>
+          <tr><th>状態</th><td>予約可能</td></tr>
         </table>
         <div class="detail-actions">
-          ${props.bookable ? `<a class="btn btn-primary" href="${props.reservationUrl}">この枠を予約する</a>` : `<span class="btn">この枠は満員です</span>`}
+          ${
+            props.reserve_url
+              ? `<a class="btn btn-primary" href="${escapeHtml(props.reserve_url)}">この枠を予約する</a>`
+              : `<span class="btn">予約URLがありません</span>`
+          }
         </div>
       `;
     }
 
-    function renderMyReservationDetail(event) {
-      const props = event.extendedProps;
+    function renderReservationDetail(event) {
+      const props = event.extendedProps || {};
       detailPanel.innerHTML = `
         <table class="detail-table">
-          <tr><th>種別</th><td>あなたの予約</td></tr>
-          <tr><th>コーチ</th><td>${escapeHtml(props.coachName)}</td></tr>
-          <tr><th>コート</th><td>${escapeHtml(props.courtName)}</td></tr>
-          <tr><th>時間</th><td>${escapeHtml(event.start.toLocaleString("ja-JP"))} - ${escapeHtml(event.end.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }))}</td></tr>
-          <tr><th>状態</th><td>${escapeHtml(props.statusLabel)}</td></tr>
+          <tr><th>種別</th><td>${props.is_mine ? "あなたの予約" : "予約済み"}</td></tr>
+          <tr><th>コーチ</th><td>${escapeHtml(props.coach_name || "-")}</td></tr>
+          <tr><th>時間</th><td>${formatDateTimeRange(event.start, event.end)}</td></tr>
         </table>
         <div class="detail-actions">
-          <form method="post" action="${props.cancelUrl}">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-danger">予約をキャンセル</button>
-          </form>
+          ${
+            props.is_mine && props.cancel_url
+              ? `
+                <form method="post" action="${escapeHtml(props.cancel_url)}">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-danger">予約をキャンセル</button>
+                </form>
+              `
+              : `<span class="btn">この予約はキャンセル操作対象外です</span>`
+          }
         </div>
       `;
     }
@@ -226,20 +282,38 @@
         hour12: false
       },
       events: function(fetchInfo, successCallback, failureCallback) {
-        const coach = coachFilter.value || "all";
+        const selectedCoach = coachFilter.value;
         const url = new URL("{% url 'club:calendar_events' %}", window.location.origin);
+
         url.searchParams.set("start", fetchInfo.startStr);
         url.searchParams.set("end", fetchInfo.endStr);
-        url.searchParams.set("coach", coach);
 
-        fetch(url)
-          .then(response => response.json())
-          .then(data => successCallback(data))
-          .catch(error => failureCallback(error));
+        if (selectedCoach) {
+          url.searchParams.set("coach", selectedCoach);
+        }
+
+        fetch(url, {
+          credentials: "same-origin"
+        })
+          .then(function(response) {
+            if (!response.ok) {
+              throw new Error("イベント取得に失敗しました");
+            }
+            return response.json();
+          })
+          .then(function(data) {
+            successCallback(data);
+          })
+          .catch(function(error) {
+            console.error(error);
+            failureCallback(error);
+            detailPanel.innerHTML = "<p>カレンダーの読み込みに失敗しました。</p>";
+          });
       },
       eventClick: function(info) {
-        if (info.event.extendedProps.eventType === "my_reservation") {
-          renderMyReservationDetail(info.event);
+        const props = info.event.extendedProps || {};
+        if (props.kind === "reservation") {
+          renderReservationDetail(info.event);
         } else {
           renderAvailabilityDetail(info.event);
         }
