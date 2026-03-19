@@ -1,51 +1,78 @@
 {% extends "base.html" %}
-{% block title %}コーチ空き時間管理{% endblock %}
+{% block title %}LINE連携{% endblock %}
 
 {% block content %}
 <div class="card">
-  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-    <h2>コーチ空き時間管理</h2>
-    <a href="{% url 'club:coach_availability_create' %}">新規登録</a>
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h1 style="margin:0;">LINE連携</h1>
+      <p class="muted" style="margin:8px 0 0;">
+        LINEアカウントとの連携情報を確認・保存します。
+      </p>
+    </div>
   </div>
+</div>
 
-  {% if availabilities %}
-    <table>
-      <thead>
-        <tr>
-          <th>コーチ</th>
-          <th>コート</th>
-          <th>開始</th>
-          <th>終了</th>
-          <th>定員</th>
-          <th>メモ</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for item in availabilities %}
-          <tr>
-            <td>{{ item.coach.username }}</td>
-            <td>{{ item.court.name }}</td>
-            <td>{{ item.start_at|date:"Y-m-d H:i" }}</td>
-            <td>{{ item.end_at|date:"Y-m-d H:i" }}</td>
-            <td>{{ item.capacity }}</td>
-            <td>{{ item.note|default:"-" }}</td>
-            <td>
-              <form method="post" action="{% url 'club:coach_availability_delete' item.pk %}">
-                {% csrf_token %}
-                <button type="submit">削除</button>
-              </form>
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+<div style="height:12px;"></div>
+
+<div class="card">
+  {% if line_link %}
+    <div class="msg">
+      すでにLINE連携情報が登録されています。
+    </div>
   {% else %}
-    <p>まだ登録された空き時間はありません。</p>
+    <div class="msg">
+      まだLINE連携情報は登録されていません。
+    </div>
   {% endif %}
 
-  <p style="margin-top:16px;">
-    <a href="{% url 'club:home' %}">ホームへ戻る</a>
-  </p>
+  {% if form %}
+    <form method="post" style="margin-top:12px;">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div class="msg">
+          {{ form.non_field_errors }}
+        </div>
+      {% endif %}
+
+      <div class="grid">
+        {% for field in form %}
+          <div class="field">
+            <label for="{{ field.id_for_label }}">
+              {{ field.label }}
+              {% if field.field.required %}
+                <span class="muted">（必須）</span>
+              {% endif %}
+            </label>
+
+            {{ field }}
+
+            {% if field.help_text %}
+              <div class="muted" style="margin-top:6px; font-size:13px;">
+                {{ field.help_text }}
+              </div>
+            {% endif %}
+
+            {% if field.errors %}
+              <div class="msg" style="margin-top:8px;">
+                {{ field.errors }}
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+
+      <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;">
+        <button type="submit" class="btn btn-primary">保存</button>
+        <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
+      </div>
+    </form>
+  {% else %}
+    <p class="muted">現在、この環境ではLINE連携フォームは未設定です。</p>
+    <div style="margin-top:16px;">
+      <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
+    </div>
+  {% endif %}
 </div>
 {% endblock %}
