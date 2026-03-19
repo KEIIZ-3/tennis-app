@@ -13,6 +13,11 @@ from django.views.decorators.http import require_GET
 
 from . import forms as club_forms
 from . import models as club_models
+from .notifications import (
+    notify_user,
+    build_reservation_created_message,
+    build_reservation_canceled_message,
+)
 
 
 User = get_user_model()
@@ -437,6 +442,12 @@ def reservation_create(request):
 
         reservation.save()
 
+        try:
+            subject, message = build_reservation_created_message(reservation)
+            notify_user(request.user, subject, message)
+        except Exception:
+            pass
+
         messages.success(request, "予約を作成しました。")
         return redirect("club:reservation_list")
 
@@ -494,11 +505,22 @@ def reservation_cancel(request, pk):
     if not can_manage:
         raise Http404()
 
+    try:
+        subject, message = build_reservation_canceled_message(reservation)
+    except Exception:
+        subject, message = None, None
+
     if hasattr(reservation, "status"):
         reservation.status = "cancelled"
         reservation.save(update_fields=["status"])
     else:
         reservation.delete()
+
+    if subject and message:
+        try:
+            notify_user(request.user, subject, message)
+        except Exception:
+            pass
 
     messages.success(request, "予約をキャンセルしました。")
     return redirect("club:reservation_list")
