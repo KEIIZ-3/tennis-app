@@ -1,4 +1,3 @@
-cat > club/urls.py <<'PY'
 from django.urls import path
 
 from . import views
@@ -11,10 +10,7 @@ urlpatterns = [
     path("logout/", views.logout_view, name="logout"),
     path("healthz/", views.healthz, name="healthz"),
 
-    # カレンダーイベントAPI（新）
     path("calendar/events/", views.calendar_events, name="calendar_events"),
-
-    # カレンダーイベントAPI（旧URL互換）
     path("api/calendar/events/", views.calendar_events, name="calendar_events_api_legacy"),
 
     path("reservations/new/", views.reservation_create, name="reservation_create"),
@@ -28,4 +24,3 @@ urlpatterns = [
     path("line/connect/", views.line_connect_view, name="line_connect"),
     path("line/webhook/", views.line_webhook, name="line_webhook"),
 ]
-PY
