@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta, time
 
-from django import forms as django_forms
 from django.contrib import messages
 from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
@@ -17,7 +16,6 @@ from . import models as club_models
 
 
 User = get_user_model()
-
 
 Reservation = getattr(club_models, "Reservation", None)
 CoachAvailability = getattr(club_models, "CoachAvailability", None)
@@ -120,8 +118,7 @@ def _is_coach(user):
 
 
 def _get_coaches():
-    role_field_available = hasattr(User, "role")
-    if role_field_available:
+    if hasattr(User, "role"):
         return User.objects.filter(role="coach").order_by("id")
     return User.objects.filter(is_staff=True).order_by("id")
 
@@ -141,13 +138,11 @@ def _get_object_coach_id(obj):
 def _get_object_coach_name(obj):
     coach_obj = _first_attr(obj, ["coach"])
     if coach_obj is not None:
-        full_name = ""
         if hasattr(coach_obj, "get_full_name"):
             full_name = coach_obj.get_full_name() or ""
-        if full_name:
-            return full_name
+            if full_name:
+                return full_name
         return getattr(coach_obj, "username", str(coach_obj))
-
     return ""
 
 
@@ -195,10 +190,18 @@ def _home_template_name():
     )
 
 
+def _login_template_name():
+    return _pick_template(
+        "registration/login.html",
+        "login.html",
+        "club/login.html",
+    )
+
+
 def _reservation_create_template_name():
     return _pick_template(
+        "reservations/create.html",
         "reservations/reservation_create.html",
-        "reservations/new.html",
         "reservation_create.html",
         "club/reservation_create.html",
     )
@@ -206,6 +209,7 @@ def _reservation_create_template_name():
 
 def _reservation_list_template_name():
     return _pick_template(
+        "reservations/list.html",
         "reservations/reservation_list.html",
         "reservation_list.html",
         "club/reservation_list.html",
@@ -230,10 +234,28 @@ def _coach_availability_create_template_name():
 
 def _line_link_template_name():
     return _pick_template(
+        "line_connect.html",
         "line/link.html",
         "line/link_page.html",
         "line_link.html",
         "club/line_link.html",
+    )
+
+
+def _reservation_cancel_template_name():
+    return _pick_template(
+        "reservations/cancel.html",
+        "reservations/reservation_cancel.html",
+        "reservation_cancel.html",
+        "club/reservation_cancel.html",
+    )
+
+
+def _coach_availability_delete_template_name():
+    return _pick_template(
+        "coach/availability_delete.html",
+        "availability_delete.html",
+        "club/availability_delete.html",
     )
 
 
@@ -242,14 +264,21 @@ def login_view(request):
         return redirect("club:home")
 
     form = AuthenticationForm(request, data=request.POST or None)
+
     if request.method == "POST" and form.is_valid():
         login(request, form.get_user())
+        next_url = request.GET.get("next") or request.POST.get("next")
+        if next_url:
+            return redirect(next_url)
         return redirect("club:home")
 
     return render(
         request,
-        "registration/login.html" if "registration/login.html" else "registration/login.html",
-        {"form": form},
+        _login_template_name(),
+        {
+            "form": form,
+            "next": request.GET.get("next", ""),
+        },
     )
 
 
@@ -469,11 +498,7 @@ def reservation_cancel(request, pk):
 
     return render(
         request,
-        _pick_template(
-            "reservations/reservation_cancel.html",
-            "reservation_cancel.html",
-            "club/reservation_cancel.html",
-        ),
+        _reservation_cancel_template_name(),
         {
             "reservation": reservation,
         },
@@ -553,11 +578,7 @@ def coach_availability_delete(request, pk):
 
     return render(
         request,
-        _pick_template(
-            "coach/availability_delete.html",
-            "availability_delete.html",
-            "club/availability_delete.html",
-        ),
+        _coach_availability_delete_template_name(),
         {
             "availability": availability,
         },
