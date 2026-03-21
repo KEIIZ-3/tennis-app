@@ -27,7 +27,7 @@
 
       <div class="toolbar-links">
         <a href="{% url 'club:reservation_list' %}">予約一覧</a>
-        <a href="{% url 'club:line_link' %}">LINE連携</a>
+        <a href="{% url 'club:line_connect' %}">LINE連携</a>
         {% if user.is_staff or user.is_superuser or user.role == "coach" %}
           <a href="{% url 'club:coach_availability_list' %}">コーチ空き時間管理</a>
         {% endif %}
