@@ -1,7 +1,7 @@
 import json
 import secrets
+from urllib.parse import urlencode
 
-from django import forms as django_forms
 from django.apps import apps
 from django.contrib import messages
 from django.contrib.auth import get_user_model, login, logout
@@ -11,7 +11,9 @@ from django.core import signing
 from django.forms import modelform_factory
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
@@ -24,10 +26,6 @@ from .notifications import (
     verify_line_signature,
 )
 
-
-# =========================================================
-# safe resolvers
-# =========================================================
 
 def _get_model(name):
     try:
@@ -49,10 +47,6 @@ ReservationForm = _get_form("ReservationForm")
 LineAccountLinkForm = _get_form("LineAccountLinkForm")
 
 
-# =========================================================
-# generic helpers
-# =========================================================
-
 def _pick_first_attr(obj, names, default=None):
     for name in names:
         value = getattr(obj, name, None)
@@ -62,14 +56,15 @@ def _pick_first_attr(obj, names, default=None):
 
 
 def _pick_datetime(obj, names):
-    value = _pick_first_attr(obj, names, None)
-    return value
+    return _pick_first_attr(obj, names, None)
 
 
 def _to_event_datetime_str(value):
     if not value:
         return None
     try:
+        if timezone.is_aware(value):
+            value = timezone.localtime(value)
         return value.isoformat()
     except Exception:
         return str(value)
@@ -82,16 +77,13 @@ def _is_staff_like(user):
         return True
 
     role = getattr(user, "role", None)
-    if role in ("coach", "admin", "staff", "manager"):
-        return True
-    return False
+    return role in ("coach", "admin", "staff", "manager")
 
 
 def _is_coach_user(user):
     if not user or not user.is_authenticated:
         return False
-    role = getattr(user, "role", None)
-    return role == "coach"
+    return getattr(user, "role", None) == "coach"
 
 
 def _get_user_queryset_field(model):
@@ -110,7 +102,6 @@ def _get_datetime_field_names(model):
         return (None, None)
 
     model_fields = {f.name for f in model._meta.fields}
-
     start_candidates = ["start_at", "start", "starts_at", "start_datetime"]
     end_candidates = ["end_at", "end", "ends_at", "end_datetime"]
 
@@ -315,12 +306,29 @@ def _resolve_user_from_link_token(token):
         return None
 
 
-# =========================================================
-# auth / basic pages
-# =========================================================
+def _parse_query_datetime(value):
+    if not value:
+        return None
+    dt = parse_datetime(value)
+    if dt is None:
+        return None
+    if timezone.is_aware(dt):
+        return timezone.localtime(dt)
+    return timezone.make_aware(dt)
+
 
 def home(request):
-    return render(request, "home.html")
+    User = get_user_model()
+    coaches = User.objects.filter(role="coach").order_by("username")
+    selected_coach = request.GET.get("coach", "")
+    return render(
+        request,
+        "home.html",
+        {
+            "coaches": coaches,
+            "selected_coach": selected_coach,
+        },
+    )
 
 
 @require_http_methods(["GET", "POST"])
@@ -349,18 +357,12 @@ def healthz(request):
     return JsonResponse({"ok": True})
 
 
-# =========================================================
-# calendar
-# =========================================================
-
 @login_required
 @require_GET
 def calendar_events(request):
     events = []
-
     coach_filter = request.GET.get("coach") or request.GET.get("coach_id")
 
-    # coach availability
     if CoachAvailability is not None:
         qs = CoachAvailability.objects.all()
 
@@ -373,7 +375,6 @@ def calendar_events(request):
         for obj in qs:
             start_at = _pick_datetime(obj, ["start_at", "start", "starts_at", "start_datetime"])
             end_at = _pick_datetime(obj, ["end_at", "end", "ends_at", "end_datetime"])
-
             coach = getattr(obj, "coach", None)
             court = getattr(obj, "court", None)
 
@@ -383,6 +384,15 @@ def calendar_events(request):
             if court:
                 title_parts.append(str(court))
 
+            query = urlencode(
+                {
+                    "coach": getattr(coach, "pk", "") or "",
+                    "court": getattr(court, "pk", "") or "",
+                    "start": _to_event_datetime_str(start_at) or "",
+                    "end": _to_event_datetime_str(end_at) or "",
+                }
+            )
+
             events.append(
                 {
                     "id": f"availability-{obj.pk}",
@@ -390,31 +400,28 @@ def calendar_events(request):
                     "start": _to_event_datetime_str(start_at),
                     "end": _to_event_datetime_str(end_at),
                     "display": "auto",
+                    "backgroundColor": "#22c55e",
+                    "borderColor": "#22c55e",
                     "extendedProps": {
+                        "kind": "availability",
                         "type": "availability",
                         "pk": obj.pk,
                         "coach": str(coach) if coach else "",
+                        "coach_name": str(coach) if coach else "",
                         "court": str(court) if court else "",
+                        "reserve_url": f"{reverse('club:reservation_create')}?{query}",
                     },
                 }
             )
 
-    # reservations
     if Reservation is not None:
         qs = Reservation.objects.all()
 
-        if coach_filter:
-            if hasattr(Reservation, "coach_id"):
-                try:
-                    qs = qs.filter(coach_id=coach_filter)
-                except Exception:
-                    pass
-            else:
-                availability_field = _pick_first_attr(
-                    Reservation,
-                    ["coach_availability", "availability"],
-                    None,
-                )
+        if coach_filter and hasattr(Reservation, "coach_id"):
+            try:
+                qs = qs.filter(coach_id=coach_filter)
+            except Exception:
+                pass
 
         for obj in qs:
             start_at = _pick_datetime(obj, ["start_at", "start", "starts_at", "start_datetime"])
@@ -441,16 +448,20 @@ def calendar_events(request):
             if not court and availability is not None:
                 court = getattr(availability, "court", None)
 
-            user = _pick_first_attr(obj, ["user", "customer", "member", "owner"], None)
-
+            user_obj = _pick_first_attr(obj, ["user", "customer", "member", "owner"], None)
             is_canceled = bool(getattr(obj, "is_canceled", False))
             status = str(getattr(obj, "status", "") or "").lower()
+            is_mine = bool(user_obj == request.user)
+            cancel_url = reverse("club:reservation_cancel", kwargs={"pk": obj.pk}) if is_mine else ""
+
             if is_canceled or status == "canceled":
                 event_title = "キャンセル済み"
+                background_color = "#9ca3af"
+                border_color = "#9ca3af"
             else:
-                event_title = "予約"
-                if user:
-                    event_title += f" / {user}"
+                event_title = "あなたの予約" if is_mine else "予約済み"
+                background_color = "#3b82f6" if is_mine else "#ef4444"
+                border_color = background_color
 
             events.append(
                 {
@@ -459,23 +470,25 @@ def calendar_events(request):
                     "start": _to_event_datetime_str(start_at),
                     "end": _to_event_datetime_str(end_at),
                     "display": "auto",
+                    "backgroundColor": background_color,
+                    "borderColor": border_color,
                     "extendedProps": {
+                        "kind": "reservation",
                         "type": "reservation",
                         "pk": obj.pk,
-                        "user": str(user) if user else "",
+                        "user": str(user_obj) if user_obj else "",
                         "coach": str(coach) if coach else "",
+                        "coach_name": str(coach) if coach else "",
                         "court": str(court) if court else "",
                         "is_canceled": is_canceled or status == "canceled",
+                        "is_mine": is_mine,
+                        "cancel_url": cancel_url,
                     },
                 }
             )
 
     return JsonResponse(events, safe=False)
 
-
-# =========================================================
-# reservations
-# =========================================================
 
 @login_required
 @require_http_methods(["GET", "POST"])
@@ -487,7 +500,27 @@ def reservation_create(request):
     if FormClass is None:
         raise Http404("Reservation form not found.")
 
-    form = FormClass(request.POST or None)
+    initial = {}
+
+    coach_id = request.GET.get("coach")
+    court_id = request.GET.get("court")
+    start_value = _parse_query_datetime(request.GET.get("start"))
+    end_value = _parse_query_datetime(request.GET.get("end"))
+
+    if coach_id:
+        initial["coach"] = coach_id
+    if court_id:
+        initial["court"] = court_id
+    if start_value:
+        initial["start_at"] = start_value
+    if end_value:
+        initial["end_at"] = end_value
+
+    form = FormClass(
+        request.POST or None,
+        request_user=request.user,
+        initial=initial,
+    )
 
     if request.method == "POST":
         if form.is_valid():
@@ -506,6 +539,7 @@ def reservation_create(request):
 
             messages.success(request, "予約を作成しました。")
             return redirect("club:reservation_list")
+
         messages.error(request, "予約を作成できませんでした。入力内容をご確認ください。")
 
     return render(
@@ -577,10 +611,6 @@ def reservation_cancel(request, pk):
     return redirect("club:reservation_list")
 
 
-# =========================================================
-# coach availability
-# =========================================================
-
 @login_required
 @require_GET
 def coach_availability_list(request):
@@ -621,7 +651,10 @@ def coach_availability_create(request):
     if FormClass is None:
         raise Http404("CoachAvailability form not found.")
 
-    form = FormClass(request.POST or None)
+    form = FormClass(
+        request.POST or None,
+        request_user=request.user,
+    )
 
     if request.method == "POST":
         if form.is_valid():
@@ -637,6 +670,7 @@ def coach_availability_create(request):
 
             messages.success(request, "コーチ空き時間を登録しました。")
             return redirect("club:coach_availability_list")
+
         messages.error(request, "コーチ空き時間を登録できませんでした。入力内容をご確認ください。")
 
     return render(
@@ -665,10 +699,6 @@ def coach_availability_delete(request, pk):
     messages.success(request, "コーチ空き時間を削除しました。")
     return redirect("club:coach_availability_list")
 
-
-# =========================================================
-# line connect
-# =========================================================
 
 @login_required
 @require_http_methods(["GET"])
@@ -727,7 +757,6 @@ def line_link(request):
             messages.error(request, "入力内容をご確認ください。")
         return redirect("club:line_connect")
 
-    # fallback: forms.py に LineAccountLinkForm が無い場合でも動くようにする
     line_user_id = (request.POST.get("line_user_id") or "").strip()
     is_active = request.POST.get("is_active") in ("1", "true", "True", "on")
 
