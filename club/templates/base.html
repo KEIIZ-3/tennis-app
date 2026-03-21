@@ -6,14 +6,6 @@
   <title>{% block title %}Tennis Club{% endblock %}</title>
 
   <style>
-    :root{
-      --page-max-width: 820px;
-    }
-
-    *, *::before, *::after{
-      box-sizing: border-box;
-    }
-
     body{
       font-family:sans-serif;
       margin:0;
@@ -21,176 +13,226 @@
       color:#111;
     }
 
-    .wrap{
-      max-width: var(--page-max-width);
-      margin:0 auto;
-      padding:16px;
-    }
-
     .topbar{
       background:#fff;
-      border-bottom:1px solid #eee;
+      border-bottom:1px solid #e5e5e5;
       position:sticky;
       top:0;
-      z-index:10;
+      z-index:100;
+    }
+
+    .wrap{
+      max-width:1000px;
+      margin:0 auto;
+      padding:16px;
     }
 
     .topbar .wrap{
       display:flex;
       justify-content:space-between;
       align-items:center;
-      gap:12px;
+      gap:16px;
+      flex-wrap:wrap;
     }
 
-    a{
+    .brand a{
       color:#111;
       text-decoration:none;
+      font-weight:700;
+      font-size:20px;
     }
 
     .nav{
       display:flex;
-      flex-wrap:wrap;
-      justify-content:flex-end;
+      align-items:center;
       gap:10px;
+      flex-wrap:wrap;
     }
 
     .nav a{
-      margin-left:0;
-      white-space:nowrap;
+      color:#111;
+      text-decoration:none;
+      padding:8px 10px;
+      border-radius:8px;
+    }
+
+    .nav a:hover{
+      background:#f0f0f0;
+    }
+
+    .logout-form{
+      display:inline;
+      margin:0;
+    }
+
+    .logout-button{
+      appearance:none;
+      border:1px solid #ddd;
+      background:#fff;
+      color:#111;
+      padding:8px 12px;
+      border-radius:8px;
+      cursor:pointer;
+      font:inherit;
+    }
+
+    .logout-button:hover{
+      background:#f7f7f7;
+    }
+
+    .main{
+      padding:20px 16px 40px;
     }
 
     .card{
-      display:block;
       background:#fff;
-      border:1px solid #eee;
+      border:1px solid #e8e8e8;
       border-radius:12px;
-      padding:14px;
+      padding:20px;
+      box-shadow:0 1px 3px rgba(0,0,0,0.04);
+      margin-bottom:16px;
     }
 
-    .btn{
-      display:inline-block;
-      padding:10px 14px;
+    .messages{
+      margin-bottom:16px;
+    }
+
+    .message{
+      padding:12px 14px;
       border-radius:10px;
-      border:0;
-      font-weight:700;
-      cursor:pointer;
+      margin-bottom:10px;
+      border:1px solid transparent;
     }
 
-    .btn-danger{
-      background:#ffe6e6;
+    .message.success{
+      background:#f1fbf3;
+      border-color:#bfe3c7;
     }
 
-    .btn-primary{
-      background:#e8f0ff;
+    .message.error{
+      background:#fff3f3;
+      border-color:#efc2c2;
     }
 
-    .msg{
-      background:#fff;
-      border:1px solid #eee;
-      padding:10px 12px;
-      border-radius:10px;
-      margin:10px 0;
+    .message.warning{
+      background:#fff9ee;
+      border-color:#ead3a2;
     }
 
-    .muted{
-      color:#666;
+    .message.info{
+      background:#f2f7ff;
+      border-color:#c7d9f7;
     }
 
-    .grid{
-      display:grid;
-      gap:12px;
+    form p{
+      margin:0 0 14px 0;
     }
 
-    @media(min-width:720px){
-      .grid.two{
-        grid-template-columns:1fr 1fr;
-      }
-    }
-
-    .field label{
-      display:block;
-      font-size:14px;
-      margin-bottom:6px;
-    }
-
-    .field input,
-    .field select,
-    .field textarea{
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="datetime-local"],
+    input[type="date"],
+    input[type="time"],
+    input[type="number"],
+    select,
+    textarea{
       width:100%;
-      padding:10px;
-      border:1px solid #ddd;
-      border-radius:10px;
+      box-sizing:border-box;
+      padding:10px 12px;
+      border:1px solid #ccc;
+      border-radius:8px;
       background:#fff;
-      min-width:0;
+      font:inherit;
     }
 
-    .tabs{
-      display:flex;
-      gap:8px;
-      margin:12px 0;
+    textarea{
+      min-height:120px;
+      resize:vertical;
     }
 
-    .tab{
-      padding:8px 12px;
-      border-radius:999px;
-      border:1px solid #ddd;
+    button,
+    input[type="submit"]{
+      appearance:none;
+      border:none;
+      background:#111;
+      color:#fff;
+      padding:10px 14px;
+      border-radius:8px;
+      cursor:pointer;
+      font:inherit;
+    }
+
+    button:hover,
+    input[type="submit"]:hover{
+      opacity:0.92;
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
       background:#fff;
     }
 
-    .tab.active{
-      border-color:#111;
-      font-weight:bold;
+    th, td{
+      border-bottom:1px solid #eee;
+      padding:10px 8px;
+      text-align:left;
+      vertical-align:top;
     }
 
-    .pill{
-      font-size:12px;
-      padding:3px 8px;
-      border-radius:999px;
-      border:1px solid #ddd;
-      background:#fff;
-      margin-left:6px;
+    @media (max-width: 768px){
+      .topbar .wrap{
+        align-items:flex-start;
+      }
+
+      .nav{
+        width:100%;
+      }
     }
   </style>
 </head>
-
 <body>
-  <div class="topbar">
+  <header class="topbar">
     <div class="wrap">
-      <div>
-        <a href="{% url 'club:home' %}">
-          <b>Tennis Club</b>
-        </a>
+      <div class="brand">
+        <a href="{% url 'club:home' %}">Tennis Club</a>
       </div>
 
-      <div class="nav">
+      <nav class="nav">
+        <a href="{% url 'club:home' %}">ホーム</a>
+
         {% if user.is_authenticated %}
-          <a href="{% url 'club:home' %}">ホーム</a>
-          <a href="{% url 'club:reservation_create' %}">予約する</a>
+          <a href="{% url 'club:reservation_create' %}">予約作成</a>
           <a href="{% url 'club:reservation_list' %}">予約一覧</a>
-          <a href="{% url 'club:line_link' %}">LINE連携</a>
+          <a href="{% url 'club:coach_availability_list' %}">コーチ空き時間</a>
+          <a href="{% url 'club:line_connect' %}">LINE連携</a>
 
-          {% if user.is_staff or user.is_superuser or user.role == "coach" %}
-            <a href="{% url 'club:coach_availability_list' %}">空き時間管理</a>
-          {% endif %}
-
-          <a href="{% url 'club:logout' %}">ログアウト</a>
+          <form method="post" action="{% url 'club:logout' %}" class="logout-form">
+            {% csrf_token %}
+            <button type="submit" class="logout-button">ログアウト</button>
+          </form>
         {% else %}
           <a href="{% url 'club:login' %}">ログイン</a>
         {% endif %}
-      </div>
+      </nav>
     </div>
-  </div>
+  </header>
 
-  <div class="wrap">
-    {% if messages %}
-      {% for message in messages %}
-        <div class="msg">
-          {{ message }}
+  <main class="main">
+    <div class="wrap">
+      {% if messages %}
+        <div class="messages">
+          {% for message in messages %}
+            <div class="message {% if message.tags %}{{ message.tags }}{% else %}info{% endif %}">
+              {{ message }}
+            </div>
+          {% endfor %}
         </div>
-      {% endfor %}
-    {% endif %}
+      {% endif %}
 
-    {% block content %}{% endblock %}
-  </div>
+      {% block content %}{% endblock %}
+    </div>
+  </main>
 </body>
 </html>
