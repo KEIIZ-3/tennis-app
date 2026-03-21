@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
 from django.core import signing
+from django.core.exceptions import ValidationError
 from django.forms import modelform_factory
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -222,6 +223,12 @@ def _user_can_access_reservation(user, reservation):
             return True
 
     return False
+
+
+def _is_reservation_canceled(reservation):
+    is_canceled = bool(getattr(reservation, "is_canceled", False))
+    status = str(getattr(reservation, "status", "") or "").lower()
+    return is_canceled or status == "canceled"
 
 
 def _cancel_reservation_instance(instance):
@@ -449,12 +456,11 @@ def calendar_events(request):
                 court = getattr(availability, "court", None)
 
             user_obj = _pick_first_attr(obj, ["user", "customer", "member", "owner"], None)
-            is_canceled = bool(getattr(obj, "is_canceled", False))
-            status = str(getattr(obj, "status", "") or "").lower()
+            is_canceled = _is_reservation_canceled(obj)
             is_mine = bool(user_obj == request.user)
-            cancel_url = reverse("club:reservation_cancel", kwargs={"pk": obj.pk}) if is_mine else ""
+            cancel_url = reverse("club:reservation_cancel", kwargs={"pk": obj.pk}) if is_mine and not is_canceled else ""
 
-            if is_canceled or status == "canceled":
+            if is_canceled:
                 event_title = "キャンセル済み"
                 background_color = "#9ca3af"
                 border_color = "#9ca3af"
@@ -480,7 +486,7 @@ def calendar_events(request):
                         "coach": str(coach) if coach else "",
                         "coach_name": str(coach) if coach else "",
                         "court": str(court) if court else "",
-                        "is_canceled": is_canceled or status == "canceled",
+                        "is_canceled": is_canceled,
                         "is_mine": is_mine,
                         "cancel_url": cancel_url,
                     },
@@ -524,21 +530,54 @@ def reservation_create(request):
 
     if request.method == "POST":
         if form.is_valid():
-            reservation = form.save(commit=False)
-            _apply_logged_in_user_to_instance(reservation, request.user)
-            reservation.save()
+            try:
+                reservation = form.save(commit=False)
+                _apply_logged_in_user_to_instance(reservation, request.user)
 
-            if hasattr(form, "save_m2m"):
+                if hasattr(reservation, "status") and not getattr(reservation, "status", None):
+                    try:
+                        reservation.status = "booked"
+                    except Exception:
+                        pass
+
+                if hasattr(reservation, "is_canceled"):
+                    try:
+                        reservation.is_canceled = False
+                    except Exception:
+                        pass
+
+                if hasattr(reservation, "full_clean"):
+                    reservation.full_clean()
+
+                reservation.save()
+
+                if hasattr(form, "save_m2m"):
+                    try:
+                        form.save_m2m()
+                    except Exception:
+                        pass
+
                 try:
-                    form.save_m2m()
+                    message = build_reservation_created_message(reservation)
+                    notify_user(request.user, message)
                 except Exception:
                     pass
 
-            message = build_reservation_created_message(reservation)
-            notify_user(request.user, message)
+                messages.success(request, "予約を作成しました。")
+                return redirect("club:reservation_list")
 
-            messages.success(request, "予約を作成しました。")
-            return redirect("club:reservation_list")
+            except ValidationError as e:
+                if hasattr(e, "message_dict"):
+                    for field_name, error_list in e.message_dict.items():
+                        for error in error_list:
+                            if field_name in form.fields:
+                                form.add_error(field_name, error)
+                            else:
+                                form.add_error(None, error)
+                else:
+                    form.add_error(None, str(e))
+            except Exception as e:
+                form.add_error(None, f"予約保存時にエラーが発生しました: {e}")
 
         messages.error(request, "予約を作成できませんでした。入力内容をご確認ください。")
 
@@ -602,10 +641,21 @@ def reservation_cancel(request, pk):
     if not _user_can_access_reservation(request.user, reservation):
         return HttpResponse("Forbidden", status=403)
 
-    _cancel_reservation_instance(reservation)
+    if _is_reservation_canceled(reservation):
+        messages.info(request, "この予約はすでにキャンセル済みです。")
+        return redirect("club:reservation_list")
 
-    message = build_reservation_canceled_message(reservation)
-    notify_user(request.user, message)
+    try:
+        _cancel_reservation_instance(reservation)
+    except Exception as e:
+        messages.error(request, f"予約のキャンセルに失敗しました: {e}")
+        return redirect("club:reservation_list")
+
+    try:
+        message = build_reservation_canceled_message(reservation)
+        notify_user(request.user, message)
+    except Exception:
+        pass
 
     messages.success(request, "予約をキャンセルしました。")
     return redirect("club:reservation_list")
