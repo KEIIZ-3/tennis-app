@@ -8,13 +8,16 @@ from .models import CoachAvailability, Court, Reservation, LineAccountLink
 
 User = get_user_model()
 
+BUSINESS_START_HOUR = 9
+BUSINESS_END_HOUR = 21
+
+START_HOUR_CHOICES = [(str(h), f"{h:02d}:00") for h in range(BUSINESS_START_HOUR, BUSINESS_END_HOUR)]
+END_HOUR_CHOICES = [(str(h), f"{h:02d}:00") for h in range(BUSINESS_START_HOUR + 1, BUSINESS_END_HOUR + 1)]
+
 
 class LoginForm(forms.Form):
     username = forms.CharField(label="ユーザー名", max_length=150)
     password = forms.CharField(label="パスワード", widget=forms.PasswordInput)
-
-
-HOUR_CHOICES = [(str(h), f"{h:02d}:00") for h in range(24)]
 
 
 class CoachAvailabilityForm(forms.ModelForm):
@@ -24,7 +27,7 @@ class CoachAvailabilityForm(forms.ModelForm):
     )
     start_hour = forms.ChoiceField(
         label="Start at 時間",
-        choices=HOUR_CHOICES,
+        choices=START_HOUR_CHOICES,
     )
     end_date = forms.DateField(
         label="End at 日付",
@@ -32,13 +35,12 @@ class CoachAvailabilityForm(forms.ModelForm):
     )
     end_hour = forms.ChoiceField(
         label="End at 時間",
-        choices=HOUR_CHOICES,
+        choices=END_HOUR_CHOICES,
     )
 
     class Meta:
         model = CoachAvailability
         fields = ["coach", "court", "capacity", "note"]
-
         widgets = {
             "capacity": forms.NumberInput(attrs={"min": 1}),
             "note": forms.TextInput(attrs={"placeholder": "任意メモ"}),
@@ -107,6 +109,12 @@ class CoachAvailabilityForm(forms.ModelForm):
         start_at = self._build_aware_datetime(start_date, start_hour)
         end_at = self._build_aware_datetime(end_date, end_hour)
 
+        if start_at.hour < BUSINESS_START_HOUR or start_at.hour >= BUSINESS_END_HOUR:
+            self.add_error("start_hour", "開始時刻は 09:00〜20:00 の範囲で指定してください。")
+
+        if end_at.hour <= BUSINESS_START_HOUR or end_at.hour > BUSINESS_END_HOUR:
+            self.add_error("end_hour", "終了時刻は 10:00〜21:00 の範囲で指定してください。")
+
         if end_at <= start_at:
             raise forms.ValidationError("終了日時は開始日時より後にしてください。")
 
@@ -131,7 +139,7 @@ class ReservationCreateForm(forms.ModelForm):
     )
     start_hour = forms.ChoiceField(
         label="Start at 時間",
-        choices=HOUR_CHOICES,
+        choices=START_HOUR_CHOICES,
     )
     end_date = forms.DateField(
         label="End at 日付",
@@ -139,7 +147,7 @@ class ReservationCreateForm(forms.ModelForm):
     )
     end_hour = forms.ChoiceField(
         label="End at 時間",
-        choices=HOUR_CHOICES,
+        choices=END_HOUR_CHOICES,
     )
 
     class Meta:
@@ -200,6 +208,12 @@ class ReservationCreateForm(forms.ModelForm):
 
         start_at = self._build_aware_datetime(start_date, start_hour)
         end_at = self._build_aware_datetime(end_date, end_hour)
+
+        if start_at.hour < BUSINESS_START_HOUR or start_at.hour >= BUSINESS_END_HOUR:
+            self.add_error("start_hour", "開始時刻は 09:00〜20:00 の範囲で指定してください。")
+
+        if end_at.hour <= BUSINESS_START_HOUR or end_at.hour > BUSINESS_END_HOUR:
+            self.add_error("end_hour", "終了時刻は 10:00〜21:00 の範囲で指定してください。")
 
         if end_at <= start_at:
             raise forms.ValidationError("終了日時は開始日時より後にしてください。")
