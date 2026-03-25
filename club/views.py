@@ -1,5 +1,6 @@
 import json
 import secrets
+from datetime import timedelta
 from urllib.parse import urlencode
 
 from django.apps import apps
@@ -391,12 +392,16 @@ def calendar_events(request):
             if court:
                 title_parts.append(str(court))
 
+            reserve_end_at = None
+            if start_at:
+                reserve_end_at = start_at + timedelta(hours=1)
+
             query = urlencode(
                 {
                     "coach": getattr(coach, "pk", "") or "",
                     "court": getattr(court, "pk", "") or "",
                     "start": _to_event_datetime_str(start_at) or "",
-                    "end": _to_event_datetime_str(end_at) or "",
+                    "end": _to_event_datetime_str(reserve_end_at) or "",
                 }
             )
 
@@ -511,7 +516,10 @@ def reservation_create(request):
     coach_id = request.GET.get("coach")
     court_id = request.GET.get("court")
     start_value = _parse_query_datetime(request.GET.get("start"))
-    end_value = _parse_query_datetime(request.GET.get("end"))
+
+    end_value = None
+    if start_value:
+        end_value = start_value + timedelta(hours=1)
 
     if coach_id:
         initial["coach"] = coach_id
@@ -534,9 +542,12 @@ def reservation_create(request):
                 reservation = form.save(commit=False)
                 _apply_logged_in_user_to_instance(reservation, request.user)
 
+                if getattr(reservation, "start_at", None):
+                    reservation.end_at = reservation.start_at + timedelta(hours=1)
+
                 if hasattr(reservation, "status") and not getattr(reservation, "status", None):
                     try:
-                        reservation.status = "booked"
+                        reservation.status = "active"
                     except Exception:
                         pass
 
