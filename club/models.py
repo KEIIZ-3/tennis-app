@@ -5,6 +5,9 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
+BUSINESS_START_HOUR = 9
+BUSINESS_END_HOUR = 21
+
 
 class User(AbstractUser):
     ROLE_CHOICES = (
@@ -68,6 +71,15 @@ class CoachAvailability(models.Model):
             or self.end_at.microsecond != 0
         ):
             raise ValidationError("コーチ空き時間は1時間単位で指定してください。")
+
+        start_local = timezone.localtime(self.start_at) if timezone.is_aware(self.start_at) else self.start_at
+        end_local = timezone.localtime(self.end_at) if timezone.is_aware(self.end_at) else self.end_at
+
+        if start_local.hour < BUSINESS_START_HOUR or start_local.hour >= BUSINESS_END_HOUR:
+            raise ValidationError("コーチ空き時間の開始時刻は 09:00〜20:00 の範囲で指定してください。")
+
+        if end_local.hour <= BUSINESS_START_HOUR or end_local.hour > BUSINESS_END_HOUR:
+            raise ValidationError("コーチ空き時間の終了時刻は 10:00〜21:00 の範囲で指定してください。")
 
         duration = self.end_at - self.start_at
         if duration.total_seconds() <= 0 or duration.total_seconds() % 3600 != 0:
@@ -147,6 +159,15 @@ class Reservation(models.Model):
             or self.end_at.microsecond != 0
         ):
             raise ValidationError("予約は1時間単位でのみ可能です。")
+
+        start_local = timezone.localtime(self.start_at) if timezone.is_aware(self.start_at) else self.start_at
+        end_local = timezone.localtime(self.end_at) if timezone.is_aware(self.end_at) else self.end_at
+
+        if start_local.hour < BUSINESS_START_HOUR or start_local.hour >= BUSINESS_END_HOUR:
+            raise ValidationError("予約開始時刻は 09:00〜20:00 の範囲で指定してください。")
+
+        if end_local.hour <= BUSINESS_START_HOUR or end_local.hour > BUSINESS_END_HOUR:
+            raise ValidationError("予約終了時刻は 10:00〜21:00 の範囲で指定してください。")
 
         if self.end_at - self.start_at != timedelta(hours=1):
             raise ValidationError("予約はちょうど1時間で指定してください。")
