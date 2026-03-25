@@ -59,6 +59,9 @@ class CoachAvailability(models.Model):
         return f"{self.coach} / {self.court} / {self.start_at:%Y-%m-%d %H:%M}"
 
     def clean(self):
+        if not self.start_at or not self.end_at:
+            return
+
         if self.start_at >= self.end_at:
             raise ValidationError("開始日時は終了日時より前にしてください。")
 
@@ -147,6 +150,9 @@ class Reservation(models.Model):
         return f"{self.user} / {self.coach} / {self.start_at:%Y-%m-%d %H:%M}"
 
     def clean(self):
+        if not self.start_at or not self.end_at:
+            return
+
         if self.start_at >= self.end_at:
             raise ValidationError("開始日時は終了日時より前にしてください。")
 
