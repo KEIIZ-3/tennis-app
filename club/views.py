@@ -16,7 +16,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.cache import never_cache
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from . import forms as club_forms
@@ -339,6 +340,8 @@ def home(request):
     )
 
 
+@never_cache
+@ensure_csrf_cookie
 @require_http_methods(["GET", "POST"])
 def login_view(request):
     if request.user.is_authenticated:
@@ -346,9 +349,11 @@ def login_view(request):
 
     form = AuthenticationForm(request, data=request.POST or None)
 
-    if request.method == "POST" and form.is_valid():
-        login(request, form.get_user())
-        return redirect("club:home")
+    if request.method == "POST":
+        if form.is_valid():
+            login(request, form.get_user())
+            return redirect("club:home")
+        messages.error(request, "ユーザー名またはパスワードが正しくありません。")
 
     return render(request, "login.html", {"form": form})
 
