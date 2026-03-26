@@ -2,38 +2,39 @@
 {% block title %}ログイン{% endblock %}
 
 {% block content %}
-  <h1>ログイン</h1>
+<div class="card" style="max-width:520px; margin:0 auto;">
+  <h1 style="margin-top:0;">ログイン</h1>
 
-  {% if error %}
-    <div class="msg" style="border-color:#f5c2c2; background:#fff5f5;">
-      {{ error }}
-    </div>
-  {% endif %}
-
-  <form method="post" class="card">
+  <form method="post" action="{% url 'club:login' %}" novalidate>
     {% csrf_token %}
-    <div class="grid">
-      <div class="field">
-        <label>ユーザー名</label>
-        {% if form %}
-          {{ form.username }}
+
+    {% if form.non_field_errors %}
+      <div class="message error" style="margin-bottom:14px;">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+
+    <p>
+      <label for="{{ form.username.id_for_label }}">ユーザー名</label>
+      {{ form.username }}
+      {% if form.username.errors %}
+        <div class="message error" style="margin-top:8px;">
           {{ form.username.errors }}
-        {% else %}
-          <input name="username" required>
-        {% endif %}
-      </div>
+        </div>
+      {% endif %}
+    </p>
 
-      <div class="field">
-        <label>パスワード</label>
-        {% if form %}
-          {{ form.password }}
+    <p>
+      <label for="{{ form.password.id_for_label }}">パスワード</label>
+      {{ form.password }}
+      {% if form.password.errors %}
+        <div class="message error" style="margin-top:8px;">
           {{ form.password.errors }}
-        {% else %}
-          <input type="password" name="password" required>
-        {% endif %}
-      </div>
+        </div>
+      {% endif %}
+    </p>
 
-      <button class="btn btn-primary" type="submit">ログイン</button>
-    </div>
+    <button type="submit">ログイン</button>
   </form>
+</div>
 {% endblock %}
