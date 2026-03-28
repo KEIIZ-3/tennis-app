@@ -29,4 +29,8 @@ urlpatterns = [
     path("line/", views.line_connect, name="line_connect"),
     path("line/link/", views.line_link, name="line_link"),
     path("line/webhook/", views.line_webhook, name="line_webhook"),
+
+    # LINE Login
+    path("line/login/start/", views.line_login_start, name="line_login_start"),
+    path("line/login/callback/", views.line_login_callback, name="line_login_callback"),
 ]
