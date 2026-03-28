@@ -1,9 +1,13 @@
 import json
 import secrets
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import timedelta
 from urllib.parse import urlencode
 
 from django.apps import apps
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
@@ -324,6 +328,95 @@ def _parse_query_datetime(value):
     if timezone.is_aware(dt):
         return timezone.localtime(dt)
     return timezone.make_aware(dt)
+
+
+def _normalize_next_url(value):
+    if not value:
+        return reverse("club:home")
+    value = str(value).strip()
+    if not value.startswith("/"):
+        return reverse("club:home")
+    if value.startswith("//"):
+        return reverse("club:home")
+    return value
+
+
+def _line_login_enabled():
+    return bool(
+        getattr(settings, "LINE_LOGIN_CHANNEL_ID", "").strip()
+        and getattr(settings, "LINE_LOGIN_CHANNEL_SECRET", "").strip()
+    )
+
+
+def _line_login_redirect_uri(request):
+    configured = getattr(settings, "LINE_LOGIN_REDIRECT_URI", "").strip()
+    if configured:
+        return configured
+    return request.build_absolute_uri(reverse("club:line_login_callback"))
+
+
+def _line_login_scope():
+    scope = getattr(settings, "LINE_LOGIN_SCOPE", "openid profile").strip()
+    return scope or "openid profile"
+
+
+def _post_form_urlencoded(url, params):
+    body = urllib.parse.urlencode(params).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=15) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _exchange_line_login_code_for_token(request, code):
+    return _post_form_urlencoded(
+        "https://api.line.me/oauth2/v2.1/token",
+        {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": _line_login_redirect_uri(request),
+            "client_id": getattr(settings, "LINE_LOGIN_CHANNEL_ID", "").strip(),
+            "client_secret": getattr(settings, "LINE_LOGIN_CHANNEL_SECRET", "").strip(),
+        },
+    )
+
+
+def _verify_line_id_token(id_token, nonce):
+    payload = {
+        "id_token": id_token,
+        "client_id": getattr(settings, "LINE_LOGIN_CHANNEL_ID", "").strip(),
+    }
+    if nonce:
+        payload["nonce"] = nonce
+
+    return _post_form_urlencoded(
+        "https://api.line.me/oauth2/v2.1/verify",
+        payload,
+    )
+
+
+def _generate_unique_line_username(line_user_id):
+    User = get_user_model()
+
+    base = f"line_{str(line_user_id)[-12:]}"
+    base = base[:150] or f"line_{secrets.token_hex(6)}"
+
+    username = base
+    counter = 1
+    while User.objects.filter(username=username).exists():
+        suffix = f"_{counter}"
+        username = f"{base[:150 - len(suffix)]}{suffix}"
+        counter += 1
+
+    return username
+
+
+def _login_user_with_default_backend(request, user):
+    login(request, user, backend="django.contrib.auth.backends.ModelBackend")
 
 
 def home(request):
@@ -766,6 +859,158 @@ def coach_availability_delete(request, pk):
     return redirect("club:coach_availability_list")
 
 
+@require_GET
+def line_login_start(request):
+    if not _line_login_enabled():
+        messages.error(request, "LINE Login の設定が未完了です。")
+        return redirect("club:login")
+
+    state = secrets.token_urlsafe(24)
+    nonce = secrets.token_urlsafe(24)
+    next_url = _normalize_next_url(request.GET.get("next"))
+
+    request.session["line_login_state"] = state
+    request.session["line_login_nonce"] = nonce
+    request.session["line_login_next"] = next_url
+
+    params = {
+        "response_type": "code",
+        "client_id": getattr(settings, "LINE_LOGIN_CHANNEL_ID", "").strip(),
+        "redirect_uri": _line_login_redirect_uri(request),
+        "state": state,
+        "scope": _line_login_scope(),
+        "nonce": nonce,
+    }
+
+    authorize_url = "https://access.line.me/oauth2/v2.1/authorize?" + urllib.parse.urlencode(params)
+    return redirect(authorize_url)
+
+
+@require_GET
+def line_login_callback(request):
+    if not _line_login_enabled():
+        messages.error(request, "LINE Login の設定が未完了です。")
+        return redirect("club:login")
+
+    error = (request.GET.get("error") or "").strip()
+    if error:
+        description = (request.GET.get("error_description") or "").strip()
+        messages.error(request, f"LINEログインに失敗しました。{description or error}")
+        return redirect("club:login")
+
+    expected_state = request.session.pop("line_login_state", "")
+    expected_nonce = request.session.pop("line_login_nonce", "")
+    next_url = _normalize_next_url(request.session.pop("line_login_next", reverse("club:home")))
+
+    actual_state = (request.GET.get("state") or "").strip()
+    code = (request.GET.get("code") or "").strip()
+
+    if not expected_state or expected_state != actual_state:
+        messages.error(request, "LINEログインの state 検証に失敗しました。")
+        return redirect("club:login")
+
+    if not code:
+        messages.error(request, "LINEログインの認証コードを受け取れませんでした。")
+        return redirect("club:login")
+
+    try:
+        token_response = _exchange_line_login_code_for_token(request, code)
+        id_token = (token_response.get("id_token") or "").strip()
+        if not id_token:
+            messages.error(request, "LINEログインの IDトークンを取得できませんでした。")
+            return redirect("club:login")
+
+        verified = _verify_line_id_token(id_token, expected_nonce)
+    except urllib.error.HTTPError as e:
+        try:
+            error_body = e.read().decode("utf-8")
+        except Exception:
+            error_body = ""
+        messages.error(request, f"LINEログインの通信に失敗しました。{error_body or str(e)}")
+        return redirect("club:login")
+    except Exception as e:
+        messages.error(request, f"LINEログイン処理でエラーが発生しました: {e}")
+        return redirect("club:login")
+
+    line_user_id = str(verified.get("sub") or "").strip()
+    display_name = str(verified.get("name") or "").strip()
+    email = str(verified.get("email") or "").strip()
+
+    if not line_user_id:
+        messages.error(request, "LINEのユーザーIDを取得できませんでした。")
+        return redirect("club:login")
+
+    if LineAccountLink is None:
+        messages.error(request, "LineAccountLink モデルが見つかりません。")
+        return redirect("club:login")
+
+    User = get_user_model()
+
+    try:
+        now = timezone.now()
+
+        if request.user.is_authenticated:
+            conflict = LineAccountLink.objects.filter(line_user_id=line_user_id).exclude(user=request.user).first()
+            if conflict:
+                messages.error(request, "このLINEアカウントは別の会員に連携済みです。")
+                return redirect("club:line_connect")
+
+            LineAccountLink.objects.update_or_create(
+                user=request.user,
+                defaults={
+                    "line_user_id": line_user_id,
+                    "is_active": True,
+                    "last_event_at": now,
+                },
+            )
+            messages.success(request, "LINEアカウントを自動連携しました。")
+            return redirect("club:line_connect")
+
+        existing_link = LineAccountLink.objects.select_related("user").filter(line_user_id=line_user_id).first()
+        if existing_link and existing_link.user:
+            existing_link.is_active = True
+            existing_link.last_event_at = now
+            existing_link.save(update_fields=["is_active", "last_event_at"])
+            _login_user_with_default_backend(request, existing_link.user)
+            messages.success(request, "LINEでログインしました。")
+            return redirect(next_url)
+
+        username = _generate_unique_line_username(line_user_id)
+        user = User(username=username)
+
+        if hasattr(user, "role") and not getattr(user, "role", None):
+            try:
+                user.role = "member"
+            except Exception:
+                pass
+
+        if hasattr(user, "first_name") and display_name:
+            user.first_name = display_name[:150]
+
+        if hasattr(user, "email") and email:
+            user.email = email[:254]
+
+        user.set_unusable_password()
+        user.save()
+
+        LineAccountLink.objects.update_or_create(
+            user=user,
+            defaults={
+                "line_user_id": line_user_id,
+                "is_active": True,
+                "last_event_at": now,
+            },
+        )
+
+        _login_user_with_default_backend(request, user)
+        messages.success(request, "LINEで新規登録・ログインしました。")
+        return redirect(next_url)
+
+    except Exception as e:
+        messages.error(request, f"LINEアカウント連携でエラーが発生しました: {e}")
+        return redirect("club:login")
+
+
 @login_required
 @require_http_methods(["GET"])
 def line_connect(request):
@@ -776,6 +1021,9 @@ def line_connect(request):
         "line_link": link,
         "line_link_token": link_token,
         "manual_form": LineAccountLinkForm() if LineAccountLinkForm else None,
+        "line_login_enabled": _line_login_enabled(),
+        "line_login_url": f"{reverse('club:line_login_start')}?next={urllib.parse.quote(reverse('club:line_connect'))}",
+        "line_webhook_full_url": request.build_absolute_uri(reverse("club:line_webhook")),
     }
     return render(request, "line_connect.html", context)
 
@@ -809,6 +1057,11 @@ def line_link(request):
             is_active = form.cleaned_data.get("is_active", True)
 
             try:
+                conflict = LineAccountLink.objects.filter(line_user_id=line_user_id).exclude(user=request.user).first()
+                if conflict:
+                    messages.error(request, "その line_user_id は別の会員に連携済みです。")
+                    return redirect("club:line_connect")
+
                 LineAccountLink.objects.update_or_create(
                     user=request.user,
                     defaults={
@@ -831,6 +1084,11 @@ def line_link(request):
         return redirect("club:line_connect")
 
     try:
+        conflict = LineAccountLink.objects.filter(line_user_id=line_user_id).exclude(user=request.user).first()
+        if conflict:
+            messages.error(request, "その line_user_id は別の会員に連携済みです。")
+            return redirect("club:line_connect")
+
         LineAccountLink.objects.update_or_create(
             user=request.user,
             defaults={
@@ -892,11 +1150,21 @@ def line_webhook(request):
                 continue
 
             try:
+                conflict = LineAccountLink.objects.filter(line_user_id=line_user_id).exclude(user=user).first()
+                if conflict:
+                    if reply_token:
+                        send_line_reply(
+                            reply_token,
+                            "このLINEアカウントは別の会員に連携済みです。",
+                        )
+                    continue
+
                 LineAccountLink.objects.update_or_create(
                     user=user,
                     defaults={
                         "line_user_id": line_user_id,
                         "is_active": True,
+                        "last_event_at": timezone.now(),
                     },
                 )
                 if reply_token:
@@ -915,7 +1183,7 @@ def line_webhook(request):
             if reply_token:
                 send_line_reply(
                     reply_token,
-                    "友だち追加ありがとうございます。アプリのLINE連携画面に表示される連携コードを、このトークに送信してください。",
+                    "友だち追加ありがとうございます。アプリのLINE連携画面に表示される連携コードを、このトークに送信してください。LINE Login を導入した場合は、サイト上の『LINEでログイン』から自動連携もできます。",
                 )
 
     return HttpResponse("OK")
