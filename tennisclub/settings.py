@@ -165,6 +165,14 @@ LINE_NOTIFY_TOKEN = os.environ.get("LINE_NOTIFY_TOKEN", "")
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 LINE_TO_USER_ID = os.environ.get("LINE_TO_USER_ID", "")
 
+# ----------------------------
+# LINE Login（新規）
+# ----------------------------
+LINE_LOGIN_CHANNEL_ID = os.environ.get("LINE_LOGIN_CHANNEL_ID", "").strip()
+LINE_LOGIN_CHANNEL_SECRET = os.environ.get("LINE_LOGIN_CHANNEL_SECRET", "").strip()
+LINE_LOGIN_SCOPE = os.environ.get("LINE_LOGIN_SCOPE", "openid profile").strip()
+LINE_LOGIN_REDIRECT_URI = os.environ.get("LINE_LOGIN_REDIRECT_URI", "").strip()
+
 
 # ----------------------------
 # Redis キャッシュ
