@@ -1,5 +1,7 @@
 from django import forms
 from django.contrib import admin
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 
 from .models import CoachAvailability, Court, LineAccountLink, Reservation, User
 
@@ -24,11 +26,44 @@ class CoachAvailabilityAdminForm(forms.ModelForm):
         }
 
 
+class CustomUserCreationForm(UserCreationForm):
+    class Meta(UserCreationForm.Meta):
+        model = User
+        fields = ("username", "email", "role")
+
+
+class CustomUserChangeForm(UserChangeForm):
+    class Meta(UserChangeForm.Meta):
+        model = User
+        fields = "__all__"
+
+
 @admin.register(User)
-class UserAdmin(admin.ModelAdmin):
+class UserAdmin(BaseUserAdmin):
+    form = CustomUserChangeForm
+    add_form = CustomUserCreationForm
+
     list_display = ("id", "username", "email", "role", "is_staff", "is_superuser")
-    list_filter = ("role", "is_staff", "is_superuser")
+    list_filter = ("role", "is_staff", "is_superuser", "is_active")
     search_fields = ("username", "email")
+    ordering = ("id",)
+
+    fieldsets = (
+        (None, {"fields": ("username", "password")}),
+        ("個人情報", {"fields": ("first_name", "last_name", "email")}),
+        ("権限", {"fields": ("role", "is_active", "is_staff", "is_superuser", "groups", "user_permissions")}),
+        ("重要な日付", {"fields": ("last_login", "date_joined")}),
+    )
+
+    add_fieldsets = (
+        (
+            None,
+            {
+                "classes": ("wide",),
+                "fields": ("username", "email", "role", "password1", "password2", "is_staff", "is_superuser"),
+            },
+        ),
+    )
 
 
 @admin.register(Court)
