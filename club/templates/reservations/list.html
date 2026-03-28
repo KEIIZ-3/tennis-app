@@ -35,25 +35,27 @@
           <tr>
             <td>
               {% if reservation.start_at %}{{ reservation.start_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}
-              -
+              〜
               {% if reservation.end_at %}{{ reservation.end_at|date:"H:i" }}{% else %}-{% endif %}
             </td>
             <td>{{ reservation.coach }}</td>
             <td>{{ reservation.court }}</td>
             <td>
               {% if is_canceled or status_text == "canceled" %}
-                cancelled
+                キャンセル済み
+              {% elif status_text == "active" %}
+                予約中
               {% elif status_text %}
                 {{ status_text }}
               {% else %}
-                booked
+                予約中
               {% endif %}
             </td>
             <td>
               {% if is_canceled or status_text == "canceled" %}
                 -
               {% else %}
-                <form method="post" action="{% url 'club:reservation_cancel' reservation.pk %}" style="margin:0;">
+                <form method="post" action="{% url 'club:reservation_cancel' reservation.pk %}" style="margin:0;" onsubmit="return confirm('この予約をキャンセルしますか？');">
                   {% csrf_token %}
                   <button type="submit">キャンセル</button>
                 </form>
