@@ -28,7 +28,37 @@
 
   <hr style="margin:24px 0;">
 
-  <h2>おすすめの連携方法（今後の本番運用向け）</h2>
+  <h2>おすすめの連携方法（LINE Login）</h2>
+  <p>
+    こちらの方法なら、LINE認証が終わった時点で自動的にこの会員アカウントへ連携できます。
+  </p>
+
+  {% if line_login_enabled %}
+    <div style="margin:16px 0;">
+      <a
+        href="{{ line_login_url }}"
+        style="display:inline-block; padding:10px 16px; border-radius:8px; background:#06c755; color:#fff; text-decoration:none; font-weight:bold;"
+      >
+        LINEでログインして自動連携
+      </a>
+    </div>
+    <p style="color:#666;">
+      ※ すでにログイン中の会員が実行した場合は、現在の会員アカウントに自動紐付けします。<br>
+      ※ 未ログインの状態で実行した場合は、初回なら会員を自動作成してそのままログインします。
+    </p>
+  {% else %}
+    <div style="padding:12px; border:1px solid #f0d9a7; background:#fffaf0; border-radius:8px; margin:16px 0;">
+      LINE Login の環境変数が未設定です。先に Render の環境変数を設定してください。
+    </div>
+  {% endif %}
+
+  <hr style="margin:24px 0;">
+
+  <h2>連携コード方式（予備）</h2>
+  <p>
+    従来どおり、連携コードをLINEトークに送る方法も使えます。
+  </p>
+
   <ol>
     <li>LINE公式アカウントを友だち追加します</li>
     <li>下の「連携コード」をLINEトークにそのまま送信します</li>
@@ -43,7 +73,6 @@
   </div>
 
   <p style="color:#666;">
-    ※ LINE公式アカウント未取得の間は、下の手動入力でも保存できます。<br>
     ※ この連携コードは一定期間で無効になります。
   </p>
 
@@ -94,12 +123,7 @@
     LINE Developers 側では、Webhook URL に次を設定します。
   </p>
   <div style="padding:16px; border:1px solid #ddd; border-radius:8px; background:#fafafa; margin:16px 0; word-break:break-all; font-family:monospace; font-size:14px;">
-    /line/webhook/
+    {{ line_webhook_full_url }}
   </div>
-
-  <p style="color:#666;">
-    実際には Render 本番URLを付けた完全URLを設定してください。<br>
-    例: https://あなたのサービスURL/line/webhook/
-  </p>
 </div>
 {% endblock %}
