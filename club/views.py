@@ -52,6 +52,7 @@ LineAccountLink = _get_model("LineAccountLink")
 ReservationCreateForm = _get_form("ReservationCreateForm")
 ReservationForm = _get_form("ReservationForm")
 LineAccountLinkForm = _get_form("LineAccountLinkForm")
+MemberRegistrationForm = _get_form("MemberRegistrationForm")
 
 
 def _pick_first_attr(obj, names, default=None):
@@ -449,6 +450,36 @@ def login_view(request):
         messages.error(request, "ユーザー名またはパスワードが正しくありません。")
 
     return render(request, "login.html", {"form": form})
+
+
+@never_cache
+@ensure_csrf_cookie
+@require_http_methods(["GET", "POST"])
+def register_view(request):
+    if request.user.is_authenticated:
+        return redirect("club:home")
+
+    if MemberRegistrationForm is None:
+        raise Http404("MemberRegistrationForm not found.")
+
+    form = MemberRegistrationForm(request.POST or None)
+
+    if request.method == "POST":
+        if form.is_valid():
+            user = form.save()
+            _login_user_with_default_backend(request, user)
+            messages.success(request, "新規会員登録が完了しました。")
+            return redirect("club:home")
+
+        messages.error(request, "新規会員登録できませんでした。入力内容をご確認ください。")
+
+    return render(
+        request,
+        "register.html",
+        {
+            "form": form,
+        },
+    )
 
 
 @login_required
@@ -925,7 +956,7 @@ def line_login_callback(request):
         try:
             error_body = e.read().decode("utf-8")
         except Exception:
-            error_body = ""
+            error_body = str(e)
         messages.error(request, f"LINEログインの通信に失敗しました。{error_body or str(e)}")
         return redirect("club:login")
     except Exception as e:
@@ -1183,7 +1214,7 @@ def line_webhook(request):
             if reply_token:
                 send_line_reply(
                     reply_token,
-                    "友だち追加ありがとうございます。アプリのLINE連携画面に表示される連携コードを、このトークに送信してください。LINE Login を導入した場合は、サイト上の『LINEでログイン』から自動連携もできます。",
+                    "友だち追加ありがとうございます。予約・ログインはこちらです。\nhttps://tennis-app-c4xb.onrender.com/line/login/start/\n\n初めての方も、そのまま会員登録とLINE連携ができます。",
                 )
 
     return HttpResponse("OK")
