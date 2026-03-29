@@ -2,6 +2,37 @@
 {% block title %}ホーム{% endblock %}
 
 {% block content %}
+
+{% if not user.is_authenticated %}
+  <div class="card">
+    <h1 style="margin-top:0;">Tennis Club へようこそ</h1>
+    <p style="margin:12px 0 0;">
+      初めての方は、<strong>LINEでログイン</strong>すると、そのまま会員作成とLINE連携が自動で完了します。
+    </p>
+
+    <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
+      <a
+        href="{% url 'club:line_login_start' %}"
+        style="display:inline-block; padding:12px 18px; border-radius:10px; background:#06c755; color:#fff; text-decoration:none; font-weight:bold;"
+      >
+        LINEで始める
+      </a>
+      <a
+        href="{% url 'club:login' %}"
+        style="display:inline-block; padding:12px 18px; border-radius:10px; background:#fff; color:#111; text-decoration:none; border:1px solid #ddd;"
+      >
+        通常ログイン
+      </a>
+    </div>
+
+    <ul style="margin-top:18px; padding-left:20px; line-height:1.8;">
+      <li>公式LINEからそのままログインできます</li>
+      <li>初回は会員登録とLINE連携が自動で完了します</li>
+      <li>ログイン後、予約作成や予約確認ができます</li>
+    </ul>
+  </div>
+{% endif %}
+
 <div class="page-grid">
   <section class="main-panel">
     <div class="card toolbar-card">
@@ -26,10 +57,15 @@
       </div>
 
       <div class="toolbar-links">
-        <a href="{% url 'club:reservation_list' %}">予約一覧</a>
-        <a href="{% url 'club:line_connect' %}">LINE連携</a>
-        {% if user.is_staff or user.is_superuser or user.role == "coach" %}
-          <a href="{% url 'club:coach_availability_list' %}">コーチ空き時間管理</a>
+        {% if user.is_authenticated %}
+          <a href="{% url 'club:reservation_list' %}">予約一覧</a>
+          <a href="{% url 'club:line_connect' %}">LINE連携</a>
+          {% if user.is_staff or user.is_superuser or user.role == "coach" %}
+            <a href="{% url 'club:coach_availability_list' %}">コーチ空き時間管理</a>
+          {% endif %}
+        {% else %}
+          <a href="{% url 'club:line_login_start' %}">LINEでログイン</a>
+          <a href="{% url 'club:login' %}">通常ログイン</a>
         {% endif %}
       </div>
     </div>
