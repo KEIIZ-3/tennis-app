@@ -2,8 +2,38 @@
 {% block title %}ログイン{% endblock %}
 
 {% block content %}
-<div class="card" style="max-width:520px; margin:0 auto;">
+<div class="card" style="max-width:620px; margin:0 auto;">
   <h1 style="margin-top:0;">ログイン</h1>
+
+  <div style="padding:16px; border:1px solid #d8f0dc; background:#f3fff5; border-radius:10px; margin-bottom:20px;">
+    <h2 style="margin:0 0 10px 0; font-size:20px;">初めての方へ</h2>
+    <p style="margin:0 0 12px 0;">
+      <strong>LINEでログイン</strong>すると、そのまま会員登録とLINE連携が自動で完了します。
+    </p>
+    <a
+      href="{% url 'club:line_login_start' %}"
+      style="display:inline-block; padding:12px 18px; border-radius:8px; background:#06c755; color:#fff; text-decoration:none; font-weight:bold;"
+    >
+      LINEでログイン
+    </a>
+  </div>
+
+  <div style="padding:16px; border:1px solid #eee; background:#fafafa; border-radius:10px; margin-bottom:20px;">
+    <h2 style="margin:0 0 10px 0; font-size:20px;">メールアドレス / パスワードで登録したい方</h2>
+    <p style="margin:0 0 12px 0;">
+      通常の新規会員登録はこちらから行えます。
+    </p>
+    <a
+      href="{% url 'club:register' %}"
+      style="display:inline-block; padding:12px 18px; border-radius:8px; background:#fff; color:#111; text-decoration:none; border:1px solid #ddd; font-weight:bold;"
+    >
+      新規会員登録
+    </a>
+  </div>
+
+  <hr style="margin:24px 0;">
+
+  <h2 style="font-size:20px;">通常ログイン</h2>
 
   <form method="post" action="{% url 'club:login' %}" novalidate>
     {% csrf_token %}
@@ -36,20 +66,5 @@
 
     <button type="submit">ログイン</button>
   </form>
-
-  <hr style="margin:24px 0;">
-
-  <div>
-    <h2 style="margin-top:0; font-size:18px;">LINEでログイン</h2>
-    <p style="color:#666;">
-      初めての方でも、LINE認証後に自動で会員作成・LINE連携できます。
-    </p>
-    <a
-      href="{% url 'club:line_login_start' %}"
-      style="display:inline-block; padding:10px 16px; border-radius:8px; background:#06c755; color:#fff; text-decoration:none; font-weight:bold;"
-    >
-      LINEでログイン
-    </a>
-  </div>
 </div>
 {% endblock %}
