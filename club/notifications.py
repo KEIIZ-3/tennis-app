@@ -7,6 +7,7 @@ import urllib.error
 import urllib.request
 
 from django.apps import apps
+from django.utils import timezone
 
 
 LINE_PUSH_API_URL = "https://api.line.me/v2/bot/message/push"
@@ -56,10 +57,6 @@ def _line_request(url: str, payload: dict) -> tuple[bool, str]:
 
 
 def send_line_push(line_user_id: str, message: str) -> tuple[bool, str]:
-    """
-    LINE Push API で1ユーザーへ送信。
-    環境変数未設定でも落とさず False を返す。
-    """
     if not line_user_id:
         return False, "line_user_id is empty."
 
@@ -76,10 +73,6 @@ def send_line_push(line_user_id: str, message: str) -> tuple[bool, str]:
 
 
 def send_line_reply(reply_token: str, message: str) -> tuple[bool, str]:
-    """
-    Webhookイベントへの即時返信。
-    replyToken が無い / 環境変数未設定でも落とさず False を返す。
-    """
     if not reply_token:
         return False, "reply_token is empty."
 
@@ -96,10 +89,6 @@ def send_line_reply(reply_token: str, message: str) -> tuple[bool, str]:
 
 
 def verify_line_signature(body: bytes, signature: str) -> bool:
-    """
-    LINE Webhook署名検証。
-    secret未設定時は False を返す。
-    """
     secret = _get_channel_secret()
     if not secret:
         return False
@@ -127,16 +116,15 @@ def _get_user_display(user) -> str:
     if not user:
         return "ユーザー"
 
-    for attr in ("get_full_name",):
-        if hasattr(user, attr):
-            try:
-                value = getattr(user, attr)()
-                if value:
-                    return str(value)
-            except Exception:
-                pass
+    if hasattr(user, "get_full_name"):
+        try:
+            value = user.get_full_name()
+            if value:
+                return str(value)
+        except Exception:
+            pass
 
-    for attr in ("full_name", "name", "username", "email"):
+    for attr in ("first_name", "full_name", "name", "username", "email"):
         value = getattr(user, attr, None)
         if value:
             return str(value)
@@ -145,10 +133,6 @@ def _get_user_display(user) -> str:
 
 
 def notify_user(user, message: str) -> tuple[bool, str]:
-    """
-    Djangoユーザーに紐づく LineAccountLink を見て通知。
-    LINE未設定・未連携でも落とさず False を返す。
-    """
     if not user or not message:
         return False, "user or message is empty."
 
@@ -175,6 +159,8 @@ def _fmt_dt(value) -> str:
     if not value:
         return "未設定"
     try:
+        if timezone.is_aware(value):
+            value = timezone.localtime(value)
         return value.strftime("%Y-%m-%d %H:%M")
     except Exception:
         return str(value)
@@ -188,7 +174,7 @@ def _pick_first_attr(obj, names, default=""):
     return default
 
 
-def build_reservation_created_message(reservation) -> str:
+def _extract_reservation_data(reservation):
     user = _pick_first_attr(reservation, ["user", "customer", "member", "owner"], None)
     coach = _pick_first_attr(reservation, ["coach"], None)
     court = _pick_first_attr(reservation, ["court"], None)
@@ -205,48 +191,38 @@ def build_reservation_created_message(reservation) -> str:
     if court is None and availability is not None:
         court = _pick_first_attr(availability, ["court"], None)
 
-    user_name = _get_user_display(user)
-    coach_name = str(coach) if coach else "未設定"
-    court_name = str(court) if court else "未設定"
+    return {
+        "user_name": _get_user_display(user),
+        "coach_name": str(coach) if coach else "未設定",
+        "court_name": str(court) if court else "未設定",
+        "start_text": _fmt_dt(start_at),
+        "end_text": _fmt_dt(end_at),
+    }
 
+
+def build_reservation_created_message(reservation) -> str:
+    data = _extract_reservation_data(reservation)
     return (
         "【予約完了】\n"
-        f"ご予約を受け付けました。\n\n"
-        f"利用者: {user_name}\n"
-        f"コーチ: {coach_name}\n"
-        f"コート: {court_name}\n"
-        f"開始: {_fmt_dt(start_at)}\n"
-        f"終了: {_fmt_dt(end_at)}"
+        "ご予約ありがとうございます。\n\n"
+        f"利用者: {data['user_name']}\n"
+        f"コーチ: {data['coach_name']}\n"
+        f"コート: {data['court_name']}\n"
+        f"開始: {data['start_text']}\n"
+        f"終了: {data['end_text']}\n\n"
+        "内容をご確認ください。"
     )
 
 
 def build_reservation_canceled_message(reservation) -> str:
-    user = _pick_first_attr(reservation, ["user", "customer", "member", "owner"], None)
-    coach = _pick_first_attr(reservation, ["coach"], None)
-    court = _pick_first_attr(reservation, ["court"], None)
-    start_at = _pick_first_attr(reservation, ["start_at", "start", "starts_at"], None)
-    end_at = _pick_first_attr(reservation, ["end_at", "end", "ends_at"], None)
-    availability = _pick_first_attr(reservation, ["coach_availability", "availability"], None)
-
-    if not start_at and availability is not None:
-        start_at = _pick_first_attr(availability, ["start_at", "start", "starts_at"], None)
-    if not end_at and availability is not None:
-        end_at = _pick_first_attr(availability, ["end_at", "end", "ends_at"], None)
-    if coach is None and availability is not None:
-        coach = _pick_first_attr(availability, ["coach"], None)
-    if court is None and availability is not None:
-        court = _pick_first_attr(availability, ["court"], None)
-
-    user_name = _get_user_display(user)
-    coach_name = str(coach) if coach else "未設定"
-    court_name = str(court) if court else "未設定"
-
+    data = _extract_reservation_data(reservation)
     return (
         "【予約キャンセル】\n"
-        f"ご予約をキャンセルしました。\n\n"
-        f"利用者: {user_name}\n"
-        f"コーチ: {coach_name}\n"
-        f"コート: {court_name}\n"
-        f"開始: {_fmt_dt(start_at)}\n"
-        f"終了: {_fmt_dt(end_at)}"
+        "ご予約のキャンセルを受け付けました。\n\n"
+        f"利用者: {data['user_name']}\n"
+        f"コーチ: {data['coach_name']}\n"
+        f"コート: {data['court_name']}\n"
+        f"開始: {data['start_text']}\n"
+        f"終了: {data['end_text']}\n\n"
+        "必要に応じて、あらためてご予約ください。"
     )
