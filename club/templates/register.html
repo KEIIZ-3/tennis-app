@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}新規会員登録{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:620px; margin:0 auto;">
+  <h1 style="margin-top:0;">新規会員登録</h1>
+
+  <div style="padding:16px; border:1px solid #d8f0dc; background:#f3fff5; border-radius:10px; margin-bottom:20px;">
+    <p style="margin:0 0 12px 0;">
+      すでにLINEをお使いの場合は、<strong>LINEでログイン</strong>すると会員登録とLINE連携が一度に完了します。
+    </p>
+    <a
+      href="{% url 'club:line_login_start' %}"
+      style="display:inline-block; padding:12px 18px; border-radius:8px; background:#06c755; color:#fff; text-decoration:none; font-weight:bold;"
+    >
+      LINEでログイン
+    </a>
+  </div>
+
+  <form method="post">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="message error" style="margin-bottom:14px;">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+
+    {% for field in form %}
+      <p>
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.help_text %}
+          <div style="font-size:13px; color:#666; margin-top:6px;">
+            {{ field.help_text }}
+          </div>
+        {% endif %}
+        {% if field.errors %}
+          <div class="message error" style="margin-top:8px;">
+            {{ field.errors }}
+          </div>
+        {% endif %}
+      </p>
+    {% endfor %}
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;">
+      <button type="submit">登録する</button>
+      <a
+        href="{% url 'club:login' %}"
+        style="display:inline-block; padding:10px 14px; border-radius:8px; text-decoration:none; border:1px solid #ddd; background:#fff; color:#111;"
+      >
+        ログイン画面へ戻る
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}
