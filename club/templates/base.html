@@ -60,6 +60,16 @@
       background:#f0f0f0;
     }
 
+    .nav .line-login-link{
+      background:#06c755;
+      color:#fff;
+      font-weight:700;
+    }
+
+    .nav .line-login-link:hover{
+      background:#05b74d;
+    }
+
     .logout-form{
       display:inline;
       margin:0;
@@ -213,7 +223,8 @@
             <button type="submit" class="logout-button">ログアウト</button>
           </form>
         {% else %}
-          <a href="{% url 'club:login' %}">ログイン</a>
+          <a href="{% url 'club:line_login_start' %}" class="line-login-link">LINEでログイン</a>
+          <a href="{% url 'club:login' %}">通常ログイン</a>
         {% endif %}
       </nav>
     </div>
