@@ -2,6 +2,7 @@ from datetime import datetime
 
 from django import forms
 from django.contrib.auth import get_user_model
+from django.contrib.auth.forms import UserCreationForm
 from django.utils import timezone
 
 from .models import CoachAvailability, Court, Reservation, LineAccountLink
@@ -18,6 +19,63 @@ END_HOUR_CHOICES = [(str(h), f"{h:02d}:00") for h in range(BUSINESS_START_HOUR +
 class LoginForm(forms.Form):
     username = forms.CharField(label="ユーザー名", max_length=150)
     password = forms.CharField(label="パスワード", widget=forms.PasswordInput)
+
+
+class MemberRegistrationForm(UserCreationForm):
+    first_name = forms.CharField(label="お名前", max_length=150, required=True)
+    email = forms.EmailField(label="メールアドレス", required=True)
+
+    class Meta(UserCreationForm.Meta):
+        model = User
+        fields = ("first_name", "username", "email", "password1", "password2")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.fields["username"].label = "ユーザー名"
+        self.fields["password1"].label = "パスワード"
+        self.fields["password2"].label = "パスワード（確認）"
+
+        self.fields["first_name"].widget.attrs.update(
+            {
+                "placeholder": "例: 山田 太郎",
+            }
+        )
+        self.fields["username"].widget.attrs.update(
+            {
+                "placeholder": "半角英数字で入力",
+            }
+        )
+        self.fields["email"].widget.attrs.update(
+            {
+                "placeholder": "example@example.com",
+            }
+        )
+
+    def clean_email(self):
+        email = (self.cleaned_data.get("email") or "").strip()
+        if not email:
+            raise forms.ValidationError("メールアドレスを入力してください。")
+
+        qs = User.objects.filter(email__iexact=email)
+        if self.instance and self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+
+        if qs.exists():
+            raise forms.ValidationError("このメールアドレスはすでに登録されています。")
+        return email
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.first_name = (self.cleaned_data.get("first_name") or "").strip()
+        user.email = (self.cleaned_data.get("email") or "").strip()
+
+        if hasattr(user, "role"):
+            user.role = "member"
+
+        if commit:
+            user.save()
+        return user
 
 
 class CoachAvailabilityForm(forms.ModelForm):
