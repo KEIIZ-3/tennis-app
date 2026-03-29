@@ -7,7 +7,7 @@
   <div class="card">
     <h1 style="margin-top:0;">Tennis Club へようこそ</h1>
     <p style="margin:12px 0 0;">
-      初めての方は、<strong>LINEでログイン</strong>すると、そのまま会員作成とLINE連携が自動で完了します。
+      初めての方は、<strong>LINEでログイン</strong>すると、そのまま会員登録とLINE連携が自動で完了します。
     </p>
 
     <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
@@ -16,6 +16,12 @@
         style="display:inline-block; padding:12px 18px; border-radius:10px; background:#06c755; color:#fff; text-decoration:none; font-weight:bold;"
       >
         LINEで始める
+      </a>
+      <a
+        href="{% url 'club:register' %}"
+        style="display:inline-block; padding:12px 18px; border-radius:10px; background:#fff; color:#111; text-decoration:none; border:1px solid #ddd;"
+      >
+        新規会員登録
       </a>
       <a
         href="{% url 'club:login' %}"
@@ -31,337 +37,333 @@
       <li>ログイン後、予約作成や予約確認ができます</li>
     </ul>
   </div>
-{% endif %}
+{% else %}
+  <div class="page-grid">
+    <section class="main-panel">
+      <div class="card toolbar-card">
+        <div class="toolbar-row">
+          <div class="filter-block">
+            <label for="coachFilter"><strong>コーチ表示</strong></label>
+            <select id="coachFilter">
+              <option value="">全コーチ</option>
+              {% for coach in coaches %}
+                <option value="{{ coach.id }}" {% if selected_coach == coach.id|stringformat:"s" %}selected{% endif %}>
+                  {{ coach.username }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
 
-<div class="page-grid">
-  <section class="main-panel">
-    <div class="card toolbar-card">
-      <div class="toolbar-row">
-        <div class="filter-block">
-          <label for="coachFilter"><strong>コーチ表示</strong></label>
-          <select id="coachFilter">
-            <option value="">全コーチ</option>
-            {% for coach in coaches %}
-              <option value="{{ coach.id }}" {% if selected_coach == coach.id|stringformat:"s" %}selected{% endif %}>
-                {{ coach.username }}
-              </option>
-            {% endfor %}
-          </select>
+          <div class="legend">
+            <span class="legend-item legend-available">空き</span>
+            <span class="legend-item legend-reserved">予約済み</span>
+            <span class="legend-item legend-mine">あなたの予約</span>
+          </div>
         </div>
 
-        <div class="legend">
-          <span class="legend-item legend-available">空き</span>
-          <span class="legend-item legend-reserved">予約済み</span>
-          <span class="legend-item legend-mine">あなたの予約</span>
-        </div>
-      </div>
-
-      <div class="toolbar-links">
-        {% if user.is_authenticated %}
+        <div class="toolbar-links">
           <a href="{% url 'club:reservation_list' %}">予約一覧</a>
           <a href="{% url 'club:line_connect' %}">LINE連携</a>
           {% if user.is_staff or user.is_superuser or user.role == "coach" %}
             <a href="{% url 'club:coach_availability_list' %}">コーチ空き時間管理</a>
           {% endif %}
-        {% else %}
-          <a href="{% url 'club:line_login_start' %}">LINEでログイン</a>
-          <a href="{% url 'club:login' %}">通常ログイン</a>
-        {% endif %}
+        </div>
       </div>
-    </div>
 
-    <div class="card calendar-card">
-      <div id="calendar"></div>
-    </div>
-  </section>
-
-  <aside class="side-panel">
-    <div class="card detail-card">
-      <h3>詳細</h3>
-      <div id="detailPanel">
-        <p>カレンダー上の枠をクリックしてください。</p>
+      <div class="card calendar-card">
+        <div id="calendar"></div>
       </div>
-    </div>
-  </aside>
-</div>
+    </section>
 
-<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/locales-all.global.min.js"></script>
+    <aside class="side-panel">
+      <div class="card detail-card">
+        <h3>詳細</h3>
+        <div id="detailPanel">
+          <p>カレンダー上の枠をクリックしてください。</p>
+        </div>
+      </div>
+    </aside>
+  </div>
 
-<style>
-  .page-grid{
-    display:grid;
-    grid-template-columns:minmax(0,1fr) 320px;
-    gap:16px;
-    align-items:start;
-  }
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/locales-all.global.min.js"></script>
 
-  .toolbar-card,
-  .calendar-card,
-  .detail-card{
-    padding:16px;
-  }
-
-  .toolbar-row{
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    gap:12px;
-    flex-wrap:wrap;
-  }
-
-  .filter-block{
-    min-width:220px;
-  }
-
-  .toolbar-links{
-    margin-top:12px;
-    display:flex;
-    gap:12px;
-    flex-wrap:wrap;
-  }
-
-  .legend{
-    display:flex;
-    gap:8px;
-    flex-wrap:wrap;
-  }
-
-  .legend-item{
-    display:inline-block;
-    padding:6px 10px;
-    border-radius:999px;
-    color:#fff;
-    font-size:12px;
-  }
-
-  .legend-available{
-    background:#22c55e;
-  }
-
-  .legend-reserved{
-    background:#ef4444;
-  }
-
-  .legend-mine{
-    background:#3b82f6;
-  }
-
-  #calendar{
-    min-height:720px;
-  }
-
-  .fc .fc-event{
-    white-space:pre-line;
-    cursor:pointer;
-    border-radius:8px;
-    padding:2px 4px;
-  }
-
-  .detail-table{
-    width:100%;
-    border-collapse:collapse;
-  }
-
-  .detail-table th,
-  .detail-table td{
-    text-align:left;
-    padding:6px 0;
-    vertical-align:top;
-    border-bottom:1px solid #eee;
-  }
-
-  .detail-actions{
-    margin-top:16px;
-    display:flex;
-    gap:8px;
-    flex-wrap:wrap;
-  }
-
-  .btn{
-    display:inline-block;
-    padding:10px 14px;
-    border-radius:8px;
-    text-decoration:none;
-    border:1px solid #ddd;
-    background:#fff;
-    color:#111;
-    cursor:pointer;
-  }
-
-  .btn-primary{
-    background:#111;
-    color:#fff;
-    border-color:#111;
-  }
-
-  .btn-danger{
-    background:#b91c1c;
-    color:#fff;
-    border-color:#b91c1c;
-  }
-
-  @media (max-width: 960px){
+  <style>
     .page-grid{
-      grid-template-columns:1fr;
+      display:grid;
+      grid-template-columns:minmax(0,1fr) 320px;
+      gap:16px;
+      align-items:start;
+    }
+
+    .toolbar-card,
+    .calendar-card,
+    .detail-card{
+      padding:16px;
+    }
+
+    .toolbar-row{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      flex-wrap:wrap;
+    }
+
+    .filter-block{
+      min-width:220px;
+    }
+
+    .toolbar-links{
+      margin-top:12px;
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+    }
+
+    .legend{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+
+    .legend-item{
+      display:inline-block;
+      padding:6px 10px;
+      border-radius:999px;
+      color:#fff;
+      font-size:12px;
+    }
+
+    .legend-available{
+      background:#22c55e;
+    }
+
+    .legend-reserved{
+      background:#ef4444;
+    }
+
+    .legend-mine{
+      background:#3b82f6;
     }
 
     #calendar{
-      min-height:560px;
-    }
-  }
-</style>
-
-<script>
-  document.addEventListener("DOMContentLoaded", function () {
-    const calendarEl = document.getElementById("calendar");
-    const detailPanel = document.getElementById("detailPanel");
-    const coachFilter = document.getElementById("coachFilter");
-    const isMobile = window.innerWidth < 768;
-
-    function escapeHtml(value) {
-      return String(value ?? "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
+      min-height:720px;
     }
 
-    function formatDateTimeRange(start, end) {
-      const startText = start
-        ? start.toLocaleString("ja-JP", {
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false
-          })
-        : "-";
-
-      const endText = end
-        ? end.toLocaleTimeString("ja-JP", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false
-          })
-        : "-";
-
-      return `${escapeHtml(startText)} - ${escapeHtml(endText)}`;
+    .fc .fc-event{
+      white-space:pre-line;
+      cursor:pointer;
+      border-radius:8px;
+      padding:2px 4px;
     }
 
-    function renderAvailabilityDetail(event) {
-      const props = event.extendedProps || {};
-      detailPanel.innerHTML = `
-        <table class="detail-table">
-          <tr><th>種別</th><td>コーチ空き枠</td></tr>
-          <tr><th>コーチ</th><td>${escapeHtml(props.coach_name || "-")}</td></tr>
-          <tr><th>時間</th><td>${formatDateTimeRange(event.start, event.end)}</td></tr>
-          <tr><th>状態</th><td>予約可能</td></tr>
-        </table>
-        <div class="detail-actions">
-          ${
-            props.reserve_url
-              ? `<a class="btn btn-primary" href="${escapeHtml(props.reserve_url)}">この枠を予約する</a>`
-              : `<span class="btn">予約URLがありません</span>`
-          }
-        </div>
-      `;
+    .detail-table{
+      width:100%;
+      border-collapse:collapse;
     }
 
-    function renderReservationDetail(event) {
-      const props = event.extendedProps || {};
-      detailPanel.innerHTML = `
-        <table class="detail-table">
-          <tr><th>種別</th><td>${props.is_mine ? "あなたの予約" : "予約済み"}</td></tr>
-          <tr><th>コーチ</th><td>${escapeHtml(props.coach_name || "-")}</td></tr>
-          <tr><th>時間</th><td>${formatDateTimeRange(event.start, event.end)}</td></tr>
-        </table>
-        <div class="detail-actions">
-          ${
-            props.is_mine && props.cancel_url
-              ? `
-                <form method="post" action="${escapeHtml(props.cancel_url)}">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn-danger">予約をキャンセル</button>
-                </form>
-              `
-              : `<span class="btn">この予約はキャンセル操作対象外です</span>`
-          }
-        </div>
-      `;
+    .detail-table th,
+    .detail-table td{
+      text-align:left;
+      padding:6px 0;
+      vertical-align:top;
+      border-bottom:1px solid #eee;
     }
 
-    const calendar = new FullCalendar.Calendar(calendarEl, {
-      locale: "ja",
-      initialView: isMobile ? "timeGridDay" : "timeGridWeek",
-      headerToolbar: {
-        left: "prev,next today",
-        center: "title",
-        right: isMobile ? "timeGridDay,listDay" : "timeGridWeek,dayGridMonth,listWeek"
-      },
-      allDaySlot: false,
-      nowIndicator: true,
-      height: "auto",
-      expandRows: true,
-      slotMinTime: "06:00:00",
-      slotMaxTime: "23:00:00",
-      slotDuration: "01:00:00",
-      slotLabelInterval: "01:00:00",
-      dayMaxEvents: true,
-      navLinks: true,
-      eventTimeFormat: {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false
-      },
-      events: function(fetchInfo, successCallback, failureCallback) {
-        const selectedCoach = coachFilter.value;
-        const url = new URL("{% url 'club:calendar_events' %}", window.location.origin);
+    .detail-actions{
+      margin-top:16px;
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
 
-        url.searchParams.set("start", fetchInfo.startStr);
-        url.searchParams.set("end", fetchInfo.endStr);
+    .btn{
+      display:inline-block;
+      padding:10px 14px;
+      border-radius:8px;
+      text-decoration:none;
+      border:1px solid #ddd;
+      background:#fff;
+      color:#111;
+      cursor:pointer;
+    }
 
-        if (selectedCoach) {
-          url.searchParams.set("coach", selectedCoach);
-        }
+    .btn-primary{
+      background:#111;
+      color:#fff;
+      border-color:#111;
+    }
 
-        fetch(url, {
-          credentials: "same-origin"
-        })
-          .then(function(response) {
-            if (!response.ok) {
-              throw new Error("イベント取得に失敗しました");
-            }
-            return response.json();
-          })
-          .then(function(data) {
-            successCallback(data);
-          })
-          .catch(function(error) {
-            console.error(error);
-            failureCallback(error);
-            detailPanel.innerHTML = "<p>カレンダーの読み込みに失敗しました。</p>";
-          });
-      },
-      eventClick: function(info) {
-        const props = info.event.extendedProps || {};
-        if (props.kind === "reservation") {
-          renderReservationDetail(info.event);
-        } else {
-          renderAvailabilityDetail(info.event);
-        }
+    .btn-danger{
+      background:#b91c1c;
+      color:#fff;
+      border-color:#b91c1c;
+    }
+
+    @media (max-width: 960px){
+      .page-grid{
+        grid-template-columns:1fr;
       }
-    });
 
-    coachFilter.addEventListener("change", function() {
-      calendar.refetchEvents();
-      detailPanel.innerHTML = "<p>カレンダー上の枠をクリックしてください。</p>";
-    });
+      #calendar{
+        min-height:560px;
+      }
+    }
+  </style>
 
-    calendar.render();
-  });
-</script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const calendarEl = document.getElementById("calendar");
+      const detailPanel = document.getElementById("detailPanel");
+      const coachFilter = document.getElementById("coachFilter");
+      const isMobile = window.innerWidth < 768;
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function formatDateTimeRange(start, end) {
+        const startText = start
+          ? start.toLocaleString("ja-JP", {
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false
+            })
+          : "-";
+
+        const endText = end
+          ? end.toLocaleTimeString("ja-JP", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false
+            })
+          : "-";
+
+        return `${escapeHtml(startText)} - ${escapeHtml(endText)}`;
+      }
+
+      function renderAvailabilityDetail(event) {
+        const props = event.extendedProps || {};
+        detailPanel.innerHTML = `
+          <table class="detail-table">
+            <tr><th>種別</th><td>コーチ空き枠</td></tr>
+            <tr><th>コーチ</th><td>${escapeHtml(props.coach_name || "-")}</td></tr>
+            <tr><th>時間</th><td>${formatDateTimeRange(event.start, event.end)}</td></tr>
+            <tr><th>状態</th><td>予約可能</td></tr>
+          </table>
+          <div class="detail-actions">
+            ${
+              props.reserve_url
+                ? `<a class="btn btn-primary" href="${escapeHtml(props.reserve_url)}">この枠を予約する</a>`
+                : `<span class="btn">予約URLがありません</span>`
+            }
+          </div>
+        `;
+      }
+
+      function renderReservationDetail(event) {
+        const props = event.extendedProps || {};
+        detailPanel.innerHTML = `
+          <table class="detail-table">
+            <tr><th>種別</th><td>${props.is_mine ? "あなたの予約" : "予約済み"}</td></tr>
+            <tr><th>コーチ</th><td>${escapeHtml(props.coach_name || "-")}</td></tr>
+            <tr><th>時間</th><td>${formatDateTimeRange(event.start, event.end)}</td></tr>
+          </table>
+          <div class="detail-actions">
+            ${
+              props.is_mine && props.cancel_url
+                ? `
+                  <form method="post" action="${escapeHtml(props.cancel_url)}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">予約をキャンセル</button>
+                  </form>
+                `
+                : `<span class="btn">この予約はキャンセル操作対象外です</span>`
+            }
+          </div>
+        `;
+      }
+
+      const calendar = new FullCalendar.Calendar(calendarEl, {
+        locale: "ja",
+        initialView: isMobile ? "timeGridDay" : "timeGridWeek",
+        headerToolbar: {
+          left: "prev,next today",
+          center: "title",
+          right: isMobile ? "timeGridDay,listDay" : "timeGridWeek,dayGridMonth,listWeek"
+        },
+        allDaySlot: false,
+        nowIndicator: true,
+        height: "auto",
+        expandRows: true,
+        slotMinTime: "06:00:00",
+        slotMaxTime: "23:00:00",
+        slotDuration: "01:00:00",
+        slotLabelInterval: "01:00:00",
+        dayMaxEvents: true,
+        navLinks: true,
+        eventTimeFormat: {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false
+        },
+        events: function(fetchInfo, successCallback, failureCallback) {
+          const selectedCoach = coachFilter.value;
+          const url = new URL("{% url 'club:calendar_events' %}", window.location.origin);
+
+          url.searchParams.set("start", fetchInfo.startStr);
+          url.searchParams.set("end", fetchInfo.endStr);
+
+          if (selectedCoach) {
+            url.searchParams.set("coach", selectedCoach);
+          }
+
+          fetch(url, {
+            credentials: "same-origin"
+          })
+            .then(function(response) {
+              if (!response.ok) {
+                throw new Error("イベント取得に失敗しました");
+              }
+              return response.json();
+            })
+            .then(function(data) {
+              successCallback(data);
+            })
+            .catch(function(error) {
+              console.error(error);
+              failureCallback(error);
+              detailPanel.innerHTML = "<p>カレンダーの読み込みに失敗しました。</p>";
+            });
+        },
+        eventClick: function(info) {
+          const props = info.event.extendedProps || {};
+          if (props.kind === "reservation") {
+            renderReservationDetail(info.event);
+          } else {
+            renderAvailabilityDetail(info.event);
+          }
+        }
+      });
+
+      coachFilter.addEventListener("change", function() {
+        calendar.refetchEvents();
+        detailPanel.innerHTML = "<p>カレンダー上の枠をクリックしてください。</p>";
+      });
+
+      calendar.render();
+    });
+  </script>
+{% endif %}
+
 {% endblock %}
