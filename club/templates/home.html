@@ -53,7 +53,7 @@
         </div>
       {% endif %}
       <div style="padding:12px 14px; border:2px solid #93c5fd; background:#eff6ff; border-radius:10px;">
-        <strong>おすすめ:</strong> 4枚セット 14,000円
+        <strong>おすすめ:</strong> 4枚セット 14,000円（1枚あたり 3,500円）
       </div>
       <div style="padding:12px 14px; border:1px solid #e5e7eb; background:#f9fafb; border-radius:10px;">
         <strong>通常:</strong> 1枚 4,000円
@@ -216,6 +216,18 @@
       flex-wrap:wrap;
     }
 
+    .price-chip{
+      display:inline-block;
+      margin:2px 6px 2px 0;
+      padding:5px 8px;
+      border-radius:999px;
+      background:#eff6ff;
+      border:1px solid #bfdbfe;
+      font-size:12px;
+      color:#1d4ed8;
+      font-weight:600;
+    }
+
     @media (max-width: 960px){
       .page-grid{
         grid-template-columns:1fr;
@@ -313,6 +325,10 @@
 
       function renderReservationDetail(event) {
         const props = event.extendedProps || {};
+        const breakdown = props.ticket_breakdown_text && props.ticket_breakdown_text !== "-"
+          ? `<div style="margin-top:6px;">${props.ticket_breakdown_text.split(" / ").map(item => `<span class="price-chip">${escapeHtml(item)}</span>`).join("")}</div>`
+          : `<span class="muted">未消費 / 未確定</span>`;
+
         detailPanel.innerHTML = `
           <table class="detail-table">
             <tr><th>状態</th><td>${escapeHtml(props.status_display || "-")}</td></tr>
@@ -321,6 +337,7 @@
             <tr><th>コーチ</th><td>${escapeHtml(props.coach_name || "-")}</td></tr>
             <tr><th>時間</th><td>${formatDateTimeRange(event.start, event.end)}</td></tr>
             <tr><th>消費チケット</th><td>${escapeHtml(props.tickets_used || "-")}枚</td></tr>
+            <tr><th>価格帯内訳</th><td>${breakdown}</td></tr>
           </table>
           <div class="detail-actions">
             ${
