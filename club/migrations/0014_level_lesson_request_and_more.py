@@ -1,4 +1,3 @@
-import django.db.models.deletion
 from django.db import migrations, models
 
 
@@ -23,6 +22,18 @@ class Migration(migrations.Migration):
                 ],
                 default="beginner",
                 max_length=30,
+            ),
+        ),
+        migrations.AddField(
+            model_name="court",
+            name="court_type",
+            field=models.CharField(
+                choices=[
+                    ("sono", "西猪名公園テニスコート"),
+                    ("other", "それ以外のコート"),
+                ],
+                default="sono",
+                max_length=20,
             ),
         ),
         migrations.AddField(
@@ -126,18 +137,6 @@ class Migration(migrations.Migration):
                 ],
                 default="beginner",
                 max_length=30,
-            ),
-        ),
-        migrations.AlterField(
-            model_name="court",
-            name="court_type",
-            field=models.CharField(
-                choices=[
-                    ("sono", "西猪名公園テニスコート"),
-                    ("other", "それ以外のコート"),
-                ],
-                default="sono",
-                max_length=20,
             ),
         ),
         migrations.AlterField(
