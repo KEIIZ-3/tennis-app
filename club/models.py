@@ -1,304 +1,255 @@
-from datetime import datetime
+from datetime import timedelta
 
-from django import forms
-from django.contrib.auth import get_user_model
-from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
+from django.db import models
 from django.utils import timezone
-
-from .models import CoachAvailability, Court, Reservation, LineAccountLink
-
-User = get_user_model()
 
 BUSINESS_START_HOUR = 9
 BUSINESS_END_HOUR = 21
 
-START_HOUR_CHOICES = [(str(h), f"{h:02d}:00") for h in range(BUSINESS_START_HOUR, BUSINESS_END_HOUR)]
-END_HOUR_CHOICES = [(str(h), f"{h:02d}:00") for h in range(BUSINESS_START_HOUR + 1, BUSINESS_END_HOUR + 1)]
 
-
-class LoginForm(forms.Form):
-    username = forms.CharField(label="ユーザー名", max_length=150)
-    password = forms.CharField(label="パスワード", widget=forms.PasswordInput)
-
-
-class MemberRegistrationForm(UserCreationForm):
-    first_name = forms.CharField(label="お名前", max_length=150, required=True)
-    email = forms.EmailField(label="メールアドレス", required=True)
-
-    class Meta(UserCreationForm.Meta):
-        model = User
-        fields = ("first_name", "username", "email", "password1", "password2")
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.fields["username"].label = "ユーザー名"
-        self.fields["password1"].label = "パスワード"
-        self.fields["password2"].label = "パスワード（確認）"
-
-        self.fields["first_name"].widget.attrs.update(
-            {
-                "placeholder": "例: 山田 太郎",
-            }
-        )
-        self.fields["username"].widget.attrs.update(
-            {
-                "placeholder": "半角英数字で入力",
-            }
-        )
-        self.fields["email"].widget.attrs.update(
-            {
-                "placeholder": "example@example.com",
-            }
-        )
-
-    def clean_email(self):
-        email = (self.cleaned_data.get("email") or "").strip()
-        if not email:
-            raise forms.ValidationError("メールアドレスを入力してください。")
-
-        qs = User.objects.filter(email__iexact=email)
-        if self.instance and self.instance.pk:
-            qs = qs.exclude(pk=self.instance.pk)
-
-        if qs.exists():
-            raise forms.ValidationError("このメールアドレスはすでに登録されています。")
-        return email
-
-    def save(self, commit=True):
-        user = super().save(commit=False)
-        user.first_name = (self.cleaned_data.get("first_name") or "").strip()
-        user.email = (self.cleaned_data.get("email") or "").strip()
-
-        if hasattr(user, "role"):
-            user.role = "member"
-
-        if commit:
-            user.save()
-        return user
-
-
-class CoachAvailabilityForm(forms.ModelForm):
-    start_date = forms.DateField(
-        label="Start at 日付",
-        widget=forms.DateInput(attrs={"type": "date"}),
+class User(AbstractUser):
+    ROLE_CHOICES = (
+        ("member", "member"),
+        ("coach", "coach"),
     )
-    start_hour = forms.ChoiceField(
-        label="Start at 時間",
-        choices=START_HOUR_CHOICES,
-    )
-    end_date = forms.DateField(
-        label="End at 日付",
-        widget=forms.DateInput(attrs={"type": "date"}),
-    )
-    end_hour = forms.ChoiceField(
-        label="End at 時間",
-        choices=END_HOUR_CHOICES,
-    )
+
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="member")
+    full_name = models.CharField(max_length=150, blank=True, default="")
+    phone_number = models.CharField(max_length=30, blank=True, default="")
+    is_profile_completed = models.BooleanField(default=False)
+
+    def is_coach(self):
+        return self.role == "coach"
+
+    def display_name(self):
+        if self.full_name:
+            return self.full_name
+        if self.first_name:
+            return self.first_name
+        return self.username
+
+    def __str__(self):
+        return self.display_name()
+
+
+class Court(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    is_active = models.BooleanField(default=True)
 
     class Meta:
-        model = CoachAvailability
-        fields = ["coach", "court", "capacity", "note"]
-        widgets = {
-            "capacity": forms.NumberInput(attrs={"min": 1}),
-            "note": forms.TextInput(attrs={"placeholder": "任意メモ"}),
-        }
+        ordering = ["id"]
 
-    def __init__(self, *args, **kwargs):
-        self.request_user = kwargs.pop("request_user", None)
-        super().__init__(*args, **kwargs)
+    def __str__(self):
+        return self.name
 
-        self.fields["coach"].queryset = User.objects.filter(role="coach").order_by("username")
-        self.fields["court"].queryset = Court.objects.filter(is_active=True).order_by("name")
+
+class CoachAvailability(models.Model):
+    coach = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="coach_availabilities",
+        limit_choices_to={"role": "coach"},
+    )
+    court = models.ForeignKey(
+        Court,
+        on_delete=models.CASCADE,
+        related_name="coach_availabilities",
+    )
+    start_at = models.DateTimeField()
+    end_at = models.DateTimeField()
+    capacity = models.PositiveIntegerField(default=1)
+    note = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["start_at", "coach_id", "court_id"]
+
+    def __str__(self):
+        return f"{self.coach} / {self.court} / {self.start_at:%Y-%m-%d %H:%M}"
+
+    def clean(self):
+        if not self.start_at or not self.end_at:
+            return
+
+        if self.start_at >= self.end_at:
+            raise ValidationError("開始日時は終了日時より前にしてください。")
 
         if (
-            self.request_user
-            and not self.request_user.is_superuser
-            and getattr(self.request_user, "role", "") == "coach"
+            self.start_at.minute != 0
+            or self.start_at.second != 0
+            or self.start_at.microsecond != 0
+            or self.end_at.minute != 0
+            or self.end_at.second != 0
+            or self.end_at.microsecond != 0
         ):
-            self.fields["coach"].queryset = User.objects.filter(pk=self.request_user.pk)
-            self.fields["coach"].initial = self.request_user
+            raise ValidationError("コーチ空き時間は1時間単位で指定してください。")
 
-        start_at = self.initial.get("start_at") or getattr(self.instance, "start_at", None)
-        end_at = self.initial.get("end_at") or getattr(self.instance, "end_at", None)
+        start_local = timezone.localtime(self.start_at) if timezone.is_aware(self.start_at) else self.start_at
+        end_local = timezone.localtime(self.end_at) if timezone.is_aware(self.end_at) else self.end_at
 
-        if start_at:
-            if timezone.is_aware(start_at):
-                start_at = timezone.localtime(start_at)
-            self.fields["start_date"].initial = start_at.date()
-            self.fields["start_hour"].initial = str(start_at.hour)
+        if start_local.hour < BUSINESS_START_HOUR or start_local.hour >= BUSINESS_END_HOUR:
+            raise ValidationError("コーチ空き時間の開始時刻は 09:00〜20:00 の範囲で指定してください。")
 
-        if end_at:
-            if timezone.is_aware(end_at):
-                end_at = timezone.localtime(end_at)
-            self.fields["end_date"].initial = end_at.date()
-            self.fields["end_hour"].initial = str(end_at.hour)
+        if end_local.hour <= BUSINESS_START_HOUR or end_local.hour > BUSINESS_END_HOUR:
+            raise ValidationError("コーチ空き時間の終了時刻は 10:00〜21:00 の範囲で指定してください。")
 
-    def _build_aware_datetime(self, date_value, hour_value):
-        dt = datetime(
-            year=date_value.year,
-            month=date_value.month,
-            day=date_value.day,
-            hour=int(hour_value),
-            minute=0,
-            second=0,
-            microsecond=0,
+        duration = self.end_at - self.start_at
+        if duration.total_seconds() <= 0 or duration.total_seconds() % 3600 != 0:
+            raise ValidationError("コーチ空き時間は1時間単位で指定してください。")
+
+        if self.capacity < 1:
+            raise ValidationError("定員は1以上にしてください。")
+
+        overlap_qs = CoachAvailability.objects.filter(
+            coach=self.coach,
+            start_at__lt=self.end_at,
+            end_at__gt=self.start_at,
         )
-        if timezone.is_naive(dt):
-            dt = timezone.make_aware(dt)
-        return dt
+        if self.pk:
+            overlap_qs = overlap_qs.exclude(pk=self.pk)
+        if overlap_qs.exists():
+            raise ValidationError("同じコーチで重複する空き時間があります。")
 
-    def clean(self):
-        cleaned_data = super().clean()
-
-        start_date = cleaned_data.get("start_date")
-        start_hour = cleaned_data.get("start_hour")
-        end_date = cleaned_data.get("end_date")
-        end_hour = cleaned_data.get("end_hour")
-
-        if not start_date or start_hour in (None, ""):
-            self.add_error("start_date", "開始日時を入力してください。")
-            return cleaned_data
-
-        if not end_date or end_hour in (None, ""):
-            self.add_error("end_date", "終了日時を入力してください。")
-            return cleaned_data
-
-        start_at = self._build_aware_datetime(start_date, start_hour)
-        end_at = self._build_aware_datetime(end_date, end_hour)
-
-        if start_at.hour < BUSINESS_START_HOUR or start_at.hour >= BUSINESS_END_HOUR:
-            self.add_error("start_hour", "開始時刻は 09:00〜20:00 の範囲で指定してください。")
-
-        if end_at.hour <= BUSINESS_START_HOUR or end_at.hour > BUSINESS_END_HOUR:
-            self.add_error("end_hour", "終了時刻は 10:00〜21:00 の範囲で指定してください。")
-
-        if end_at <= start_at:
-            raise forms.ValidationError("終了日時は開始日時より後にしてください。")
-
-        cleaned_data["start_at"] = start_at
-        cleaned_data["end_at"] = end_at
-        return cleaned_data
-
-    def save(self, commit=True):
-        instance = super().save(commit=False)
-        instance.start_at = self.cleaned_data["start_at"]
-        instance.end_at = self.cleaned_data["end_at"]
-
-        if commit:
-            instance.save()
-        return instance
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
-class ReservationCreateForm(forms.ModelForm):
-    start_date = forms.DateField(
-        label="Start at 日付",
-        widget=forms.DateInput(attrs={"type": "date"}),
+class Reservation(models.Model):
+    STATUS_ACTIVE = "active"
+    STATUS_CANCELED = "canceled"
+
+    STATUS_CHOICES = (
+        (STATUS_ACTIVE, "active"),
+        (STATUS_CANCELED, "canceled"),
     )
-    start_hour = forms.ChoiceField(
-        label="Start at 時間",
-        choices=START_HOUR_CHOICES,
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="reservations",
     )
-    end_date = forms.DateField(
-        label="End at 日付",
-        widget=forms.DateInput(attrs={"type": "date"}),
+    coach = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="coach_reservations",
+        limit_choices_to={"role": "coach"},
     )
-    end_hour = forms.ChoiceField(
-        label="End at 時間",
-        choices=END_HOUR_CHOICES,
+    court = models.ForeignKey(
+        Court,
+        on_delete=models.CASCADE,
+        related_name="reservations",
     )
+    availability = models.ForeignKey(
+        CoachAvailability,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reservations",
+    )
+    start_at = models.DateTimeField()
+    end_at = models.DateTimeField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_ACTIVE)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        model = Reservation
-        fields = ["coach", "court"]
+        ordering = ["-start_at", "-id"]
 
-    def __init__(self, *args, **kwargs):
-        self.request_user = kwargs.pop("request_user", None)
-        super().__init__(*args, **kwargs)
-
-        self.fields["coach"].queryset = User.objects.filter(role="coach").order_by("username")
-        self.fields["court"].queryset = Court.objects.filter(is_active=True).order_by("name")
-
-        start_at = self.initial.get("start_at") or getattr(self.instance, "start_at", None)
-        end_at = self.initial.get("end_at") or getattr(self.instance, "end_at", None)
-
-        if start_at:
-            if timezone.is_aware(start_at):
-                start_at = timezone.localtime(start_at)
-            self.fields["start_date"].initial = start_at.date()
-            self.fields["start_hour"].initial = str(start_at.hour)
-
-        if end_at:
-            if timezone.is_aware(end_at):
-                end_at = timezone.localtime(end_at)
-            self.fields["end_date"].initial = end_at.date()
-            self.fields["end_hour"].initial = str(end_at.hour)
-
-    def _build_aware_datetime(self, date_value, hour_value):
-        dt = datetime(
-            year=date_value.year,
-            month=date_value.month,
-            day=date_value.day,
-            hour=int(hour_value),
-            minute=0,
-            second=0,
-            microsecond=0,
-        )
-        if timezone.is_naive(dt):
-            dt = timezone.make_aware(dt)
-        return dt
+    def __str__(self):
+        return f"{self.user} / {self.coach} / {self.start_at:%Y-%m-%d %H:%M}"
 
     def clean(self):
-        cleaned_data = super().clean()
+        if not self.start_at or not self.end_at:
+            return
 
-        start_date = cleaned_data.get("start_date")
-        start_hour = cleaned_data.get("start_hour")
-        end_date = cleaned_data.get("end_date")
-        end_hour = cleaned_data.get("end_hour")
+        if self.start_at >= self.end_at:
+            raise ValidationError("開始日時は終了日時より前にしてください。")
 
-        if not start_date or start_hour in (None, ""):
-            self.add_error("start_date", "開始日時を入力してください。")
-            return cleaned_data
+        if (
+            self.start_at.minute != 0
+            or self.start_at.second != 0
+            or self.start_at.microsecond != 0
+            or self.end_at.minute != 0
+            or self.end_at.second != 0
+            or self.end_at.microsecond != 0
+        ):
+            raise ValidationError("予約は1時間単位でのみ可能です。")
 
-        if not end_date or end_hour in (None, ""):
-            self.add_error("end_date", "終了日時を入力してください。")
-            return cleaned_data
+        start_local = timezone.localtime(self.start_at) if timezone.is_aware(self.start_at) else self.start_at
+        end_local = timezone.localtime(self.end_at) if timezone.is_aware(self.end_at) else self.end_at
 
-        start_at = self._build_aware_datetime(start_date, start_hour)
-        end_at = self._build_aware_datetime(end_date, end_hour)
+        if start_local.hour < BUSINESS_START_HOUR or start_local.hour >= BUSINESS_END_HOUR:
+            raise ValidationError("予約開始時刻は 09:00〜20:00 の範囲で指定してください。")
 
-        if start_at.hour < BUSINESS_START_HOUR or start_at.hour >= BUSINESS_END_HOUR:
-            self.add_error("start_hour", "開始時刻は 09:00〜20:00 の範囲で指定してください。")
+        if end_local.hour <= BUSINESS_START_HOUR or end_local.hour > BUSINESS_END_HOUR:
+            raise ValidationError("予約終了時刻は 10:00〜21:00 の範囲で指定してください。")
 
-        if end_at.hour <= BUSINESS_START_HOUR or end_at.hour > BUSINESS_END_HOUR:
-            self.add_error("end_hour", "終了時刻は 10:00〜21:00 の範囲で指定してください。")
+        if self.end_at - self.start_at != timedelta(hours=1):
+            raise ValidationError("予約はちょうど1時間で指定してください。")
 
-        if end_at <= start_at:
-            raise forms.ValidationError("終了日時は開始日時より後にしてください。")
+        if self.user_id and self.coach_id and self.user_id == self.coach_id:
+            raise ValidationError("自分自身を予約することはできません。")
 
-        cleaned_data["start_at"] = start_at
-        cleaned_data["end_at"] = end_at
-        return cleaned_data
+        if self.status == self.STATUS_CANCELED:
+            return
 
-    def save(self, commit=True):
-        instance = super().save(commit=False)
-        instance.start_at = self.cleaned_data["start_at"]
-        instance.end_at = self.cleaned_data["end_at"]
+        user_overlap_qs = Reservation.objects.filter(
+            user=self.user,
+            status=self.STATUS_ACTIVE,
+            start_at__lt=self.end_at,
+            end_at__gt=self.start_at,
+        )
+        if self.pk:
+            user_overlap_qs = user_overlap_qs.exclude(pk=self.pk)
+        if user_overlap_qs.exists():
+            raise ValidationError("同じ時間帯にすでに別の予約があります。")
 
-        if commit:
-            instance.save()
-        return instance
+        availability_qs = CoachAvailability.objects.filter(
+            coach=self.coach,
+            court=self.court,
+            start_at__lte=self.start_at,
+            end_at__gte=self.end_at,
+        ).order_by("start_at")
+
+        availability = availability_qs.first()
+        if not availability:
+            raise ValidationError("該当するコーチ空き時間がありません。")
+
+        self.availability = availability
+
+        slot_reservations_qs = Reservation.objects.filter(
+            coach=self.coach,
+            court=self.court,
+            start_at=self.start_at,
+            end_at=self.end_at,
+            status=self.STATUS_ACTIVE,
+        )
+        if self.pk:
+            slot_reservations_qs = slot_reservations_qs.exclude(pk=self.pk)
+
+        if slot_reservations_qs.count() >= availability.capacity:
+            raise ValidationError("この時間枠は満員です。")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
-class LineAccountLinkForm(forms.ModelForm):
+class LineAccountLink(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="line_link",
+    )
+    line_user_id = models.CharField(max_length=100, unique=True)
+    is_active = models.BooleanField(default=True)
+    linked_at = models.DateTimeField(default=timezone.now)
+    last_event_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
-        model = LineAccountLink
-        fields = ["line_user_id", "is_active"]
-        widgets = {
-            "line_user_id": forms.TextInput(
-                attrs={"placeholder": "LINE userId を入力"}
-            ),
-        }
+        ordering = ["user_id"]
 
-
-ReservationForm = ReservationCreateForm
+    def __str__(self):
+        return f"{self.user.username} <-> {self.line_user_id}"
