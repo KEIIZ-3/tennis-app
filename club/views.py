@@ -36,7 +36,9 @@ from .models import (
     FixedLesson,
     LineAccountLink,
     Reservation,
+    TicketConsumption,
     TicketLedger,
+    TicketPurchase,
 )
 from .notifications import (
     build_reservation_canceled_message,
@@ -414,11 +416,16 @@ def home(request):
 @require_GET
 def tickets_view(request):
     ledgers = TicketLedger.objects.filter(user=request.user).select_related("reservation", "fixed_lesson")[:30]
+    purchases = TicketPurchase.objects.filter(user=request.user).order_by("-purchased_at", "-id")[:30]
+    consumptions = TicketConsumption.objects.filter(user=request.user).select_related("reservation", "purchase").order_by("-created_at", "-id")[:30]
+
     return render(
         request,
         "tickets.html",
         {
             "ticket_ledgers": ledgers,
+            "ticket_purchases": purchases,
+            "ticket_consumptions": consumptions,
             "single_ticket_price": 4000,
             "set4_ticket_price": 14000,
         },
@@ -576,7 +583,7 @@ def calendar_events(request):
             }
         )
 
-    reservation_qs = Reservation.objects.select_related("user", "coach", "court").all()
+    reservation_qs = Reservation.objects.select_related("user", "coach", "court").prefetch_related("ticket_consumptions__purchase").all()
     if coach_filter:
         reservation_qs = reservation_qs.filter(coach_id=coach_filter)
 
@@ -617,6 +624,7 @@ def calendar_events(request):
                     "court": str(obj.court),
                     "lesson_type_display": _lesson_type_label(obj.lesson_type),
                     "tickets_used": obj.tickets_used,
+                    "ticket_breakdown_text": obj.ticket_breakdown_text(),
                     "is_canceled": is_canceled,
                     "is_mine": is_mine,
                     "can_cancel": can_cancel,
@@ -729,7 +737,11 @@ def reservation_create(request):
 def reservation_list(request):
     _sync_fixed_lessons()
 
-    qs = Reservation.objects.select_related("user", "coach", "court").all()
+    qs = (
+        Reservation.objects.select_related("user", "coach", "court")
+        .prefetch_related("ticket_consumptions__purchase")
+        .all()
+    )
 
     if _is_staff_like(request.user):
         pass
