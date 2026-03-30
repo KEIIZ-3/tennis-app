@@ -361,6 +361,13 @@ def _line_login_scope():
     return scope or "openid profile"
 
 
+def _liff_enabled():
+    return bool(
+        getattr(settings, "LINE_LIFF_ID", "").strip()
+        and getattr(settings, "LINE_LOGIN_CHANNEL_ID", "").strip()
+    )
+
+
 def _post_form_urlencoded(url, params):
     body = urllib.parse.urlencode(params).encode("utf-8")
     req = urllib.request.Request(
@@ -386,7 +393,7 @@ def _exchange_line_login_code_for_token(request, code):
     )
 
 
-def _verify_line_id_token(id_token, nonce):
+def _verify_line_id_token(id_token, nonce=None):
     payload = {
         "id_token": id_token,
         "client_id": getattr(settings, "LINE_LOGIN_CHANNEL_ID", "").strip(),
@@ -420,6 +427,67 @@ def _login_user_with_default_backend(request, user):
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
 
 
+def _upsert_user_by_line_identity(request, line_user_id, display_name="", email="", picture_url=""):
+    if LineAccountLink is None:
+        raise RuntimeError("LineAccountLink モデルが見つかりません。")
+
+    User = get_user_model()
+    now = timezone.now()
+
+    if request.user.is_authenticated:
+        conflict = LineAccountLink.objects.filter(line_user_id=line_user_id).exclude(user=request.user).first()
+        if conflict:
+            raise RuntimeError("このLINEアカウントは別の会員に連携済みです。")
+
+        LineAccountLink.objects.update_or_create(
+            user=request.user,
+            defaults={
+                "line_user_id": line_user_id,
+                "is_active": True,
+                "last_event_at": now,
+            },
+        )
+        return request.user, "linked"
+
+    existing_link = LineAccountLink.objects.select_related("user").filter(line_user_id=line_user_id).first()
+    if existing_link and existing_link.user:
+        existing_link.is_active = True
+        existing_link.last_event_at = now
+        existing_link.save(update_fields=["is_active", "last_event_at"])
+        return existing_link.user, "logged_in"
+
+    username = _generate_unique_line_username(line_user_id)
+    user = User(username=username)
+
+    if hasattr(user, "role") and not getattr(user, "role", None):
+        try:
+            user.role = "member"
+        except Exception:
+            pass
+
+    if hasattr(user, "first_name") and display_name:
+        user.first_name = display_name[:150]
+
+    if hasattr(user, "email") and email:
+        user.email = email[:254]
+
+    if hasattr(user, "last_name") and not getattr(user, "last_name", None):
+        user.last_name = ""
+
+    user.set_unusable_password()
+    user.save()
+
+    LineAccountLink.objects.update_or_create(
+        user=user,
+        defaults={
+            "line_user_id": line_user_id,
+            "is_active": True,
+            "last_event_at": now,
+        },
+    )
+    return user, "created"
+
+
 def home(request):
     User = get_user_model()
     coaches = User.objects.filter(role="coach").order_by("username")
@@ -430,6 +498,7 @@ def home(request):
         {
             "coaches": coaches,
             "selected_coach": selected_coach,
+            "liff_enabled": _liff_enabled(),
         },
     )
 
@@ -449,7 +518,14 @@ def login_view(request):
             return redirect("club:home")
         messages.error(request, "ユーザー名またはパスワードが正しくありません。")
 
-    return render(request, "login.html", {"form": form})
+    return render(
+        request,
+        "login.html",
+        {
+            "form": form,
+            "liff_enabled": _liff_enabled(),
+        },
+    )
 
 
 @never_cache
@@ -478,6 +554,7 @@ def register_view(request):
         "register.html",
         {
             "form": form,
+            "liff_enabled": _liff_enabled(),
         },
     )
 
@@ -971,75 +1048,135 @@ def line_login_callback(request):
         messages.error(request, "LINEのユーザーIDを取得できませんでした。")
         return redirect("club:login")
 
-    if LineAccountLink is None:
-        messages.error(request, "LineAccountLink モデルが見つかりません。")
-        return redirect("club:login")
-
-    User = get_user_model()
-
     try:
-        now = timezone.now()
+        user, result = _upsert_user_by_line_identity(
+            request=request,
+            line_user_id=line_user_id,
+            display_name=display_name,
+            email=email,
+        )
+        if result in ("created", "logged_in"):
+            _login_user_with_default_backend(request, user)
 
-        if request.user.is_authenticated:
-            conflict = LineAccountLink.objects.filter(line_user_id=line_user_id).exclude(user=request.user).first()
-            if conflict:
-                messages.error(request, "このLINEアカウントは別の会員に連携済みです。")
-                return redirect("club:line_connect")
-
-            LineAccountLink.objects.update_or_create(
-                user=request.user,
-                defaults={
-                    "line_user_id": line_user_id,
-                    "is_active": True,
-                    "last_event_at": now,
-                },
-            )
+        if result == "linked":
             messages.success(request, "LINEアカウントを自動連携しました。")
             return redirect("club:line_connect")
 
-        existing_link = LineAccountLink.objects.select_related("user").filter(line_user_id=line_user_id).first()
-        if existing_link and existing_link.user:
-            existing_link.is_active = True
-            existing_link.last_event_at = now
-            existing_link.save(update_fields=["is_active", "last_event_at"])
-            _login_user_with_default_backend(request, existing_link.user)
+        if result == "created":
+            messages.success(request, "LINEで新規登録・ログインしました。")
+        else:
             messages.success(request, "LINEでログインしました。")
-            return redirect(next_url)
-
-        username = _generate_unique_line_username(line_user_id)
-        user = User(username=username)
-
-        if hasattr(user, "role") and not getattr(user, "role", None):
-            try:
-                user.role = "member"
-            except Exception:
-                pass
-
-        if hasattr(user, "first_name") and display_name:
-            user.first_name = display_name[:150]
-
-        if hasattr(user, "email") and email:
-            user.email = email[:254]
-
-        user.set_unusable_password()
-        user.save()
-
-        LineAccountLink.objects.update_or_create(
-            user=user,
-            defaults={
-                "line_user_id": line_user_id,
-                "is_active": True,
-                "last_event_at": now,
-            },
-        )
-
-        _login_user_with_default_backend(request, user)
-        messages.success(request, "LINEで新規登録・ログインしました。")
         return redirect(next_url)
 
     except Exception as e:
         messages.error(request, f"LINEアカウント連携でエラーが発生しました: {e}")
         return redirect("club:login")
+
+
+@require_GET
+def liff_entry(request):
+    if not _liff_enabled():
+        return HttpResponse("LIFF is not configured.", status=500)
+
+    context = {
+        "liff_id": getattr(settings, "LINE_LIFF_ID", "").strip(),
+        "bootstrap_url": reverse("club:liff_bootstrap"),
+        "home_url": reverse("club:home"),
+    }
+    return render(request, "liff_entry.html", context)
+
+
+@csrf_exempt
+@require_POST
+def liff_bootstrap(request):
+    if not _liff_enabled():
+        return JsonResponse(
+            {"ok": False, "message": "LIFF の設定が未完了です。"},
+            status=500,
+        )
+
+    try:
+        payload = json.loads((request.body or b"{}").decode("utf-8"))
+    except Exception:
+        return JsonResponse({"ok": False, "message": "不正なJSONです。"}, status=400)
+
+    id_token = str(payload.get("idToken") or "").strip()
+    display_name = str(payload.get("displayName") or "").strip()
+    picture_url = str(payload.get("pictureUrl") or "").strip()
+
+    if not id_token:
+        return JsonResponse(
+            {"ok": False, "message": "idToken が取得できませんでした。"},
+            status=400,
+        )
+
+    try:
+        verified = _verify_line_id_token(id_token, None)
+    except urllib.error.HTTPError as e:
+        try:
+            error_body = e.read().decode("utf-8")
+        except Exception:
+            error_body = str(e)
+        return JsonResponse(
+            {"ok": False, "message": f"LINEのIDトークン検証に失敗しました: {error_body}"},
+            status=400,
+        )
+    except Exception as e:
+        return JsonResponse(
+            {"ok": False, "message": f"LINEのIDトークン検証でエラーが発生しました: {e}"},
+            status=400,
+        )
+
+    line_user_id = str(verified.get("sub") or "").strip()
+    verified_name = str(verified.get("name") or "").strip()
+    verified_email = str(verified.get("email") or "").strip()
+
+    if not line_user_id:
+        return JsonResponse(
+            {"ok": False, "message": "LINE userId を取得できませんでした。"},
+            status=400,
+        )
+
+    final_name = verified_name or display_name
+
+    try:
+        user, result = _upsert_user_by_line_identity(
+            request=request,
+            line_user_id=line_user_id,
+            display_name=final_name,
+            email=verified_email,
+            picture_url=picture_url,
+        )
+
+        if result in ("created", "logged_in"):
+            _login_user_with_default_backend(request, user)
+
+        if result == "linked":
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "message": "LINEアカウントを連携しました。",
+                    "redirectUrl": reverse("club:line_connect"),
+                }
+            )
+
+        if result == "created":
+            message = "LINEで新規登録が完了しました。"
+        else:
+            message = "LINEでログインしました。"
+
+        return JsonResponse(
+            {
+                "ok": True,
+                "message": message,
+                "redirectUrl": reverse("club:home"),
+            }
+        )
+    except Exception as e:
+        return JsonResponse(
+            {"ok": False, "message": f"会員処理でエラーが発生しました: {e}"},
+            status=400,
+        )
 
 
 @login_required
@@ -1055,6 +1192,7 @@ def line_connect(request):
         "line_login_enabled": _line_login_enabled(),
         "line_login_url": f"{reverse('club:line_login_start')}?next={urllib.parse.quote(reverse('club:line_connect'))}",
         "line_webhook_full_url": request.build_absolute_uri(reverse("club:line_webhook")),
+        "liff_enabled": _liff_enabled(),
     }
     return render(request, "line_connect.html", context)
 
@@ -1214,7 +1352,7 @@ def line_webhook(request):
             if reply_token:
                 send_line_reply(
                     reply_token,
-                    "友だち追加ありがとうございます。予約・ログインはこちらです。\nhttps://tennis-app-c4xb.onrender.com/line/login/start/\n\n初めての方も、そのまま会員登録とLINE連携ができます。",
+                    "友だち追加ありがとうございます。LINE内でかんたんに始める場合は、リッチメニューの予約ボタンから進んでください。通常の会員登録やログインはサイト上からも可能です。",
                 )
 
     return HttpResponse("OK")
