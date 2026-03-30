@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}会員情報入力{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:620px; margin:0 auto;">
+  <h1 style="margin-top:0;">会員情報の入力</h1>
+
+  <p style="margin-bottom:18px;">
+    LINE連携は完了しました。続けて、正式なお名前・メールアドレス・電話番号を入力してください。
+  </p>
+
+  <form method="post">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="message error" style="margin-bottom:14px;">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+
+    {% for field in form %}
+      <p>
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.errors %}
+          <div class="message error" style="margin-top:8px;">
+            {{ field.errors }}
+          </div>
+        {% endif %}
+      </p>
+    {% endfor %}
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;">
+      <button type="submit">保存する</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
