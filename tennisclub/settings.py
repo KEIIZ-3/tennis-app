@@ -159,25 +159,33 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "no-reply@example.com"
 
 
 # ----------------------------
-# LINE 通知（任意）
+# Messaging API
 # ----------------------------
 LINE_NOTIFY_TOKEN = os.environ.get("LINE_NOTIFY_TOKEN", "")
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
+LINE_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "")
 LINE_TO_USER_ID = os.environ.get("LINE_TO_USER_ID", "")
 
 # ----------------------------
-# LINE Login（新規）
+# LINE Login
 # ----------------------------
 LINE_LOGIN_CHANNEL_ID = os.environ.get("LINE_LOGIN_CHANNEL_ID", "").strip()
 LINE_LOGIN_CHANNEL_SECRET = os.environ.get("LINE_LOGIN_CHANNEL_SECRET", "").strip()
 LINE_LOGIN_SCOPE = os.environ.get("LINE_LOGIN_SCOPE", "openid profile").strip()
 LINE_LOGIN_REDIRECT_URI = os.environ.get("LINE_LOGIN_REDIRECT_URI", "").strip()
 
+# ----------------------------
+# LIFF
+# ----------------------------
+LINE_LIFF_ID = os.environ.get("LINE_LIFF_ID", "").strip()
+LINE_LIFF_ENDPOINT_URL = os.environ.get(
+    "LINE_LIFF_ENDPOINT_URL",
+    "https://tennis-app-c4xb.onrender.com/liff/",
+).strip()
+
 
 # ----------------------------
 # Redis キャッシュ
-# REDIS_URL / REDIS_TLS_URL があれば使用
-# なければ locmem
 # ----------------------------
 REDIS_URL = os.environ.get("REDIS_URL") or os.environ.get("REDIS_TLS_URL", "")
 
