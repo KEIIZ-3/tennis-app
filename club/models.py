@@ -396,6 +396,171 @@ class FixedLesson(models.Model, LessonTypeMixin):
         return created_count
 
 
+class TicketPurchase(models.Model):
+    PURCHASE_TYPE_SINGLE = "single"
+    PURCHASE_TYPE_SET4 = "set4"
+    PURCHASE_TYPE_EVENT = "event"
+    PURCHASE_TYPE_ADMIN = "admin"
+    PURCHASE_TYPE_LEGACY = "legacy"
+
+    PURCHASE_TYPE_CHOICES = (
+        (PURCHASE_TYPE_SINGLE, "1枚購入"),
+        (PURCHASE_TYPE_SET4, "4枚セット"),
+        (PURCHASE_TYPE_EVENT, "イベント用"),
+        (PURCHASE_TYPE_ADMIN, "管理画面調整"),
+        (PURCHASE_TYPE_LEGACY, "旧データ移行"),
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="ticket_purchases",
+    )
+    purchase_type = models.CharField(max_length=20, choices=PURCHASE_TYPE_CHOICES, default=PURCHASE_TYPE_SINGLE)
+    total_tickets = models.PositiveIntegerField(default=0)
+    remaining_tickets = models.PositiveIntegerField(default=0)
+    unit_price = models.PositiveIntegerField(default=0)
+    label = models.CharField(max_length=100, blank=True, default="")
+    note = models.CharField(max_length=255, blank=True, default="")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_ticket_purchases",
+    )
+    purchased_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["purchased_at", "id"]
+
+    def __str__(self):
+        label = self.label or self.get_purchase_type_display()
+        return f"{self.user} / {label} / {self.unit_price}円 / 残{self.remaining_tickets}"
+
+    def clean(self):
+        if self.total_tickets < 0:
+            raise ValidationError("購入枚数は0以上にしてください。")
+        if self.remaining_tickets < 0:
+            raise ValidationError("残数は0以上にしてください。")
+        if self.remaining_tickets > self.total_tickets:
+            raise ValidationError("残数は購入枚数を超えられません。")
+        if self.unit_price < 0:
+            raise ValidationError("単価は0以上にしてください。")
+
+    def unit_price_label(self):
+        if self.unit_price > 0:
+            return f"{self.unit_price}円券"
+        return "価格不明券"
+
+
+class TicketLedger(models.Model):
+    REASON_PURCHASE_SINGLE = "purchase_single"
+    REASON_PURCHASE_SET4 = "purchase_set4"
+    REASON_RESERVATION_USE = "reservation_use"
+    REASON_FIXED_USE = "fixed_use"
+    REASON_CANCEL_REFUND = "cancel_refund"
+    REASON_RAIN_REFUND = "rain_refund"
+    REASON_ADMIN_ADJUST = "admin_adjust"
+
+    REASON_CHOICES = (
+        (REASON_PURCHASE_SINGLE, "チケット1枚購入"),
+        (REASON_PURCHASE_SET4, "4枚セット購入"),
+        (REASON_RESERVATION_USE, "通常予約で消費"),
+        (REASON_FIXED_USE, "固定レッスンで消費"),
+        (REASON_CANCEL_REFUND, "キャンセル返却"),
+        (REASON_RAIN_REFUND, "雨天中止返却"),
+        (REASON_ADMIN_ADJUST, "管理画面調整"),
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="ticket_ledgers",
+    )
+    reservation = models.ForeignKey(
+        "Reservation",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ticket_ledgers",
+    )
+    fixed_lesson = models.ForeignKey(
+        "FixedLesson",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ticket_ledgers",
+    )
+    change_amount = models.IntegerField()
+    balance_after = models.IntegerField()
+    reason = models.CharField(max_length=30, choices=REASON_CHOICES)
+    note = models.CharField(max_length=255, blank=True, default="")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_ticket_ledgers",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        sign = "+" if self.change_amount >= 0 else ""
+        return f"{self.user} / {sign}{self.change_amount} / {self.get_reason_display()}"
+
+
+class TicketConsumption(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="ticket_consumptions",
+    )
+    purchase = models.ForeignKey(
+        TicketPurchase,
+        on_delete=models.CASCADE,
+        related_name="consumptions",
+    )
+    reservation = models.ForeignKey(
+        "Reservation",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="ticket_consumptions",
+    )
+    fixed_lesson = models.ForeignKey(
+        "FixedLesson",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ticket_consumptions",
+    )
+    tickets_used = models.PositiveIntegerField(default=1)
+    unit_price_snapshot = models.PositiveIntegerField(default=0)
+    refunded_at = models.DateTimeField(null=True, blank=True)
+    refund_note = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"{self.user} / {self.unit_price_label()} / {self.tickets_used}枚"
+
+    def unit_price_label(self):
+        if self.unit_price_snapshot > 0:
+            return f"{self.unit_price_snapshot}円券"
+        return "価格不明券"
+
+    @property
+    def is_refunded(self):
+        return bool(self.refunded_at)
+
+
 def apply_ticket_change(
     *,
     user,
@@ -432,6 +597,75 @@ def apply_ticket_change(
 
         user.ticket_balance = next_balance
         return ledger
+
+
+def purchase_tickets(
+    *,
+    user,
+    tickets: int,
+    unit_price: int,
+    purchase_type: str,
+    reason: str,
+    note: str = "",
+    created_by=None,
+    reservation=None,
+    fixed_lesson=None,
+    purchased_at=None,
+    label="",
+):
+    if tickets <= 0:
+        raise ValidationError("購入枚数は1以上にしてください。")
+
+    with transaction.atomic():
+        ledger = apply_ticket_change(
+            user=user,
+            amount=tickets,
+            reason=reason,
+            note=note,
+            created_by=created_by,
+            reservation=reservation,
+            fixed_lesson=fixed_lesson,
+        )
+
+        locked_user = User.objects.select_for_update().get(pk=user.pk)
+        purchase = TicketPurchase.objects.create(
+            user=locked_user,
+            purchase_type=purchase_type,
+            total_tickets=tickets,
+            remaining_tickets=tickets,
+            unit_price=unit_price,
+            label=label,
+            note=note,
+            created_by=created_by if created_by and getattr(created_by, "pk", None) else None,
+            purchased_at=purchased_at or timezone.now(),
+        )
+
+        user.ticket_balance = locked_user.ticket_balance
+        return ledger, purchase
+
+
+def _ensure_ticket_purchase_stock_for_user(user, created_by=None):
+    locked_user = User.objects.select_for_update().get(pk=user.pk)
+    balance = max(int(locked_user.ticket_balance or 0), 0)
+    purchase_remaining = (
+        TicketPurchase.objects.filter(user=locked_user).aggregate(total=models.Sum("remaining_tickets")).get("total") or 0
+    )
+
+    if purchase_remaining >= balance:
+        return
+
+    shortage = balance - purchase_remaining
+    TicketPurchase.objects.create(
+        user=locked_user,
+        purchase_type=TicketPurchase.PURCHASE_TYPE_LEGACY,
+        total_tickets=shortage,
+        remaining_tickets=shortage,
+        unit_price=0,
+        label="旧データ移行分",
+        note="既存残高との差分を補完",
+        created_by=created_by if created_by and getattr(created_by, "pk", None) else None,
+        purchased_at=timezone.now(),
+    )
 
 
 class Reservation(models.Model, LessonTypeMixin):
@@ -648,39 +882,138 @@ class Reservation(models.Model, LessonTypeMixin):
             status=self.STATUS_ACTIVE,
         ).count()
 
+    def ticket_consumption_queryset(self):
+        return self.ticket_consumptions.select_related("purchase").order_by("created_at", "id")
+
+    def ticket_breakdown_items(self):
+        summary = {}
+        for consumption in self.ticket_consumption_queryset():
+            unit_price = int(consumption.unit_price_snapshot or 0)
+            summary.setdefault(unit_price, 0)
+            summary[unit_price] += int(consumption.tickets_used or 0)
+
+        items = []
+        for unit_price, tickets in sorted(summary.items(), key=lambda x: (x[0],)):
+            if unit_price > 0:
+                label = f"{unit_price}円券"
+            else:
+                label = "価格不明券"
+            items.append(
+                {
+                    "unit_price": unit_price,
+                    "tickets": tickets,
+                    "label": label,
+                }
+            )
+        return items
+
+    def ticket_breakdown_text(self):
+        items = self.ticket_breakdown_items()
+        if not items:
+            return "-"
+        return " / ".join([f"{item['label']} {item['tickets']}枚" for item in items])
+
     def consume_tickets(self, reason="reservation_use", created_by=None, note=""):
         if self.ticket_consumed_at or self.tickets_used <= 0:
             return None
 
-        ledger = apply_ticket_change(
-            user=self.user,
-            amount=-self.tickets_used,
-            reason=reason,
-            note=note or f"予約消費: {self.start_at:%Y-%m-%d %H:%M}",
-            created_by=created_by,
-            reservation=self,
-            fixed_lesson=self.fixed_lesson,
-        )
-        self.ticket_consumed_at = timezone.now()
-        self.save(update_fields=["ticket_consumed_at"])
-        return ledger
+        with transaction.atomic():
+            _ensure_ticket_purchase_stock_for_user(self.user, created_by=created_by)
+
+            locked_user = User.objects.select_for_update().get(pk=self.user.pk)
+            purchases = list(
+                TicketPurchase.objects.select_for_update()
+                .filter(user=locked_user, remaining_tickets__gt=0)
+                .order_by("purchased_at", "id")
+            )
+
+            total_remaining = sum([purchase.remaining_tickets for purchase in purchases])
+            if total_remaining < self.tickets_used:
+                raise ValidationError("使用可能なチケット在庫が不足しています。")
+
+            remaining_to_consume = self.tickets_used
+            for purchase in purchases:
+                if remaining_to_consume <= 0:
+                    break
+                use_count = min(purchase.remaining_tickets, remaining_to_consume)
+                if use_count <= 0:
+                    continue
+
+                purchase.remaining_tickets -= use_count
+                purchase.save(update_fields=["remaining_tickets"])
+
+                TicketConsumption.objects.create(
+                    user=locked_user,
+                    purchase=purchase,
+                    reservation=self,
+                    fixed_lesson=self.fixed_lesson,
+                    tickets_used=use_count,
+                    unit_price_snapshot=purchase.unit_price,
+                )
+                remaining_to_consume -= use_count
+
+            ledger = apply_ticket_change(
+                user=locked_user,
+                amount=-self.tickets_used,
+                reason=reason,
+                note=note or f"予約消費: {self.start_at:%Y-%m-%d %H:%M}",
+                created_by=created_by,
+                reservation=self,
+                fixed_lesson=self.fixed_lesson,
+            )
+
+            self.ticket_consumed_at = timezone.now()
+            self.save(update_fields=["ticket_consumed_at"])
+            self.user.ticket_balance = locked_user.ticket_balance
+            return ledger
 
     def refund_tickets(self, reason="reservation_cancel_refund", created_by=None, note=""):
         if not self.ticket_consumed_at or self.ticket_refunded_at or self.tickets_used <= 0:
             return None
 
-        ledger = apply_ticket_change(
-            user=self.user,
-            amount=self.tickets_used,
-            reason=reason,
-            note=note or f"チケット返却: {self.start_at:%Y-%m-%d %H:%M}",
-            created_by=created_by,
-            reservation=self,
-            fixed_lesson=self.fixed_lesson,
-        )
-        self.ticket_refunded_at = timezone.now()
-        self.save(update_fields=["ticket_refunded_at"])
-        return ledger
+        with transaction.atomic():
+            consumptions = list(
+                self.ticket_consumptions.select_related("purchase").select_for_update().filter(refunded_at__isnull=True)
+            )
+
+            if not consumptions:
+                ledger = apply_ticket_change(
+                    user=self.user,
+                    amount=self.tickets_used,
+                    reason=reason,
+                    note=note or f"チケット返却: {self.start_at:%Y-%m-%d %H:%M}",
+                    created_by=created_by,
+                    reservation=self,
+                    fixed_lesson=self.fixed_lesson,
+                )
+                self.ticket_refunded_at = timezone.now()
+                self.save(update_fields=["ticket_refunded_at"])
+                return ledger
+
+            for consumption in consumptions:
+                purchase = consumption.purchase
+                purchase.remaining_tickets += consumption.tickets_used
+                if purchase.remaining_tickets > purchase.total_tickets:
+                    purchase.remaining_tickets = purchase.total_tickets
+                purchase.save(update_fields=["remaining_tickets"])
+
+                consumption.refunded_at = timezone.now()
+                consumption.refund_note = note or "予約返却"
+                consumption.save(update_fields=["refunded_at", "refund_note"])
+
+            ledger = apply_ticket_change(
+                user=self.user,
+                amount=self.tickets_used,
+                reason=reason,
+                note=note or f"チケット返却: {self.start_at:%Y-%m-%d %H:%M}",
+                created_by=created_by,
+                reservation=self,
+                fixed_lesson=self.fixed_lesson,
+            )
+
+            self.ticket_refunded_at = timezone.now()
+            self.save(update_fields=["ticket_refunded_at"])
+            return ledger
 
     def cancel(self, created_by=None, reason=""):
         if self.status not in (self.STATUS_ACTIVE, self.STATUS_PENDING):
@@ -711,65 +1044,6 @@ class Reservation(models.Model, LessonTypeMixin):
             note=f"雨天中止返却: {self.start_at:%Y-%m-%d %H:%M}",
         )
         return True
-
-
-class TicketLedger(models.Model):
-    REASON_PURCHASE_SINGLE = "purchase_single"
-    REASON_PURCHASE_SET4 = "purchase_set4"
-    REASON_RESERVATION_USE = "reservation_use"
-    REASON_FIXED_USE = "fixed_use"
-    REASON_CANCEL_REFUND = "cancel_refund"
-    REASON_RAIN_REFUND = "rain_refund"
-    REASON_ADMIN_ADJUST = "admin_adjust"
-
-    REASON_CHOICES = (
-        (REASON_PURCHASE_SINGLE, "チケット1枚購入"),
-        (REASON_PURCHASE_SET4, "4枚セット購入"),
-        (REASON_RESERVATION_USE, "通常予約で消費"),
-        (REASON_FIXED_USE, "固定レッスンで消費"),
-        (REASON_CANCEL_REFUND, "キャンセル返却"),
-        (REASON_RAIN_REFUND, "雨天中止返却"),
-        (REASON_ADMIN_ADJUST, "管理画面調整"),
-    )
-
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name="ticket_ledgers",
-    )
-    reservation = models.ForeignKey(
-        "Reservation",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="ticket_ledgers",
-    )
-    fixed_lesson = models.ForeignKey(
-        "FixedLesson",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="ticket_ledgers",
-    )
-    change_amount = models.IntegerField()
-    balance_after = models.IntegerField()
-    reason = models.CharField(max_length=30, choices=REASON_CHOICES)
-    note = models.CharField(max_length=255, blank=True, default="")
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="created_ticket_ledgers",
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-created_at", "-id"]
-
-    def __str__(self):
-        sign = "+" if self.change_amount >= 0 else ""
-        return f"{self.user} / {sign}{self.change_amount} / {self.get_reason_display()}"
 
 
 class LineAccountLink(models.Model):
