@@ -14,7 +14,7 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -32,6 +32,7 @@ from .forms import (
 )
 from .models import (
     CoachAvailability,
+    Court,
     FixedLesson,
     LineAccountLink,
     Reservation,
@@ -374,16 +375,20 @@ def _can_user_cancel_reservation(user, reservation):
         return True, ""
 
     active_count = reservation.active_count_in_same_slot()
-    if active_count <= 1:
+    if active_count <= 1 and reservation.status == Reservation.STATUS_ACTIVE:
         return False, "最後の1名となるため、この予約はキャンセルできません。"
 
     return True, ""
 
 
 def _lesson_type_label(lesson_type):
-    if lesson_type == Reservation.LESSON_PRIVATE:
-        return "プライベートレッスン"
-    return "一般レッスン"
+    mapping = {
+        Reservation.LESSON_GENERAL: "一般レッスン",
+        Reservation.LESSON_PRIVATE: "プライベートレッスン",
+        Reservation.LESSON_GROUP: "グループレッスン",
+        Reservation.LESSON_EVENT: "イベント",
+    }
+    return mapping.get(lesson_type, lesson_type)
 
 
 def home(request):
@@ -401,6 +406,21 @@ def home(request):
             "coaches": coaches,
             "selected_coach": selected_coach,
             "liff_enabled": _liff_enabled(),
+        },
+    )
+
+
+@login_required
+@require_GET
+def tickets_view(request):
+    ledgers = TicketLedger.objects.filter(user=request.user).select_related("reservation", "fixed_lesson")[:30]
+    return render(
+        request,
+        "tickets.html",
+        {
+            "ticket_ledgers": ledgers,
+            "single_ticket_price": 4000,
+            "set4_ticket_price": 14000,
         },
     )
 
@@ -550,6 +570,7 @@ def calendar_events(request):
                     "court": str(court),
                     "lesson_type_display": _lesson_type_label(obj.lesson_type),
                     "capacity": obj.capacity,
+                    "target_level_display": obj.get_target_level_display(),
                     "reserve_url": f"{reverse('club:reservation_create')}?{query}",
                 },
             }
@@ -571,6 +592,9 @@ def calendar_events(request):
         elif is_canceled:
             event_title = "キャンセル済み"
             background_color = "#9ca3af"
+        elif obj.status == Reservation.STATUS_PENDING:
+            event_title = "承認待ち"
+            background_color = "#f59e0b"
         else:
             event_title = "あなたの予約" if is_mine else f"予約済み ({_display_name(obj.user)})"
             background_color = "#3b82f6" if is_mine else "#ef4444"
@@ -618,7 +642,7 @@ def reservation_create(request):
     initial = {}
     coach_id = request.GET.get("coach")
     court_id = request.GET.get("court")
-    lesson_type = request.GET.get("lesson_type") or Reservation.LESSON_GROUP
+    lesson_type = request.GET.get("lesson_type") or Reservation.LESSON_GENERAL
     start_value = _parse_query_datetime(request.GET.get("start"))
     end_value = _parse_query_datetime(request.GET.get("end"))
 
@@ -648,22 +672,32 @@ def reservation_create(request):
                 with transaction.atomic():
                     reservation = form.save(commit=False)
                     reservation.user = request.user
-                    reservation.status = Reservation.STATUS_ACTIVE
+
+                    if reservation.lesson_type in (Reservation.LESSON_PRIVATE, Reservation.LESSON_GROUP):
+                        reservation.status = Reservation.STATUS_PENDING
+                    else:
+                        reservation.status = Reservation.STATUS_ACTIVE
+
                     reservation.full_clean()
                     reservation.save()
-                    reservation.consume_tickets(
-                        reason=TicketLedger.REASON_RESERVATION_USE,
-                        created_by=request.user,
-                        note=f"予約作成時に消費: {reservation.start_at:%Y-%m-%d %H:%M}",
-                    )
 
-                try:
-                    message = build_reservation_created_message(reservation)
-                    notify_user(request.user, message)
-                except Exception:
-                    pass
+                    if reservation.status == Reservation.STATUS_ACTIVE:
+                        reservation.consume_tickets(
+                            reason=TicketLedger.REASON_RESERVATION_USE,
+                            created_by=request.user,
+                            note=f"予約作成時に消費: {reservation.start_at:%Y-%m-%d %H:%M}",
+                        )
 
-                messages.success(request, "予約を作成しました。")
+                if reservation.status == Reservation.STATUS_ACTIVE:
+                    try:
+                        message = build_reservation_created_message(reservation)
+                        notify_user(request.user, message)
+                    except Exception:
+                        pass
+                    messages.success(request, "予約を作成しました。")
+                else:
+                    messages.success(request, "申請を送信しました。コーチ承認後に成立します。")
+
                 return redirect("club:reservation_list")
 
             except ValidationError as e:
@@ -782,10 +816,17 @@ def coach_availability_list(request):
 
 @login_required
 @require_http_methods(["GET", "POST"])
-def coach_availability_create(request):
+def coach_availability_create(request, pk=None):
+    instance = None
+    if pk is not None:
+        instance = get_object_or_404(CoachAvailability, pk=pk)
+        if not _is_staff_like(request.user) and instance.coach != request.user:
+            return HttpResponse("Forbidden", status=403)
+
     form = CoachAvailabilityForm(
         request.POST or None,
         request_user=request.user,
+        instance=instance,
     )
 
     if request.method == "POST":
@@ -795,16 +836,21 @@ def coach_availability_create(request):
                 availability.coach = request.user
             availability.save()
 
-            messages.success(request, "コーチ空き時間を登録しました。")
+            if instance is None:
+                messages.success(request, "コーチ空き時間を登録しました。")
+            else:
+                messages.success(request, "コーチ空き時間を更新しました。")
             return redirect("club:coach_availability_list")
 
-        messages.error(request, "コーチ空き時間を登録できませんでした。入力内容をご確認ください。")
+        messages.error(request, "コーチ空き時間を保存できませんでした。入力内容をご確認ください。")
 
     return render(
         request,
         "coach/availability_create.html",
         {
             "form": form,
+            "is_edit": instance is not None,
+            "availability": instance,
         },
     )
 
