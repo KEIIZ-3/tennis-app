@@ -53,6 +53,7 @@ ReservationCreateForm = _get_form("ReservationCreateForm")
 ReservationForm = _get_form("ReservationForm")
 LineAccountLinkForm = _get_form("LineAccountLinkForm")
 MemberRegistrationForm = _get_form("MemberRegistrationForm")
+LineProfileCompletionForm = _get_form("LineProfileCompletionForm")
 
 
 def _pick_first_attr(obj, names, default=None):
@@ -427,6 +428,25 @@ def _login_user_with_default_backend(request, user):
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
 
 
+def _needs_profile_completion(user):
+    if not user:
+        return False
+
+    if not getattr(user, "is_profile_completed", False):
+        return True
+
+    if not (getattr(user, "full_name", "") or "").strip():
+        return True
+
+    if not (getattr(user, "email", "") or "").strip():
+        return True
+
+    if not (getattr(user, "phone_number", "") or "").strip():
+        return True
+
+    return False
+
+
 def _upsert_user_by_line_identity(request, line_user_id, display_name="", email="", picture_url=""):
     if LineAccountLink is None:
         raise RuntimeError("LineAccountLink モデルが見つかりません。")
@@ -460,19 +480,25 @@ def _upsert_user_by_line_identity(request, line_user_id, display_name="", email=
     user = User(username=username)
 
     if hasattr(user, "role") and not getattr(user, "role", None):
-        try:
-            user.role = "member"
-        except Exception:
-            pass
-
-    if hasattr(user, "first_name") and display_name:
-        user.first_name = display_name[:150]
+        user.role = "member"
 
     if hasattr(user, "email") and email:
         user.email = email[:254]
 
+    if hasattr(user, "first_name") and not getattr(user, "first_name", None):
+        user.first_name = ""
+
     if hasattr(user, "last_name") and not getattr(user, "last_name", None):
         user.last_name = ""
+
+    if hasattr(user, "full_name"):
+        user.full_name = ""
+
+    if hasattr(user, "phone_number"):
+        user.phone_number = ""
+
+    if hasattr(user, "is_profile_completed"):
+        user.is_profile_completed = False
 
     user.set_unusable_password()
     user.save()
@@ -508,6 +534,8 @@ def home(request):
 @require_http_methods(["GET", "POST"])
 def login_view(request):
     if request.user.is_authenticated:
+        if _needs_profile_completion(request.user):
+            return redirect("club:profile_complete")
         return redirect("club:home")
 
     form = AuthenticationForm(request, data=request.POST or None)
@@ -515,6 +543,8 @@ def login_view(request):
     if request.method == "POST":
         if form.is_valid():
             login(request, form.get_user())
+            if _needs_profile_completion(request.user):
+                return redirect("club:profile_complete")
             return redirect("club:home")
         messages.error(request, "ユーザー名またはパスワードが正しくありません。")
 
@@ -533,6 +563,8 @@ def login_view(request):
 @require_http_methods(["GET", "POST"])
 def register_view(request):
     if request.user.is_authenticated:
+        if _needs_profile_completion(request.user):
+            return redirect("club:profile_complete")
         return redirect("club:home")
 
     if MemberRegistrationForm is None:
@@ -555,6 +587,33 @@ def register_view(request):
         {
             "form": form,
             "liff_enabled": _liff_enabled(),
+        },
+    )
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def profile_complete_view(request):
+    if LineProfileCompletionForm is None:
+        raise Http404("LineProfileCompletionForm not found.")
+
+    if request.method == "GET" and not _needs_profile_completion(request.user):
+        return redirect("club:home")
+
+    form = LineProfileCompletionForm(request.POST or None, instance=request.user)
+
+    if request.method == "POST":
+        if form.is_valid():
+            form.save()
+            messages.success(request, "会員情報の登録が完了しました。")
+            return redirect("club:home")
+        messages.error(request, "会員情報を保存できませんでした。入力内容をご確認ください。")
+
+    return render(
+        request,
+        "profile_complete.html",
+        {
+            "form": form,
         },
     )
 
@@ -1041,7 +1100,6 @@ def line_login_callback(request):
         return redirect("club:login")
 
     line_user_id = str(verified.get("sub") or "").strip()
-    display_name = str(verified.get("name") or "").strip()
     email = str(verified.get("email") or "").strip()
 
     if not line_user_id:
@@ -1052,7 +1110,6 @@ def line_login_callback(request):
         user, result = _upsert_user_by_line_identity(
             request=request,
             line_user_id=line_user_id,
-            display_name=display_name,
             email=email,
         )
         if result in ("created", "logged_in"):
@@ -1061,6 +1118,10 @@ def line_login_callback(request):
         if result == "linked":
             messages.success(request, "LINEアカウントを自動連携しました。")
             return redirect("club:line_connect")
+
+        if _needs_profile_completion(user):
+            messages.info(request, "初回登録のため、会員情報を入力してください。")
+            return redirect("club:profile_complete")
 
         if result == "created":
             messages.success(request, "LINEで新規登録・ログインしました。")
@@ -1101,7 +1162,6 @@ def liff_bootstrap(request):
         return JsonResponse({"ok": False, "message": "不正なJSONです。"}, status=400)
 
     id_token = str(payload.get("idToken") or "").strip()
-    display_name = str(payload.get("displayName") or "").strip()
     picture_url = str(payload.get("pictureUrl") or "").strip()
 
     if not id_token:
@@ -1128,7 +1188,6 @@ def liff_bootstrap(request):
         )
 
     line_user_id = str(verified.get("sub") or "").strip()
-    verified_name = str(verified.get("name") or "").strip()
     verified_email = str(verified.get("email") or "").strip()
 
     if not line_user_id:
@@ -1137,13 +1196,10 @@ def liff_bootstrap(request):
             status=400,
         )
 
-    final_name = verified_name or display_name
-
     try:
         user, result = _upsert_user_by_line_identity(
             request=request,
             line_user_id=line_user_id,
-            display_name=final_name,
             email=verified_email,
             picture_url=picture_url,
         )
@@ -1157,6 +1213,15 @@ def liff_bootstrap(request):
                     "ok": True,
                     "message": "LINEアカウントを連携しました。",
                     "redirectUrl": reverse("club:line_connect"),
+                }
+            )
+
+        if _needs_profile_completion(user):
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "message": "初回登録のため、会員情報を入力してください。",
+                    "redirectUrl": reverse("club:profile_complete"),
                 }
             )
 
