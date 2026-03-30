@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tennis Club | LIFF</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    body{
+      margin:0;
+      font-family:sans-serif;
+      background:#f7f7f7;
+      color:#111;
+    }
+    .wrap{
+      max-width:560px;
+      margin:0 auto;
+      padding:24px 16px 40px;
+    }
+    .card{
+      background:#fff;
+      border:1px solid #e5e5e5;
+      border-radius:16px;
+      padding:24px;
+      box-shadow:0 1px 4px rgba(0,0,0,0.05);
+    }
+    .title{
+      margin:0 0 12px 0;
+      font-size:28px;
+      font-weight:700;
+    }
+    .msg{
+      margin-top:16px;
+      padding:14px 16px;
+      border-radius:10px;
+      border:1px solid #ddd;
+      background:#fafafa;
+      white-space:pre-wrap;
+      line-height:1.7;
+    }
+    .msg.success{
+      background:#f1fbf3;
+      border-color:#bfe3c7;
+    }
+    .msg.error{
+      background:#fff3f3;
+      border-color:#efc2c2;
+    }
+    .spinner{
+      width:28px;
+      height:28px;
+      border:4px solid #ddd;
+      border-top-color:#06c755;
+      border-radius:50%;
+      animation:spin 1s linear infinite;
+      margin:18px auto 0;
+    }
+    .actions{
+      margin-top:18px;
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .btn{
+      display:inline-block;
+      padding:12px 16px;
+      border-radius:10px;
+      text-decoration:none;
+      border:1px solid #ddd;
+      background:#fff;
+      color:#111;
+      cursor:pointer;
+      font:inherit;
+    }
+    .btn-primary{
+      background:#06c755;
+      color:#fff;
+      border-color:#06c755;
+    }
+    @keyframes spin{
+      to{ transform:rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1 class="title">Tennis Club</h1>
+      <p>LINE内で会員確認と連携を行っています。しばらくお待ちください。</p>
+      <div id="status" class="msg">初期化中です...</div>
+      <div id="spinner" class="spinner"></div>
+      <div id="actions" class="actions" style="display:none;">
+        <a id="homeLink" href="{{ home_url }}" class="btn btn-primary">ホームへ進む</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const liffId = "{{ liff_id|escapejs }}";
+      const bootstrapUrl = "{{ bootstrap_url|escapejs }}";
+      const homeUrl = "{{ home_url|escapejs }}";
+
+      const statusEl = document.getElementById("status");
+      const spinnerEl = document.getElementById("spinner");
+      const actionsEl = document.getElementById("actions");
+      const homeLinkEl = document.getElementById("homeLink");
+
+      function setStatus(message, type) {
+        statusEl.textContent = message;
+        statusEl.className = "msg" + (type ? " " + type : "");
+      }
+
+      function showActions() {
+        spinnerEl.style.display = "none";
+        actionsEl.style.display = "flex";
+      }
+
+      async function main() {
+        try {
+          if (!liffId) {
+            throw new Error("LIFF ID が未設定です。");
+          }
+
+          await liff.init({ liffId: liffId });
+
+          if (!liff.isLoggedIn()) {
+            liff.login();
+            return;
+          }
+
+          setStatus("LINEプロフィールを取得しています...");
+
+          const profile = await liff.getProfile();
+          const idToken = liff.getIDToken();
+
+          if (!idToken) {
+            throw new Error("LINEのIDトークンを取得できませんでした。");
+          }
+
+          setStatus("会員情報を確認しています...");
+
+          const response = await fetch(bootstrapUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              idToken: idToken,
+              displayName: profile.displayName || "",
+              pictureUrl: profile.pictureUrl || ""
+            })
+          });
+
+          const data = await response.json();
+
+          if (!response.ok || !data.ok) {
+            throw new Error(data.message || "会員処理に失敗しました。");
+          }
+
+          setStatus(data.message || "完了しました。ホームへ移動します。", "success");
+
+          const redirectUrl = data.redirectUrl || homeUrl;
+          homeLinkEl.href = redirectUrl;
+          showActions();
+
+          setTimeout(function () {
+            window.location.href = redirectUrl;
+          }, 1200);
+        } catch (error) {
+          console.error(error);
+          setStatus(
+            "LINE内での初期化に失敗しました。\n" +
+            (error && error.message ? error.message : "不明なエラーです。") +
+            "\n\n通常ログインや新規会員登録もご利用ください。",
+            "error"
+          );
+          homeLinkEl.href = homeUrl;
+          showActions();
+        }
+      }
+
+      main();
+    })();
+  </script>
+</body>
+</html>
