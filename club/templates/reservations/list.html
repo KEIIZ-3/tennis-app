@@ -31,6 +31,7 @@
             <th>コーチ</th>
             <th>コート</th>
             <th>チケット</th>
+            <th>価格帯内訳</th>
             <th>状態</th>
             <th>操作</th>
           </tr>
@@ -53,6 +54,21 @@
                 {% endif %}
               </td>
               <td>{{ reservation.tickets_used }}枚</td>
+              <td>
+                {% with breakdown_items=reservation.ticket_breakdown_items %}
+                  {% if breakdown_items %}
+                    <div style="display:flex; flex-direction:column; gap:6px;">
+                      {% for item in breakdown_items %}
+                        <div style="display:inline-block; padding:6px 8px; border:1px solid #dbeafe; background:#eff6ff; border-radius:8px; font-size:13px;">
+                          {{ item.label }} × {{ item.tickets }}枚
+                        </div>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    <span class="muted">未消費 / 未確定</span>
+                  {% endif %}
+                {% endwith %}
+              </td>
               <td>{{ reservation.get_status_display }}</td>
               <td>
                 {% if row.can_cancel %}
@@ -67,7 +83,7 @@
             </tr>
             {% if reservation.requested_court_note or reservation.approved_court_note %}
               <tr>
-                <td colspan="8" style="background:#fafafa;">
+                <td colspan="9" style="background:#fafafa;">
                   {% if reservation.requested_court_note %}
                     <div><strong>希望コート情報:</strong> {{ reservation.requested_court_note }}</div>
                   {% endif %}
