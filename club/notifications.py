@@ -116,6 +116,19 @@ def _get_user_display(user) -> str:
     if not user:
         return "ユーザー"
 
+    try:
+        if hasattr(user, "display_name"):
+            value = user.display_name()
+            if value:
+                return str(value)
+    except Exception:
+        pass
+
+    for attr in ("full_name", "first_name", "name", "username", "email"):
+        value = getattr(user, attr, None)
+        if value:
+            return str(value)
+
     if hasattr(user, "get_full_name"):
         try:
             value = user.get_full_name()
@@ -123,11 +136,6 @@ def _get_user_display(user) -> str:
                 return str(value)
         except Exception:
             pass
-
-    for attr in ("first_name", "full_name", "name", "username", "email"):
-        value = getattr(user, attr, None)
-        if value:
-            return str(value)
 
     return "ユーザー"
 
@@ -153,6 +161,20 @@ def notify_user(user, message: str) -> tuple[bool, str]:
         return False, "line_user_id is empty."
 
     return send_line_push(line_user_id=line_user_id, message=message)
+
+
+def notify_users(users, message: str):
+    results = []
+    seen_ids = set()
+
+    for user in users:
+        if not user or not getattr(user, "pk", None):
+            continue
+        if user.pk in seen_ids:
+            continue
+        seen_ids.add(user.pk)
+        results.append((user, *notify_user(user, message)))
+    return results
 
 
 def _fmt_dt(value) -> str:
@@ -181,6 +203,8 @@ def _extract_reservation_data(reservation):
     start_at = _pick_first_attr(reservation, ["start_at", "start", "starts_at"], None)
     end_at = _pick_first_attr(reservation, ["end_at", "end", "ends_at"], None)
     availability = _pick_first_attr(reservation, ["coach_availability", "availability"], None)
+    lesson_type = _pick_first_attr(reservation, ["lesson_type"], "")
+    tickets_used = _pick_first_attr(reservation, ["tickets_used"], 0)
 
     if not start_at and availability is not None:
         start_at = _pick_first_attr(availability, ["start_at", "start", "starts_at"], None)
@@ -191,12 +215,23 @@ def _extract_reservation_data(reservation):
     if court is None and availability is not None:
         court = _pick_first_attr(availability, ["court"], None)
 
+    lesson_type_text = "一般レッスン"
+    if lesson_type == "private":
+        lesson_type_text = "プライベートレッスン"
+
+    balance_text = ""
+    if user is not None and hasattr(user, "ticket_balance"):
+        balance_text = f"{user.ticket_balance}"
+
     return {
         "user_name": _get_user_display(user),
         "coach_name": str(coach) if coach else "未設定",
         "court_name": str(court) if court else "未設定",
         "start_text": _fmt_dt(start_at),
         "end_text": _fmt_dt(end_at),
+        "lesson_type_text": lesson_type_text,
+        "tickets_used": tickets_used,
+        "ticket_balance": balance_text,
     }
 
 
@@ -205,11 +240,14 @@ def build_reservation_created_message(reservation) -> str:
     return (
         "【予約完了】\n"
         "ご予約ありがとうございます。\n\n"
-        f"利用者: {data['user_name']}\n"
+        f"お名前: {data['user_name']}\n"
+        f"レッスン種別: {data['lesson_type_text']}\n"
         f"コーチ: {data['coach_name']}\n"
         f"コート: {data['court_name']}\n"
         f"開始: {data['start_text']}\n"
-        f"終了: {data['end_text']}\n\n"
+        f"終了: {data['end_text']}\n"
+        f"消費チケット: {data['tickets_used']}枚\n"
+        f"現在残数: {data['ticket_balance']}枚\n\n"
         "内容をご確認ください。"
     )
 
@@ -219,10 +257,30 @@ def build_reservation_canceled_message(reservation) -> str:
     return (
         "【予約キャンセル】\n"
         "ご予約のキャンセルを受け付けました。\n\n"
-        f"利用者: {data['user_name']}\n"
+        f"お名前: {data['user_name']}\n"
+        f"レッスン種別: {data['lesson_type_text']}\n"
         f"コーチ: {data['coach_name']}\n"
         f"コート: {data['court_name']}\n"
         f"開始: {data['start_text']}\n"
-        f"終了: {data['end_text']}\n\n"
+        f"終了: {data['end_text']}\n"
+        f"返却チケット: {data['tickets_used']}枚\n"
+        f"現在残数: {data['ticket_balance']}枚\n\n"
         "必要に応じて、あらためてご予約ください。"
+    )
+
+
+def build_reservation_rain_canceled_message(reservation) -> str:
+    data = _extract_reservation_data(reservation)
+    return (
+        "【雨天中止】\n"
+        "本日のレッスンは雨天のため中止となりました。\n\n"
+        f"お名前: {data['user_name']}\n"
+        f"レッスン種別: {data['lesson_type_text']}\n"
+        f"コーチ: {data['coach_name']}\n"
+        f"コート: {data['court_name']}\n"
+        f"開始: {data['start_text']}\n"
+        f"終了: {data['end_text']}\n"
+        f"返却チケット: {data['tickets_used']}枚\n"
+        f"現在残数: {data['ticket_balance']}枚\n\n"
+        "またのご予約をお待ちしております。"
     )
