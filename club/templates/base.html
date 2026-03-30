@@ -246,10 +246,35 @@
 
       .nav{
         width:100%;
+        gap:6px;
+      }
+
+      .nav a,
+      .logout-button{
+        padding:10px 12px;
+        font-size:14px;
       }
 
       .top-meta{
         width:100%;
+      }
+
+      .wrap{
+        padding:12px;
+      }
+
+      .main{
+        padding:14px 0 28px;
+      }
+
+      .card{
+        padding:14px;
+        border-radius:10px;
+      }
+
+      th, td{
+        font-size:14px;
+        padding:8px 6px;
       }
     }
   </style>
@@ -265,6 +290,7 @@
         {% if user.is_authenticated %}
           <span class="top-badge">ログイン中: {{ user.display_name }}</span>
           {% if user.role == "member" %}
+            <span class="top-badge">レベル: {{ user.get_member_level_display }}</span>
             <span class="top-badge ticket">チケット残数: {{ user.ticket_balance }}枚</span>
           {% endif %}
         {% endif %}
@@ -274,6 +300,9 @@
         <a href="{% url 'club:home' %}">ホーム</a>
 
         {% if user.is_authenticated %}
+          {% if user.role == "member" %}
+            <a href="{% url 'club:tickets' %}">チケット</a>
+          {% endif %}
           <a href="{% url 'club:reservation_create' %}">予約作成</a>
           <a href="{% url 'club:reservation_list' %}">予約一覧</a>
           {% if user.is_staff or user.is_superuser or user.role == "coach" %}
