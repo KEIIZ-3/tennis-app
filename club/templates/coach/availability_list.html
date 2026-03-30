@@ -7,12 +7,13 @@
     <div>
       <h1 style="margin:0;">コーチ空き時間管理</h1>
       <p class="muted" style="margin:8px 0 0;">
-        登録済みのレッスン枠を確認できます。
+        登録済みのレッスン枠を確認・編集できます。
       </p>
     </div>
 
-    <div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
       <a href="{% url 'club:coach_availability_create' %}" class="btn btn-primary">新規登録</a>
+      <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
     </div>
   </div>
 </div>
@@ -20,34 +21,40 @@
 <div class="card">
   {% if availabilities %}
     <div style="overflow-x:auto;">
-      <table style="width:100%; border-collapse:collapse;">
+      <table>
         <thead>
-          <tr style="border-bottom:1px solid #eee;">
-            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">コーチ</th>
-            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">コート</th>
-            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">種別</th>
-            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">開始</th>
-            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">終了</th>
-            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">定員</th>
-            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">メモ</th>
-            <th style="text-align:left; padding:10px 8px; white-space:nowrap;">操作</th>
+          <tr>
+            <th>コーチ</th>
+            <th>コート</th>
+            <th>種別</th>
+            <th>対象レベル</th>
+            <th>開始</th>
+            <th>終了</th>
+            <th>定員</th>
+            <th>メモ</th>
+            <th>操作</th>
           </tr>
         </thead>
         <tbody>
           {% for availability in availabilities %}
-            <tr style="border-bottom:1px solid #f1f1f1;">
-              <td style="padding:10px 8px; white-space:nowrap;">{{ availability.coach.display_name }}</td>
-              <td style="padding:10px 8px; white-space:nowrap;">{{ availability.court }}</td>
-              <td style="padding:10px 8px; white-space:nowrap;">{{ availability.get_lesson_type_display }}</td>
-              <td style="padding:10px 8px; white-space:nowrap;">{{ availability.start_at|date:"Y-m-d H:i" }}</td>
-              <td style="padding:10px 8px; white-space:nowrap;">{{ availability.end_at|date:"Y-m-d H:i" }}</td>
-              <td style="padding:10px 8px; white-space:nowrap;">{{ availability.capacity }}</td>
-              <td style="padding:10px 8px;">{{ availability.note|default:"-" }}</td>
-              <td style="padding:10px 8px; white-space:nowrap;">
-                <form method="post" action="{% url 'club:coach_availability_delete' availability.pk %}" style="margin:0;" onsubmit="return confirm('この枠を削除しますか？');">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn-danger">削除</button>
-                </form>
+            <tr>
+              <td>{{ availability.coach.display_name }}</td>
+              <td>{{ availability.court }}</td>
+              <td>{{ availability.get_lesson_type_display }}</td>
+              <td>{{ availability.get_target_level_display }}</td>
+              <td>{{ availability.start_at|date:"Y-m-d H:i" }}</td>
+              <td>{{ availability.end_at|date:"Y-m-d H:i" }}</td>
+              <td>{{ availability.capacity }}</td>
+              <td>{{ availability.note|default:"-" }}</td>
+              <td style="white-space:nowrap;">
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                  <a href="{% url 'club:coach_availability_edit' availability.pk %}" class="btn">編集</a>
+
+                  <form method="post" action="{% url 'club:coach_availability_delete' availability.pk %}" style="margin:0;" onsubmit="return confirm('この枠を削除しますか？');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">削除</button>
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}
@@ -57,9 +64,5 @@
   {% else %}
     <p class="muted" style="margin:0;">まだ登録された空き時間はありません。</p>
   {% endif %}
-
-  <div style="margin-top:18px;">
-    <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
-  </div>
 </div>
 {% endblock %}
