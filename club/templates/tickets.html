@@ -88,8 +88,120 @@
   </div>
 
   <div style="margin-top:14px; padding:14px; border:1px solid #e5e7eb; background:#fafafa; border-radius:10px; color:#666;">
-    キャンセル・雨天中止・不参加扱いとなった場合は、条件に応じてチケットが返却されます。
+    <div style="font-weight:700; color:#111; margin-bottom:6px;">価格帯の使われ方</div>
+    <ul style="margin:0; padding-left:18px; line-height:1.8;">
+      <li>チケットは<strong>古い購入分から順に</strong>消費されます。</li>
+      <li>予約後は、どの価格帯のチケットが使われたか確認できます。</li>
+      <li>キャンセルや雨天中止時は、使われた価格帯へ返却されます。</li>
+    </ul>
   </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">保有中のチケット内訳</h2>
+
+  {% if ticket_purchases %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>購入日</th>
+            <th>種別</th>
+            <th>価格帯</th>
+            <th>購入枚数</th>
+            <th>残数</th>
+            <th>メモ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for purchase in ticket_purchases %}
+            <tr>
+              <td>{{ purchase.purchased_at|date:"Y-m-d H:i" }}</td>
+              <td>{{ purchase.get_purchase_type_display }}</td>
+              <td>
+                {% if purchase.unit_price > 0 %}
+                  <span style="display:inline-block; padding:5px 8px; border-radius:999px; background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8; font-size:12px; font-weight:700;">
+                    {{ purchase.unit_price }}円券
+                  </span>
+                {% else %}
+                  <span class="muted">価格不明券</span>
+                {% endif %}
+              </td>
+              <td>{{ purchase.total_tickets }}枚</td>
+              <td>
+                <strong>{{ purchase.remaining_tickets }}枚</strong>
+              </td>
+              <td>{{ purchase.note|default:purchase.label|default:"-" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p>まだ保有中チケットの内訳はありません。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">最近のチケット消費内訳</h2>
+
+  {% if ticket_consumptions %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>日時</th>
+            <th>対象</th>
+            <th>価格帯</th>
+            <th>消費枚数</th>
+            <th>返却状態</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for consumption in ticket_consumptions %}
+            <tr>
+              <td>{{ consumption.created_at|date:"Y-m-d H:i" }}</td>
+              <td>
+                {% if consumption.reservation %}
+                  {{ consumption.reservation.get_lesson_type_display }}
+                  <div class="muted" style="font-size:12px;">
+                    {{ consumption.reservation.start_at|date:"Y-m-d H:i" }}
+                  </div>
+                {% elif consumption.fixed_lesson %}
+                  固定レッスン
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if consumption.unit_price_snapshot > 0 %}
+                  <span style="display:inline-block; padding:5px 8px; border-radius:999px; background:#ecfeff; border:1px solid #a5f3fc; color:#155e75; font-size:12px; font-weight:700;">
+                    {{ consumption.unit_price_snapshot }}円券
+                  </span>
+                {% else %}
+                  <span class="muted">価格不明券</span>
+                {% endif %}
+              </td>
+              <td>{{ consumption.tickets_used }}枚</td>
+              <td>
+                {% if consumption.refunded_at %}
+                  <span style="display:inline-block; padding:5px 8px; border-radius:999px; background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; font-size:12px; font-weight:700;">
+                    返却済み
+                  </span>
+                {% else %}
+                  <span style="display:inline-block; padding:5px 8px; border-radius:999px; background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; font-size:12px; font-weight:700;">
+                    使用中
+                  </span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p>まだチケット消費履歴はありません。</p>
+  {% endif %}
 </div>
 
 <div class="card">
