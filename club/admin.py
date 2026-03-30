@@ -9,9 +9,12 @@ from .models import (
     FixedLesson,
     LineAccountLink,
     Reservation,
+    TicketConsumption,
     TicketLedger,
+    TicketPurchase,
     User,
     apply_ticket_change,
+    purchase_tickets,
 )
 from .notifications import (
     build_reservation_rain_canceled_message,
@@ -119,17 +122,20 @@ class UserAdmin(BaseUserAdmin):
         ),
     )
 
-    @admin.action(description="チケット1枚を付与する（現金受取など）")
+    @admin.action(description="チケット1枚を付与する（1枚 4,000円）")
     def grant_single_ticket(self, request, queryset):
         count = 0
         for user in queryset:
             try:
-                apply_ticket_change(
+                purchase_tickets(
                     user=user,
-                    amount=1,
+                    tickets=1,
+                    unit_price=4000,
+                    purchase_type=TicketPurchase.PURCHASE_TYPE_SINGLE,
                     reason=TicketLedger.REASON_PURCHASE_SINGLE,
                     note="管理画面から1枚付与",
                     created_by=request.user,
+                    label="1枚券",
                 )
                 count += 1
             except Exception as e:
@@ -137,17 +143,20 @@ class UserAdmin(BaseUserAdmin):
         if count:
             self.message_user(request, f"{count}件の会員へチケット1枚を付与しました。", level=messages.SUCCESS)
 
-    @admin.action(description="4枚セットを付与する（現金受取など）")
+    @admin.action(description="4枚セットを付与する（1枚あたり 3,500円）")
     def grant_set4_tickets(self, request, queryset):
         count = 0
         for user in queryset:
             try:
-                apply_ticket_change(
+                purchase_tickets(
                     user=user,
-                    amount=4,
+                    tickets=4,
+                    unit_price=3500,
+                    purchase_type=TicketPurchase.PURCHASE_TYPE_SET4,
                     reason=TicketLedger.REASON_PURCHASE_SET4,
                     note="管理画面から4枚セット付与",
                     created_by=request.user,
+                    label="4枚セット",
                 )
                 count += 1
             except Exception as e:
@@ -290,6 +299,45 @@ class TicketLedgerAdmin(admin.ModelAdmin):
         "fixed_lesson__title",
     )
     autocomplete_fields = ("user", "reservation", "fixed_lesson", "created_by")
+
+
+@admin.register(TicketPurchase)
+class TicketPurchaseAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "user",
+        "purchase_type",
+        "unit_price",
+        "total_tickets",
+        "remaining_tickets",
+        "label",
+        "purchased_at",
+    )
+    list_filter = ("purchase_type", "unit_price", "purchased_at")
+    search_fields = ("user__username", "user__full_name", "label", "note")
+    autocomplete_fields = ("user", "created_by")
+
+
+@admin.register(TicketConsumption)
+class TicketConsumptionAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "user",
+        "reservation",
+        "purchase",
+        "tickets_used",
+        "unit_price_snapshot",
+        "refunded_at",
+        "created_at",
+    )
+    list_filter = ("unit_price_snapshot", "created_at", "refunded_at")
+    search_fields = (
+        "user__username",
+        "user__full_name",
+        "reservation__court__name",
+        "purchase__label",
+    )
+    autocomplete_fields = ("user", "purchase", "reservation", "fixed_lesson")
 
 
 @admin.register(LineAccountLink)
