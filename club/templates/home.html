@@ -7,16 +7,18 @@
   <div class="card">
     <h1 style="margin-top:0;">Tennis Club へようこそ</h1>
     <p style="margin:12px 0 0;">
-      初めての方は、<strong>LINEでログイン</strong>すると、そのまま会員登録とLINE連携が自動で完了します。
+      初めての方は、<strong>LINE内の予約ボタン</strong>から進むと、そのまま会員登録とLINE連携が自動で完了します。
     </p>
 
     <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-      <a
-        href="{% url 'club:line_login_start' %}"
-        style="display:inline-block; padding:12px 18px; border-radius:10px; background:#06c755; color:#fff; text-decoration:none; font-weight:bold;"
-      >
-        LINEで始める
-      </a>
+      {% if liff_enabled %}
+        <a
+          href="{% url 'club:liff_entry' %}"
+          style="display:inline-block; padding:12px 18px; border-radius:10px; background:#06c755; color:#fff; text-decoration:none; font-weight:bold;"
+        >
+          LINEで始める
+        </a>
+      {% endif %}
       <a
         href="{% url 'club:register' %}"
         style="display:inline-block; padding:12px 18px; border-radius:10px; background:#fff; color:#111; text-decoration:none; border:1px solid #ddd;"
@@ -32,7 +34,7 @@
     </div>
 
     <ul style="margin-top:18px; padding-left:20px; line-height:1.8;">
-      <li>公式LINEからそのままログインできます</li>
+      <li>公式LINEからそのまま始められます</li>
       <li>初回は会員登録とLINE連携が自動で完了します</li>
       <li>ログイン後、予約作成や予約確認ができます</li>
     </ul>
