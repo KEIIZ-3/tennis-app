@@ -17,11 +17,41 @@ class User(AbstractUser):
         ("coach", "coach"),
     )
 
+    LEVEL_FAMILY = "family"
+    LEVEL_BEGINNER = "beginner"
+    LEVEL_BEGINNER_PLUS = "beginner_plus"
+    LEVEL_INTERMEDIATE = "intermediate"
+    LEVEL_INTERMEDIATE_PLUS = "intermediate_plus"
+    LEVEL_ADVANCED = "advanced"
+
+    LEVEL_CHOICES = (
+        (LEVEL_FAMILY, "ファミリー"),
+        (LEVEL_BEGINNER, "初級"),
+        (LEVEL_BEGINNER_PLUS, "初中級"),
+        (LEVEL_INTERMEDIATE, "中級"),
+        (LEVEL_INTERMEDIATE_PLUS, "中上級"),
+        (LEVEL_ADVANCED, "上級"),
+    )
+
+    LEVEL_ORDER = {
+        LEVEL_FAMILY: 1,
+        LEVEL_BEGINNER: 2,
+        LEVEL_BEGINNER_PLUS: 3,
+        LEVEL_INTERMEDIATE: 4,
+        LEVEL_INTERMEDIATE_PLUS: 5,
+        LEVEL_ADVANCED: 6,
+    }
+
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="member")
     full_name = models.CharField(max_length=150, blank=True, default="")
     phone_number = models.CharField(max_length=30, blank=True, default="")
     is_profile_completed = models.BooleanField(default=False)
     ticket_balance = models.IntegerField(default=0)
+    member_level = models.CharField(
+        max_length=30,
+        choices=LEVEL_CHOICES,
+        default=LEVEL_BEGINNER,
+    )
 
     def is_coach(self):
         return self.role == "coach"
@@ -33,13 +63,32 @@ class User(AbstractUser):
             return self.first_name
         return self.username
 
+    def level_rank(self):
+        return self.LEVEL_ORDER.get(self.member_level, 0)
+
+    def can_book_level(self, target_level: str) -> bool:
+        return self.level_rank() >= self.LEVEL_ORDER.get(target_level, 999)
+
     def __str__(self):
         return self.display_name()
 
 
 class Court(models.Model):
+    COURT_SONO = "sono"
+    COURT_OTHER = "other"
+
+    COURT_TYPE_CHOICES = (
+        (COURT_SONO, "西猪名公園テニスコート"),
+        (COURT_OTHER, "それ以外のコート"),
+    )
+
     name = models.CharField(max_length=100, unique=True)
     is_active = models.BooleanField(default=True)
+    court_type = models.CharField(
+        max_length=20,
+        choices=COURT_TYPE_CHOICES,
+        default=COURT_SONO,
+    )
 
     class Meta:
         ordering = ["id"]
@@ -49,28 +98,50 @@ class Court(models.Model):
 
 
 class LessonTypeMixin:
-    LESSON_GROUP = "group"
+    LESSON_GENERAL = "general"
     LESSON_PRIVATE = "private"
+    LESSON_GROUP = "group"
+    LESSON_EVENT = "event"
 
     LESSON_TYPE_CHOICES = (
-        (LESSON_GROUP, "一般レッスン（2時間 / 1枚）"),
-        (LESSON_PRIVATE, "プライベートレッスン（1時間 / 2枚）"),
+        (LESSON_GENERAL, "一般レッスン"),
+        (LESSON_PRIVATE, "プライベートレッスン"),
+        (LESSON_GROUP, "グループレッスン"),
+        (LESSON_EVENT, "イベント"),
     )
 
     @classmethod
-    def duration_hours_for_lesson_type(cls, lesson_type: str) -> int:
+    def duration_hours_for_lesson_type(cls, lesson_type: str, custom_duration_hours=None) -> int:
         if lesson_type == cls.LESSON_PRIVATE:
             return 1
+        if lesson_type == cls.LESSON_GROUP:
+            return 1
+        if lesson_type == cls.LESSON_EVENT:
+            return int(custom_duration_hours or 1)
         return 2
 
     @classmethod
-    def tickets_for_lesson_type(cls, lesson_type: str) -> int:
+    def default_tickets_for_lesson_type(cls, lesson_type: str, custom_ticket_price=None) -> int:
         if lesson_type == cls.LESSON_PRIVATE:
             return 2
+        if lesson_type == cls.LESSON_GROUP:
+            return 0
+        if lesson_type == cls.LESSON_EVENT:
+            return int(custom_ticket_price or 0)
         return 1
 
 
 class CoachAvailability(models.Model, LessonTypeMixin):
+    STATUS_OPEN = "open"
+    STATUS_REQUESTED = "requested"
+    STATUS_APPROVED = "approved"
+
+    STATUS_CHOICES = (
+        (STATUS_OPEN, "公開中"),
+        (STATUS_REQUESTED, "申請中"),
+        (STATUS_APPROVED, "承認済み"),
+    )
+
     coach = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -85,12 +156,20 @@ class CoachAvailability(models.Model, LessonTypeMixin):
     lesson_type = models.CharField(
         max_length=20,
         choices=LessonTypeMixin.LESSON_TYPE_CHOICES,
-        default=LessonTypeMixin.LESSON_GROUP,
+        default=LessonTypeMixin.LESSON_GENERAL,
+    )
+    target_level = models.CharField(
+        max_length=30,
+        choices=User.LEVEL_CHOICES,
+        default=User.LEVEL_BEGINNER,
     )
     start_at = models.DateTimeField()
     end_at = models.DateTimeField()
     capacity = models.PositiveIntegerField(default=1)
     note = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OPEN)
+    custom_ticket_price = models.PositiveIntegerField(default=0)
+    custom_duration_hours = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -98,6 +177,9 @@ class CoachAvailability(models.Model, LessonTypeMixin):
 
     def __str__(self):
         return f"{self.coach} / {self.court} / {self.get_lesson_type_display()} / {self.start_at:%Y-%m-%d %H:%M}"
+
+    def effective_duration_hours(self):
+        return self.duration_hours_for_lesson_type(self.lesson_type, self.custom_duration_hours)
 
     def clean(self):
         if not self.start_at or not self.end_at:
@@ -126,12 +208,24 @@ class CoachAvailability(models.Model, LessonTypeMixin):
             raise ValidationError("終了時刻は 10:00〜21:00 の範囲で指定してください。")
 
         duration = self.end_at - self.start_at
-        expected_duration = timedelta(hours=self.duration_hours_for_lesson_type(self.lesson_type))
+        expected_duration = timedelta(hours=self.effective_duration_hours())
         if duration != expected_duration:
-            raise ValidationError("レッスン種別に応じた時間で登録してください。一般レッスンは2時間、プライベートは1時間です。")
+            raise ValidationError("レッスン種別に応じた時間で登録してください。")
 
-        if self.capacity < 1:
-            raise ValidationError("定員は1以上にしてください。")
+        if self.lesson_type == self.LESSON_GENERAL and self.capacity < 1:
+            raise ValidationError("一般レッスンの定員は1以上にしてください。")
+
+        if self.lesson_type == self.LESSON_PRIVATE and self.capacity != 1:
+            raise ValidationError("プライベートレッスンの定員は1にしてください。")
+
+        if self.lesson_type == self.LESSON_GROUP and (self.capacity < 2 or self.capacity > 4):
+            raise ValidationError("グループレッスンの定員は2〜4名にしてください。")
+
+        if self.lesson_type == self.LESSON_EVENT:
+            if self.custom_ticket_price < 0:
+                raise ValidationError("イベントのチケット価格は0以上にしてください。")
+            if self.custom_duration_hours < 1:
+                raise ValidationError("イベントの時間は1時間以上にしてください。")
 
         overlap_qs = CoachAvailability.objects.filter(
             coach=self.coach,
@@ -180,7 +274,12 @@ class FixedLesson(models.Model, LessonTypeMixin):
     lesson_type = models.CharField(
         max_length=20,
         choices=LessonTypeMixin.LESSON_TYPE_CHOICES,
-        default=LessonTypeMixin.LESSON_GROUP,
+        default=LessonTypeMixin.LESSON_GENERAL,
+    )
+    target_level = models.CharField(
+        max_length=30,
+        choices=User.LEVEL_CHOICES,
+        default=User.LEVEL_BEGINNER,
     )
     weekday = models.PositiveSmallIntegerField(choices=WEEKDAY_CHOICES)
     start_hour = models.PositiveSmallIntegerField(default=9)
@@ -237,6 +336,7 @@ class FixedLesson(models.Model, LessonTypeMixin):
                 end_at=end_at,
                 defaults={
                     "capacity": required_capacity,
+                    "target_level": self.target_level,
                     "note": f"固定レッスン: {self.title or self.get_weekday_display()}",
                 },
             )
@@ -245,6 +345,9 @@ class FixedLesson(models.Model, LessonTypeMixin):
             if availability.capacity < required_capacity:
                 availability.capacity = required_capacity
                 updated_fields.append("capacity")
+            if availability.target_level != self.target_level:
+                availability.target_level = self.target_level
+                updated_fields.append("target_level")
             if not availability.note:
                 availability.note = f"固定レッスン: {self.title or self.get_weekday_display()}"
                 updated_fields.append("note")
@@ -271,6 +374,7 @@ class FixedLesson(models.Model, LessonTypeMixin):
                     fixed_lesson=self,
                     is_fixed_entry=True,
                     lesson_type=self.lesson_type,
+                    target_level=self.target_level,
                     start_at=start_at,
                     end_at=end_at,
                     status=Reservation.STATUS_ACTIVE,
@@ -334,11 +438,13 @@ class Reservation(models.Model, LessonTypeMixin):
     STATUS_ACTIVE = "active"
     STATUS_CANCELED = "canceled"
     STATUS_RAIN_CANCELED = "rain_canceled"
+    STATUS_PENDING = "pending"
 
     STATUS_CHOICES = (
         (STATUS_ACTIVE, "予約中"),
         (STATUS_CANCELED, "キャンセル"),
         (STATUS_RAIN_CANCELED, "雨天中止"),
+        (STATUS_PENDING, "承認待ち"),
     )
 
     user = models.ForeignKey(
@@ -375,8 +481,20 @@ class Reservation(models.Model, LessonTypeMixin):
     lesson_type = models.CharField(
         max_length=20,
         choices=LessonTypeMixin.LESSON_TYPE_CHOICES,
-        default=LessonTypeMixin.LESSON_GROUP,
+        default=LessonTypeMixin.LESSON_GENERAL,
     )
+    target_level = models.CharField(
+        max_length=30,
+        choices=User.LEVEL_CHOICES,
+        default=User.LEVEL_BEGINNER,
+    )
+    requested_court_type = models.CharField(
+        max_length=20,
+        choices=Court.COURT_TYPE_CHOICES,
+        default=Court.COURT_SONO,
+    )
+    requested_court_note = models.CharField(max_length=255, blank=True, default="")
+    approved_court_note = models.CharField(max_length=255, blank=True, default="")
     start_at = models.DateTimeField()
     end_at = models.DateTimeField()
     tickets_used = models.PositiveIntegerField(default=0)
@@ -385,6 +503,8 @@ class Reservation(models.Model, LessonTypeMixin):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_ACTIVE)
     canceled_at = models.DateTimeField(null=True, blank=True)
     cancellation_reason = models.CharField(max_length=255, blank=True, default="")
+    custom_ticket_price = models.PositiveIntegerField(default=0)
+    custom_duration_hours = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -400,6 +520,28 @@ class Reservation(models.Model, LessonTypeMixin):
     @property
     def is_canceled(self):
         return self.status in (self.STATUS_CANCELED, self.STATUS_RAIN_CANCELED)
+
+    def effective_duration_hours(self):
+        return self.duration_hours_for_lesson_type(self.lesson_type, self.custom_duration_hours)
+
+    def calculate_tickets_used(self):
+        if self.lesson_type == self.LESSON_GROUP:
+            active_count = Reservation.objects.filter(
+                coach=self.coach,
+                court=self.court,
+                lesson_type=self.lesson_type,
+                start_at=self.start_at,
+                end_at=self.end_at,
+                status=self.STATUS_ACTIVE,
+            ).count()
+            if self.pk and self.status == self.STATUS_ACTIVE:
+                active_count += 1
+            return max(active_count, 1)
+
+        if self.lesson_type == self.LESSON_EVENT:
+            return int(self.custom_ticket_price or 0)
+
+        return self.default_tickets_for_lesson_type(self.lesson_type, self.custom_ticket_price)
 
     def clean(self):
         if not self.start_at or not self.end_at:
@@ -427,21 +569,25 @@ class Reservation(models.Model, LessonTypeMixin):
         if end_local.hour <= BUSINESS_START_HOUR or end_local.hour > BUSINESS_END_HOUR:
             raise ValidationError("予約終了時刻は 10:00〜21:00 の範囲で指定してください。")
 
-        expected_duration = timedelta(hours=self.duration_hours_for_lesson_type(self.lesson_type))
+        expected_duration = timedelta(hours=self.effective_duration_hours())
         if self.end_at - self.start_at != expected_duration:
-            raise ValidationError("レッスン種別に応じた時間で予約してください。一般レッスンは2時間、プライベートは1時間です。")
+            raise ValidationError("レッスン種別に応じた時間で予約してください。")
 
-        self.tickets_used = self.tickets_for_lesson_type(self.lesson_type)
+        self.tickets_used = self.calculate_tickets_used()
 
         if self.user_id and self.coach_id and self.user_id == self.coach_id:
             raise ValidationError("自分自身を予約することはできません。")
 
-        if self.status != self.STATUS_ACTIVE:
+        if self.user and self.user.role == "member":
+            if not self.user.can_book_level(self.target_level):
+                raise ValidationError("ご自身のレベルでは、このレベルのレッスンは予約できません。")
+
+        if self.status not in (self.STATUS_ACTIVE, self.STATUS_PENDING):
             return
 
         user_overlap_qs = Reservation.objects.filter(
             user=self.user,
-            status=self.STATUS_ACTIVE,
+            status__in=[self.STATUS_ACTIVE, self.STATUS_PENDING],
             start_at__lt=self.end_at,
             end_at__gt=self.start_at,
         )
@@ -458,24 +604,35 @@ class Reservation(models.Model, LessonTypeMixin):
             end_at=self.end_at,
         ).first()
 
-        if not availability:
-            raise ValidationError("該当するレッスン枠がありません。")
+        if self.lesson_type in (self.LESSON_GENERAL, self.LESSON_EVENT):
+            if not availability:
+                raise ValidationError("該当するレッスン枠がありません。")
+            self.availability = availability
+            self.target_level = availability.target_level
+            self.custom_ticket_price = availability.custom_ticket_price
+            self.custom_duration_hours = availability.custom_duration_hours
 
-        self.availability = availability
+            slot_reservations_qs = Reservation.objects.filter(
+                coach=self.coach,
+                court=self.court,
+                lesson_type=self.lesson_type,
+                start_at=self.start_at,
+                end_at=self.end_at,
+                status=self.STATUS_ACTIVE,
+            )
+            if self.pk:
+                slot_reservations_qs = slot_reservations_qs.exclude(pk=self.pk)
 
-        slot_reservations_qs = Reservation.objects.filter(
-            coach=self.coach,
-            court=self.court,
-            lesson_type=self.lesson_type,
-            start_at=self.start_at,
-            end_at=self.end_at,
-            status=self.STATUS_ACTIVE,
-        )
-        if self.pk:
-            slot_reservations_qs = slot_reservations_qs.exclude(pk=self.pk)
+            if slot_reservations_qs.count() >= availability.capacity:
+                raise ValidationError("この時間枠は満員です。")
 
-        if slot_reservations_qs.count() >= availability.capacity:
-            raise ValidationError("この時間枠は満員です。")
+        if self.lesson_type == self.LESSON_PRIVATE:
+            self.status = self.STATUS_PENDING
+
+        if self.lesson_type == self.LESSON_GROUP:
+            self.status = self.STATUS_PENDING
+            if self.requested_court_type == Court.COURT_OTHER and not self.requested_court_note:
+                raise ValidationError("それ以外のコートを選択した場合は、コート情報を入力してください。")
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -526,7 +683,7 @@ class Reservation(models.Model, LessonTypeMixin):
         return ledger
 
     def cancel(self, created_by=None, reason=""):
-        if self.status != self.STATUS_ACTIVE:
+        if self.status not in (self.STATUS_ACTIVE, self.STATUS_PENDING):
             return False
 
         self.status = self.STATUS_CANCELED
