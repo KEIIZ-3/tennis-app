@@ -1,14 +1,23 @@
 {% extends "base.html" %}
-{% block title %}コーチ空き時間登録{% endblock %}
+{% block title %}{% if is_edit %}コーチ空き時間編集{% else %}コーチ空き時間登録{% endif %}{% endblock %}
 
 {% block content %}
 <div class="card">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
     <div>
-      <h1 style="margin:0;">コーチ空き時間登録</h1>
+      <h1 style="margin:0;">
+        {% if is_edit %}
+          コーチ空き時間編集
+        {% else %}
+          コーチ空き時間登録
+        {% endif %}
+      </h1>
       <p class="muted" style="margin:8px 0 0;">
-        レッスン枠を新しく登録します。一般レッスンは2時間、プライベートは1時間です。
+        一般レッスンは2時間 / 1枚、プライベートは1時間 / 2枚、グループは1時間 / 人数分、イベントは都度設定です。
       </p>
+    </div>
+    <div>
+      <a href="{% url 'club:coach_availability_list' %}" class="btn">一覧へ戻る</a>
     </div>
   </div>
 </div>
@@ -23,7 +32,7 @@
       </div>
     {% endif %}
 
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:16px;">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px;">
       {% for field in form %}
         <div>
           <label for="{{ field.id_for_label }}">
@@ -51,7 +60,13 @@
     </div>
 
     <div style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap;">
-      <button type="submit" class="btn btn-primary">登録する</button>
+      <button type="submit" class="btn btn-primary">
+        {% if is_edit %}
+          更新する
+        {% else %}
+          登録する
+        {% endif %}
+      </button>
       <a href="{% url 'club:coach_availability_list' %}" class="btn">一覧へ戻る</a>
       <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
     </div>
