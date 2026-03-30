@@ -40,6 +40,26 @@
     </ul>
   </div>
 {% else %}
+  <div class="card">
+    <h1 style="margin-top:0;">{{ user.display_name }} さん、こんにちは</h1>
+    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:12px;">
+      {% if user.role == "member" %}
+        <div style="padding:12px 14px; border:1px solid #fed7aa; background:#fff7ed; border-radius:10px;">
+          <strong>現在のチケット残数:</strong> {{ user.ticket_balance }}枚
+        </div>
+      {% endif %}
+      <div style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px;">
+        <strong>4枚セット:</strong> 14,000円
+      </div>
+      <div style="padding:12px 14px; border:1px solid #e5e7eb; background:#f9fafb; border-radius:10px;">
+        <strong>1枚:</strong> 4,000円
+      </div>
+    </div>
+    <p style="margin:14px 0 0; color:#666;">
+      一般レッスンは2時間でチケット1枚、プライベートレッスンは1時間でチケット2枚を消費します。
+    </p>
+  </div>
+
   <div class="page-grid">
     <section class="main-panel">
       <div class="card toolbar-card">
@@ -50,7 +70,7 @@
               <option value="">全コーチ</option>
               {% for coach in coaches %}
                 <option value="{{ coach.id }}" {% if selected_coach == coach.id|stringformat:"s" %}selected{% endif %}>
-                  {{ coach.username }}
+                  {{ coach.display_name }}
                 </option>
               {% endfor %}
             </select>
@@ -181,29 +201,6 @@
       flex-wrap:wrap;
     }
 
-    .btn{
-      display:inline-block;
-      padding:10px 14px;
-      border-radius:8px;
-      text-decoration:none;
-      border:1px solid #ddd;
-      background:#fff;
-      color:#111;
-      cursor:pointer;
-    }
-
-    .btn-primary{
-      background:#111;
-      color:#fff;
-      border-color:#111;
-    }
-
-    .btn-danger{
-      background:#b91c1c;
-      color:#fff;
-      border-color:#b91c1c;
-    }
-
     @media (max-width: 960px){
       .page-grid{
         grid-template-columns:1fr;
@@ -258,10 +255,11 @@
         const props = event.extendedProps || {};
         detailPanel.innerHTML = `
           <table class="detail-table">
-            <tr><th>種別</th><td>コーチ空き枠</td></tr>
+            <tr><th>種別</th><td>予約可能枠</td></tr>
+            <tr><th>レッスン種別</th><td>${escapeHtml(props.lesson_type_display || "-")}</td></tr>
             <tr><th>コーチ</th><td>${escapeHtml(props.coach_name || "-")}</td></tr>
             <tr><th>時間</th><td>${formatDateTimeRange(event.start, event.end)}</td></tr>
-            <tr><th>状態</th><td>予約可能</td></tr>
+            <tr><th>定員</th><td>${escapeHtml(props.capacity || "-")}</td></tr>
           </table>
           <div class="detail-actions">
             ${
@@ -277,20 +275,23 @@
         const props = event.extendedProps || {};
         detailPanel.innerHTML = `
           <table class="detail-table">
-            <tr><th>種別</th><td>${props.is_mine ? "あなたの予約" : "予約済み"}</td></tr>
+            <tr><th>状態</th><td>${escapeHtml(props.status_display || "-")}</td></tr>
+            <tr><th>参加者</th><td>${escapeHtml(props.user_name || "-")}</td></tr>
+            <tr><th>レッスン種別</th><td>${escapeHtml(props.lesson_type_display || "-")}</td></tr>
             <tr><th>コーチ</th><td>${escapeHtml(props.coach_name || "-")}</td></tr>
             <tr><th>時間</th><td>${formatDateTimeRange(event.start, event.end)}</td></tr>
+            <tr><th>消費チケット</th><td>${escapeHtml(props.tickets_used || "-")}枚</td></tr>
           </table>
           <div class="detail-actions">
             ${
-              props.is_mine && props.cancel_url
+              props.can_cancel && props.cancel_url
                 ? `
-                  <form method="post" action="${escapeHtml(props.cancel_url)}">
+                  <form method="post" action="${escapeHtml(props.cancel_url)}" onsubmit="return confirm('この予約をキャンセルしますか？');">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-danger">予約をキャンセル</button>
                   </form>
                 `
-                : `<span class="btn">この予約はキャンセル操作対象外です</span>`
+                : `<span class="btn">${escapeHtml(props.cancel_reason || "この予約はキャンセル操作対象外です")}</span>`
             }
           </div>
         `;
