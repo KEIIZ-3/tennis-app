@@ -21,49 +21,67 @@
 
 <div class="card">
   {% if reservation_rows %}
-    <table>
-      <thead>
-        <tr>
-          <th>参加者</th>
-          <th>日時</th>
-          <th>レッスン種別</th>
-          <th>コーチ</th>
-          <th>コート</th>
-          <th>チケット</th>
-          <th>状態</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in reservation_rows %}
-          {% with reservation=row.reservation %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
           <tr>
-            <td>{{ reservation.user.display_name }}</td>
-            <td>
-              {{ reservation.start_at|date:"Y-m-d H:i" }}
-              〜
-              {{ reservation.end_at|date:"H:i" }}
-            </td>
-            <td>{{ reservation.get_lesson_type_display }}</td>
-            <td>{{ reservation.coach.display_name }}</td>
-            <td>{{ reservation.court }}</td>
-            <td>{{ reservation.tickets_used }}枚</td>
-            <td>{{ reservation.get_status_display }}</td>
-            <td>
-              {% if row.can_cancel %}
-                <form method="post" action="{% url 'club:reservation_cancel' reservation.pk %}" style="margin:0;" onsubmit="return confirm('この予約をキャンセルしますか？');">
-                  {% csrf_token %}
-                  <button type="submit">キャンセル</button>
-                </form>
-              {% else %}
-                <span class="muted">{{ row.cancel_reason|default:"-" }}</span>
-              {% endif %}
-            </td>
+            <th>参加者</th>
+            <th>日時</th>
+            <th>レッスン種別</th>
+            <th>コーチ</th>
+            <th>コート</th>
+            <th>チケット</th>
+            <th>状態</th>
+            <th>操作</th>
           </tr>
-          {% endwith %}
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {% for row in reservation_rows %}
+            {% with reservation=row.reservation %}
+            <tr>
+              <td>{{ reservation.user.display_name }}</td>
+              <td>
+                <div>{{ reservation.start_at|date:"Y-m-d H:i" }}</div>
+                <div class="muted">〜 {{ reservation.end_at|date:"H:i" }}</div>
+              </td>
+              <td>{{ reservation.get_lesson_type_display }}</td>
+              <td>{{ reservation.coach.display_name }}</td>
+              <td>
+                <div>{{ reservation.court }}</div>
+                {% if reservation.requested_court_type %}
+                  <div class="muted" style="font-size:12px;">希望: {{ reservation.get_requested_court_type_display }}</div>
+                {% endif %}
+              </td>
+              <td>{{ reservation.tickets_used }}枚</td>
+              <td>{{ reservation.get_status_display }}</td>
+              <td>
+                {% if row.can_cancel %}
+                  <form method="post" action="{% url 'club:reservation_cancel' reservation.pk %}" style="margin:0;" onsubmit="return confirm('この予約をキャンセルしますか？');">
+                    {% csrf_token %}
+                    <button type="submit">キャンセル</button>
+                  </form>
+                {% else %}
+                  <span class="muted">{{ row.cancel_reason|default:"-" }}</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% if reservation.requested_court_note or reservation.approved_court_note %}
+              <tr>
+                <td colspan="8" style="background:#fafafa;">
+                  {% if reservation.requested_court_note %}
+                    <div><strong>希望コート情報:</strong> {{ reservation.requested_court_note }}</div>
+                  {% endif %}
+                  {% if reservation.approved_court_note %}
+                    <div><strong>承認後コート情報:</strong> {{ reservation.approved_court_note }}</div>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endif %}
+            {% endwith %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   {% else %}
     <p>予約はまだありません。</p>
   {% endif %}
