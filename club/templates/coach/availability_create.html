@@ -7,27 +7,25 @@
     <div>
       <h1 style="margin:0;">コーチ空き時間登録</h1>
       <p class="muted" style="margin:8px 0 0;">
-        空き時間を新しく登録します。
+        レッスン枠を新しく登録します。一般レッスンは2時間、プライベートは1時間です。
       </p>
     </div>
   </div>
 </div>
-
-<div style="height:12px;"></div>
 
 <div class="card">
   <form method="post">
     {% csrf_token %}
 
     {% if form.non_field_errors %}
-      <div class="msg">
+      <div class="message error">
         {{ form.non_field_errors }}
       </div>
     {% endif %}
 
-    <div class="grid two">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:16px;">
       {% for field in form %}
-        <div class="field">
+        <div>
           <label for="{{ field.id_for_label }}">
             {{ field.label }}
             {% if field.field.required %}
@@ -44,7 +42,7 @@
           {% endif %}
 
           {% if field.errors %}
-            <div class="msg" style="margin-top:8px;">
+            <div class="message error" style="margin-top:8px;">
               {{ field.errors }}
             </div>
           {% endif %}
