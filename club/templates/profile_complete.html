@@ -1,13 +1,36 @@
 {% extends "base.html" %}
-{% block title %}会員情報入力{% endblock %}
+{% block title %}会員情報の入力{% endblock %}
 
 {% block content %}
-<div class="card" style="max-width:620px; margin:0 auto;">
-  <h1 style="margin-top:0;">会員情報の入力</h1>
+<div class="card" style="max-width:760px; margin:0 auto;">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h1 style="margin:0;">会員情報の入力</h1>
+      <p class="muted" style="margin:8px 0 0;">
+        予約を始める前に、会員情報を入力してください。
+      </p>
+    </div>
+    {% if user.is_authenticated and user.role == "member" %}
+      <div style="padding:12px 14px; border:1px solid #fed7aa; background:#fff7ed; border-radius:10px;">
+        <strong>チケット残数:</strong> {{ user.ticket_balance }}枚
+      </div>
+    {% endif %}
+  </div>
+</div>
 
-  <p style="margin-bottom:18px;">
-    LINE連携は完了しました。続けて、正式なお名前・メールアドレス・電話番号を入力してください。
-  </p>
+<div class="card" style="max-width:760px; margin:0 auto;">
+  <div style="padding:16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px; margin-bottom:20px;">
+    <div style="font-weight:bold; margin-bottom:8px;">入力していただく項目</div>
+    <ul style="margin:0; padding-left:20px; line-height:1.8;">
+      <li>お名前</li>
+      <li>メールアドレス</li>
+      <li>電話番号</li>
+      <li>レベル</li>
+    </ul>
+    <p style="margin:12px 0 0; color:#666;">
+      レベルに応じて予約できるレッスンが変わります。
+    </p>
+  </div>
 
   <form method="post">
     {% csrf_token %}
@@ -18,20 +41,36 @@
       </div>
     {% endif %}
 
-    {% for field in form %}
-      <p>
-        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-        {{ field }}
-        {% if field.errors %}
-          <div class="message error" style="margin-top:8px;">
-            {{ field.errors }}
-          </div>
-        {% endif %}
-      </p>
-    {% endfor %}
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px;">
+      {% for field in form %}
+        <div>
+          <label for="{{ field.id_for_label }}">
+            {{ field.label }}
+            {% if field.field.required %}
+              <span class="muted">（必須）</span>
+            {% endif %}
+          </label>
 
-    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;">
-      <button type="submit">保存する</button>
+          {{ field }}
+
+          {% if field.help_text %}
+            <div class="muted" style="font-size:13px; margin-top:6px;">
+              {{ field.help_text }}
+            </div>
+          {% endif %}
+
+          {% if field.errors %}
+            <div class="message error" style="margin-top:8px;">
+              {{ field.errors }}
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:18px;">
+      <button type="submit" class="btn btn-primary">保存する</button>
+      <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
     </div>
   </form>
 </div>
