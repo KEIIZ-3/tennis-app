@@ -3,39 +3,58 @@
 
 {% block content %}
 <div class="card">
-  <h1 style="margin-top:0;">チケット案内</h1>
-  <p style="margin:8px 0 0;">{{ user.display_name }} さんのチケット情報です。</p>
-
-  <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:16px;">
-    <div style="padding:14px 16px; border:1px solid #fed7aa; background:#fff7ed; border-radius:10px;">
-      <div style="font-size:13px; color:#666;">現在の残数</div>
-      <div style="font-size:26px; font-weight:bold;">{{ user.ticket_balance }}枚</div>
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h1 style="margin:0;">チケット</h1>
+      <p style="margin:8px 0 0;">{{ user.display_name }} さんのチケット情報です。</p>
     </div>
 
-    <div style="padding:14px 16px; border:2px solid #93c5fd; background:#eff6ff; border-radius:10px; min-width:220px;">
-      <div style="font-size:13px; color:#666;">おすすめ</div>
-      <div style="font-size:20px; font-weight:bold;">4枚セット</div>
-      <div style="font-size:24px; font-weight:bold; margin-top:6px;">14,000円</div>
-      <div style="margin-top:6px; color:#666;">1枚あたり 3,500円</div>
-    </div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <div style="padding:12px 14px; border:1px solid #fed7aa; background:#fff7ed; border-radius:10px;">
+        <div style="font-size:12px; color:#666;">現在の残数</div>
+        <div style="font-size:24px; font-weight:bold;">{{ user.ticket_balance }}枚</div>
+      </div>
 
-    <div style="padding:14px 16px; border:1px solid #e5e7eb; background:#f9fafb; border-radius:10px; min-width:180px;">
+      <div style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px;">
+        <div style="font-size:12px; color:#666;">現在のレベル</div>
+        <div style="font-size:18px; font-weight:bold;">{{ user.get_member_level_display }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">チケット料金</h2>
+
+  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:16px;">
+    <div style="padding:18px; border:1px solid #e5e7eb; background:#f9fafb; border-radius:12px;">
       <div style="font-size:13px; color:#666;">通常</div>
-      <div style="font-size:20px; font-weight:bold;">1枚</div>
-      <div style="font-size:24px; font-weight:bold; margin-top:6px;">4,000円</div>
+      <div style="font-size:22px; font-weight:bold; margin-top:6px;">1枚</div>
+      <div style="font-size:28px; font-weight:bold; margin-top:8px;">4,000円</div>
+      <div style="margin-top:8px; color:#666;">必要な枚数だけ購入したい方向け</div>
+    </div>
+
+    <div style="padding:18px; border:2px solid #93c5fd; background:#eff6ff; border-radius:12px;">
+      <div style="display:inline-block; padding:4px 10px; border-radius:999px; background:#2563eb; color:#fff; font-size:12px; font-weight:bold;">
+        おすすめ
+      </div>
+      <div style="font-size:22px; font-weight:bold; margin-top:10px;">4枚セット</div>
+      <div style="font-size:28px; font-weight:bold; margin-top:8px;">14,000円</div>
+      <div style="margin-top:8px; color:#666;">1枚あたり 3,500円でお得です</div>
     </div>
   </div>
 </div>
 
 <div class="card">
   <h2 style="margin-top:0;">チケット消費ルール</h2>
+
   <div style="overflow-x:auto;">
     <table>
       <thead>
         <tr>
           <th>レッスン種別</th>
           <th>時間</th>
-          <th>チケット</th>
+          <th>必要チケット</th>
           <th>補足</th>
         </tr>
       </thead>
@@ -68,9 +87,9 @@
     </table>
   </div>
 
-  <p style="margin-top:14px; color:#666;">
+  <div style="margin-top:14px; padding:14px; border:1px solid #e5e7eb; background:#fafafa; border-radius:10px; color:#666;">
     キャンセル・雨天中止・不参加扱いとなった場合は、条件に応じてチケットが返却されます。
-  </p>
+  </div>
 </div>
 
 <div class="card">
