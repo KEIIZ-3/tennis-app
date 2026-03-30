@@ -166,7 +166,16 @@ class CourtAdmin(admin.ModelAdmin):
 @admin.register(CoachAvailability)
 class CoachAvailabilityAdmin(admin.ModelAdmin):
     form = CoachAvailabilityAdminForm
-    list_display = ("id", "coach", "court", "lesson_type", "target_level", "start_at", "end_at", "capacity")
+    list_display = (
+        "id",
+        "coach",
+        "court",
+        "lesson_type",
+        "target_level",
+        "start_at",
+        "end_at",
+        "capacity",
+    )
     list_filter = ("coach", "court", "lesson_type", "target_level")
     search_fields = ("coach__username", "coach__full_name", "court__name")
     actions = ("rain_cancel_selected_slots",)
@@ -205,7 +214,19 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
 
 @admin.register(FixedLesson)
 class FixedLessonAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "coach", "court", "lesson_type", "target_level", "weekday", "start_hour", "capacity", "weeks_ahead", "is_active")
+    list_display = (
+        "id",
+        "title",
+        "coach",
+        "court",
+        "lesson_type",
+        "target_level",
+        "weekday",
+        "start_hour",
+        "capacity",
+        "weeks_ahead",
+        "is_active",
+    )
     list_filter = ("coach", "court", "lesson_type", "target_level", "weekday", "is_active")
     search_fields = ("title", "coach__username", "coach__full_name", "court__name", "members__username", "members__full_name")
     filter_horizontal = ("members",)
