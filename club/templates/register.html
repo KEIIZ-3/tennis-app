@@ -2,7 +2,7 @@
 {% block title %}新規会員登録{% endblock %}
 
 {% block content %}
-<div class="card" style="max-width:620px; margin:0 auto;">
+<div class="card" style="max-width:720px; margin:0 auto;">
   <h1 style="margin-top:0;">新規会員登録</h1>
 
   <div style="padding:16px; border:1px solid #d8f0dc; background:#f3fff5; border-radius:10px; margin-bottom:20px;">
@@ -26,22 +26,24 @@
       </div>
     {% endif %}
 
-    {% for field in form %}
-      <p>
-        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-        {{ field }}
-        {% if field.help_text %}
-          <div style="font-size:13px; color:#666; margin-top:6px;">
-            {{ field.help_text }}
-          </div>
-        {% endif %}
-        {% if field.errors %}
-          <div class="message error" style="margin-top:8px;">
-            {{ field.errors }}
-          </div>
-        {% endif %}
-      </p>
-    {% endfor %}
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px;">
+      {% for field in form %}
+        <div>
+          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}
+            <div style="font-size:13px; color:#666; margin-top:6px;">
+              {{ field.help_text }}
+            </div>
+          {% endif %}
+          {% if field.errors %}
+            <div class="message error" style="margin-top:8px;">
+              {{ field.errors }}
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
 
     <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;">
       <button type="submit">登録する</button>
