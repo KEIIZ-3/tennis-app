@@ -8,14 +8,16 @@
   <div style="padding:16px; border:1px solid #d8f0dc; background:#f3fff5; border-radius:10px; margin-bottom:20px;">
     <h2 style="margin:0 0 10px 0; font-size:20px;">初めての方へ</h2>
     <p style="margin:0 0 12px 0;">
-      <strong>LINEでログイン</strong>すると、そのまま会員登録とLINE連携が自動で完了します。
+      LINEアプリからご利用の方は、<strong>公式LINEのリッチメニュー</strong>から始めるのがおすすめです。
     </p>
-    <a
-      href="{% url 'club:line_login_start' %}"
-      style="display:inline-block; padding:12px 18px; border-radius:8px; background:#06c755; color:#fff; text-decoration:none; font-weight:bold;"
-    >
-      LINEでログイン
-    </a>
+    {% if liff_enabled %}
+      <a
+        href="{% url 'club:liff_entry' %}"
+        style="display:inline-block; padding:12px 18px; border-radius:8px; background:#06c755; color:#fff; text-decoration:none; font-weight:bold;"
+      >
+        LINEでログイン
+      </a>
+    {% endif %}
   </div>
 
   <div style="padding:16px; border:1px solid #eee; background:#fafafa; border-radius:10px; margin-bottom:20px;">
