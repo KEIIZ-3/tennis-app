@@ -42,21 +42,26 @@
 {% else %}
   <div class="card">
     <h1 style="margin-top:0;">{{ user.display_name }} さん、こんにちは</h1>
+
     <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:12px;">
       {% if user.role == "member" %}
         <div style="padding:12px 14px; border:1px solid #fed7aa; background:#fff7ed; border-radius:10px;">
           <strong>現在のチケット残数:</strong> {{ user.ticket_balance }}枚
         </div>
+        <div style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px;">
+          <strong>レベル:</strong> {{ user.get_member_level_display }}
+        </div>
       {% endif %}
-      <div style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px;">
-        <strong>4枚セット:</strong> 14,000円
+      <div style="padding:12px 14px; border:2px solid #93c5fd; background:#eff6ff; border-radius:10px;">
+        <strong>おすすめ:</strong> 4枚セット 14,000円
       </div>
       <div style="padding:12px 14px; border:1px solid #e5e7eb; background:#f9fafb; border-radius:10px;">
-        <strong>1枚:</strong> 4,000円
+        <strong>通常:</strong> 1枚 4,000円
       </div>
     </div>
+
     <p style="margin:14px 0 0; color:#666;">
-      一般レッスンは2時間でチケット1枚、プライベートレッスンは1時間でチケット2枚を消費します。
+      一般レッスンは2時間でチケット1枚、プライベートは1時間で2枚、グループは1時間で参加人数分、イベントは都度設定です。
     </p>
   </div>
 
@@ -78,16 +83,20 @@
 
           <div class="legend">
             <span class="legend-item legend-available">空き</span>
+            <span class="legend-item legend-pending">承認待ち</span>
             <span class="legend-item legend-reserved">予約済み</span>
             <span class="legend-item legend-mine">あなたの予約</span>
           </div>
         </div>
 
         <div class="toolbar-links">
-          <a href="{% url 'club:reservation_list' %}">予約一覧</a>
-          <a href="{% url 'club:line_connect' %}">LINE連携</a>
+          <a href="{% url 'club:reservation_list' %}" class="btn">予約一覧</a>
+          {% if user.role == "member" %}
+            <a href="{% url 'club:tickets' %}" class="btn">チケット</a>
+          {% endif %}
+          <a href="{% url 'club:line_connect' %}" class="btn">LINE連携</a>
           {% if user.is_staff or user.is_superuser or user.role == "coach" %}
-            <a href="{% url 'club:coach_availability_list' %}">コーチ空き時間管理</a>
+            <a href="{% url 'club:coach_availability_list' %}" class="btn">コーチ空き時間管理</a>
           {% endif %}
         </div>
       </div>
@@ -99,9 +108,9 @@
 
     <aside class="side-panel">
       <div class="card detail-card">
-        <h3>詳細</h3>
+        <h3 style="margin-top:0;">詳細</h3>
         <div id="detailPanel">
-          <p>カレンダー上の枠をクリックしてください。</p>
+          <p>カレンダー上の枠をタップしてください。</p>
         </div>
       </div>
     </aside>
@@ -162,6 +171,10 @@
       background:#22c55e;
     }
 
+    .legend-pending{
+      background:#f59e0b;
+    }
+
     .legend-reserved{
       background:#ef4444;
     }
@@ -179,6 +192,7 @@
       cursor:pointer;
       border-radius:8px;
       padding:2px 4px;
+      font-size:12px;
     }
 
     .detail-table{
@@ -192,6 +206,7 @@
       padding:6px 0;
       vertical-align:top;
       border-bottom:1px solid #eee;
+      font-size:14px;
     }
 
     .detail-actions{
@@ -207,7 +222,31 @@
       }
 
       #calendar{
-        min-height:560px;
+        min-height:520px;
+      }
+
+      .fc .fc-toolbar{
+        flex-direction:column;
+        gap:8px;
+      }
+
+      .fc .fc-toolbar-title{
+        font-size:18px !important;
+      }
+
+      .fc .fc-button{
+        font-size:12px !important;
+        padding:0.3em 0.5em !important;
+      }
+
+      .fc .fc-col-header-cell-cushion,
+      .fc .fc-timegrid-slot-label-cushion,
+      .fc .fc-timegrid-axis-cushion{
+        font-size:12px;
+      }
+
+      .fc .fc-event{
+        font-size:11px;
       }
     }
   </style>
@@ -257,6 +296,7 @@
           <table class="detail-table">
             <tr><th>種別</th><td>予約可能枠</td></tr>
             <tr><th>レッスン種別</th><td>${escapeHtml(props.lesson_type_display || "-")}</td></tr>
+            <tr><th>対象レベル</th><td>${escapeHtml(props.target_level_display || "-")}</td></tr>
             <tr><th>コーチ</th><td>${escapeHtml(props.coach_name || "-")}</td></tr>
             <tr><th>時間</th><td>${formatDateTimeRange(event.start, event.end)}</td></tr>
             <tr><th>定員</th><td>${escapeHtml(props.capacity || "-")}</td></tr>
@@ -361,7 +401,7 @@
 
       coachFilter.addEventListener("change", function() {
         calendar.refetchEvents();
-        detailPanel.innerHTML = "<p>カレンダー上の枠をクリックしてください。</p>";
+        detailPanel.innerHTML = "<p>カレンダー上の枠をタップしてください。</p>";
       });
 
       calendar.render();
