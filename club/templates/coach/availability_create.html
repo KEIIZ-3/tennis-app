@@ -23,6 +23,15 @@
 </div>
 
 <div class="card">
+  <div style="padding:14px 16px; border:1px solid #fef3c7; background:#fffbeb; border-radius:10px; margin-bottom:18px;">
+    <div style="font-weight:700; margin-bottom:6px;">入力のポイント</div>
+    <ul style="margin:0; padding-left:18px; line-height:1.8; color:#666;">
+      <li>イベント以外は通常ルールでチケット消費されます。</li>
+      <li>イベントだけ「イベント用チケット価格」に消費枚数を入力してください。</li>
+      <li>イベント以外では、この価格欄は 0 のままで問題ありません。</li>
+    </ul>
+  </div>
+
   <form method="post">
     {% csrf_token %}
 
@@ -47,6 +56,18 @@
           {% if field.help_text %}
             <div class="muted" style="margin-top:6px; font-size:13px;">
               {{ field.help_text }}
+            </div>
+          {% endif %}
+
+          {% if field.name == "custom_ticket_price" %}
+            <div class="muted" style="margin-top:6px; font-size:13px;">
+              例: イベントで3枚消費させたい場合は「3」
+            </div>
+          {% endif %}
+
+          {% if field.name == "custom_duration_hours" %}
+            <div class="muted" style="margin-top:6px; font-size:13px;">
+              例: イベントを2時間にしたい場合は「2」
             </div>
           {% endif %}
 
