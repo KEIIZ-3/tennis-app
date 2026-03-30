@@ -6,63 +6,60 @@
   <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
     <div>
       <h1 style="margin:0;">予約一覧</h1>
-      <p style="margin:8px 0 0;">登録されている予約を確認できます。</p>
+      <p style="margin:8px 0 0;">{{ user.display_name }} さんの予約確認画面です。</p>
     </div>
-    <div>
-      <a href="{% url 'club:reservation_create' %}">新規予約</a>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      {% if user.role == "member" %}
+        <div style="padding:10px 12px; border:1px solid #fed7aa; background:#fff7ed; border-radius:10px;">
+          チケット残数: <strong>{{ user.ticket_balance }}枚</strong>
+        </div>
+      {% endif %}
+      <a href="{% url 'club:reservation_create' %}" class="btn btn-primary">新規予約</a>
     </div>
   </div>
 </div>
 
-<div style="height:12px;"></div>
-
 <div class="card">
-  {% if reservations %}
+  {% if reservation_rows %}
     <table>
       <thead>
         <tr>
+          <th>参加者</th>
           <th>日時</th>
+          <th>レッスン種別</th>
           <th>コーチ</th>
           <th>コート</th>
+          <th>チケット</th>
           <th>状態</th>
           <th>操作</th>
         </tr>
       </thead>
       <tbody>
-        {% for reservation in reservations %}
-          {% with status_text=reservation.status|default_if_none:"" %}
-          {% with is_canceled=reservation.is_canceled|default_if_none:False %}
+        {% for row in reservation_rows %}
+          {% with reservation=row.reservation %}
           <tr>
+            <td>{{ reservation.user.display_name }}</td>
             <td>
-              {% if reservation.start_at %}{{ reservation.start_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}
+              {{ reservation.start_at|date:"Y-m-d H:i" }}
               〜
-              {% if reservation.end_at %}{{ reservation.end_at|date:"H:i" }}{% else %}-{% endif %}
+              {{ reservation.end_at|date:"H:i" }}
             </td>
-            <td>{{ reservation.coach }}</td>
+            <td>{{ reservation.get_lesson_type_display }}</td>
+            <td>{{ reservation.coach.display_name }}</td>
             <td>{{ reservation.court }}</td>
+            <td>{{ reservation.tickets_used }}枚</td>
+            <td>{{ reservation.get_status_display }}</td>
             <td>
-              {% if is_canceled or status_text == "canceled" %}
-                キャンセル済み
-              {% elif status_text == "active" %}
-                予約中
-              {% elif status_text %}
-                {{ status_text }}
-              {% else %}
-                予約中
-              {% endif %}
-            </td>
-            <td>
-              {% if is_canceled or status_text == "canceled" %}
-                -
-              {% else %}
+              {% if row.can_cancel %}
                 <form method="post" action="{% url 'club:reservation_cancel' reservation.pk %}" style="margin:0;" onsubmit="return confirm('この予約をキャンセルしますか？');">
                   {% csrf_token %}
                   <button type="submit">キャンセル</button>
                 </form>
+              {% else %}
+                <span class="muted">{{ row.cancel_reason|default:"-" }}</span>
               {% endif %}
             </td>
           </tr>
-          {% endwith %}
           {% endwith %}
         {% endfor %}
       </tbody>
@@ -72,7 +69,7 @@
   {% endif %}
 
   <div style="margin-top:18px;">
-    <a href="{% url 'club:home' %}">ホームへ戻る</a>
+    <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
   </div>
 </div>
 {% endblock %}
