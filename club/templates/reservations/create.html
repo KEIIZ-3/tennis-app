@@ -7,27 +7,45 @@
     <div>
       <h1 style="margin:0;">予約作成</h1>
       <p class="muted" style="margin:8px 0 0;">
-        必要事項を入力して予約を作成してください。
+        {{ user.display_name }} さんの予約を作成します。
       </p>
     </div>
+
+    {% if user.role == "member" %}
+      <div style="padding:12px 14px; border:1px solid #fed7aa; background:#fff7ed; border-radius:10px;">
+        <strong>現在のチケット残数:</strong> {{ user.ticket_balance }}枚
+      </div>
+    {% endif %}
   </div>
 </div>
 
-<div style="height:12px;"></div>
+<div class="card">
+  <div style="display:flex; gap:12px; flex-wrap:wrap;">
+    <div style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px;">
+      一般レッスン：2時間 / チケット1枚
+    </div>
+    <div style="padding:12px 14px; border:1px solid #ede9fe; background:#f5f3ff; border-radius:10px;">
+      プライベート：1時間 / チケット2枚
+    </div>
+    <div style="padding:12px 14px; border:1px solid #e5e7eb; background:#f9fafb; border-radius:10px;">
+      残数は -4枚 まで予約可能
+    </div>
+  </div>
+</div>
 
 <div class="card">
   <form method="post">
     {% csrf_token %}
 
     {% if form.non_field_errors %}
-      <div class="msg">
+      <div class="message error">
         {{ form.non_field_errors }}
       </div>
     {% endif %}
 
-    <div class="grid two">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:16px;">
       {% for field in form %}
-        <div class="field">
+        <div>
           <label for="{{ field.id_for_label }}">
             {{ field.label }}
             {% if field.field.required %}
@@ -44,7 +62,7 @@
           {% endif %}
 
           {% if field.errors %}
-            <div class="msg" style="margin-top:8px;">
+            <div class="message error" style="margin-top:8px;">
               {{ field.errors }}
             </div>
           {% endif %}
