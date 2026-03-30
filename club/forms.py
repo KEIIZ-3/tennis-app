@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import UserCreationForm
 from django.utils import timezone
 
-from .models import CoachAvailability, Court, Reservation, LineAccountLink
+from .models import CoachAvailability, Court, LineAccountLink, Reservation
 
 User = get_user_model()
 
@@ -22,12 +22,13 @@ class LoginForm(forms.Form):
 
 
 class MemberRegistrationForm(UserCreationForm):
-    first_name = forms.CharField(label="お名前", max_length=150, required=True)
+    full_name = forms.CharField(label="お名前", max_length=150, required=True)
     email = forms.EmailField(label="メールアドレス", required=True)
+    phone_number = forms.CharField(label="電話番号", max_length=30, required=True)
 
     class Meta(UserCreationForm.Meta):
         model = User
-        fields = ("first_name", "username", "email", "password1", "password2")
+        fields = ("full_name", "username", "email", "phone_number", "password1", "password2")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -36,7 +37,7 @@ class MemberRegistrationForm(UserCreationForm):
         self.fields["password1"].label = "パスワード"
         self.fields["password2"].label = "パスワード（確認）"
 
-        self.fields["first_name"].widget.attrs.update(
+        self.fields["full_name"].widget.attrs.update(
             {
                 "placeholder": "例: 山田 太郎",
             }
@@ -49,6 +50,11 @@ class MemberRegistrationForm(UserCreationForm):
         self.fields["email"].widget.attrs.update(
             {
                 "placeholder": "example@example.com",
+            }
+        )
+        self.fields["phone_number"].widget.attrs.update(
+            {
+                "placeholder": "例: 09012345678",
             }
         )
 
@@ -65,13 +71,86 @@ class MemberRegistrationForm(UserCreationForm):
             raise forms.ValidationError("このメールアドレスはすでに登録されています。")
         return email
 
+    def clean_phone_number(self):
+        phone_number = (self.cleaned_data.get("phone_number") or "").strip()
+        if not phone_number:
+            raise forms.ValidationError("電話番号を入力してください。")
+        return phone_number
+
     def save(self, commit=True):
         user = super().save(commit=False)
-        user.first_name = (self.cleaned_data.get("first_name") or "").strip()
-        user.email = (self.cleaned_data.get("email") or "").strip()
+        full_name = (self.cleaned_data.get("full_name") or "").strip()
+        email = (self.cleaned_data.get("email") or "").strip()
+        phone_number = (self.cleaned_data.get("phone_number") or "").strip()
+
+        user.full_name = full_name
+        user.first_name = full_name
+        user.email = email
+        user.phone_number = phone_number
+        user.is_profile_completed = True
 
         if hasattr(user, "role"):
             user.role = "member"
+
+        if commit:
+            user.save()
+        return user
+
+
+class LineProfileCompletionForm(forms.ModelForm):
+    full_name = forms.CharField(label="お名前", max_length=150, required=True)
+    email = forms.EmailField(label="メールアドレス", required=True)
+    phone_number = forms.CharField(label="電話番号", max_length=30, required=True)
+
+    class Meta:
+        model = User
+        fields = ("full_name", "email", "phone_number")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.fields["full_name"].widget.attrs.update(
+            {
+                "placeholder": "例: 山田 太郎",
+            }
+        )
+        self.fields["email"].widget.attrs.update(
+            {
+                "placeholder": "example@example.com",
+            }
+        )
+        self.fields["phone_number"].widget.attrs.update(
+            {
+                "placeholder": "例: 09012345678",
+            }
+        )
+
+    def clean_email(self):
+        email = (self.cleaned_data.get("email") or "").strip()
+        if not email:
+            raise forms.ValidationError("メールアドレスを入力してください。")
+
+        qs = User.objects.filter(email__iexact=email)
+        if self.instance and self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+
+        if qs.exists():
+            raise forms.ValidationError("このメールアドレスはすでに登録されています。")
+        return email
+
+    def clean_phone_number(self):
+        phone_number = (self.cleaned_data.get("phone_number") or "").strip()
+        if not phone_number:
+            raise forms.ValidationError("電話番号を入力してください。")
+        return phone_number
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.full_name = (self.cleaned_data.get("full_name") or "").strip()
+        user.first_name = user.full_name
+        user.email = (self.cleaned_data.get("email") or "").strip()
+        user.phone_number = (self.cleaned_data.get("phone_number") or "").strip()
+        user.is_profile_completed = True
 
         if commit:
             user.save()
