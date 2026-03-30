@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from django import forms
 from django.contrib.auth import get_user_model
@@ -37,26 +37,10 @@ class MemberRegistrationForm(UserCreationForm):
         self.fields["password1"].label = "パスワード"
         self.fields["password2"].label = "パスワード（確認）"
 
-        self.fields["full_name"].widget.attrs.update(
-            {
-                "placeholder": "例: 山田 太郎",
-            }
-        )
-        self.fields["username"].widget.attrs.update(
-            {
-                "placeholder": "半角英数字で入力",
-            }
-        )
-        self.fields["email"].widget.attrs.update(
-            {
-                "placeholder": "example@example.com",
-            }
-        )
-        self.fields["phone_number"].widget.attrs.update(
-            {
-                "placeholder": "例: 09012345678",
-            }
-        )
+        self.fields["full_name"].widget.attrs.update({"placeholder": "例: 山田 太郎"})
+        self.fields["username"].widget.attrs.update({"placeholder": "半角英数字で入力"})
+        self.fields["email"].widget.attrs.update({"placeholder": "example@example.com"})
+        self.fields["phone_number"].widget.attrs.update({"placeholder": "例: 09012345678"})
 
     def clean_email(self):
         email = (self.cleaned_data.get("email") or "").strip()
@@ -109,21 +93,9 @@ class LineProfileCompletionForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.fields["full_name"].widget.attrs.update(
-            {
-                "placeholder": "例: 山田 太郎",
-            }
-        )
-        self.fields["email"].widget.attrs.update(
-            {
-                "placeholder": "example@example.com",
-            }
-        )
-        self.fields["phone_number"].widget.attrs.update(
-            {
-                "placeholder": "例: 09012345678",
-            }
-        )
+        self.fields["full_name"].widget.attrs.update({"placeholder": "例: 山田 太郎"})
+        self.fields["email"].widget.attrs.update({"placeholder": "example@example.com"})
+        self.fields["phone_number"].widget.attrs.update({"placeholder": "例: 09012345678"})
 
     def clean_email(self):
         email = (self.cleaned_data.get("email") or "").strip()
@@ -159,25 +131,25 @@ class LineProfileCompletionForm(forms.ModelForm):
 
 class CoachAvailabilityForm(forms.ModelForm):
     start_date = forms.DateField(
-        label="Start at 日付",
+        label="開始日",
         widget=forms.DateInput(attrs={"type": "date"}),
     )
     start_hour = forms.ChoiceField(
-        label="Start at 時間",
+        label="開始時間",
         choices=START_HOUR_CHOICES,
     )
     end_date = forms.DateField(
-        label="End at 日付",
+        label="終了日",
         widget=forms.DateInput(attrs={"type": "date"}),
     )
     end_hour = forms.ChoiceField(
-        label="End at 時間",
+        label="終了時間",
         choices=END_HOUR_CHOICES,
     )
 
     class Meta:
         model = CoachAvailability
-        fields = ["coach", "court", "capacity", "note"]
+        fields = ["coach", "court", "lesson_type", "capacity", "note"]
         widgets = {
             "capacity": forms.NumberInput(attrs={"min": 1}),
             "note": forms.TextInput(attrs={"placeholder": "任意メモ"}),
@@ -189,6 +161,9 @@ class CoachAvailabilityForm(forms.ModelForm):
 
         self.fields["coach"].queryset = User.objects.filter(role="coach").order_by("username")
         self.fields["court"].queryset = Court.objects.filter(is_active=True).order_by("name")
+        self.fields["lesson_type"].label = "レッスン種別"
+        self.fields["lesson_type"].help_text = "一般レッスンは2時間、プライベートは1時間です。"
+        self.fields["lesson_type"].initial = Reservation.LESSON_GROUP
 
         if (
             self.request_user
@@ -234,6 +209,7 @@ class CoachAvailabilityForm(forms.ModelForm):
         start_hour = cleaned_data.get("start_hour")
         end_date = cleaned_data.get("end_date")
         end_hour = cleaned_data.get("end_hour")
+        lesson_type = cleaned_data.get("lesson_type") or Reservation.LESSON_GROUP
 
         if not start_date or start_hour in (None, ""):
             self.add_error("start_date", "開始日時を入力してください。")
@@ -252,8 +228,9 @@ class CoachAvailabilityForm(forms.ModelForm):
         if end_at.hour <= BUSINESS_START_HOUR or end_at.hour > BUSINESS_END_HOUR:
             self.add_error("end_hour", "終了時刻は 10:00〜21:00 の範囲で指定してください。")
 
-        if end_at <= start_at:
-            raise forms.ValidationError("終了日時は開始日時より後にしてください。")
+        expected_hours = Reservation.duration_hours_for_lesson_type(lesson_type)
+        if end_at - start_at != timedelta(hours=expected_hours):
+            raise forms.ValidationError("レッスン種別に応じた時間で登録してください。一般レッスンは2時間、プライベートは1時間です。")
 
         cleaned_data["start_at"] = start_at
         cleaned_data["end_at"] = end_at
@@ -271,25 +248,25 @@ class CoachAvailabilityForm(forms.ModelForm):
 
 class ReservationCreateForm(forms.ModelForm):
     start_date = forms.DateField(
-        label="Start at 日付",
+        label="開始日",
         widget=forms.DateInput(attrs={"type": "date"}),
     )
     start_hour = forms.ChoiceField(
-        label="Start at 時間",
+        label="開始時間",
         choices=START_HOUR_CHOICES,
     )
     end_date = forms.DateField(
-        label="End at 日付",
+        label="終了日",
         widget=forms.DateInput(attrs={"type": "date"}),
     )
     end_hour = forms.ChoiceField(
-        label="End at 時間",
+        label="終了時間",
         choices=END_HOUR_CHOICES,
     )
 
     class Meta:
         model = Reservation
-        fields = ["coach", "court"]
+        fields = ["coach", "court", "lesson_type"]
 
     def __init__(self, *args, **kwargs):
         self.request_user = kwargs.pop("request_user", None)
@@ -297,9 +274,16 @@ class ReservationCreateForm(forms.ModelForm):
 
         self.fields["coach"].queryset = User.objects.filter(role="coach").order_by("username")
         self.fields["court"].queryset = Court.objects.filter(is_active=True).order_by("name")
+        self.fields["lesson_type"].label = "レッスン種別"
+        self.fields["lesson_type"].help_text = "一般レッスンは2時間でチケット1枚、プライベートは1時間でチケット2枚です。"
+        self.fields["lesson_type"].initial = Reservation.LESSON_GROUP
 
         start_at = self.initial.get("start_at") or getattr(self.instance, "start_at", None)
         end_at = self.initial.get("end_at") or getattr(self.instance, "end_at", None)
+        lesson_type = self.initial.get("lesson_type") or getattr(self.instance, "lesson_type", None)
+
+        if lesson_type:
+            self.fields["lesson_type"].initial = lesson_type
 
         if start_at:
             if timezone.is_aware(start_at):
@@ -334,6 +318,7 @@ class ReservationCreateForm(forms.ModelForm):
         start_hour = cleaned_data.get("start_hour")
         end_date = cleaned_data.get("end_date")
         end_hour = cleaned_data.get("end_hour")
+        lesson_type = cleaned_data.get("lesson_type") or Reservation.LESSON_GROUP
 
         if not start_date or start_hour in (None, ""):
             self.add_error("start_date", "開始日時を入力してください。")
@@ -352,8 +337,9 @@ class ReservationCreateForm(forms.ModelForm):
         if end_at.hour <= BUSINESS_START_HOUR or end_at.hour > BUSINESS_END_HOUR:
             self.add_error("end_hour", "終了時刻は 10:00〜21:00 の範囲で指定してください。")
 
-        if end_at <= start_at:
-            raise forms.ValidationError("終了日時は開始日時より後にしてください。")
+        expected_hours = Reservation.duration_hours_for_lesson_type(lesson_type)
+        if end_at - start_at != timedelta(hours=expected_hours):
+            raise forms.ValidationError("レッスン種別に応じた時間で予約してください。一般レッスンは2時間、プライベートは1時間です。")
 
         cleaned_data["start_at"] = start_at
         cleaned_data["end_at"] = end_at
@@ -363,6 +349,7 @@ class ReservationCreateForm(forms.ModelForm):
         instance = super().save(commit=False)
         instance.start_at = self.cleaned_data["start_at"]
         instance.end_at = self.cleaned_data["end_at"]
+        instance.tickets_used = Reservation.tickets_for_lesson_type(instance.lesson_type)
 
         if commit:
             instance.save()
