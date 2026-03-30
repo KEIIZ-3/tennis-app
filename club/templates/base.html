@@ -6,28 +6,82 @@
   <title>{% block title %}Tennis Club{% endblock %}</title>
 
   <style>
+    :root{
+      --bg:#f6f8fb;
+      --card:#ffffff;
+      --text:#111827;
+      --muted:#6b7280;
+      --line:#e5e7eb;
+      --line-strong:#d1d5db;
+
+      --primary:#0f172a;
+      --primary-soft:#eef2ff;
+
+      --success-bg:#f0fdf4;
+      --success-border:#bbf7d0;
+      --error-bg:#fef2f2;
+      --error-border:#fecaca;
+      --warning-bg:#fff7ed;
+      --warning-border:#fed7aa;
+      --info-bg:#eff6ff;
+      --info-border:#bfdbfe;
+
+      --ticket-bg:#fff7ed;
+      --ticket-border:#fdba74;
+
+      --line-green:#06c755;
+      --line-green-dark:#05b74d;
+
+      --shadow:0 8px 24px rgba(15, 23, 42, 0.06);
+      --radius:16px;
+      --radius-sm:10px;
+    }
+
+    *{
+      box-sizing:border-box;
+    }
+
+    html{
+      -webkit-text-size-adjust:100%;
+    }
+
     body{
-      font-family:sans-serif;
       margin:0;
-      background:#fafafa;
-      color:#111;
+      font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      line-height:1.6;
+    }
+
+    a{
+      color:inherit;
+      text-decoration:none;
     }
 
     .topbar{
-      background:#fff;
-      border-bottom:1px solid #e5e5e5;
       position:sticky;
       top:0;
       z-index:100;
+      background:rgba(255,255,255,0.96);
+      backdrop-filter:blur(10px);
+      border-bottom:1px solid var(--line);
     }
 
     .wrap{
-      max-width:1100px;
+      max-width:1120px;
       margin:0 auto;
-      padding:16px;
+      padding:0 16px;
     }
 
     .topbar .wrap{
+      padding-top:14px;
+      padding-bottom:14px;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+    }
+
+    .topbar-row{
       display:flex;
       justify-content:space-between;
       align-items:center;
@@ -35,60 +89,116 @@
       flex-wrap:wrap;
     }
 
-    .brand a{
-      color:#111;
-      text-decoration:none;
-      font-weight:700;
-      font-size:20px;
-    }
-
-    .nav{
+    .brand{
       display:flex;
       align-items:center;
-      gap:10px;
-      flex-wrap:wrap;
+      gap:12px;
+      min-width:0;
     }
 
-    .nav a{
-      color:#111;
-      text-decoration:none;
-      padding:8px 10px;
-      border-radius:8px;
-    }
-
-    .nav a:hover{
-      background:#f0f0f0;
-    }
-
-    .nav .line-login-link{
-      background:#06c755;
+    .brand-mark{
+      width:40px;
+      height:40px;
+      border-radius:12px;
+      background:linear-gradient(135deg, #0f172a 0%, #334155 100%);
       color:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:18px;
       font-weight:700;
+      flex:0 0 auto;
+      box-shadow:var(--shadow);
     }
 
-    .nav .line-login-link:hover{
-      background:#05b74d;
+    .brand-text{
+      min-width:0;
+    }
+
+    .brand-title{
+      font-size:20px;
+      font-weight:800;
+      letter-spacing:0.01em;
+      line-height:1.2;
+    }
+
+    .brand-sub{
+      margin-top:2px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.3;
     }
 
     .top-meta{
       display:flex;
       align-items:center;
-      gap:10px;
+      gap:8px;
       flex-wrap:wrap;
-      font-size:14px;
     }
 
     .top-badge{
-      display:inline-block;
-      padding:6px 10px;
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      min-height:36px;
+      padding:8px 12px;
       border-radius:999px;
-      background:#f3f4f6;
-      border:1px solid #e5e7eb;
+      border:1px solid var(--line);
+      background:#fff;
+      color:var(--text);
+      font-size:13px;
+      white-space:nowrap;
     }
 
     .top-badge.ticket{
-      background:#fff7ed;
-      border-color:#fed7aa;
+      background:var(--ticket-bg);
+      border-color:var(--ticket-border);
+      font-weight:700;
+    }
+
+    .nav{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+
+    .nav a{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-height:40px;
+      padding:9px 13px;
+      border:1px solid transparent;
+      border-radius:999px;
+      color:var(--text);
+      font-size:14px;
+      font-weight:600;
+      transition:all .15s ease;
+      background:#fff;
+    }
+
+    .nav a:hover{
+      background:#f8fafc;
+      border-color:var(--line);
+    }
+
+    .nav a.nav-primary{
+      background:var(--primary);
+      color:#fff;
+      border-color:var(--primary);
+    }
+
+    .nav a.line-login-link{
+      background:var(--line-green);
+      color:#fff;
+      border-color:var(--line-green);
+      font-weight:700;
+    }
+
+    .nav a.line-login-link:hover{
+      background:var(--line-green-dark);
+      border-color:var(--line-green-dark);
     }
 
     .logout-form{
@@ -98,30 +208,65 @@
 
     .logout-button{
       appearance:none;
-      border:1px solid #ddd;
+      border:1px solid var(--line-strong);
       background:#fff;
-      color:#111;
-      padding:8px 12px;
-      border-radius:8px;
+      color:var(--text);
+      min-height:40px;
+      padding:9px 13px;
+      border-radius:999px;
       cursor:pointer;
       font:inherit;
+      font-size:14px;
+      font-weight:600;
+      transition:all .15s ease;
     }
 
     .logout-button:hover{
-      background:#f7f7f7;
+      background:#f8fafc;
     }
 
     .main{
-      padding:20px 16px 40px;
+      padding:24px 0 40px;
+    }
+
+    .page-head{
+      margin-bottom:16px;
+    }
+
+    .page-title{
+      margin:0 0 6px;
+      font-size:28px;
+      line-height:1.2;
+      font-weight:800;
+      letter-spacing:-0.01em;
+    }
+
+    .page-subtitle{
+      margin:0;
+      color:var(--muted);
+      font-size:14px;
     }
 
     .card{
-      background:#fff;
-      border:1px solid #e8e8e8;
-      border-radius:12px;
-      padding:20px;
-      box-shadow:0 1px 3px rgba(0,0,0,0.04);
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      padding:22px;
+      box-shadow:var(--shadow);
       margin-bottom:16px;
+    }
+
+    .card-title{
+      margin:0 0 8px;
+      font-size:20px;
+      font-weight:800;
+      line-height:1.3;
+    }
+
+    .card-subtitle{
+      margin:0;
+      color:var(--muted);
+      font-size:14px;
     }
 
     .messages{
@@ -129,34 +274,59 @@
     }
 
     .message{
-      padding:12px 14px;
-      border-radius:10px;
+      padding:13px 15px;
+      border-radius:12px;
       margin-bottom:10px;
       border:1px solid transparent;
+      font-size:14px;
     }
 
     .message.success{
-      background:#f1fbf3;
-      border-color:#bfe3c7;
+      background:var(--success-bg);
+      border-color:var(--success-border);
     }
 
     .message.error{
-      background:#fff3f3;
-      border-color:#efc2c2;
+      background:var(--error-bg);
+      border-color:var(--error-border);
     }
 
     .message.warning{
-      background:#fff9ee;
-      border-color:#ead3a2;
+      background:var(--warning-bg);
+      border-color:var(--warning-border);
     }
 
     .message.info{
-      background:#f2f7ff;
-      border-color:#c7d9f7;
+      background:var(--info-bg);
+      border-color:var(--info-border);
+    }
+
+    .muted{
+      color:var(--muted);
+    }
+
+    .section-note{
+      padding:14px 16px;
+      border-radius:12px;
+      border:1px solid var(--info-border);
+      background:var(--info-bg);
+      color:#1e3a8a;
+    }
+
+    form{
+      margin:0;
     }
 
     form p{
-      margin:0 0 14px 0;
+      margin:0 0 14px;
+    }
+
+    label{
+      display:block;
+      margin-bottom:8px;
+      font-size:14px;
+      font-weight:700;
+      color:var(--text);
     }
 
     input[type="text"],
@@ -169,12 +339,22 @@
     select,
     textarea{
       width:100%;
-      box-sizing:border-box;
-      padding:10px 12px;
-      border:1px solid #ccc;
-      border-radius:8px;
+      min-height:46px;
+      padding:11px 13px;
+      border:1px solid var(--line-strong);
+      border-radius:12px;
       background:#fff;
+      color:var(--text);
       font:inherit;
+      transition:border-color .15s ease, box-shadow .15s ease;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus{
+      outline:none;
+      border-color:#93c5fd;
+      box-shadow:0 0 0 4px rgba(59,130,246,0.12);
     }
 
     textarea{
@@ -186,34 +366,52 @@
     input[type="submit"]{
       appearance:none;
       border:none;
-      background:#111;
+      background:var(--primary);
       color:#fff;
-      padding:10px 14px;
-      border-radius:8px;
+      min-height:44px;
+      padding:11px 16px;
+      border-radius:12px;
       cursor:pointer;
       font:inherit;
+      font-weight:700;
+      transition:transform .12s ease, opacity .12s ease;
     }
 
     button:hover,
     input[type="submit"]:hover{
-      opacity:0.92;
+      opacity:0.95;
     }
 
     .btn{
-      display:inline-block;
-      padding:10px 14px;
-      border-radius:8px;
-      text-decoration:none;
-      border:1px solid #ddd;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:6px;
+      min-height:44px;
+      padding:11px 16px;
+      border-radius:12px;
+      border:1px solid var(--line-strong);
       background:#fff;
-      color:#111;
+      color:var(--text);
+      text-decoration:none;
+      font-size:14px;
+      font-weight:700;
       cursor:pointer;
+      transition:all .15s ease;
+    }
+
+    .btn:hover{
+      background:#f8fafc;
     }
 
     .btn-primary{
-      background:#111;
+      background:var(--primary);
       color:#fff;
-      border-color:#111;
+      border-color:var(--primary);
+    }
+
+    .btn-primary:hover{
+      background:#0b1220;
     }
 
     .btn-danger{
@@ -222,59 +420,140 @@
       border-color:#b91c1c;
     }
 
-    .muted{
-      color:#666;
+    .btn-danger:hover{
+      background:#991b1b;
+    }
+
+    .btn-line{
+      background:var(--line-green);
+      color:#fff;
+      border-color:var(--line-green);
+    }
+
+    .btn-line:hover{
+      background:var(--line-green-dark);
+      border-color:var(--line-green-dark);
+    }
+
+    .actions{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+
+    .grid-2{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:16px;
+    }
+
+    .grid-3{
+      display:grid;
+      grid-template-columns:repeat(3, minmax(0, 1fr));
+      gap:16px;
     }
 
     table{
       width:100%;
       border-collapse:collapse;
       background:#fff;
+      border-radius:12px;
+      overflow:hidden;
     }
 
     th, td{
-      border-bottom:1px solid #eee;
-      padding:10px 8px;
+      border-bottom:1px solid var(--line);
+      padding:12px 10px;
       text-align:left;
       vertical-align:top;
+      font-size:14px;
+    }
+
+    th{
+      background:#f8fafc;
+      font-weight:800;
+      color:#334155;
+    }
+
+    ul.clean{
+      margin:0;
+      padding-left:18px;
+    }
+
+    .spacer-8{ height:8px; }
+    .spacer-12{ height:12px; }
+    .spacer-16{ height:16px; }
+
+    @media (max-width: 900px){
+      .grid-3{
+        grid-template-columns:1fr;
+      }
+
+      .grid-2{
+        grid-template-columns:1fr;
+      }
     }
 
     @media (max-width: 768px){
+      .wrap{
+        padding:0 12px;
+      }
+
       .topbar .wrap{
+        padding-top:12px;
+        padding-bottom:12px;
+      }
+
+      .topbar-row{
         align-items:flex-start;
       }
 
-      .nav{
-        width:100%;
-        gap:6px;
+      .brand-mark{
+        width:36px;
+        height:36px;
+        border-radius:10px;
+        font-size:16px;
       }
 
-      .nav a,
-      .logout-button{
-        padding:10px 12px;
-        font-size:14px;
+      .brand-title{
+        font-size:18px;
+      }
+
+      .brand-sub{
+        font-size:11px;
       }
 
       .top-meta{
         width:100%;
       }
 
-      .wrap{
-        padding:12px;
+      .nav{
+        width:100%;
+      }
+
+      .nav a,
+      .logout-button{
+        min-height:42px;
+        font-size:13px;
       }
 
       .main{
-        padding:14px 0 28px;
+        padding:16px 0 28px;
+      }
+
+      .page-title{
+        font-size:24px;
       }
 
       .card{
-        padding:14px;
-        border-radius:10px;
+        padding:16px;
+        border-radius:14px;
       }
 
       th, td{
-        font-size:14px;
-        padding:8px 6px;
+        font-size:13px;
+        padding:10px 8px;
       }
     }
   </style>
@@ -282,43 +561,54 @@
 <body>
   <header class="topbar">
     <div class="wrap">
-      <div class="brand">
-        <a href="{% url 'club:home' %}">Tennis Club</a>
-      </div>
+      <div class="topbar-row">
+        <div class="brand">
+          <div class="brand-mark">T</div>
+          <div class="brand-text">
+            <a href="{% url 'club:home' %}" class="brand-title">Tennis Club</a>
+            <div class="brand-sub">予約・チケット・LINE連携</div>
+          </div>
+        </div>
 
-      <div class="top-meta">
         {% if user.is_authenticated %}
-          <span class="top-badge">ログイン中: {{ user.display_name }}</span>
-          {% if user.role == "member" %}
-            <span class="top-badge">レベル: {{ user.get_member_level_display }}</span>
-            <span class="top-badge ticket">チケット残数: {{ user.ticket_balance }}枚</span>
-          {% endif %}
+          <div class="top-meta">
+            <span class="top-badge">ログイン中: {{ user.display_name }}</span>
+            {% if user.role == "member" %}
+              <span class="top-badge">レベル: {{ user.get_member_level_display }}</span>
+              <span class="top-badge ticket">チケット残数: {{ user.ticket_balance }}枚</span>
+            {% elif user.role == "coach" %}
+              <span class="top-badge">コーチアカウント</span>
+            {% endif %}
+          </div>
         {% endif %}
       </div>
 
-      <nav class="nav">
-        <a href="{% url 'club:home' %}">ホーム</a>
+      <div class="topbar-row">
+        <nav class="nav">
+          <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
 
-        {% if user.is_authenticated %}
-          {% if user.role == "member" %}
-            <a href="{% url 'club:tickets' %}">チケット</a>
-          {% endif %}
-          <a href="{% url 'club:reservation_create' %}">予約作成</a>
-          <a href="{% url 'club:reservation_list' %}">予約一覧</a>
-          {% if user.is_staff or user.is_superuser or user.role == "coach" %}
-            <a href="{% url 'club:coach_availability_list' %}">コーチ空き時間</a>
-          {% endif %}
-          <a href="{% url 'club:line_connect' %}">LINE連携</a>
+          {% if user.is_authenticated %}
+            {% if user.role == "member" %}
+              <a href="{% url 'club:tickets' %}">チケット</a>
+            {% endif %}
+            <a href="{% url 'club:reservation_create' %}">予約作成</a>
+            <a href="{% url 'club:reservation_list' %}">予約一覧</a>
+            {% if user.is_staff or user.is_superuser or user.role == "coach" %}
+              <a href="{% url 'club:coach_availability_list' %}">コーチ空き時間</a>
+            {% endif %}
+            <a href="{% url 'club:line_connect' %}">LINE連携</a>
 
-          <form method="post" action="{% url 'club:logout' %}" class="logout-form">
-            {% csrf_token %}
-            <button type="submit" class="logout-button">ログアウト</button>
-          </form>
-        {% else %}
-          <a href="{% url 'club:line_login_start' %}" class="line-login-link">LINEでログイン</a>
-          <a href="{% url 'club:login' %}">通常ログイン</a>
-        {% endif %}
-      </nav>
+            <form method="post" action="{% url 'club:logout' %}" class="logout-form">
+              {% csrf_token %}
+              <button type="submit" class="logout-button">ログアウト</button>
+            </form>
+          {% else %}
+            <a href="{% url 'club:line_login_start' %}" class="line-login-link">LINEでログイン</a>
+            <a href="{% url 'club:login' %}">通常ログイン</a>
+            <a href="{% url 'club:register' %}">新規登録</a>
+          {% endif %}
+        </nav>
+      </div>
     </div>
   </header>
 
