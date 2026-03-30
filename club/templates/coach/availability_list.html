@@ -19,6 +19,17 @@
 </div>
 
 <div class="card">
+  <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px;">
+    <div style="font-weight:700; margin-bottom:6px;">表示の見方</div>
+    <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
+      <li>一般 / プライベート / グループは通常ルールでチケットが消費されます。</li>
+      <li>イベントは「イベント用チケット価格」に設定した枚数が使われます。</li>
+      <li>コーチ別の実際の消費価格帯内訳は、次段階で集計タブに追加予定です。</li>
+    </ul>
+  </div>
+</div>
+
+<div class="card">
   {% if availabilities %}
     <div style="overflow-x:auto;">
       <table>
@@ -31,6 +42,7 @@
             <th>開始</th>
             <th>終了</th>
             <th>定員</th>
+            <th>イベント価格</th>
             <th>メモ</th>
             <th>操作</th>
           </tr>
@@ -45,6 +57,13 @@
               <td>{{ availability.start_at|date:"Y-m-d H:i" }}</td>
               <td>{{ availability.end_at|date:"Y-m-d H:i" }}</td>
               <td>{{ availability.capacity }}</td>
+              <td>
+                {% if availability.lesson_type == "event" %}
+                  {{ availability.custom_ticket_price }}枚
+                {% else %}
+                  <span class="muted">通常</span>
+                {% endif %}
+              </td>
               <td>{{ availability.note|default:"-" }}</td>
               <td style="white-space:nowrap;">
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
