@@ -12,8 +12,13 @@
     </div>
 
     {% if user.role == "member" %}
-      <div style="padding:12px 14px; border:1px solid #fed7aa; background:#fff7ed; border-radius:10px;">
-        <strong>現在のチケット残数:</strong> {{ user.ticket_balance }}枚
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <div style="padding:12px 14px; border:1px solid #fed7aa; background:#fff7ed; border-radius:10px;">
+          <strong>現在のチケット残数:</strong> {{ user.ticket_balance }}枚
+        </div>
+        <div style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px;">
+          <strong>現在のレベル:</strong> {{ user.get_member_level_display }}
+        </div>
       </div>
     {% endif %}
   </div>
@@ -25,12 +30,19 @@
       一般レッスン：2時間 / チケット1枚
     </div>
     <div style="padding:12px 14px; border:1px solid #ede9fe; background:#f5f3ff; border-radius:10px;">
-      プライベート：1時間 / チケット2枚
+      プライベート：1時間 / チケット2枚 / 申請制
     </div>
-    <div style="padding:12px 14px; border:1px solid #e5e7eb; background:#f9fafb; border-radius:10px;">
-      残数は -4枚 まで予約可能
+    <div style="padding:12px 14px; border:1px solid #dcfce7; background:#f0fdf4; border-radius:10px;">
+      グループ：1時間 / 参加人数×1枚 / 申請制
+    </div>
+    <div style="padding:12px 14px; border:1px solid #fef3c7; background:#fffbeb; border-radius:10px;">
+      イベント：時間・チケット数は都度設定
     </div>
   </div>
+
+  <p style="margin-top:14px; color:#666;">
+    プライベートレッスン、グループレッスンは申請後にコーチ承認で成立します。
+  </p>
 </div>
 
 <div class="card">
@@ -43,7 +55,7 @@
       </div>
     {% endif %}
 
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:16px;">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px;">
       {% for field in form %}
         <div>
           <label for="{{ field.id_for_label }}">
@@ -71,7 +83,7 @@
     </div>
 
     <div style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap;">
-      <button type="submit" class="btn btn-primary">予約を作成</button>
+      <button type="submit" class="btn btn-primary">送信する</button>
       <a href="{% url 'club:reservation_list' %}" class="btn">予約一覧へ</a>
       <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
     </div>
