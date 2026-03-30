@@ -21,6 +21,7 @@ urlpatterns = [
 
     path("coach/availability/", views.coach_availability_list, name="coach_availability_list"),
     path("coach/availability/new/", views.coach_availability_create, name="coach_availability_create"),
+    path("coach/availability/<int:pk>/edit/", views.coach_availability_create, name="coach_availability_edit"),
     path("coach/availability/<int:pk>/delete/", views.coach_availability_delete, name="coach_availability_delete"),
 
     path("line/", views.line_connect, name="line_connect"),
