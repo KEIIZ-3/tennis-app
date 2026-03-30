@@ -22,7 +22,7 @@
     }
 
     .wrap{
-      max-width:1000px;
+      max-width:1100px;
       margin:0 auto;
       padding:16px;
     }
@@ -68,6 +68,27 @@
 
     .nav .line-login-link:hover{
       background:#05b74d;
+    }
+
+    .top-meta{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+      font-size:14px;
+    }
+
+    .top-badge{
+      display:inline-block;
+      padding:6px 10px;
+      border-radius:999px;
+      background:#f3f4f6;
+      border:1px solid #e5e7eb;
+    }
+
+    .top-badge.ticket{
+      background:#fff7ed;
+      border-color:#fed7aa;
     }
 
     .logout-form{
@@ -178,6 +199,33 @@
       opacity:0.92;
     }
 
+    .btn{
+      display:inline-block;
+      padding:10px 14px;
+      border-radius:8px;
+      text-decoration:none;
+      border:1px solid #ddd;
+      background:#fff;
+      color:#111;
+      cursor:pointer;
+    }
+
+    .btn-primary{
+      background:#111;
+      color:#fff;
+      border-color:#111;
+    }
+
+    .btn-danger{
+      background:#b91c1c;
+      color:#fff;
+      border-color:#b91c1c;
+    }
+
+    .muted{
+      color:#666;
+    }
+
     table{
       width:100%;
       border-collapse:collapse;
@@ -199,6 +247,10 @@
       .nav{
         width:100%;
       }
+
+      .top-meta{
+        width:100%;
+      }
     }
   </style>
 </head>
@@ -209,13 +261,24 @@
         <a href="{% url 'club:home' %}">Tennis Club</a>
       </div>
 
+      <div class="top-meta">
+        {% if user.is_authenticated %}
+          <span class="top-badge">ログイン中: {{ user.display_name }}</span>
+          {% if user.role == "member" %}
+            <span class="top-badge ticket">チケット残数: {{ user.ticket_balance }}枚</span>
+          {% endif %}
+        {% endif %}
+      </div>
+
       <nav class="nav">
         <a href="{% url 'club:home' %}">ホーム</a>
 
         {% if user.is_authenticated %}
           <a href="{% url 'club:reservation_create' %}">予約作成</a>
           <a href="{% url 'club:reservation_list' %}">予約一覧</a>
-          <a href="{% url 'club:coach_availability_list' %}">コーチ空き時間</a>
+          {% if user.is_staff or user.is_superuser or user.role == "coach" %}
+            <a href="{% url 'club:coach_availability_list' %}">コーチ空き時間</a>
+          {% endif %}
           <a href="{% url 'club:line_connect' %}">LINE連携</a>
 
           <form method="post" action="{% url 'club:logout' %}" class="logout-form">
