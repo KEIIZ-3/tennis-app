@@ -18,47 +18,83 @@ from .models import (
 )
 
 
+DATETIME_INPUT_FORMATS = [
+    "%Y-%m-%dT%H:%M",
+    "%Y-%m-%d %H:%M",
+    "%Y/%m/%d %H:%M",
+]
+
+
 class AdminHourDateTimeInput(forms.DateTimeInput):
     input_type = "datetime-local"
+    format = "%Y-%m-%dT%H:%M"
 
 
 class CoachAvailabilityAdminForm(forms.ModelForm):
+    start_at = forms.DateTimeField(
+        label="Start at",
+        input_formats=DATETIME_INPUT_FORMATS,
+        widget=AdminHourDateTimeInput(attrs={"step": 3600}),
+    )
+    end_at = forms.DateTimeField(
+        label="End at",
+        input_formats=DATETIME_INPUT_FORMATS,
+        widget=AdminHourDateTimeInput(attrs={"step": 3600}),
+    )
+
     class Meta:
         model = CoachAvailability
         fields = "__all__"
-        widgets = {
-            "start_at": AdminHourDateTimeInput(
-                format="%Y-%m-%dT%H:%M",
-                attrs={"step": 3600},
-            ),
-            "end_at": AdminHourDateTimeInput(
-                format="%Y-%m-%dT%H:%M",
-                attrs={"step": 3600},
-            ),
-        }
-
-
-class ReservationAdminForm(forms.ModelForm):
-    class Meta:
-        model = Reservation
-        fields = "__all__"
-        widgets = {
-            "start_at": AdminHourDateTimeInput(
-                format="%Y-%m-%dT%H:%M",
-                attrs={"step": 3600},
-            ),
-            "end_at": AdminHourDateTimeInput(
-                format="%Y-%m-%dT%H:%M",
-                attrs={"step": 3600},
-            ),
-        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        if self.instance and self.instance.pk:
+            if getattr(self.instance, "start_at", None):
+                self.initial["start_at"] = self.instance.start_at
+            if getattr(self.instance, "end_at", None):
+                self.initial["end_at"] = self.instance.end_at
+
+
+class ReservationAdminForm(forms.ModelForm):
+    start_at = forms.DateTimeField(
+        label="Start at",
+        input_formats=DATETIME_INPUT_FORMATS,
+        widget=AdminHourDateTimeInput(attrs={"step": 3600}),
+    )
+    end_at = forms.DateTimeField(
+        label="End at",
+        input_formats=DATETIME_INPUT_FORMATS,
+        widget=AdminHourDateTimeInput(attrs={"step": 3600}),
+    )
+
+    class Meta:
+        model = Reservation
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
         coach_qs = User.objects.filter(role="coach").order_by("full_name", "username", "id")
         self.fields["coach"].queryset = coach_qs
         self.fields["substitute_coach"].queryset = coach_qs
         self.fields["substitute_coach"].required = False
+
+        if self.instance and self.instance.pk:
+            if getattr(self.instance, "start_at", None):
+                self.initial["start_at"] = self.instance.start_at
+            if getattr(self.instance, "end_at", None):
+                self.initial["end_at"] = self.instance.end_at
+
+
+class FixedLessonAdminForm(forms.ModelForm):
+    class Meta:
+        model = FixedLesson
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["coach"].queryset = User.objects.filter(role="coach").order_by("full_name", "username", "id")
 
 
 class CoachExpenseAdminForm(forms.ModelForm):
@@ -207,6 +243,7 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
 
 @admin.register(FixedLesson)
 class FixedLessonAdmin(admin.ModelAdmin):
+    form = FixedLessonAdminForm
     list_display = (
         "id",
         "title",
