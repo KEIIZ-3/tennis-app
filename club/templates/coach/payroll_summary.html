@@ -100,7 +100,7 @@
       給与 ＝ <strong>消費されたチケットの価格帯換算合計</strong> − <strong>1人あたり按分経費</strong>
     </div>
     <div class="muted" style="margin-top:8px;">
-      経費は、その月に実際にチケット消費があったコーチ人数で均等割りしています。
+      経費は、その月に実際にチケット消費があった担当コーチ人数で均等割りしています。代行が設定されている予約は、代行コーチ側へ計上します。
     </div>
   </div>
 </div>
@@ -203,6 +203,7 @@
             <th>日時</th>
             <th>会員</th>
             <th>種別</th>
+            <th>担当コーチ</th>
             <th>コート</th>
             <th>消費枚数</th>
             <th>価格帯内訳</th>
@@ -218,6 +219,15 @@
               </td>
               <td>{{ row.reservation.user.display_name }}</td>
               <td>{{ row.reservation.get_lesson_type_display }}</td>
+              <td>
+                {% if row.has_substitute %}
+                  <div><strong>実施:</strong> {{ row.assigned_coach_name }}</div>
+                  <div class="muted" style="font-size:12px;">通常担当: {{ row.normal_coach_name }}</div>
+                  <div class="muted" style="font-size:12px;">代行: {{ row.substitute_coach_name }}</div>
+                {% else %}
+                  <div>{{ row.assigned_coach_name }}</div>
+                {% endif %}
+              </td>
               <td>{{ row.reservation.court }}</td>
               <td>{{ row.tickets }}枚</td>
               <td>
