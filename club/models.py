@@ -166,6 +166,8 @@ class CoachAvailability(models.Model, LessonTypeMixin):
     start_at = models.DateTimeField()
     end_at = models.DateTimeField()
     capacity = models.PositiveIntegerField(default=1)
+    coach_count = models.PositiveIntegerField(default=1)
+    court_count = models.PositiveIntegerField(default=1)
     note = models.CharField(max_length=255, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OPEN)
     custom_ticket_price = models.PositiveIntegerField(default=0)
@@ -180,6 +182,11 @@ class CoachAvailability(models.Model, LessonTypeMixin):
 
     def effective_duration_hours(self):
         return self.duration_hours_for_lesson_type(self.lesson_type, self.custom_duration_hours)
+
+    def effective_capacity(self):
+        if self.lesson_type == self.LESSON_GENERAL:
+            return max(int(self.coach_count or 1), 1) * 6
+        return int(self.capacity or 0)
 
     def clean(self):
         if not self.start_at or not self.end_at:
@@ -212,20 +219,32 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         if duration != expected_duration:
             raise ValidationError("レッスン種別に応じた時間で登録してください。")
 
-        if self.lesson_type == self.LESSON_GENERAL and self.capacity < 1:
-            raise ValidationError("一般レッスンの定員は1以上にしてください。")
+        if self.lesson_type == self.LESSON_GENERAL:
+            if int(self.coach_count or 0) < 1:
+                raise ValidationError("一般レッスンのコーチ人数は1以上にしてください。")
+            self.court_count = int(self.coach_count or 1)
+            self.capacity = self.effective_capacity()
 
-        if self.lesson_type == self.LESSON_PRIVATE and self.capacity != 1:
-            raise ValidationError("プライベートレッスンの定員は1にしてください。")
+        elif self.lesson_type == self.LESSON_PRIVATE:
+            self.coach_count = 1
+            self.court_count = 1
+            self.capacity = 1
 
-        if self.lesson_type == self.LESSON_GROUP and (self.capacity < 2 or self.capacity > 4):
-            raise ValidationError("グループレッスンの定員は2〜4名にしてください。")
+        elif self.lesson_type == self.LESSON_GROUP:
+            self.coach_count = 1
+            self.court_count = 1
+            if self.capacity < 2 or self.capacity > 4:
+                raise ValidationError("グループレッスンの定員は2〜4名にしてください。")
 
-        if self.lesson_type == self.LESSON_EVENT:
+        elif self.lesson_type == self.LESSON_EVENT:
+            self.coach_count = 1
+            self.court_count = 1
             if self.custom_ticket_price < 0:
                 raise ValidationError("イベントのチケット価格は0以上にしてください。")
             if self.custom_duration_hours < 1:
                 raise ValidationError("イベントの時間は1時間以上にしてください。")
+            if self.capacity < 1:
+                raise ValidationError("イベントの定員は1以上にしてください。")
 
         overlap_qs = CoachAvailability.objects.filter(
             coach=self.coach,
@@ -284,6 +303,8 @@ class FixedLesson(models.Model, LessonTypeMixin):
     weekday = models.PositiveSmallIntegerField(choices=WEEKDAY_CHOICES)
     start_hour = models.PositiveSmallIntegerField(default=9)
     capacity = models.PositiveIntegerField(default=4)
+    coach_count = models.PositiveIntegerField(default=1)
+    court_count = models.PositiveIntegerField(default=1)
     weeks_ahead = models.PositiveIntegerField(default=8)
     is_active = models.BooleanField(default=True)
     note = models.CharField(max_length=255, blank=True)
@@ -296,6 +317,11 @@ class FixedLesson(models.Model, LessonTypeMixin):
         base = self.title or f"{self.get_weekday_display()} {self.start_hour:02d}:00"
         return f"{base} / {self.coach}"
 
+    def effective_capacity(self):
+        if self.lesson_type == self.LESSON_GENERAL:
+            return max(int(self.coach_count or 1), 1) * 6
+        return int(self.capacity or 0)
+
     def clean(self):
         if self.start_hour < BUSINESS_START_HOUR or self.start_hour >= BUSINESS_END_HOUR:
             raise ValidationError("固定レッスンの開始時刻は 09:00〜20:00 の範囲で指定してください。")
@@ -304,8 +330,28 @@ class FixedLesson(models.Model, LessonTypeMixin):
         if self.start_hour + duration_hours > BUSINESS_END_HOUR:
             raise ValidationError("固定レッスンの終了時刻が営業時間を超えています。")
 
-        if self.capacity < 1:
-            raise ValidationError("定員は1以上にしてください。")
+        if self.lesson_type == self.LESSON_GENERAL:
+            if int(self.coach_count or 0) < 1:
+                raise ValidationError("一般レッスンのコーチ人数は1以上にしてください。")
+            self.court_count = int(self.coach_count or 1)
+            self.capacity = self.effective_capacity()
+
+        elif self.lesson_type == self.LESSON_PRIVATE:
+            self.coach_count = 1
+            self.court_count = 1
+            self.capacity = 1
+
+        elif self.lesson_type == self.LESSON_GROUP:
+            self.coach_count = 1
+            self.court_count = 1
+            if self.capacity < 2 or self.capacity > 4:
+                raise ValidationError("グループレッスンの定員は2〜4名にしてください。")
+
+        elif self.lesson_type == self.LESSON_EVENT:
+            self.coach_count = 1
+            self.court_count = 1
+            if self.capacity < 1:
+                raise ValidationError("イベントの定員は1以上にしてください。")
 
     def _build_datetimes_for_date(self, target_date):
         start_dt = datetime.combine(target_date, time(self.start_hour, 0))
@@ -322,7 +368,7 @@ class FixedLesson(models.Model, LessonTypeMixin):
         today = timezone.localdate()
         initial_offset = (self.weekday - today.weekday()) % 7
         members = list(self.members.all())
-        required_capacity = max(self.capacity, len(members), 1)
+        required_capacity = max(self.effective_capacity(), len(members), 1)
 
         for week_index in range(self.weeks_ahead):
             target_date = today + timedelta(days=initial_offset + (7 * week_index))
@@ -336,15 +382,23 @@ class FixedLesson(models.Model, LessonTypeMixin):
                 end_at=end_at,
                 defaults={
                     "capacity": required_capacity,
+                    "coach_count": self.coach_count,
+                    "court_count": self.court_count,
                     "target_level": self.target_level,
                     "note": f"固定レッスン: {self.title or self.get_weekday_display()}",
                 },
             )
 
             updated_fields = []
-            if availability.capacity < required_capacity:
+            if availability.capacity != required_capacity:
                 availability.capacity = required_capacity
                 updated_fields.append("capacity")
+            if availability.coach_count != self.coach_count:
+                availability.coach_count = self.coach_count
+                updated_fields.append("coach_count")
+            if availability.court_count != self.court_count:
+                availability.court_count = self.court_count
+                updated_fields.append("court_count")
             if availability.target_level != self.target_level:
                 availability.target_level = self.target_level
                 updated_fields.append("target_level")
@@ -731,6 +785,14 @@ class Reservation(models.Model, LessonTypeMixin):
         related_name="coach_reservations",
         limit_choices_to={"role": "coach"},
     )
+    substitute_coach = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="substitute_reservations",
+        limit_choices_to={"role": "coach"},
+    )
     court = models.ForeignKey(
         Court,
         on_delete=models.CASCADE,
@@ -794,6 +856,23 @@ class Reservation(models.Model, LessonTypeMixin):
     def is_canceled(self):
         return self.status in (self.STATUS_CANCELED, self.STATUS_RAIN_CANCELED)
 
+    def has_substitute_coach(self):
+        return bool(self.substitute_coach_id)
+
+    def assigned_coach(self):
+        return self.substitute_coach or self.coach
+
+    def assigned_coach_display(self):
+        coach = self.assigned_coach()
+        if coach:
+            return coach.display_name()
+        return "-"
+
+    def normal_coach_display(self):
+        if self.coach:
+            return self.coach.display_name()
+        return "-"
+
     def effective_duration_hours(self):
         return self.duration_hours_for_lesson_type(self.lesson_type, self.custom_duration_hours)
 
@@ -850,6 +929,12 @@ class Reservation(models.Model, LessonTypeMixin):
 
         if self.user_id and self.coach_id and self.user_id == self.coach_id:
             raise ValidationError("自分自身を予約することはできません。")
+
+        if self.substitute_coach_id and self.substitute_coach_id == self.user_id:
+            raise ValidationError("会員本人を代行コーチにすることはできません。")
+
+        if self.substitute_coach_id and self.substitute_coach_id == self.coach_id:
+            self.substitute_coach = None
 
         if self.user and self.user.role == "member":
             if not self.user.can_book_level(self.target_level):
