@@ -5,6 +5,7 @@ from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 
 from .models import (
     CoachAvailability,
+    CoachExpense,
     Court,
     FixedLesson,
     LineAccountLink,
@@ -13,12 +14,7 @@ from .models import (
     TicketLedger,
     TicketPurchase,
     User,
-    apply_ticket_change,
     purchase_tickets,
-)
-from .notifications import (
-    build_reservation_rain_canceled_message,
-    notify_user,
 )
 
 
@@ -187,38 +183,6 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
     )
     list_filter = ("coach", "court", "lesson_type", "target_level")
     search_fields = ("coach__username", "coach__full_name", "court__name")
-    actions = ("rain_cancel_selected_slots",)
-
-    @admin.action(description="選択した枠を雨天中止にして参加者へLINE送信する")
-    def rain_cancel_selected_slots(self, request, queryset):
-        canceled_count = 0
-
-        for availability in queryset:
-            reservations = availability.reservations.filter(status=Reservation.STATUS_ACTIVE).select_related("user", "coach", "court")
-            for reservation in reservations:
-                try:
-                    changed = reservation.mark_rain_canceled(
-                        created_by=request.user,
-                        reason="雨天中止",
-                    )
-                    if changed:
-                        notify_user(reservation.user, build_reservation_rain_canceled_message(reservation))
-                        canceled_count += 1
-                except Exception as e:
-                    self.message_user(
-                        request,
-                        f"{reservation} の雨天中止処理に失敗しました: {e}",
-                        level=messages.ERROR,
-                    )
-
-        if canceled_count:
-            self.message_user(
-                request,
-                f"{canceled_count}件の予約を雨天中止にし、参加者へLINE送信しました。",
-                level=messages.SUCCESS,
-            )
-        else:
-            self.message_user(request, "対象となる予約はありませんでした。", level=messages.INFO)
 
 
 @admin.register(FixedLesson)
@@ -280,12 +244,6 @@ class ReservationAdmin(admin.ModelAdmin):
         "approved_court_note",
     )
 
-    def get_actions(self, request):
-        actions = super().get_actions(request)
-        if "rain_cancel_selected_reservations" in actions:
-            del actions["rain_cancel_selected_reservations"]
-        return actions
-
 
 @admin.register(TicketLedger)
 class TicketLedgerAdmin(admin.ModelAdmin):
@@ -338,6 +296,14 @@ class TicketConsumptionAdmin(admin.ModelAdmin):
         "purchase__label",
     )
     autocomplete_fields = ("user", "purchase", "reservation", "fixed_lesson")
+
+
+@admin.register(CoachExpense)
+class CoachExpenseAdmin(admin.ModelAdmin):
+    list_display = ("id", "expense_date", "category", "amount", "note", "created_by", "created_at")
+    list_filter = ("category", "expense_date")
+    search_fields = ("note",)
+    autocomplete_fields = ("created_by",)
 
 
 @admin.register(LineAccountLink)
