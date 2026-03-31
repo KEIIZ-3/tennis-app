@@ -28,7 +28,7 @@
             <th>参加者</th>
             <th>日時</th>
             <th>レッスン種別</th>
-            <th>コーチ</th>
+            <th>担当コーチ</th>
             <th>コート</th>
             <th>チケット</th>
             <th>価格帯内訳</th>
@@ -46,7 +46,15 @@
                 <div class="muted">〜 {{ reservation.end_at|date:"H:i" }}</div>
               </td>
               <td>{{ reservation.get_lesson_type_display }}</td>
-              <td>{{ reservation.coach.display_name }}</td>
+              <td>
+                {% if row.has_substitute %}
+                  <div><strong>実施:</strong> {{ row.assigned_coach_name }}</div>
+                  <div class="muted" style="font-size:12px;">通常担当: {{ row.normal_coach_name }}</div>
+                  <div class="muted" style="font-size:12px;">代行: {{ row.substitute_coach_name }}</div>
+                {% else %}
+                  <div>{{ row.assigned_coach_name }}</div>
+                {% endif %}
+              </td>
               <td>
                 <div>{{ reservation.court }}</div>
                 {% if reservation.requested_court_type %}
