@@ -158,12 +158,16 @@ class CoachAvailabilityForm(forms.ModelForm):
             "court",
             "lesson_type",
             "target_level",
+            "coach_count",
+            "court_count",
             "capacity",
             "custom_ticket_price",
             "custom_duration_hours",
             "note",
         ]
         widgets = {
+            "coach_count": forms.NumberInput(attrs={"min": 1}),
+            "court_count": forms.NumberInput(attrs={"min": 1}),
             "capacity": forms.NumberInput(attrs={"min": 1}),
             "custom_ticket_price": forms.NumberInput(attrs={"min": 0}),
             "custom_duration_hours": forms.NumberInput(attrs={"min": 0}),
@@ -178,9 +182,15 @@ class CoachAvailabilityForm(forms.ModelForm):
         self.fields["court"].queryset = Court.objects.filter(is_active=True).order_by("name")
         self.fields["lesson_type"].label = "レッスン種別"
         self.fields["target_level"].label = "対象レベル"
+        self.fields["coach_count"].label = "担当コーチ人数"
+        self.fields["court_count"].label = "利用コート面数"
+        self.fields["capacity"].label = "定員"
         self.fields["custom_ticket_price"].label = "イベント用チケット価格"
         self.fields["custom_duration_hours"].label = "イベント用時間（時間）"
         self.fields["lesson_type"].initial = Reservation.LESSON_GENERAL
+        self.fields["coach_count"].help_text = "一般レッスンのみ使用。1人増えるごとに定員は6名、コートは1面追加されます。"
+        self.fields["court_count"].help_text = "一般レッスンではコーチ人数に合わせて自動調整されます。"
+        self.fields["capacity"].help_text = "一般レッスンではコーチ人数から自動計算されます。"
 
         if (
             self.request_user
@@ -228,6 +238,7 @@ class CoachAvailabilityForm(forms.ModelForm):
         end_hour = cleaned_data.get("end_hour")
         lesson_type = cleaned_data.get("lesson_type") or Reservation.LESSON_GENERAL
         custom_duration_hours = cleaned_data.get("custom_duration_hours") or 0
+        coach_count = int(cleaned_data.get("coach_count") or 1)
 
         if not start_date or start_hour in (None, ""):
             self.add_error("start_date", "開始日時を入力してください。")
@@ -250,6 +261,15 @@ class CoachAvailabilityForm(forms.ModelForm):
         if end_at - start_at != timedelta(hours=expected_hours):
             raise forms.ValidationError("レッスン種別に応じた時間で登録してください。")
 
+        if lesson_type == Reservation.LESSON_GENERAL:
+            if coach_count < 1:
+                self.add_error("coach_count", "一般レッスンの担当コーチ人数は1以上にしてください。")
+            cleaned_data["court_count"] = coach_count
+            cleaned_data["capacity"] = coach_count * 6
+        elif lesson_type in (Reservation.LESSON_PRIVATE, Reservation.LESSON_GROUP, Reservation.LESSON_EVENT):
+            cleaned_data["coach_count"] = 1
+            cleaned_data["court_count"] = 1
+
         cleaned_data["start_at"] = start_at
         cleaned_data["end_at"] = end_at
         return cleaned_data
@@ -258,6 +278,9 @@ class CoachAvailabilityForm(forms.ModelForm):
         instance = super().save(commit=False)
         instance.start_at = self.cleaned_data["start_at"]
         instance.end_at = self.cleaned_data["end_at"]
+        instance.coach_count = self.cleaned_data.get("coach_count") or 1
+        instance.court_count = self.cleaned_data.get("court_count") or 1
+        instance.capacity = self.cleaned_data.get("capacity") or instance.capacity
 
         if commit:
             instance.save()
