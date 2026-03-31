@@ -41,7 +41,7 @@ from .models import (
     TicketLedger,
     TicketPurchase,
 )
-from .notification import (
+from .notifications import (
     build_pending_request_for_coach_message,
     build_request_approved_for_member_message,
     build_request_rejected_for_member_message,
