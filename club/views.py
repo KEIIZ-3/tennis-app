@@ -107,6 +107,16 @@ def _parse_query_datetime(value):
     return timezone.make_aware(dt)
 
 
+def _default_request_end_at(start_value, lesson_type):
+    if not start_value:
+        return None
+
+    if lesson_type == Reservation.LESSON_GENERAL:
+        return start_value + timedelta(hours=2)
+
+    return start_value + timedelta(hours=1)
+
+
 def _line_login_enabled():
     return bool(
         getattr(settings, "LINE_LOGIN_CHANNEL_ID", "").strip()
@@ -409,6 +419,70 @@ def _assigned_coach_for_reservation(reservation):
 def _assigned_coach_id_for_reservation(reservation):
     coach = _assigned_coach_for_reservation(reservation)
     return getattr(coach, "pk", None)
+
+
+def _pick_request_slot(selected_coach_id, lesson_type, start_at, end_at):
+    qs = (
+        CoachAvailability.objects.filter(
+            lesson_type=lesson_type,
+            start_at=start_at,
+            end_at=end_at,
+        )
+        .select_related("coach", "substitute_coach", "court")
+        .order_by("coach__username", "coach__id", "id")
+    )
+    if selected_coach_id:
+        qs = qs.filter(coach_id=selected_coach_id)
+    return qs.first()
+
+
+def _assign_pending_request_targets(reservation, selected_coach_id):
+    coach_qs = User.objects.filter(role="coach").order_by("username", "id")
+    court_qs = Court.objects.filter(is_active=True).order_by("name", "id")
+
+    selected_coach = None
+    if selected_coach_id:
+        selected_coach = coach_qs.filter(pk=selected_coach_id).first()
+        if not selected_coach:
+            raise ValidationError("選択されたコーチが見つかりません。")
+
+    matched_slot = _pick_request_slot(
+        selected_coach_id=selected_coach_id,
+        lesson_type=reservation.lesson_type,
+        start_at=reservation.start_at,
+        end_at=reservation.end_at,
+    )
+
+    if matched_slot:
+        reservation.coach = matched_slot.coach
+        reservation.substitute_coach = matched_slot.substitute_coach
+        reservation.court = matched_slot.court
+        reservation.availability = matched_slot
+        reservation.target_level = matched_slot.target_level
+        reservation.custom_ticket_price = matched_slot.custom_ticket_price
+        reservation.custom_duration_hours = matched_slot.custom_duration_hours
+    else:
+        fallback_coach = selected_coach or coach_qs.first()
+        fallback_court = court_qs.first()
+
+        if not fallback_coach:
+            raise ValidationError("予約に利用できるコーチが見つかりません。")
+
+        if not fallback_court:
+            raise ValidationError("予約に利用できるコートが見つかりません。")
+
+        reservation.coach = fallback_coach
+        reservation.substitute_coach = None
+        reservation.court = fallback_court
+        reservation.availability = None
+        reservation.custom_ticket_price = 0
+        reservation.custom_duration_hours = 0
+
+    reservation.requested_court_type = Court.COURT_SONO
+    if not selected_coach_id:
+        reservation.requested_court_note = "コーチおまかせ"
+    else:
+        reservation.requested_court_note = ""
 
 
 def home(request):
@@ -934,7 +1008,6 @@ def calendar_events(request):
         query = urlencode(
             {
                 "coach": getattr(coach, "pk", "") or "",
-                "court": getattr(court, "pk", "") or "",
                 "lesson_type": obj.lesson_type,
                 "start": _to_event_datetime_str(obj.start_at) or "",
                 "end": _to_event_datetime_str(obj.end_at) or "",
@@ -955,6 +1028,7 @@ def calendar_events(request):
                     "type": "availability",
                     "pk": obj.pk,
                     "coach_name": str(coach),
+                    "substitute_coach_name": _display_name(obj.substitute_coach) if obj.substitute_coach else "",
                     "court": str(court),
                     "lesson_type_display": _lesson_type_label(obj.lesson_type),
                     "capacity": obj.capacity,
@@ -1041,19 +1115,19 @@ def reservation_create(request):
     _sync_fixed_lessons()
 
     initial = {}
-    coach_id = request.GET.get("coach")
-    court_id = request.GET.get("court")
-    lesson_type = request.GET.get("lesson_type") or Reservation.LESSON_GENERAL
+    coach_id = (request.GET.get("coach") or "").strip()
+    lesson_type = request.GET.get("lesson_type") or Reservation.LESSON_PRIVATE
+    if lesson_type not in (Reservation.LESSON_PRIVATE, Reservation.LESSON_GROUP):
+        lesson_type = Reservation.LESSON_PRIVATE
+
     start_value = _parse_query_datetime(request.GET.get("start"))
     end_value = _parse_query_datetime(request.GET.get("end"))
 
     if not end_value and start_value:
-        end_value = start_value + timedelta(hours=Reservation.duration_hours_for_lesson_type(lesson_type))
+        end_value = _default_request_end_at(start_value, lesson_type)
 
     if coach_id:
-        initial["coach"] = coach_id
-    if court_id:
-        initial["court"] = court_id
+        initial["coach_choice"] = coach_id
     if lesson_type:
         initial["lesson_type"] = lesson_type
     if start_value:
@@ -1073,27 +1147,15 @@ def reservation_create(request):
                 with transaction.atomic():
                     reservation = form.save(commit=False)
                     reservation.user = request.user
+                    reservation.status = Reservation.STATUS_PENDING
 
-                    if reservation.lesson_type in (Reservation.LESSON_PRIVATE, Reservation.LESSON_GROUP):
-                        reservation.status = Reservation.STATUS_PENDING
-                    else:
-                        reservation.status = Reservation.STATUS_ACTIVE
+                    selected_coach_id = form.cleaned_data.get("coach_choice")
+                    _assign_pending_request_targets(reservation, selected_coach_id)
 
                     reservation.full_clean()
                     reservation.save()
 
-                    if reservation.status == Reservation.STATUS_ACTIVE:
-                        reservation.consume_tickets(
-                            reason=TicketLedger.REASON_RESERVATION_USE,
-                            created_by=request.user,
-                            note=f"予約作成時に消費: {reservation.start_at:%Y-%m-%d %H:%M}",
-                        )
-
-                if reservation.status == Reservation.STATUS_ACTIVE:
-                    messages.success(request, "予約を作成しました。")
-                else:
-                    messages.success(request, "申請を送信しました。コーチ承認後に成立します。")
-
+                messages.success(request, "申請を送信しました。コーチ承認後に成立します。")
                 return redirect("club:reservation_list")
 
             except ValidationError as e:
@@ -1200,7 +1262,7 @@ def reservation_cancel(request, pk):
 def coach_availability_list(request):
     _sync_fixed_lessons()
 
-    qs = CoachAvailability.objects.select_related("coach", "court").all()
+    qs = CoachAvailability.objects.select_related("coach", "substitute_coach", "court").all()
 
     if _is_coach_user(request.user):
         qs = qs.filter(coach=request.user)
@@ -1239,12 +1301,12 @@ def coach_availability_create(request, pk=None):
             availability.save()
 
             if instance is None:
-                messages.success(request, "コーチ空き時間を登録しました。")
+                messages.success(request, "コーチスケジュールを登録しました。")
             else:
-                messages.success(request, "コーチ空き時間を更新しました。")
+                messages.success(request, "コーチスケジュールを更新しました。")
             return redirect("club:coach_availability_list")
 
-        messages.error(request, "コーチ空き時間を保存できませんでした。入力内容をご確認ください。")
+        messages.error(request, "コーチスケジュールを保存できませんでした。入力内容をご確認ください。")
 
     return render(
         request,
@@ -1267,7 +1329,7 @@ def coach_availability_delete(request, pk):
             return HttpResponse("Forbidden", status=403)
 
     availability.delete()
-    messages.success(request, "コーチ空き時間を削除しました。")
+    messages.success(request, "コーチスケジュールを削除しました。")
     return redirect("club:coach_availability_list")
 
 
