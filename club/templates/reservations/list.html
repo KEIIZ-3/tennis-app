@@ -5,19 +5,47 @@
 <div class="card">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
     <div>
-      <h1 style="margin:0;">予約一覧</h1>
-      <p style="margin:8px 0 0;">{{ user.display_name }} さんの予約確認画面です。</p>
+      <h1 style="margin:0;">
+        {% if user.role == "coach" %}
+          担当予約一覧
+        {% else %}
+          予約一覧
+        {% endif %}
+      </h1>
+      <p style="margin:8px 0 0;">
+        {% if user.role == "coach" %}
+          {{ user.display_name }} さんが担当する予約確認画面です。
+        {% else %}
+          {{ user.display_name }} さんの予約確認画面です。
+        {% endif %}
+      </p>
     </div>
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
       {% if user.role == "member" %}
         <div style="padding:10px 12px; border:1px solid #fed7aa; background:#fff7ed; border-radius:10px;">
           チケット残数: <strong>{{ user.ticket_balance }}枚</strong>
         </div>
+        <a href="{% url 'club:reservation_create' %}" class="btn btn-primary">新規予約</a>
+      {% elif user.role == "coach" %}
+        <a href="{% url 'club:coach_availability_list' %}" class="btn">スケジュール管理</a>
+        <a href="{% url 'club:home' %}" class="btn btn-primary">コーチホーム</a>
+      {% else %}
+        <a href="{% url 'club:reservation_create' %}" class="btn btn-primary">新規予約</a>
       {% endif %}
-      <a href="{% url 'club:reservation_create' %}" class="btn btn-primary">新規予約</a>
     </div>
   </div>
 </div>
+
+{% if user.role == "coach" %}
+  <div class="card">
+    <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
+      <div style="font-weight:700; margin-bottom:6px;">コーチ向け表示</div>
+      <div class="muted">
+        通常担当または代行コーチとして割り当てられている予約のみ表示しています。
+      </div>
+    </div>
+  </div>
+{% endif %}
 
 <div class="card">
   {% if reservation_rows %}
@@ -111,7 +139,13 @@
   {% endif %}
 
   <div style="margin-top:18px;">
-    <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
+    <a href="{% url 'club:home' %}" class="btn">
+      {% if user.role == "coach" %}
+        コーチホームへ戻る
+      {% else %}
+        ホームへ戻る
+      {% endif %}
+    </a>
   </div>
 </div>
 {% endblock %}
