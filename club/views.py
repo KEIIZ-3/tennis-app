@@ -388,7 +388,7 @@ def _can_user_cancel_reservation(user, reservation):
 
     active_count = reservation.active_count_in_same_slot()
     if active_count <= 1 and reservation.status == Reservation.STATUS_ACTIVE:
-        return False, "最後の1名となるため、この予約はキャンセルできません。"
+        return False, "最後の1名となるため、この予約はキャンセルできません。")
 
     return True, ""
 
@@ -437,6 +437,8 @@ def _pick_request_slot(selected_coach_id, lesson_type, start_at, end_at):
 
 
 def _assign_pending_request_targets(reservation, selected_coach_id):
+    User = get_user_model()
+
     coach_qs = User.objects.filter(role="coach").order_by("username", "id")
     court_qs = Court.objects.filter(is_active=True).order_by("name", "id")
 
