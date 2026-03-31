@@ -95,8 +95,8 @@
             <a href="{% url 'club:tickets' %}" class="btn">チケット</a>
           {% endif %}
           <a href="{% url 'club:line_connect' %}" class="btn">LINE連携</a>
-          {% if user.is_staff or user.is_superuser or user.role == "coach" %}
-            <a href="{% url 'club:coach_availability_list' %}" class="btn">コーチ空き時間管理</a>
+          {% if user.role == "coach" %}
+            <a href="{% url 'club:coach_availability_list' %}" class="btn">コーチスケジュール管理</a>
           {% endif %}
         </div>
       </div>
@@ -324,7 +324,8 @@
             <tr><th>種別</th><td>予約可能枠</td></tr>
             <tr><th>レッスン種別</th><td>${escapeHtml(props.lesson_type_display || "-")}</td></tr>
             <tr><th>対象レベル</th><td>${escapeHtml(props.target_level_display || "-")}</td></tr>
-            <tr><th>コーチ</th><td>${escapeHtml(props.coach_name || "-")}</td></tr>
+            <tr><th>担当コーチ</th><td>${escapeHtml(props.coach_name || "-")}</td></tr>
+            <tr><th>代行コーチ</th><td>${escapeHtml(props.substitute_coach_name || "未設定")}</td></tr>
             <tr><th>時間</th><td>${formatDateTimeRange(event.start, event.end)}</td></tr>
             <tr><th>定員</th><td>${capacityHtml}</td></tr>
             <tr><th>担当コーチ人数</th><td>${escapeHtml(props.coach_count || "-")}人</td></tr>
