@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}コーチ別チケット集計{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h1 style="margin:0;">コーチ別チケット集計</h1>
+      <p class="muted" style="margin:8px 0 0;">
+        {{ month_label }} の価格帯別チケット消費を確認できます。
+      </p>
+    </div>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <a href="{% url 'club:coach_availability_list' %}" class="btn">コーチ空き時間</a>
+      <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <form method="get" style="display:flex; gap:12px; flex-wrap:wrap; align-items:end;">
+    <div style="min-width:120px;">
+      <label for="year">年</label>
+      <input type="number" id="year" name="year" value="{{ selected_year }}">
+    </div>
+
+    <div style="min-width:120px;">
+      <label for="month">月</label>
+      <input type="number" id="month" name="month" min="1" max="12" value="{{ selected_month }}">
+    </div>
+
+    {% if is_staff_mode %}
+      <div style="min-width:220px;">
+        <label for="coach_id">コーチ</label>
+        <select id="coach_id" name="coach_id">
+          {% for coach in coach_options %}
+            <option value="{{ coach.id }}" {% if selected_coach and coach.id == selected_coach.id %}selected{% endif %}>
+              {{ coach.display_name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    {% endif %}
+
+    <button type="submit" class="btn btn-primary">表示する</button>
+  </form>
+
+  <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="?year={{ prev_year }}&month={{ prev_month }}{% if selected_coach %}&coach_id={{ selected_coach.id }}{% endif %}" class="btn">前の月</a>
+    <a href="?year={{ next_year }}&month={{ next_month }}{% if selected_coach %}&coach_id={{ selected_coach.id }}{% endif %}" class="btn">次の月</a>
+  </div>
+</div>
+
+<div class="grid-3">
+  <div class="card">
+    <div class="muted" style="font-size:13px;">対象コーチ</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">
+      {% if selected_coach %}
+        {{ selected_coach.display_name }}
+      {% else %}
+        -
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="muted" style="font-size:13px;">総消費枚数</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ total_tickets }}枚</div>
+  </div>
+
+  <div class="card">
+    <div class="muted" style="font-size:13px;">価格帯換算合計</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ total_amount }}円</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">価格帯別集計</h2>
+
+  {% if breakdown_rows %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>価格帯</th>
+            <th>消費枚数</th>
+            <th>換算額</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in breakdown_rows %}
+            <tr>
+              <td>{{ row.label }}</td>
+              <td>{{ row.tickets }}枚</td>
+              <td>{{ row.amount }}円</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="muted" style="margin:0;">この月の消費データはまだありません。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">レッスン種別ごとの消費枚数</h2>
+
+  {% if lesson_type_rows %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>レッスン種別</th>
+            <th>消費枚数</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in lesson_type_rows %}
+            <tr>
+              <td>{{ row.lesson_label }}</td>
+              <td>{{ row.tickets }}枚</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="muted" style="margin:0;">この月のレッスン消費はまだありません。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">予約ごとの内訳</h2>
+
+  {% if reservation_rows %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>日時</th>
+            <th>会員</th>
+            <th>種別</th>
+            <th>コート</th>
+            <th>消費枚数</th>
+            <th>価格帯内訳</th>
+            <th>換算額</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in reservation_rows %}
+            <tr>
+              <td>
+                <div>{{ row.reservation.start_at|date:"Y-m-d H:i" }}</div>
+                <div class="muted" style="font-size:12px;">〜 {{ row.reservation.end_at|date:"H:i" }}</div>
+              </td>
+              <td>{{ row.reservation.user.display_name }}</td>
+              <td>{{ row.reservation.get_lesson_type_display }}</td>
+              <td>{{ row.reservation.court }}</td>
+              <td>{{ row.tickets }}枚</td>
+              <td>
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                  {% for item in row.breakdown_items %}
+                    <div style="display:inline-block; padding:6px 8px; border:1px solid #dbeafe; background:#eff6ff; border-radius:8px; font-size:13px;">
+                      {{ item.label }} × {{ item.tickets }}枚
+                    </div>
+                  {% endfor %}
+                </div>
+              </td>
+              <td>{{ row.amount }}円</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="muted" style="margin:0;">この月の予約内訳はまだありません。</p>
+  {% endif %}
+</div>
+{% endblock %}
