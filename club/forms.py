@@ -200,6 +200,7 @@ class CoachAvailabilityForm(forms.ModelForm):
         self.fields["coach_count"].help_text = "一般レッスンのみ使用。1人増えるごとに定員は6名、コートは1面追加されます。"
         self.fields["court_count"].help_text = "一般レッスンではコーチ人数に合わせて自動調整されます。"
         self.fields["capacity"].help_text = "一般レッスンではコーチ人数から自動計算されます。"
+        self.fields["custom_duration_hours"].help_text = "イベントのみ使用します。"
 
         if (
             self.request_user
@@ -268,9 +269,21 @@ class CoachAvailabilityForm(forms.ModelForm):
         if end_at.hour <= BUSINESS_START_HOUR or end_at.hour > BUSINESS_END_HOUR:
             self.add_error("end_hour", "終了時刻は 10:00〜21:00 の範囲で指定してください。")
 
-        expected_hours = Reservation.duration_hours_for_lesson_type(lesson_type, custom_duration_hours)
-        if end_at - start_at != timedelta(hours=expected_hours):
-            raise forms.ValidationError("レッスン種別に応じた時間で登録してください。")
+        duration_hours = int((end_at - start_at).total_seconds() // 3600)
+
+        if lesson_type == Reservation.LESSON_GENERAL:
+            if duration_hours != 2:
+                raise forms.ValidationError("一般レッスンは2時間で登録してください。")
+        elif lesson_type == Reservation.LESSON_PRIVATE:
+            if duration_hours < 1:
+                raise forms.ValidationError("プライベートレッスンは1時間以上で登録してください。")
+        elif lesson_type == Reservation.LESSON_GROUP:
+            if duration_hours < 1:
+                raise forms.ValidationError("グループレッスンは1時間以上で登録してください。")
+        elif lesson_type == Reservation.LESSON_EVENT:
+            expected_hours = int(custom_duration_hours or 1)
+            if duration_hours != expected_hours:
+                raise forms.ValidationError("イベントは設定した時間で登録してください。")
 
         if coach and substitute_coach and coach.pk == substitute_coach.pk:
             cleaned_data["substitute_coach"] = None
@@ -280,7 +293,16 @@ class CoachAvailabilityForm(forms.ModelForm):
                 self.add_error("coach_count", "一般レッスンの担当コーチ人数は1以上にしてください。")
             cleaned_data["court_count"] = coach_count
             cleaned_data["capacity"] = coach_count * 6
-        elif lesson_type in (Reservation.LESSON_PRIVATE, Reservation.LESSON_GROUP, Reservation.LESSON_EVENT):
+        elif lesson_type == Reservation.LESSON_PRIVATE:
+            cleaned_data["coach_count"] = 1
+            cleaned_data["court_count"] = 1
+            cleaned_data["capacity"] = 1
+        elif lesson_type == Reservation.LESSON_GROUP:
+            cleaned_data["coach_count"] = 1
+            cleaned_data["court_count"] = 1
+            if int(cleaned_data.get("capacity") or 0) < 2:
+                self.add_error("capacity", "グループレッスンの定員は2名以上にしてください。")
+        elif lesson_type == Reservation.LESSON_EVENT:
             cleaned_data["coach_count"] = 1
             cleaned_data["court_count"] = 1
 
@@ -403,9 +425,17 @@ class ReservationCreateForm(forms.ModelForm):
         if end_at.hour <= BUSINESS_START_HOUR or end_at.hour > BUSINESS_END_HOUR:
             self.add_error("end_hour", "終了時刻は 10:00〜21:00 の範囲で指定してください。")
 
-        expected_hours = Reservation.duration_hours_for_lesson_type(lesson_type)
-        if end_at - start_at != timedelta(hours=expected_hours):
-            raise forms.ValidationError("レッスン種別に応じた時間で予約してください。")
+        duration_hours = int((end_at - start_at).total_seconds() // 3600)
+
+        if lesson_type == Reservation.LESSON_GENERAL:
+            if duration_hours != 2:
+                raise forms.ValidationError("一般レッスンは2時間で予約してください。")
+        elif lesson_type == Reservation.LESSON_PRIVATE:
+            if duration_hours < 1:
+                raise forms.ValidationError("プライベートレッスンは1時間以上で予約してください。")
+        elif lesson_type == Reservation.LESSON_GROUP:
+            if duration_hours < 1:
+                raise forms.ValidationError("グループレッスンは1時間以上で予約してください。")
 
         if lesson_type == Reservation.LESSON_GROUP:
             requested_court_type = cleaned_data.get("requested_court_type")
