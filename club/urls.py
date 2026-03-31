@@ -25,6 +25,7 @@ urlpatterns = [
     path("coach/availability/new/", views.coach_availability_create, name="coach_availability_create"),
     path("coach/availability/<int:pk>/edit/", views.coach_availability_create, name="coach_availability_edit"),
     path("coach/availability/<int:pk>/delete/", views.coach_availability_delete, name="coach_availability_delete"),
+    path("coach/ticket-summary/", views.coach_ticket_summary, name="coach_ticket_summary"),
 
     path("line/", views.line_connect, name="line_connect"),
     path("line/link/", views.line_link, name="line_link"),
