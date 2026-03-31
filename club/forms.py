@@ -155,6 +155,7 @@ class CoachAvailabilityForm(forms.ModelForm):
         model = CoachAvailability
         fields = [
             "coach",
+            "substitute_coach",
             "court",
             "lesson_type",
             "target_level",
@@ -178,16 +179,21 @@ class CoachAvailabilityForm(forms.ModelForm):
         self.request_user = kwargs.pop("request_user", None)
         super().__init__(*args, **kwargs)
 
-        self.fields["coach"].queryset = User.objects.filter(role="coach").order_by("username")
+        coach_queryset = User.objects.filter(role="coach").order_by("username")
+        self.fields["coach"].queryset = coach_queryset
+        self.fields["substitute_coach"].queryset = coach_queryset
+        self.fields["substitute_coach"].required = False
         self.fields["court"].queryset = Court.objects.filter(is_active=True).order_by("name")
         self.fields["lesson_type"].label = "レッスン種別"
         self.fields["target_level"].label = "対象レベル"
+        self.fields["substitute_coach"].label = "代行コーチ（その日だけ）"
         self.fields["coach_count"].label = "担当コーチ人数"
         self.fields["court_count"].label = "利用コート面数"
         self.fields["capacity"].label = "定員"
         self.fields["custom_ticket_price"].label = "イベント用チケット価格"
         self.fields["custom_duration_hours"].label = "イベント用時間（時間）"
         self.fields["lesson_type"].initial = Reservation.LESSON_GENERAL
+        self.fields["substitute_coach"].help_text = "設定すると、この枠に紐づく同一日時の予約へ一括反映します。"
         self.fields["coach_count"].help_text = "一般レッスンのみ使用。1人増えるごとに定員は6名、コートは1面追加されます。"
         self.fields["court_count"].help_text = "一般レッスンではコーチ人数に合わせて自動調整されます。"
         self.fields["capacity"].help_text = "一般レッスンではコーチ人数から自動計算されます。"
