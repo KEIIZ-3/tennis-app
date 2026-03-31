@@ -1172,8 +1172,9 @@ class Reservation(models.Model, LessonTypeMixin):
                 fixed_lesson=self.fixed_lesson,
             )
 
-            self.ticket_consumed_at = timezone.now()
-            self.save(update_fields=["ticket_consumed_at"])
+            consumed_at = timezone.now()
+            Reservation.objects.filter(pk=self.pk).update(ticket_consumed_at=consumed_at)
+            self.ticket_consumed_at = consumed_at
             self.user.ticket_balance = locked_user.ticket_balance
             return ledger
 
@@ -1196,8 +1197,9 @@ class Reservation(models.Model, LessonTypeMixin):
                     reservation=self,
                     fixed_lesson=self.fixed_lesson,
                 )
-                self.ticket_refunded_at = timezone.now()
-                self.save(update_fields=["ticket_refunded_at"])
+                refunded_at = timezone.now()
+                Reservation.objects.filter(pk=self.pk).update(ticket_refunded_at=refunded_at)
+                self.ticket_refunded_at = refunded_at
                 return ledger
 
             for consumption in consumptions:
@@ -1221,18 +1223,72 @@ class Reservation(models.Model, LessonTypeMixin):
                 fixed_lesson=self.fixed_lesson,
             )
 
-            self.ticket_refunded_at = timezone.now()
-            self.save(update_fields=["ticket_refunded_at"])
+            refunded_at = timezone.now()
+            Reservation.objects.filter(pk=self.pk).update(ticket_refunded_at=refunded_at)
+            self.ticket_refunded_at = refunded_at
             return ledger
+
+    def activate_after_approval(self, created_by=None, approved_note=""):
+        if self.status != self.STATUS_PENDING:
+            raise ValidationError("承認待ちの申請のみ承認できます。")
+
+        if self.lesson_type not in (self.LESSON_PRIVATE, self.LESSON_GROUP):
+            raise ValidationError("承認処理の対象外のレッスン種別です。")
+
+        with transaction.atomic():
+            self.status = self.STATUS_ACTIVE
+            self.tickets_used = self.calculate_tickets_used()
+
+            Reservation.objects.filter(pk=self.pk, status=self.STATUS_PENDING).update(
+                status=self.STATUS_ACTIVE,
+                tickets_used=self.tickets_used,
+                approved_court_note=approved_note or self.approved_court_note,
+                canceled_at=None,
+                cancellation_reason="",
+            )
+
+            self.canceled_at = None
+            self.cancellation_reason = ""
+            if approved_note:
+                self.approved_court_note = approved_note
+
+            self.consume_tickets(
+                reason=TicketLedger.REASON_RESERVATION_USE,
+                created_by=created_by,
+                note=f"承認済み予約のチケット消費: {self.start_at:%Y-%m-%d %H:%M}",
+            )
+
+        return True
+
+    def reject_request(self, created_by=None, reason="コーチ却下"):
+        if self.status != self.STATUS_PENDING:
+            raise ValidationError("承認待ちの申請のみ却下できます。")
+
+        canceled_at = timezone.now()
+        Reservation.objects.filter(pk=self.pk, status=self.STATUS_PENDING).update(
+            status=self.STATUS_CANCELED,
+            canceled_at=canceled_at,
+            cancellation_reason=reason or "コーチ却下",
+        )
+        self.status = self.STATUS_CANCELED
+        self.canceled_at = canceled_at
+        self.cancellation_reason = reason or "コーチ却下"
+        return True
 
     def cancel(self, created_by=None, reason=""):
         if self.status not in (self.STATUS_ACTIVE, self.STATUS_PENDING):
             return False
 
+        canceled_at = timezone.now()
+        Reservation.objects.filter(pk=self.pk).update(
+            status=self.STATUS_CANCELED,
+            canceled_at=canceled_at,
+            cancellation_reason=reason or "会員キャンセル",
+        )
         self.status = self.STATUS_CANCELED
-        self.canceled_at = timezone.now()
+        self.canceled_at = canceled_at
         self.cancellation_reason = reason or "会員キャンセル"
-        self.save(update_fields=["status", "canceled_at", "cancellation_reason"])
+
         self.refund_tickets(
             reason=TicketLedger.REASON_CANCEL_REFUND,
             created_by=created_by,
@@ -1244,10 +1300,16 @@ class Reservation(models.Model, LessonTypeMixin):
         if self.status != self.STATUS_ACTIVE:
             return False
 
+        canceled_at = timezone.now()
+        Reservation.objects.filter(pk=self.pk).update(
+            status=self.STATUS_RAIN_CANCELED,
+            canceled_at=canceled_at,
+            cancellation_reason=reason,
+        )
         self.status = self.STATUS_RAIN_CANCELED
-        self.canceled_at = timezone.now()
+        self.canceled_at = canceled_at
         self.cancellation_reason = reason
-        self.save(update_fields=["status", "canceled_at", "cancellation_reason"])
+
         self.refund_tickets(
             reason=TicketLedger.REASON_RAIN_REFUND,
             created_by=created_by,
