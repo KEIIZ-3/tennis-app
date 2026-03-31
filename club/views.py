@@ -372,6 +372,16 @@ def _user_can_access_reservation(user, reservation):
     return False
 
 
+def _coach_can_manage_request(user, reservation):
+    if not user or not user.is_authenticated:
+        return False
+    if _is_staff_like(user):
+        return True
+    if not _is_coach_user(user):
+        return False
+    return reservation.coach_id == user.pk or getattr(reservation, "substitute_coach_id", None) == user.pk
+
+
 def _is_reservation_canceled(reservation):
     return reservation.status in (Reservation.STATUS_CANCELED, Reservation.STATUS_RAIN_CANCELED)
 
@@ -1271,13 +1281,105 @@ def coach_availability_list(request):
 
     qs = qs.order_by("start_at")
 
+    pending_qs = (
+        Reservation.objects.select_related("user", "coach", "substitute_coach", "court")
+        .filter(
+            status=Reservation.STATUS_PENDING,
+            lesson_type__in=[Reservation.LESSON_PRIVATE, Reservation.LESSON_GROUP],
+        )
+        .order_by("start_at", "created_at", "id")
+    )
+
+    if _is_staff_like(request.user) and not _is_coach_user(request.user):
+        pending_reservations = list(pending_qs)
+    elif _is_coach_user(request.user):
+        pending_reservations = [
+            reservation
+            for reservation in pending_qs
+            if reservation.coach_id == request.user.pk or getattr(reservation, "substitute_coach_id", None) == request.user.pk
+        ]
+    else:
+        return HttpResponse("Forbidden", status=403)
+
     return render(
         request,
         "coach/availability_list.html",
         {
             "availabilities": qs,
+            "pending_reservations": pending_reservations,
         },
     )
+
+
+@login_required
+@require_POST
+def coach_request_approve(request, pk):
+    reservation = get_object_or_404(
+        Reservation.objects.select_related("user", "coach", "substitute_coach", "court"),
+        pk=pk,
+    )
+
+    if not _coach_can_manage_request(request.user, reservation):
+        return HttpResponse("Forbidden", status=403)
+
+    if reservation.status != Reservation.STATUS_PENDING:
+        messages.error(request, "この申請はすでに処理済みです。")
+        return redirect("club:coach_availability_list")
+
+    if reservation.lesson_type not in (Reservation.LESSON_PRIVATE, Reservation.LESSON_GROUP):
+        messages.error(request, "この申請は承認対象外です。")
+        return redirect("club:coach_availability_list")
+
+    try:
+        with transaction.atomic():
+            reservation.activate_after_approval(created_by=request.user)
+        messages.success(
+            request,
+            f"申請を承認しました。会員: {_display_name(reservation.user)} / {_lesson_type_label(reservation.lesson_type)}",
+        )
+    except ValidationError as e:
+        messages.error(request, str(e))
+    except Exception as e:
+        messages.error(request, f"申請の承認に失敗しました: {e}")
+
+    return redirect("club:coach_availability_list")
+
+
+@login_required
+@require_POST
+def coach_request_reject(request, pk):
+    reservation = get_object_or_404(
+        Reservation.objects.select_related("user", "coach", "substitute_coach", "court"),
+        pk=pk,
+    )
+
+    if not _coach_can_manage_request(request.user, reservation):
+        return HttpResponse("Forbidden", status=403)
+
+    if reservation.status != Reservation.STATUS_PENDING:
+        messages.error(request, "この申請はすでに処理済みです。")
+        return redirect("club:coach_availability_list")
+
+    if reservation.lesson_type not in (Reservation.LESSON_PRIVATE, Reservation.LESSON_GROUP):
+        messages.error(request, "この申請は却下対象外です。")
+        return redirect("club:coach_availability_list")
+
+    try:
+        with transaction.atomic():
+            reservation.reject_request(
+                created_by=request.user,
+                reason="コーチ却下",
+            )
+        messages.success(
+            request,
+            f"申請を却下しました。会員: {_display_name(reservation.user)} / {_lesson_type_label(reservation.lesson_type)}",
+        )
+    except ValidationError as e:
+        messages.error(request, str(e))
+    except Exception as e:
+        messages.error(request, f"申請の却下に失敗しました: {e}")
+
+    return redirect("club:coach_availability_list")
 
 
 @login_required
