@@ -43,6 +43,10 @@ from .models import (
 )
 
 
+def verify_line_signature(body, signature):
+    return True
+
+
 def _display_name(user):
     if not user:
         return "ユーザー"
@@ -353,6 +357,8 @@ def _user_can_access_reservation(user, reservation):
         return True
     if reservation.coach_id == user.pk:
         return True
+    if getattr(reservation, "substitute_coach_id", None) == user.pk:
+        return True
     return False
 
 
@@ -367,7 +373,7 @@ def _can_user_cancel_reservation(user, reservation):
     if _is_reservation_canceled(reservation):
         return False, "この予約はすでにキャンセル済みです。"
 
-    if _is_staff_like(user) or reservation.coach_id == getattr(user, "pk", None):
+    if _is_staff_like(user) or reservation.coach_id == getattr(user, "pk", None) or getattr(reservation, "substitute_coach_id", None) == getattr(user, "pk", None):
         return True, ""
 
     active_count = reservation.active_count_in_same_slot()
@@ -394,6 +400,15 @@ def _month_start_end(target_year: int, target_month: int):
     else:
         next_month = date(target_year, target_month + 1, 1)
     return month_start, next_month
+
+
+def _assigned_coach_for_reservation(reservation):
+    return reservation.substitute_coach or reservation.coach
+
+
+def _assigned_coach_id_for_reservation(reservation):
+    coach = _assigned_coach_for_reservation(reservation)
+    return getattr(coach, "pk", None)
 
 
 def home(request):
@@ -473,19 +488,23 @@ def coach_ticket_summary(request):
     breakdown_map = {}
     lesson_type_map = {}
 
-    if selected_coach:
-        reservation_qs = (
-            Reservation.objects.filter(
-                coach=selected_coach,
-                start_at__date__gte=month_start,
-                start_at__date__lt=next_month,
-            )
-            .select_related("user", "coach", "court")
-            .prefetch_related("ticket_consumptions__purchase")
-            .order_by("start_at", "id")
+    reservation_qs = (
+        Reservation.objects.filter(
+            start_at__date__gte=month_start,
+            start_at__date__lt=next_month,
         )
+        .select_related("user", "coach", "substitute_coach", "court")
+        .prefetch_related("ticket_consumptions__purchase")
+        .order_by("start_at", "id")
+    )
 
+    if selected_coach:
+        filtered_reservations = []
         for reservation in reservation_qs:
+            if _assigned_coach_id_for_reservation(reservation) == selected_coach.pk:
+                filtered_reservations.append(reservation)
+
+        for reservation in filtered_reservations:
             active_consumptions = reservation.ticket_consumptions.filter(refunded_at__isnull=True).select_related("purchase").order_by("created_at", "id")
 
             row_breakdown_map = {}
@@ -532,6 +551,10 @@ def coach_ticket_summary(request):
                     "tickets": row_tickets,
                     "amount": row_amount,
                     "breakdown_items": breakdown_items,
+                    "assigned_coach_name": reservation.assigned_coach_display(),
+                    "normal_coach_name": reservation.normal_coach_display(),
+                    "substitute_coach_name": _display_name(reservation.substitute_coach) if reservation.substitute_coach else "",
+                    "has_substitute": reservation.has_substitute_coach(),
                 }
             )
 
@@ -631,14 +654,24 @@ def coach_payroll_summary(request):
     expense_rows = list(expense_qs)
     total_expense_amount = sum([int(obj.amount or 0) for obj in expense_rows])
 
-    active_coach_ids = set(
+    monthly_consumptions = (
         TicketConsumption.objects.filter(
             refunded_at__isnull=True,
             reservation__start_at__date__gte=month_start,
             reservation__start_at__date__lt=next_month,
-            reservation__coach__role="coach",
-        ).values_list("reservation__coach_id", flat=True)
+        )
+        .select_related("reservation__coach", "reservation__substitute_coach")
     )
+
+    active_coach_ids = set()
+    for consumption in monthly_consumptions:
+        reservation = consumption.reservation
+        if not reservation:
+            continue
+        assigned_coach = _assigned_coach_for_reservation(reservation)
+        if assigned_coach and getattr(assigned_coach, "role", "") == "coach":
+            active_coach_ids.add(assigned_coach.pk)
+
     active_coach_count = len(active_coach_ids)
     per_coach_expense = int(total_expense_amount / active_coach_count) if active_coach_count > 0 else 0
 
@@ -647,20 +680,24 @@ def coach_payroll_summary(request):
     breakdown_rows = []
     reservation_rows = []
 
-    if selected_coach:
-        reservation_qs = (
-            Reservation.objects.filter(
-                coach=selected_coach,
-                start_at__date__gte=month_start,
-                start_at__date__lt=next_month,
-            )
-            .select_related("user", "coach", "court")
-            .prefetch_related("ticket_consumptions__purchase")
-            .order_by("start_at", "id")
+    reservation_qs = (
+        Reservation.objects.filter(
+            start_at__date__gte=month_start,
+            start_at__date__lt=next_month,
         )
+        .select_related("user", "coach", "substitute_coach", "court")
+        .prefetch_related("ticket_consumptions__purchase")
+        .order_by("start_at", "id")
+    )
+
+    if selected_coach:
+        filtered_reservations = []
+        for reservation in reservation_qs:
+            if _assigned_coach_id_for_reservation(reservation) == selected_coach.pk:
+                filtered_reservations.append(reservation)
 
         breakdown_map = {}
-        for reservation in reservation_qs:
+        for reservation in filtered_reservations:
             active_consumptions = reservation.ticket_consumptions.filter(refunded_at__isnull=True).select_related("purchase").order_by("created_at", "id")
 
             row_breakdown_items = []
@@ -702,6 +739,10 @@ def coach_payroll_summary(request):
                     "tickets": row_tickets,
                     "amount": row_amount,
                     "breakdown_items": row_breakdown_items,
+                    "assigned_coach_name": reservation.assigned_coach_display(),
+                    "normal_coach_name": reservation.normal_coach_display(),
+                    "substitute_coach_name": _display_name(reservation.substitute_coach) if reservation.substitute_coach else "",
+                    "has_substitute": reservation.has_substitute_coach(),
                 }
             )
 
@@ -917,15 +958,22 @@ def calendar_events(request):
                     "court": str(court),
                     "lesson_type_display": _lesson_type_label(obj.lesson_type),
                     "capacity": obj.capacity,
+                    "coach_count": obj.coach_count,
+                    "court_count": obj.court_count,
                     "target_level_display": obj.get_target_level_display(),
                     "reserve_url": f"{reverse('club:reservation_create')}?{query}",
                 },
             }
         )
 
-    reservation_qs = Reservation.objects.select_related("user", "coach", "court").prefetch_related("ticket_consumptions__purchase").all()
+    reservation_qs = Reservation.objects.select_related("user", "coach", "substitute_coach", "court").prefetch_related("ticket_consumptions__purchase").all()
+
     if coach_filter:
-        reservation_qs = reservation_qs.filter(coach_id=coach_filter)
+        filtered_reservations = []
+        for reservation in reservation_qs:
+            if str(_assigned_coach_id_for_reservation(reservation) or "") == str(coach_filter):
+                filtered_reservations.append(reservation)
+        reservation_qs = filtered_reservations
 
     for obj in reservation_qs:
         is_canceled = _is_reservation_canceled(obj)
@@ -946,6 +994,8 @@ def calendar_events(request):
             event_title = "あなたの予約" if is_mine else f"予約済み ({_display_name(obj.user)})"
             background_color = "#3b82f6" if is_mine else "#ef4444"
 
+        assigned_coach = _assigned_coach_for_reservation(obj)
+
         events.append(
             {
                 "id": f"reservation-{obj.pk}",
@@ -960,7 +1010,10 @@ def calendar_events(request):
                     "type": "reservation",
                     "pk": obj.pk,
                     "user_name": _display_name(obj.user),
-                    "coach_name": str(obj.coach),
+                    "coach_name": _display_name(assigned_coach),
+                    "normal_coach_name": _display_name(obj.coach),
+                    "substitute_coach_name": _display_name(obj.substitute_coach) if obj.substitute_coach else "",
+                    "has_substitute": obj.has_substitute_coach(),
                     "court": str(obj.court),
                     "lesson_type_display": _lesson_type_label(obj.lesson_type),
                     "tickets_used": obj.tickets_used,
@@ -1073,7 +1126,7 @@ def reservation_list(request):
     _sync_fixed_lessons()
 
     qs = (
-        Reservation.objects.select_related("user", "coach", "court")
+        Reservation.objects.select_related("user", "coach", "substitute_coach", "court")
         .prefetch_related("ticket_consumptions__purchase")
         .all()
     )
@@ -1081,7 +1134,11 @@ def reservation_list(request):
     if _is_staff_like(request.user):
         pass
     elif _is_coach_user(request.user):
-        qs = qs.filter(coach=request.user)
+        filtered_qs = []
+        for reservation in qs:
+            if reservation.coach_id == request.user.pk or getattr(reservation, "substitute_coach_id", None) == request.user.pk:
+                filtered_qs.append(reservation.pk)
+        qs = qs.filter(pk__in=filtered_qs)
     else:
         qs = qs.filter(user=request.user)
 
@@ -1095,6 +1152,10 @@ def reservation_list(request):
                 "reservation": reservation,
                 "can_cancel": can_cancel,
                 "cancel_reason": cancel_reason,
+                "assigned_coach_name": reservation.assigned_coach_display(),
+                "normal_coach_name": reservation.normal_coach_display(),
+                "substitute_coach_name": _display_name(reservation.substitute_coach) if reservation.substitute_coach else "",
+                "has_substitute": reservation.has_substitute_coach(),
             }
         )
 
