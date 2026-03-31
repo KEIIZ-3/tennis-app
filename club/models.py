@@ -148,6 +148,14 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         related_name="coach_availabilities",
         limit_choices_to={"role": "coach"},
     )
+    substitute_coach = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="substitute_coach_availabilities",
+        limit_choices_to={"role": "coach"},
+    )
     court = models.ForeignKey(
         Court,
         on_delete=models.CASCADE,
@@ -188,6 +196,25 @@ class CoachAvailability(models.Model, LessonTypeMixin):
             return max(int(self.coach_count or 1), 1) * 6
         return int(self.capacity or 0)
 
+    def assigned_coach(self):
+        return self.substitute_coach or self.coach
+
+    def apply_substitute_to_reservations(self):
+        reservation_qs = Reservation.objects.filter(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=self.lesson_type,
+            start_at=self.start_at,
+            end_at=self.end_at,
+        )
+
+        for reservation in reservation_qs:
+            new_substitute_id = self.substitute_coach_id
+            if reservation.substitute_coach_id == new_substitute_id:
+                continue
+            reservation.substitute_coach = self.substitute_coach
+            reservation.save(update_fields=["substitute_coach"])
+
     def clean(self):
         if not self.start_at or not self.end_at:
             return
@@ -218,6 +245,9 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         expected_duration = timedelta(hours=self.effective_duration_hours())
         if duration != expected_duration:
             raise ValidationError("レッスン種別に応じた時間で登録してください。")
+
+        if self.substitute_coach_id and self.substitute_coach_id == self.coach_id:
+            self.substitute_coach = None
 
         if self.lesson_type == self.LESSON_GENERAL:
             if int(self.coach_count or 0) < 1:
@@ -257,8 +287,19 @@ class CoachAvailability(models.Model, LessonTypeMixin):
             raise ValidationError("同じコーチで重複する空き時間があります。")
 
     def save(self, *args, **kwargs):
+        previous_substitute_id = None
+        if self.pk:
+            previous_substitute_id = (
+                CoachAvailability.objects.filter(pk=self.pk).values_list("substitute_coach_id", flat=True).first()
+            )
+
         self.full_clean()
-        return super().save(*args, **kwargs)
+        result = super().save(*args, **kwargs)
+
+        if previous_substitute_id != self.substitute_coach_id:
+            self.apply_substitute_to_reservations()
+
+        return result
 
 
 class FixedLesson(models.Model, LessonTypeMixin):
@@ -423,6 +464,7 @@ class FixedLesson(models.Model, LessonTypeMixin):
                 reservation = Reservation(
                     user=member,
                     coach=self.coach,
+                    substitute_coach=availability.substitute_coach,
                     court=self.court,
                     availability=availability,
                     fixed_lesson=self,
@@ -969,6 +1011,8 @@ class Reservation(models.Model, LessonTypeMixin):
             self.target_level = availability.target_level
             self.custom_ticket_price = availability.custom_ticket_price
             self.custom_duration_hours = availability.custom_duration_hours
+            if availability.substitute_coach_id:
+                self.substitute_coach = availability.substitute_coach
 
             slot_reservations_qs = Reservation.objects.filter(
                 coach=self.coach,
