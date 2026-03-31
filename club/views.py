@@ -3,7 +3,7 @@ import secrets
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from urllib.parse import urlencode
 
 from django.conf import settings
@@ -39,13 +39,6 @@ from .models import (
     TicketConsumption,
     TicketLedger,
     TicketPurchase,
-)
-from .notifications import (
-    build_reservation_canceled_message,
-    build_reservation_created_message,
-    notify_user,
-    send_line_reply,
-    verify_line_signature,
 )
 
 
@@ -393,6 +386,15 @@ def _lesson_type_label(lesson_type):
     return mapping.get(lesson_type, lesson_type)
 
 
+def _month_start_end(target_year: int, target_month: int):
+    month_start = date(target_year, target_month, 1)
+    if target_month == 12:
+        next_month = date(target_year + 1, 1, 1)
+    else:
+        next_month = date(target_year, target_month + 1, 1)
+    return month_start, next_month
+
+
 def home(request):
     if request.user.is_authenticated:
         _sync_fixed_lessons()
@@ -428,6 +430,162 @@ def tickets_view(request):
             "ticket_consumptions": consumptions,
             "single_ticket_price": 4000,
             "set4_ticket_price": 14000,
+        },
+    )
+
+
+@login_required
+@require_GET
+def coach_ticket_summary(request):
+    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
+        return HttpResponse("Forbidden", status=403)
+
+    User = get_user_model()
+    today = timezone.localdate()
+
+    try:
+        selected_year = int(request.GET.get("year") or today.year)
+    except Exception:
+        selected_year = today.year
+
+    try:
+        selected_month = int(request.GET.get("month") or today.month)
+    except Exception:
+        selected_month = today.month
+
+    if selected_month < 1 or selected_month > 12:
+        selected_month = today.month
+
+    coach_queryset = User.objects.filter(role="coach").order_by("full_name", "username", "id")
+    if _is_staff_like(request.user) and not _is_coach_user(request.user):
+        selected_coach_id = (request.GET.get("coach_id") or "").strip()
+        selected_coach = coach_queryset.filter(pk=selected_coach_id).first() if selected_coach_id else coach_queryset.first()
+    else:
+        selected_coach = request.user
+        selected_coach_id = str(request.user.pk)
+
+    month_start, next_month = _month_start_end(selected_year, selected_month)
+
+    reservations = []
+    total_tickets = 0
+    total_amount = 0
+    breakdown_map = {}
+    lesson_type_map = {}
+
+    if selected_coach:
+        reservation_qs = (
+            Reservation.objects.filter(
+                coach=selected_coach,
+                start_at__date__gte=month_start,
+                start_at__date__lt=next_month,
+            )
+            .select_related("user", "coach", "court")
+            .prefetch_related("ticket_consumptions__purchase")
+            .order_by("start_at", "id")
+        )
+
+        for reservation in reservation_qs:
+            active_consumptions = reservation.ticket_consumptions.filter(refunded_at__isnull=True).select_related("purchase").order_by("created_at", "id")
+
+            row_breakdown_map = {}
+            row_tickets = 0
+            row_amount = 0
+
+            for consumption in active_consumptions:
+                unit_price = int(consumption.unit_price_snapshot or 0)
+                tickets_used = int(consumption.tickets_used or 0)
+
+                row_breakdown_map.setdefault(unit_price, 0)
+                row_breakdown_map[unit_price] += tickets_used
+
+                breakdown_map.setdefault(unit_price, 0)
+                breakdown_map[unit_price] += tickets_used
+
+                row_tickets += tickets_used
+                row_amount += unit_price * tickets_used
+
+            if row_tickets <= 0:
+                continue
+
+            lesson_type_map.setdefault(reservation.get_lesson_type_display(), 0)
+            lesson_type_map[reservation.get_lesson_type_display()] += row_tickets
+
+            total_tickets += row_tickets
+            total_amount += row_amount
+
+            breakdown_items = []
+            for unit_price, ticket_count in sorted(row_breakdown_map.items(), key=lambda x: x[0]):
+                label = f"{unit_price}円券" if unit_price > 0 else "価格不明券"
+                breakdown_items.append(
+                    {
+                        "unit_price": unit_price,
+                        "label": label,
+                        "tickets": ticket_count,
+                        "amount": unit_price * ticket_count,
+                    }
+                )
+
+            reservations.append(
+                {
+                    "reservation": reservation,
+                    "tickets": row_tickets,
+                    "amount": row_amount,
+                    "breakdown_items": breakdown_items,
+                }
+            )
+
+    breakdown_rows = []
+    for unit_price, ticket_count in sorted(breakdown_map.items(), key=lambda x: x[0]):
+        breakdown_rows.append(
+            {
+                "unit_price": unit_price,
+                "label": f"{unit_price}円券" if unit_price > 0 else "価格不明券",
+                "tickets": ticket_count,
+                "amount": unit_price * ticket_count,
+            }
+        )
+
+    lesson_type_rows = []
+    for lesson_label, ticket_count in sorted(lesson_type_map.items(), key=lambda x: x[0]):
+        lesson_type_rows.append(
+            {
+                "lesson_label": lesson_label,
+                "tickets": ticket_count,
+            }
+        )
+
+    prev_year = selected_year
+    prev_month = selected_month - 1
+    if prev_month == 0:
+        prev_month = 12
+        prev_year -= 1
+
+    next_year = selected_year
+    next_month = selected_month + 1
+    if next_month == 13:
+        next_month = 1
+        next_year += 1
+
+    return render(
+        request,
+        "coach/ticket_summary.html",
+        {
+            "coach_options": coach_queryset,
+            "selected_coach": selected_coach,
+            "selected_coach_id": selected_coach_id,
+            "selected_year": selected_year,
+            "selected_month": selected_month,
+            "month_label": f"{selected_year}年{selected_month}月",
+            "prev_year": prev_year,
+            "prev_month": prev_month,
+            "next_year": next_year,
+            "next_month": next_month,
+            "breakdown_rows": breakdown_rows,
+            "lesson_type_rows": lesson_type_rows,
+            "reservation_rows": reservations,
+            "total_tickets": total_tickets,
+            "total_amount": total_amount,
+            "is_staff_mode": _is_staff_like(request.user) and not _is_coach_user(request.user),
         },
     )
 
@@ -697,11 +855,6 @@ def reservation_create(request):
                         )
 
                 if reservation.status == Reservation.STATUS_ACTIVE:
-                    try:
-                        message = build_reservation_created_message(reservation)
-                        notify_user(request.user, message)
-                    except Exception:
-                        pass
                     messages.success(request, "予約を作成しました。")
                 else:
                     messages.success(request, "申請を送信しました。コーチ承認後に成立します。")
@@ -794,12 +947,6 @@ def reservation_cancel(request, pk):
     except Exception as e:
         messages.error(request, f"予約のキャンセルに失敗しました: {e}")
         return redirect("club:reservation_list")
-
-    try:
-        message = build_reservation_canceled_message(reservation)
-        notify_user(reservation.user, message)
-    except Exception:
-        pass
 
     messages.success(request, "予約をキャンセルしました。")
     return redirect("club:reservation_list")
