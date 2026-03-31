@@ -54,6 +54,16 @@ class ReservationAdminForm(forms.ModelForm):
         }
 
 
+class CoachExpenseAdminForm(forms.ModelForm):
+    class Meta:
+        model = CoachExpense
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["created_by"].queryset = User.objects.filter(role="coach").order_by("full_name", "username", "id")
+
+
 class CustomUserCreationForm(UserCreationForm):
     class Meta(UserCreationForm.Meta):
         model = User
@@ -300,6 +310,7 @@ class TicketConsumptionAdmin(admin.ModelAdmin):
 
 @admin.register(CoachExpense)
 class CoachExpenseAdmin(admin.ModelAdmin):
+    form = CoachExpenseAdminForm
     list_display = ("id", "expense_date", "category", "amount", "note", "created_by", "created_at")
     list_filter = ("category", "expense_date")
     search_fields = ("note",)
