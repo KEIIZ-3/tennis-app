@@ -41,10 +41,13 @@ from .models import (
     TicketLedger,
     TicketPurchase,
 )
-
-
-def verify_line_signature(body, signature):
-    return True
+from .notification import (
+    build_pending_request_for_coach_message,
+    build_request_approved_for_member_message,
+    build_request_rejected_for_member_message,
+    notify_user,
+    verify_line_signature,
+)
 
 
 def _display_name(user):
@@ -495,6 +498,15 @@ def _assign_pending_request_targets(reservation, selected_coach_id):
         reservation.requested_court_note = "コーチおまかせ"
     else:
         reservation.requested_court_note = ""
+
+
+def _send_line_notification_safely(user, message_text):
+    if not user or not message_text:
+        return
+    try:
+        notify_user(user, message_text)
+    except Exception:
+        pass
 
 
 def home(request):
@@ -1167,6 +1179,11 @@ def reservation_create(request):
                     reservation.full_clean()
                     reservation.save()
 
+                coach_message = build_pending_request_for_coach_message(reservation)
+                _send_line_notification_safely(reservation.coach, coach_message)
+                if getattr(reservation, "substitute_coach_id", None):
+                    _send_line_notification_safely(reservation.substitute_coach, coach_message)
+
                 messages.success(request, "申請を送信しました。コーチ承認後に成立します。")
                 return redirect("club:reservation_list")
 
@@ -1333,6 +1350,10 @@ def coach_request_approve(request, pk):
     try:
         with transaction.atomic():
             reservation.activate_after_approval(created_by=request.user)
+
+        member_message = build_request_approved_for_member_message(reservation)
+        _send_line_notification_safely(reservation.user, member_message)
+
         messages.success(
             request,
             f"申請を承認しました。会員: {_display_name(reservation.user)} / {_lesson_type_label(reservation.lesson_type)}",
@@ -1370,6 +1391,10 @@ def coach_request_reject(request, pk):
                 created_by=request.user,
                 reason="コーチ却下",
             )
+
+        member_message = build_request_rejected_for_member_message(reservation)
+        _send_line_notification_safely(reservation.user, member_message)
+
         messages.success(
             request,
             f"申請を却下しました。会員: {_display_name(reservation.user)} / {_lesson_type_label(reservation.lesson_type)}",
