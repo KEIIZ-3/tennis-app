@@ -595,6 +595,7 @@
             <a href="{% url 'club:reservation_list' %}">予約一覧</a>
             {% if user.is_staff or user.is_superuser or user.role == "coach" %}
               <a href="{% url 'club:coach_availability_list' %}">コーチ空き時間</a>
+              <a href="{% url 'club:coach_ticket_summary' %}">チケット集計</a>
             {% endif %}
             <a href="{% url 'club:line_connect' %}">LINE連携</a>
 
