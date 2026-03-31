@@ -53,6 +53,13 @@ class ReservationAdminForm(forms.ModelForm):
             ),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        coach_qs = User.objects.filter(role="coach").order_by("full_name", "username", "id")
+        self.fields["coach"].queryset = coach_qs
+        self.fields["substitute_coach"].queryset = coach_qs
+        self.fields["substitute_coach"].required = False
+
 
 class CoachExpenseAdminForm(forms.ModelForm):
     class Meta:
@@ -188,9 +195,11 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
         "court",
         "lesson_type",
         "target_level",
+        "coach_count",
+        "court_count",
+        "capacity",
         "start_at",
         "end_at",
-        "capacity",
     )
     list_filter = ("coach", "court", "lesson_type", "target_level")
     search_fields = ("coach__username", "coach__full_name", "court__name")
@@ -207,6 +216,8 @@ class FixedLessonAdmin(admin.ModelAdmin):
         "target_level",
         "weekday",
         "start_hour",
+        "coach_count",
+        "court_count",
         "capacity",
         "weeks_ahead",
         "is_active",
@@ -234,6 +245,7 @@ class ReservationAdmin(admin.ModelAdmin):
         "id",
         "user",
         "coach",
+        "substitute_coach",
         "court",
         "lesson_type",
         "target_level",
@@ -243,12 +255,14 @@ class ReservationAdmin(admin.ModelAdmin):
         "status",
         "is_fixed_entry",
     )
-    list_filter = ("status", "lesson_type", "target_level", "coach", "court", "is_fixed_entry")
+    list_filter = ("status", "lesson_type", "target_level", "coach", "substitute_coach", "court", "is_fixed_entry")
     search_fields = (
         "user__username",
         "user__full_name",
         "coach__username",
         "coach__full_name",
+        "substitute_coach__username",
+        "substitute_coach__full_name",
         "court__name",
         "cancellation_reason",
         "requested_court_note",
