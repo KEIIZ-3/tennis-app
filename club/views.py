@@ -32,6 +32,7 @@ from .forms import (
 )
 from .models import (
     CoachAvailability,
+    CoachExpense,
     Court,
     FixedLesson,
     LineAccountLink,
@@ -586,6 +587,187 @@ def coach_ticket_summary(request):
             "total_tickets": total_tickets,
             "total_amount": total_amount,
             "is_staff_mode": _is_staff_like(request.user) and not _is_coach_user(request.user),
+        },
+    )
+
+
+@login_required
+@require_GET
+def coach_payroll_summary(request):
+    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
+        return HttpResponse("Forbidden", status=403)
+
+    User = get_user_model()
+    today = timezone.localdate()
+
+    try:
+        selected_year = int(request.GET.get("year") or today.year)
+    except Exception:
+        selected_year = today.year
+
+    try:
+        selected_month = int(request.GET.get("month") or today.month)
+    except Exception:
+        selected_month = today.month
+
+    if selected_month < 1 or selected_month > 12:
+        selected_month = today.month
+
+    coach_queryset = User.objects.filter(role="coach").order_by("full_name", "username", "id")
+    if _is_staff_like(request.user) and not _is_coach_user(request.user):
+        selected_coach_id = (request.GET.get("coach_id") or "").strip()
+        selected_coach = coach_queryset.filter(pk=selected_coach_id).first() if selected_coach_id else coach_queryset.first()
+    else:
+        selected_coach = request.user
+        selected_coach_id = str(request.user.pk)
+
+    month_start, next_month = _month_start_end(selected_year, selected_month)
+
+    expense_qs = CoachExpense.objects.filter(
+        expense_date__gte=month_start,
+        expense_date__lt=next_month,
+    ).order_by("expense_date", "id")
+
+    expense_rows = list(expense_qs)
+    total_expense_amount = sum([int(obj.amount or 0) for obj in expense_rows])
+
+    active_coach_ids = set(
+        TicketConsumption.objects.filter(
+            refunded_at__isnull=True,
+            reservation__start_at__date__gte=month_start,
+            reservation__start_at__date__lt=next_month,
+            reservation__coach__role="coach",
+        ).values_list("reservation__coach_id", flat=True)
+    )
+    active_coach_count = len(active_coach_ids)
+    per_coach_expense = int(total_expense_amount / active_coach_count) if active_coach_count > 0 else 0
+
+    total_tickets = 0
+    total_amount = 0
+    breakdown_rows = []
+    reservation_rows = []
+
+    if selected_coach:
+        reservation_qs = (
+            Reservation.objects.filter(
+                coach=selected_coach,
+                start_at__date__gte=month_start,
+                start_at__date__lt=next_month,
+            )
+            .select_related("user", "coach", "court")
+            .prefetch_related("ticket_consumptions__purchase")
+            .order_by("start_at", "id")
+        )
+
+        breakdown_map = {}
+        for reservation in reservation_qs:
+            active_consumptions = reservation.ticket_consumptions.filter(refunded_at__isnull=True).select_related("purchase").order_by("created_at", "id")
+
+            row_breakdown_items = []
+            row_breakdown_map = {}
+            row_tickets = 0
+            row_amount = 0
+
+            for consumption in active_consumptions:
+                unit_price = int(consumption.unit_price_snapshot or 0)
+                tickets_used = int(consumption.tickets_used or 0)
+
+                breakdown_map.setdefault(unit_price, 0)
+                breakdown_map[unit_price] += tickets_used
+
+                row_breakdown_map.setdefault(unit_price, 0)
+                row_breakdown_map[unit_price] += tickets_used
+
+                row_tickets += tickets_used
+                row_amount += unit_price * tickets_used
+
+            if row_tickets <= 0:
+                continue
+
+            total_tickets += row_tickets
+            total_amount += row_amount
+
+            for unit_price, tickets in sorted(row_breakdown_map.items(), key=lambda x: x[0]):
+                row_breakdown_items.append(
+                    {
+                        "label": f"{unit_price}円券" if unit_price > 0 else "価格不明券",
+                        "tickets": tickets,
+                        "amount": unit_price * tickets,
+                    }
+                )
+
+            reservation_rows.append(
+                {
+                    "reservation": reservation,
+                    "tickets": row_tickets,
+                    "amount": row_amount,
+                    "breakdown_items": row_breakdown_items,
+                }
+            )
+
+        for unit_price, tickets in sorted(breakdown_map.items(), key=lambda x: x[0]):
+            breakdown_rows.append(
+                {
+                    "label": f"{unit_price}円券" if unit_price > 0 else "価格不明券",
+                    "tickets": tickets,
+                    "amount": unit_price * tickets,
+                }
+            )
+
+    estimated_salary = total_amount - per_coach_expense
+
+    category_totals = {}
+    for expense in expense_rows:
+        label = expense.get_category_display()
+        category_totals.setdefault(label, 0)
+        category_totals[label] += int(expense.amount or 0)
+
+    category_rows = []
+    for label, amount in sorted(category_totals.items(), key=lambda x: x[0]):
+        category_rows.append(
+            {
+                "label": label,
+                "amount": amount,
+            }
+        )
+
+    prev_year = selected_year
+    prev_month = selected_month - 1
+    if prev_month == 0:
+        prev_month = 12
+        prev_year -= 1
+
+    next_year = selected_year
+    next_month = selected_month + 1
+    if next_month == 13:
+        next_month = 1
+        next_year += 1
+
+    return render(
+        request,
+        "coach/payroll_summary.html",
+        {
+            "coach_options": coach_queryset,
+            "selected_coach": selected_coach,
+            "selected_coach_id": selected_coach_id,
+            "selected_year": selected_year,
+            "selected_month": selected_month,
+            "month_label": f"{selected_year}年{selected_month}月",
+            "prev_year": prev_year,
+            "prev_month": prev_month,
+            "next_year": next_year,
+            "next_month": next_month,
+            "is_staff_mode": _is_staff_like(request.user) and not _is_coach_user(request.user),
+            "breakdown_rows": breakdown_rows,
+            "reservation_rows": reservation_rows,
+            "expense_rows": expense_rows,
+            "category_rows": category_rows,
+            "total_tickets": total_tickets,
+            "total_amount": total_amount,
+            "total_expense_amount": total_expense_amount,
+            "active_coach_count": active_coach_count,
+            "per_coach_expense": per_coach_expense,
+            "estimated_salary": estimated_salary,
         },
     )
 
@@ -1340,21 +1522,11 @@ def line_webhook(request):
             user = _resolve_user_from_link_token(token)
 
             if user is None:
-                if reply_token:
-                    send_line_reply(
-                        reply_token,
-                        "連携コードを確認できませんでした。画面に表示されたコードをそのまま送信してください。",
-                    )
                 continue
 
             try:
                 conflict = LineAccountLink.objects.filter(line_user_id=line_user_id).exclude(user=user).first()
                 if conflict:
-                    if reply_token:
-                        send_line_reply(
-                            reply_token,
-                            "このLINEアカウントは別の会員に連携済みです。",
-                        )
                     continue
 
                 LineAccountLink.objects.update_or_create(
@@ -1365,23 +1537,7 @@ def line_webhook(request):
                         "last_event_at": timezone.now(),
                     },
                 )
-                if reply_token:
-                    send_line_reply(
-                        reply_token,
-                        "LINE連携が完了しました。今後、予約通知などを受け取れるようになります。",
-                    )
             except Exception:
-                if reply_token:
-                    send_line_reply(
-                        reply_token,
-                        "LINE連携の保存中にエラーが発生しました。",
-                    )
-
-        elif event_type == "follow":
-            if reply_token:
-                send_line_reply(
-                    reply_token,
-                    "友だち追加ありがとうございます。LINE内でかんたんに始める場合は、リッチメニューの予約ボタンから進んでください。通常の会員登録やログインはサイト上からも可能です。",
-                )
+                pass
 
     return HttpResponse("OK")
