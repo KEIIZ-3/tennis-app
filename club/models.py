@@ -561,6 +561,45 @@ class TicketConsumption(models.Model):
         return bool(self.refunded_at)
 
 
+class CoachExpense(models.Model):
+    CATEGORY_COURT = "court"
+    CATEGORY_BALL = "ball"
+    CATEGORY_EQUIPMENT = "equipment"
+    CATEGORY_SERVER = "server"
+    CATEGORY_OTHER = "other"
+
+    CATEGORY_CHOICES = (
+        (CATEGORY_COURT, "コート費用"),
+        (CATEGORY_BALL, "ボール費用"),
+        (CATEGORY_EQUIPMENT, "テニス用機材費用"),
+        (CATEGORY_SERVER, "サーバー代金"),
+        (CATEGORY_OTHER, "その他"),
+    )
+
+    expense_date = models.DateField(default=timezone.localdate)
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default=CATEGORY_OTHER)
+    amount = models.PositiveIntegerField(default=0)
+    note = models.CharField(max_length=255, blank=True, default="")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_coach_expenses",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-expense_date", "-id"]
+
+    def __str__(self):
+        return f"{self.expense_date:%Y-%m-%d} / {self.get_category_display()} / {self.amount}円"
+
+    def clean(self):
+        if self.amount < 0:
+            raise ValidationError("経費は0円以上にしてください。")
+
+
 def apply_ticket_change(
     *,
     user,
