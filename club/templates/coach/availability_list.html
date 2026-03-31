@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}コーチ空き時間管理{% endblock %}
+{% block title %}コーチスケジュール管理{% endblock %}
 
 {% block content %}
 <div class="card">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
     <div>
-      <h1 style="margin:0;">コーチ空き時間管理</h1>
+      <h1 style="margin:0;">コーチスケジュール管理</h1>
       <p class="muted" style="margin:8px 0 0;">
-        登録済みのレッスン枠を確認・編集できます。
+        登録済みのレッスン枠を確認・編集できます。代行コーチもここで設定できます。
       </p>
     </div>
 
@@ -24,7 +24,7 @@
     <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
       <li>一般 / プライベート / グループは通常ルールでチケットが消費されます。</li>
       <li>イベントは「イベント用チケット価格」に設定した枚数が使われます。</li>
-      <li>コーチ別の実際の消費価格帯内訳は、次段階で集計タブに追加予定です。</li>
+      <li>代行コーチを設定すると、その時間枠に紐づく予約へ自動反映されます。</li>
     </ul>
   </div>
 </div>
@@ -35,7 +35,8 @@
       <table>
         <thead>
           <tr>
-            <th>コーチ</th>
+            <th>担当コーチ</th>
+            <th>代行コーチ</th>
             <th>コート</th>
             <th>種別</th>
             <th>対象レベル</th>
@@ -51,12 +52,26 @@
           {% for availability in availabilities %}
             <tr>
               <td>{{ availability.coach.display_name }}</td>
+              <td>
+                {% if availability.substitute_coach %}
+                  {{ availability.substitute_coach.display_name }}
+                {% else %}
+                  <span class="muted">未設定</span>
+                {% endif %}
+              </td>
               <td>{{ availability.court }}</td>
               <td>{{ availability.get_lesson_type_display }}</td>
               <td>{{ availability.get_target_level_display }}</td>
               <td>{{ availability.start_at|date:"Y-m-d H:i" }}</td>
               <td>{{ availability.end_at|date:"Y-m-d H:i" }}</td>
-              <td>{{ availability.capacity }}</td>
+              <td>
+                <div>{{ availability.capacity }}</div>
+                {% if availability.lesson_type == "general" %}
+                  <div class="muted" style="font-size:12px;">
+                    {{ availability.coach_count }}人 / {{ availability.court_count }}面
+                  </div>
+                {% endif %}
+              </td>
               <td>
                 {% if availability.lesson_type == "event" %}
                   {{ availability.custom_ticket_price }}枚
@@ -81,7 +96,7 @@
       </table>
     </div>
   {% else %}
-    <p class="muted" style="margin:0;">まだ登録された空き時間はありません。</p>
+    <p class="muted" style="margin:0;">まだ登録されたスケジュールはありません。</p>
   {% endif %}
 </div>
 {% endblock %}
