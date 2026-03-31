@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from django import forms
 from django.contrib.auth import get_user_model
@@ -325,6 +325,7 @@ class CoachAvailabilityForm(forms.ModelForm):
 
 
 class ReservationCreateForm(forms.ModelForm):
+    coach_choice = forms.ChoiceField(label="コーチ", required=False)
     start_date = forms.DateField(
         label="開始日",
         widget=forms.DateInput(attrs={"type": "date"}),
@@ -345,32 +346,35 @@ class ReservationCreateForm(forms.ModelForm):
     class Meta:
         model = Reservation
         fields = [
-            "coach",
-            "court",
             "lesson_type",
-            "requested_court_type",
-            "requested_court_note",
         ]
 
     def __init__(self, *args, **kwargs):
         self.request_user = kwargs.pop("request_user", None)
         super().__init__(*args, **kwargs)
 
-        self.fields["coach"].queryset = User.objects.filter(role="coach").order_by("username")
-        self.fields["court"].queryset = Court.objects.filter(is_active=True).order_by("name")
+        coach_queryset = User.objects.filter(role="coach").order_by("username", "id")
+        self.fields["coach_choice"].choices = [("", "おまかせ")] + [
+            (str(coach.pk), coach.display_name()) for coach in coach_queryset
+        ]
+        self.fields["coach_choice"].help_text = "指定しない場合は、空いているコーチから自動で候補を割り当てます。"
+
         self.fields["lesson_type"].label = "レッスン種別"
-        self.fields["requested_court_type"].label = "希望コート"
-        self.fields["requested_court_note"].label = "コート情報"
-        self.fields["lesson_type"].initial = Reservation.LESSON_GENERAL
-        self.fields["requested_court_note"].widget.attrs.update(
-            {"placeholder": "それ以外のコートを選んだ場合は、コート名などを入力"}
-        )
+        self.fields["lesson_type"].choices = [
+            (Reservation.LESSON_PRIVATE, "プライベートレッスン"),
+            (Reservation.LESSON_GROUP, "グループレッスン"),
+        ]
+        self.fields["lesson_type"].initial = Reservation.LESSON_PRIVATE
+        self.fields["lesson_type"].help_text = "予約作成画面では、プライベート / グループのみ受け付けます。"
 
         start_at = self.initial.get("start_at") or getattr(self.instance, "start_at", None)
         end_at = self.initial.get("end_at") or getattr(self.instance, "end_at", None)
         lesson_type = self.initial.get("lesson_type") or getattr(self.instance, "lesson_type", None)
+        coach_choice = self.initial.get("coach_choice") or ""
 
-        if lesson_type:
+        self.fields["coach_choice"].initial = str(coach_choice)
+
+        if lesson_type in (Reservation.LESSON_PRIVATE, Reservation.LESSON_GROUP):
             self.fields["lesson_type"].initial = lesson_type
 
         if start_at:
@@ -402,11 +406,15 @@ class ReservationCreateForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
 
+        lesson_type = cleaned_data.get("lesson_type") or Reservation.LESSON_PRIVATE
         start_date = cleaned_data.get("start_date")
         start_hour = cleaned_data.get("start_hour")
         end_date = cleaned_data.get("end_date")
         end_hour = cleaned_data.get("end_hour")
-        lesson_type = cleaned_data.get("lesson_type") or Reservation.LESSON_GENERAL
+        coach_choice = (cleaned_data.get("coach_choice") or "").strip()
+
+        if lesson_type not in (Reservation.LESSON_PRIVATE, Reservation.LESSON_GROUP):
+            self.add_error("lesson_type", "この画面ではプライベートまたはグループを選択してください。")
 
         if not start_date or start_hour in (None, ""):
             self.add_error("start_date", "開始日時を入力してください。")
@@ -425,26 +433,20 @@ class ReservationCreateForm(forms.ModelForm):
         if end_at.hour <= BUSINESS_START_HOUR or end_at.hour > BUSINESS_END_HOUR:
             self.add_error("end_hour", "終了時刻は 10:00〜21:00 の範囲で指定してください。")
 
+        if end_at <= start_at:
+            raise forms.ValidationError("終了日時は開始日時より後にしてください。")
+
         duration_hours = int((end_at - start_at).total_seconds() // 3600)
+        if duration_hours < 1:
+            raise forms.ValidationError("予約は1時間以上で指定してください。")
 
-        if lesson_type == Reservation.LESSON_GENERAL:
-            if duration_hours != 2:
-                raise forms.ValidationError("一般レッスンは2時間で予約してください。")
-        elif lesson_type == Reservation.LESSON_PRIVATE:
-            if duration_hours < 1:
-                raise forms.ValidationError("プライベートレッスンは1時間以上で予約してください。")
-        elif lesson_type == Reservation.LESSON_GROUP:
-            if duration_hours < 1:
-                raise forms.ValidationError("グループレッスンは1時間以上で予約してください。")
-
-        if lesson_type == Reservation.LESSON_GROUP:
-            requested_court_type = cleaned_data.get("requested_court_type")
-            requested_court_note = (cleaned_data.get("requested_court_note") or "").strip()
-            if requested_court_type == Court.COURT_OTHER and not requested_court_note:
-                self.add_error("requested_court_note", "それ以外のコートを選択した場合は、コート情報を入力してください。")
+        if coach_choice:
+            if not User.objects.filter(role="coach", pk=coach_choice).exists():
+                self.add_error("coach_choice", "選択されたコーチが見つかりません。")
 
         cleaned_data["start_at"] = start_at
         cleaned_data["end_at"] = end_at
+        cleaned_data["coach_choice"] = coach_choice
         return cleaned_data
 
     def save(self, commit=True):
