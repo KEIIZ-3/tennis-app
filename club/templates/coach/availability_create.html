@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{% if is_edit %}コーチ空き時間編集{% else %}コーチ空き時間登録{% endif %}{% endblock %}
+{% block title %}{% if is_edit %}コーチスケジュール編集{% else %}コーチスケジュール登録{% endif %}{% endblock %}
 
 {% block content %}
 <div class="card">
@@ -7,9 +7,9 @@
     <div>
       <h1 style="margin:0;">
         {% if is_edit %}
-          コーチ空き時間編集
+          コーチスケジュール編集
         {% else %}
-          コーチ空き時間登録
+          コーチスケジュール登録
         {% endif %}
       </h1>
       <p class="muted" style="margin:8px 0 0;">
@@ -29,6 +29,7 @@
       <li>イベント以外は通常ルールでチケット消費されます。</li>
       <li>イベントだけ「イベント用チケット価格」に消費枚数を入力してください。</li>
       <li>イベント以外では、この価格欄は 0 のままで問題ありません。</li>
+      <li>代行コーチを設定すると、その時間枠に紐づく予約へ自動反映されます。</li>
     </ul>
   </div>
 
