@@ -388,7 +388,7 @@ def _can_user_cancel_reservation(user, reservation):
 
     active_count = reservation.active_count_in_same_slot()
     if active_count <= 1 and reservation.status == Reservation.STATUS_ACTIVE:
-        return False, "最後の1名となるため、この予約はキャンセルできません。")
+        return False, "最後の1名となるため、この予約はキャンセルできません。"
 
     return True, ""
 
