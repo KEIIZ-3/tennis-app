@@ -228,6 +228,16 @@
       font-weight:600;
     }
 
+    .coach-box{
+      margin-top:6px;
+      padding:8px 10px;
+      border-radius:10px;
+      background:#f8fafc;
+      border:1px solid #e5e7eb;
+      font-size:13px;
+      line-height:1.6;
+    }
+
     @media (max-width: 960px){
       .page-grid{
         grid-template-columns:1fr;
@@ -304,6 +314,11 @@
 
       function renderAvailabilityDetail(event) {
         const props = event.extendedProps || {};
+        let capacityHtml = escapeHtml(props.capacity || "-");
+        if (props.lesson_type_display === "一般レッスン") {
+          capacityHtml = `${escapeHtml(props.capacity || "-")}名`;
+        }
+
         detailPanel.innerHTML = `
           <table class="detail-table">
             <tr><th>種別</th><td>予約可能枠</td></tr>
@@ -311,7 +326,9 @@
             <tr><th>対象レベル</th><td>${escapeHtml(props.target_level_display || "-")}</td></tr>
             <tr><th>コーチ</th><td>${escapeHtml(props.coach_name || "-")}</td></tr>
             <tr><th>時間</th><td>${formatDateTimeRange(event.start, event.end)}</td></tr>
-            <tr><th>定員</th><td>${escapeHtml(props.capacity || "-")}</td></tr>
+            <tr><th>定員</th><td>${capacityHtml}</td></tr>
+            <tr><th>担当コーチ人数</th><td>${escapeHtml(props.coach_count || "-")}人</td></tr>
+            <tr><th>利用コート面数</th><td>${escapeHtml(props.court_count || "-")}面</td></tr>
           </table>
           <div class="detail-actions">
             ${
@@ -329,16 +346,29 @@
           ? `<div style="margin-top:6px;">${props.ticket_breakdown_text.split(" / ").map(item => `<span class="price-chip">${escapeHtml(item)}</span>`).join("")}</div>`
           : `<span class="muted">未消費 / 未確定</span>`;
 
+        const coachInfoHtml = props.has_substitute
+          ? `
+            <div class="coach-box">
+              <div><strong>通常担当:</strong> ${escapeHtml(props.normal_coach_name || "-")}</div>
+              <div><strong>代行コーチ:</strong> ${escapeHtml(props.substitute_coach_name || "-")}</div>
+            </div>
+          `
+          : `
+            <div class="coach-box">
+              <div><strong>担当コーチ:</strong> ${escapeHtml(props.coach_name || "-")}</div>
+            </div>
+          `;
+
         detailPanel.innerHTML = `
           <table class="detail-table">
             <tr><th>状態</th><td>${escapeHtml(props.status_display || "-")}</td></tr>
             <tr><th>参加者</th><td>${escapeHtml(props.user_name || "-")}</td></tr>
             <tr><th>レッスン種別</th><td>${escapeHtml(props.lesson_type_display || "-")}</td></tr>
-            <tr><th>コーチ</th><td>${escapeHtml(props.coach_name || "-")}</td></tr>
             <tr><th>時間</th><td>${formatDateTimeRange(event.start, event.end)}</td></tr>
             <tr><th>消費チケット</th><td>${escapeHtml(props.tickets_used || "-")}枚</td></tr>
             <tr><th>価格帯内訳</th><td>${breakdown}</td></tr>
           </table>
+          ${coachInfoHtml}
           <div class="detail-actions">
             ${
               props.can_cancel && props.cancel_url
