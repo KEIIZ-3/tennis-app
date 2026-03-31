@@ -62,6 +62,7 @@ class CoachExpenseAdminForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["created_by"].queryset = User.objects.filter(role="coach").order_by("full_name", "username", "id")
+        self.fields["created_by"].required = False
 
 
 class CustomUserCreationForm(UserCreationForm):
@@ -314,7 +315,8 @@ class CoachExpenseAdmin(admin.ModelAdmin):
     list_display = ("id", "expense_date", "category", "amount", "note", "created_by", "created_at")
     list_filter = ("category", "expense_date")
     search_fields = ("note",)
-    autocomplete_fields = ("created_by",)
+    # created_by は coach のみ表示したいので autocomplete は使わない
+    # form 側の queryset 制限をそのまま反映させる
 
 
 @admin.register(LineAccountLink)
