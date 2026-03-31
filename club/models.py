@@ -111,14 +111,16 @@ class LessonTypeMixin:
     )
 
     @classmethod
-    def duration_hours_for_lesson_type(cls, lesson_type: str, custom_duration_hours=None) -> int:
-        if lesson_type == cls.LESSON_PRIVATE:
-            return 1
-        if lesson_type == cls.LESSON_GROUP:
-            return 1
+    def minimum_duration_hours_for_lesson_type(cls, lesson_type: str, custom_duration_hours=None) -> int:
+        if lesson_type == cls.LESSON_GENERAL:
+            return 2
         if lesson_type == cls.LESSON_EVENT:
             return int(custom_duration_hours or 1)
-        return 2
+        return 1
+
+    @classmethod
+    def is_flexible_duration_lesson_type(cls, lesson_type: str) -> bool:
+        return lesson_type in (cls.LESSON_PRIVATE, cls.LESSON_GROUP)
 
     @classmethod
     def default_tickets_for_lesson_type(cls, lesson_type: str, custom_ticket_price=None) -> int:
@@ -188,8 +190,11 @@ class CoachAvailability(models.Model, LessonTypeMixin):
     def __str__(self):
         return f"{self.coach} / {self.court} / {self.get_lesson_type_display()} / {self.start_at:%Y-%m-%d %H:%M}"
 
-    def effective_duration_hours(self):
-        return self.duration_hours_for_lesson_type(self.lesson_type, self.custom_duration_hours)
+    def duration_hours(self):
+        if not self.start_at or not self.end_at:
+            return 0
+        delta = self.end_at - self.start_at
+        return int(delta.total_seconds() // 3600)
 
     def effective_capacity(self):
         if self.lesson_type == self.LESSON_GENERAL:
@@ -241,10 +246,21 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         if end_local.hour <= BUSINESS_START_HOUR or end_local.hour > BUSINESS_END_HOUR:
             raise ValidationError("終了時刻は 10:00〜21:00 の範囲で指定してください。")
 
-        duration = self.end_at - self.start_at
-        expected_duration = timedelta(hours=self.effective_duration_hours())
-        if duration != expected_duration:
-            raise ValidationError("レッスン種別に応じた時間で登録してください。")
+        duration_hours = self.duration_hours()
+        minimum_hours = self.minimum_duration_hours_for_lesson_type(self.lesson_type, self.custom_duration_hours)
+
+        if self.lesson_type == self.LESSON_GENERAL:
+            if duration_hours != 2:
+                raise ValidationError("一般レッスンは2時間で登録してください。")
+        elif self.lesson_type == self.LESSON_PRIVATE:
+            if duration_hours < 1:
+                raise ValidationError("プライベートレッスンは1時間以上で登録してください。")
+        elif self.lesson_type == self.LESSON_GROUP:
+            if duration_hours < 1:
+                raise ValidationError("グループレッスンは1時間以上で登録してください。")
+        elif self.lesson_type == self.LESSON_EVENT:
+            if duration_hours != minimum_hours:
+                raise ValidationError("イベントは設定した時間で登録してください。")
 
         if self.substitute_coach_id and self.substitute_coach_id == self.coach_id:
             self.substitute_coach = None
@@ -263,8 +279,8 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         elif self.lesson_type == self.LESSON_GROUP:
             self.coach_count = 1
             self.court_count = 1
-            if self.capacity < 2 or self.capacity > 4:
-                raise ValidationError("グループレッスンの定員は2〜4名にしてください。")
+            if self.capacity < 2:
+                raise ValidationError("グループレッスンの定員は2名以上にしてください。")
 
         elif self.lesson_type == self.LESSON_EVENT:
             self.coach_count = 1
@@ -367,8 +383,8 @@ class FixedLesson(models.Model, LessonTypeMixin):
         if self.start_hour < BUSINESS_START_HOUR or self.start_hour >= BUSINESS_END_HOUR:
             raise ValidationError("固定レッスンの開始時刻は 09:00〜20:00 の範囲で指定してください。")
 
-        duration_hours = self.duration_hours_for_lesson_type(self.lesson_type)
-        if self.start_hour + duration_hours > BUSINESS_END_HOUR:
+        minimum_hours = self.minimum_duration_hours_for_lesson_type(self.lesson_type)
+        if self.start_hour + minimum_hours > BUSINESS_END_HOUR:
             raise ValidationError("固定レッスンの終了時刻が営業時間を超えています。")
 
         if self.lesson_type == self.LESSON_GENERAL:
@@ -385,8 +401,8 @@ class FixedLesson(models.Model, LessonTypeMixin):
         elif self.lesson_type == self.LESSON_GROUP:
             self.coach_count = 1
             self.court_count = 1
-            if self.capacity < 2 or self.capacity > 4:
-                raise ValidationError("グループレッスンの定員は2〜4名にしてください。")
+            if self.capacity < 2:
+                raise ValidationError("グループレッスンの定員は2名以上にしてください。")
 
         elif self.lesson_type == self.LESSON_EVENT:
             self.coach_count = 1
@@ -398,7 +414,12 @@ class FixedLesson(models.Model, LessonTypeMixin):
         start_dt = datetime.combine(target_date, time(self.start_hour, 0))
         if timezone.is_naive(start_dt):
             start_dt = timezone.make_aware(start_dt)
-        end_dt = start_dt + timedelta(hours=self.duration_hours_for_lesson_type(self.lesson_type))
+
+        if self.lesson_type == self.LESSON_GENERAL:
+            end_dt = start_dt + timedelta(hours=2)
+        else:
+            end_dt = start_dt + timedelta(hours=1)
+
         return start_dt, end_dt
 
     def sync_future_reservations(self, created_by=None):
@@ -915,10 +936,18 @@ class Reservation(models.Model, LessonTypeMixin):
             return self.coach.display_name()
         return "-"
 
-    def effective_duration_hours(self):
-        return self.duration_hours_for_lesson_type(self.lesson_type, self.custom_duration_hours)
+    def duration_hours(self):
+        if not self.start_at or not self.end_at:
+            return 0
+        delta = self.end_at - self.start_at
+        return int(delta.total_seconds() // 3600)
 
     def calculate_tickets_used(self):
+        duration_hours = self.duration_hours()
+
+        if self.lesson_type == self.LESSON_PRIVATE:
+            return max(duration_hours, 1) * 2
+
         if self.lesson_type == self.LESSON_GROUP:
             active_count = Reservation.objects.filter(
                 coach=self.coach,
@@ -930,12 +959,13 @@ class Reservation(models.Model, LessonTypeMixin):
             ).count()
             if self.pk and self.status == self.STATUS_ACTIVE:
                 active_count += 1
-            return max(active_count, 1)
+            participant_count = max(active_count, 1)
+            return max(duration_hours, 1) * participant_count
 
         if self.lesson_type == self.LESSON_EVENT:
             return int(self.custom_ticket_price or 0)
 
-        return self.default_tickets_for_lesson_type(self.lesson_type, self.custom_ticket_price)
+        return 1
 
     def clean(self):
         if not self.start_at or not self.end_at:
@@ -963,9 +993,21 @@ class Reservation(models.Model, LessonTypeMixin):
         if end_local.hour <= BUSINESS_START_HOUR or end_local.hour > BUSINESS_END_HOUR:
             raise ValidationError("予約終了時刻は 10:00〜21:00 の範囲で指定してください。")
 
-        expected_duration = timedelta(hours=self.effective_duration_hours())
-        if self.end_at - self.start_at != expected_duration:
-            raise ValidationError("レッスン種別に応じた時間で予約してください。")
+        duration_hours = self.duration_hours()
+
+        if self.lesson_type == self.LESSON_GENERAL:
+            if duration_hours != 2:
+                raise ValidationError("一般レッスンは2時間で予約してください。")
+        elif self.lesson_type == self.LESSON_PRIVATE:
+            if duration_hours < 1:
+                raise ValidationError("プライベートレッスンは1時間以上で予約してください。")
+        elif self.lesson_type == self.LESSON_GROUP:
+            if duration_hours < 1:
+                raise ValidationError("グループレッスンは1時間以上で予約してください。")
+        elif self.lesson_type == self.LESSON_EVENT:
+            minimum_hours = self.minimum_duration_hours_for_lesson_type(self.lesson_type, self.custom_duration_hours)
+            if duration_hours != minimum_hours:
+                raise ValidationError("イベントは設定した時間で予約してください。")
 
         self.tickets_used = self.calculate_tickets_used()
 
