@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import urllib.error
 import urllib.request
@@ -9,6 +10,8 @@ import urllib.request
 from django.apps import apps
 from django.utils import timezone
 
+
+logger = logging.getLogger(__name__)
 
 LINE_PUSH_API_URL = "https://api.line.me/v2/bot/message/push"
 LINE_REPLY_API_URL = "https://api.line.me/v2/bot/message/reply"
@@ -26,9 +29,19 @@ def _get_channel_secret() -> str:
     return _get_env("LINE_CHANNEL_SECRET")
 
 
+def _mask_line_user_id(line_user_id: str) -> str:
+    value = str(line_user_id or "").strip()
+    if not value:
+        return ""
+    if len(value) <= 8:
+        return value[:2] + "***"
+    return value[:4] + "..." + value[-4:]
+
+
 def _line_request(url: str, payload: dict) -> tuple[bool, str]:
     token = _get_channel_access_token()
     if not token:
+        logger.warning("LINE notify skipped: LINE_CHANNEL_ACCESS_TOKEN is not set.")
         return False, "LINE_CHANNEL_ACCESS_TOKEN is not set."
 
     data = json.dumps(payload).encode("utf-8")
@@ -45,19 +58,23 @@ def _line_request(url: str, payload: dict) -> tuple[bool, str]:
     try:
         with urllib.request.urlopen(req, timeout=10) as res:
             body = res.read().decode("utf-8", errors="ignore")
+            logger.info("LINE API success: url=%s response=%s", url, body)
             return True, body
     except urllib.error.HTTPError as e:
         try:
             error_body = e.read().decode("utf-8", errors="ignore")
         except Exception:
             error_body = str(e)
+        logger.warning("LINE API http error: url=%s status=%s body=%s", url, getattr(e, "code", ""), error_body)
         return False, error_body
     except Exception as e:
+        logger.exception("LINE API unexpected error: url=%s error=%s", url, e)
         return False, str(e)
 
 
 def send_line_push(line_user_id: str, message: str) -> tuple[bool, str]:
     if not line_user_id:
+        logger.warning("LINE push skipped: line_user_id is empty.")
         return False, "line_user_id is empty."
 
     payload = {
@@ -69,11 +86,17 @@ def send_line_push(line_user_id: str, message: str) -> tuple[bool, str]:
             }
         ],
     }
+    logger.info(
+        "LINE push attempt: to=%s message_preview=%s",
+        _mask_line_user_id(line_user_id),
+        (message or "")[:80],
+    )
     return _line_request(LINE_PUSH_API_URL, payload)
 
 
 def send_line_reply(reply_token: str, message: str) -> tuple[bool, str]:
     if not reply_token:
+        logger.warning("LINE reply skipped: reply_token is empty.")
         return False, "reply_token is empty."
 
     payload = {
@@ -85,12 +108,14 @@ def send_line_reply(reply_token: str, message: str) -> tuple[bool, str]:
             }
         ],
     }
+    logger.info("LINE reply attempt: message_preview=%s", (message or "")[:80])
     return _line_request(LINE_REPLY_API_URL, payload)
 
 
 def verify_line_signature(body: bytes, signature: str) -> bool:
     secret = _get_channel_secret()
     if not secret:
+        logger.warning("LINE signature verify failed: LINE_CHANNEL_SECRET is not set.")
         return False
 
     if not isinstance(body, (bytes, bytearray)):
@@ -102,13 +127,17 @@ def verify_line_signature(body: bytes, signature: str) -> bool:
         hashlib.sha256,
     ).digest()
     expected_signature = base64.b64encode(digest).decode("utf-8")
-    return hmac.compare_digest(expected_signature, signature or "")
+    matched = hmac.compare_digest(expected_signature, signature or "")
+    if not matched:
+        logger.warning("LINE signature mismatch.")
+    return matched
 
 
 def _get_line_account_link_model():
     try:
         return apps.get_model("club", "LineAccountLink")
     except Exception:
+        logger.exception("Failed to load LineAccountLink model.")
         return None
 
 
@@ -142,25 +171,57 @@ def _get_user_display(user) -> str:
 
 def notify_user(user, message: str) -> tuple[bool, str]:
     if not user or not message:
+        logger.warning("notify_user skipped: user or message is empty.")
         return False, "user or message is empty."
+
+    user_label = _get_user_display(user)
+    user_id = getattr(user, "pk", None)
 
     LineAccountLink = _get_line_account_link_model()
     if LineAccountLink is None:
+        logger.warning("notify_user failed: LineAccountLink model not found. user_id=%s user=%s", user_id, user_label)
         return False, "LineAccountLink model not found."
 
     try:
         link = LineAccountLink.objects.filter(user=user, is_active=True).first()
     except Exception as e:
+        logger.exception("notify_user failed: LineAccountLink lookup error. user_id=%s user=%s", user_id, user_label)
         return False, f"failed to lookup LineAccountLink: {e}"
 
     if not link:
+        logger.warning(
+            "notify_user skipped: active LineAccountLink not found. user_id=%s user=%s",
+            user_id,
+            user_label,
+        )
         return False, "active LineAccountLink not found."
 
     line_user_id = getattr(link, "line_user_id", "") or ""
     if not line_user_id:
+        logger.warning(
+            "notify_user skipped: line_user_id is empty. user_id=%s user=%s",
+            user_id,
+            user_label,
+        )
         return False, "line_user_id is empty."
 
-    return send_line_push(line_user_id=line_user_id, message=message)
+    ok, result = send_line_push(line_user_id=line_user_id, message=message)
+    if ok:
+        logger.info(
+            "notify_user success: user_id=%s user=%s to=%s",
+            user_id,
+            user_label,
+            _mask_line_user_id(line_user_id),
+        )
+    else:
+        logger.warning(
+            "notify_user failed: user_id=%s user=%s to=%s result=%s",
+            user_id,
+            user_label,
+            _mask_line_user_id(line_user_id),
+            result,
+        )
+    return ok, result
 
 
 def notify_users(users, message: str):
