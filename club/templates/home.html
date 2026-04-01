@@ -81,6 +81,7 @@
         チケット消費の集計や給与計算を月ごとに確認します。
       </p>
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="btn">固定レッスン</a>
         <a href="{% url 'club:coach_ticket_summary' %}" class="btn">チケット集計</a>
         <a href="{% url 'club:coach_payroll_summary' %}" class="btn">給与計算</a>
       </div>
@@ -92,6 +93,7 @@
     <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px;">
       <a href="{% url 'club:coach_availability_list' %}" class="btn" style="justify-content:flex-start;">スケジュール管理</a>
       <a href="{% url 'club:reservation_list' %}" class="btn" style="justify-content:flex-start;">予約一覧</a>
+      <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="btn" style="justify-content:flex-start;">固定レッスン</a>
       <a href="{% url 'club:coach_ticket_summary' %}" class="btn" style="justify-content:flex-start;">チケット集計</a>
       <a href="{% url 'club:coach_payroll_summary' %}" class="btn" style="justify-content:flex-start;">給与計算</a>
       <a href="{% url 'club:line_connect' %}" class="btn" style="justify-content:flex-start;">LINE連携</a>
@@ -105,7 +107,7 @@
       <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
         <li>private / group の申請確認は「スケジュール管理」から行います。</li>
         <li>チケット集計・給与計算は代行コーチ側に寄せた表示です。</li>
-        <li>今後はこのCoach専用導線に、固定レッスンタブや通知導線を追加していく想定です。</li>
+        <li>固定レッスンは「固定レッスン」タブから、今週分だけをまとめて確認できます。</li>
       </ul>
     </div>
   </div>
