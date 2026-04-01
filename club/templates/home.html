@@ -5,7 +5,7 @@
 
 {% if not user.is_authenticated %}
   <div class="card">
-    <h1 style="margin-top:0;">Tennis Club へようこそ</h1>
+    <h1 style="margin-top:0;">Play Design Tennis へようこそ</h1>
     <p style="margin:12px 0 0;">
       初めての方は、<strong>LINE内の予約ボタン</strong>から進むと、そのまま会員登録とLINE連携が自動で完了します。
     </p>
@@ -97,7 +97,6 @@
       <a href="{% url 'club:coach_ticket_summary' %}" class="btn" style="justify-content:flex-start;">チケット集計</a>
       <a href="{% url 'club:coach_payroll_summary' %}" class="btn" style="justify-content:flex-start;">給与計算</a>
       <a href="{% url 'club:line_connect' %}" class="btn" style="justify-content:flex-start;">LINE連携</a>
-      <a href="{% url 'club:home' %}" class="btn" style="justify-content:flex-start;">このホームを再表示</a>
     </div>
   </div>
 
@@ -107,7 +106,7 @@
       <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
         <li>private / group の申請確認は「スケジュール管理」から行います。</li>
         <li>チケット集計・給与計算は代行コーチ側に寄せた表示です。</li>
-        <li>固定レッスンは「固定レッスン」タブから、今週分だけをまとめて確認できます。</li>
+        <li>固定レッスンは「固定レッスン」タブから1週間単位で確認できます。</li>
       </ul>
     </div>
   </div>
