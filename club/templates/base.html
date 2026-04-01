@@ -681,6 +681,12 @@
             スケジュール管理
           </a>
           <a
+            href="{% url 'club:coach_fixed_lesson_weekly' %}"
+            class="coach-tab {% if request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}active{% endif %}"
+          >
+            固定レッスン
+          </a>
+          <a
             href="{% url 'club:coach_ticket_summary' %}"
             class="coach-tab {% if request.resolver_match.url_name == 'coach_ticket_summary' %}active{% endif %}"
           >
