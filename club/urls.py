@@ -29,6 +29,7 @@ urlpatterns = [
     path("coach/requests/<int:pk>/approve/", views.coach_request_approve, name="coach_request_approve"),
     path("coach/requests/<int:pk>/reject/", views.coach_request_reject, name="coach_request_reject"),
 
+    path("coach/fixed-lessons/", views.coach_fixed_lesson_weekly, name="coach_fixed_lesson_weekly"),
     path("coach/ticket-summary/", views.coach_ticket_summary, name="coach_ticket_summary"),
     path("coach/payroll-summary/", views.coach_payroll_summary, name="coach_payroll_summary"),
 
