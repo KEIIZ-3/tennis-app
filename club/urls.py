@@ -18,7 +18,7 @@ urlpatterns = [
     path("tickets/", views.tickets_view, name="tickets"),
 
     path("survey/schedule/", views.schedule_survey_view, name="schedule_survey"),
-    path("coach/survey-summary/", views.coach_schedule_survey_summary, name="coach_schedule_survey_summary"),
+    path("coach/survey-summary/", views.schedule_survey_summary_view, name="schedule_survey_summary"),
 
     path("reservations/new/", views.reservation_create, name="reservation_create"),
     path("reservations/", views.reservation_list, name="reservation_list"),
