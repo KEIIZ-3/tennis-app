@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import UserCreationForm
 from django.utils import timezone
 
-from .models import CoachAvailability, Court, LineAccountLink, Reservation
+from .models import CoachAvailability, Court, LineAccountLink, Reservation, TicketPurchase
 
 User = get_user_model()
 
@@ -457,6 +457,91 @@ class ReservationCreateForm(forms.ModelForm):
         if commit:
             instance.save()
         return instance
+
+
+class TicketGrantAdminForm(forms.Form):
+    tickets = forms.IntegerField(
+        label="付与枚数",
+        min_value=1,
+        initial=1,
+        widget=forms.NumberInput(attrs={"min": 1}),
+        help_text="1以上の整数で入力してください。",
+    )
+    unit_price = forms.IntegerField(
+        label="1枚あたり金額",
+        min_value=0,
+        initial=4000,
+        widget=forms.NumberInput(attrs={"min": 0, "step": 1}),
+        help_text="円単位で入力してください。",
+    )
+    label = forms.CharField(
+        label="表示ラベル",
+        max_length=100,
+        required=False,
+        widget=forms.TextInput(attrs={"placeholder": "例: 4枚セット / 管理画面付与 / キャンペーン券"}),
+    )
+    note = forms.CharField(
+        label="メモ",
+        max_length=255,
+        required=False,
+        widget=forms.TextInput(attrs={"placeholder": "例: 管理画面から一括付与"}),
+    )
+
+    def clean_tickets(self):
+        value = int(self.cleaned_data.get("tickets") or 0)
+        if value < 1:
+            raise forms.ValidationError("付与枚数は1以上にしてください。")
+        return value
+
+    def clean_unit_price(self):
+        value = int(self.cleaned_data.get("unit_price") or 0)
+        if value < 0:
+            raise forms.ValidationError("1枚あたり金額は0以上にしてください。")
+        return value
+
+    def clean_label(self):
+        return (self.cleaned_data.get("label") or "").strip()
+
+    def clean_note(self):
+        return (self.cleaned_data.get("note") or "").strip()
+
+    def resolved_purchase_type(self):
+        tickets = int(self.cleaned_data.get("tickets") or 0)
+        unit_price = int(self.cleaned_data.get("unit_price") or 0)
+
+        if tickets == 1 and unit_price == 4000:
+            return TicketPurchase.PURCHASE_TYPE_SINGLE
+        if tickets == 4 and unit_price == 3500:
+            return TicketPurchase.PURCHASE_TYPE_SET4
+        return TicketPurchase.PURCHASE_TYPE_ADMIN
+
+    def resolved_reason(self):
+        purchase_type = self.resolved_purchase_type()
+        if purchase_type == TicketPurchase.PURCHASE_TYPE_SINGLE:
+            return "purchase_single"
+        if purchase_type == TicketPurchase.PURCHASE_TYPE_SET4:
+            return "purchase_set4"
+        return "admin_adjust"
+
+    def resolved_label(self):
+        label = (self.cleaned_data.get("label") or "").strip()
+        if label:
+            return label
+
+        tickets = int(self.cleaned_data.get("tickets") or 0)
+        unit_price = int(self.cleaned_data.get("unit_price") or 0)
+
+        if tickets == 1 and unit_price == 4000:
+            return "1枚券"
+        if tickets == 4 and unit_price == 3500:
+            return "4枚セット"
+        return f"{tickets}枚 / {unit_price}円"
+
+    def resolved_note(self):
+        note = (self.cleaned_data.get("note") or "").strip()
+        if note:
+            return note
+        return "管理画面から一括付与"
 
 
 class LineAccountLinkForm(forms.ModelForm):
