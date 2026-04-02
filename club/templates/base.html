@@ -638,7 +638,8 @@
               <a href="{% url 'club:reservation_create' %}">予約作成</a>
               <a href="{% url 'club:reservation_list' %}">予約一覧</a>
               <a href="{% url 'club:tickets' %}">チケット</a>
-            {% elif user.is_staff or user.is_superuser %}
+              <a href="{% url 'club:schedule_survey' %}">アンケート</a>
+            {% elif user.role == "coach" or user.is_staff or user.is_superuser %}
               <a href="{% url 'club:reservation_create' %}">予約作成</a>
               <a href="{% url 'club:reservation_list' %}">予約一覧</a>
               <a href="{% url 'club:coach_availability_list' %}">スケジュール管理</a>
@@ -697,6 +698,12 @@
             class="coach-tab {% if request.resolver_match.url_name == 'coach_payroll_summary' %}active{% endif %}"
           >
             給与計算
+          </a>
+          <a
+            href="{% url 'club:schedule_survey_summary' %}"
+            class="coach-tab {% if request.resolver_match.url_name == 'schedule_survey_summary' %}active{% endif %}"
+          >
+            アンケート集計
           </a>
         </div>
       {% endif %}
