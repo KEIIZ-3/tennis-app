@@ -332,6 +332,22 @@
       line-height:1.6;
     }
 
+    .debug-box{
+      margin-top:10px;
+      padding:10px 12px;
+      border-radius:10px;
+      background:#fff7ed;
+      border:1px solid #fdba74;
+      font-size:12px;
+      line-height:1.7;
+      color:#7c2d12;
+    }
+
+    .debug-title{
+      font-weight:700;
+      margin-bottom:4px;
+    }
+
     .muted-inline{
       color:#666;
       font-size:13px;
@@ -479,6 +495,16 @@
           html += '<div><strong>担当コーチ:</strong> ' + escapeHtml(props.coach_name || "-") + '</div>';
           html += '</div>';
         }
+
+        html += '<div class="debug-box">';
+        html += '<div class="debug-title">デバッグ情報</div>';
+        html += '<div>reservation id: ' + escapeHtml(props.pk || "-") + '</div>';
+        html += '<div>availability id: ' + escapeHtml(props.availability_id || "-") + '</div>';
+        html += '<div>coach id: ' + escapeHtml(props.coach_id || "-") + '</div>';
+        html += '<div>court id: ' + escapeHtml(props.court_id || "-") + '</div>';
+        html += '<div>participant count: ' + escapeHtml(props.participant_count || "-") + '</div>';
+        html += '<div>capacity: ' + escapeHtml(props.capacity || "-") + '</div>';
+        html += '</div>';
 
         html += '<div class="detail-actions" id="detailActions"></div>';
         detailPanel.innerHTML = html;
