@@ -1183,10 +1183,10 @@ def calendar_events(request):
         court = obj.court
 
         title_parts = [
-            "空き枠",
             _lesson_type_label(obj.lesson_type),
             str(coach),
             str(court),
+            "受付中",
         ]
 
         query = urlencode(
@@ -1230,10 +1230,10 @@ def calendar_events(request):
         cancel_url = reverse("club:reservation_cancel", kwargs={"pk": obj.pk}) if can_cancel else ""
 
         if obj.status == Reservation.STATUS_PENDING:
-            event_title = "承認待ち"
+            event_title = "申請中"
             background_color = "#f59e0b"
         else:
-            event_title = "あなたの予約" if is_mine else f"予約済み ({_display_name(obj.user)})"
+            event_title = "あなたの予約" if is_mine else f"予約済み {_display_name(obj.user)}"
             background_color = "#3b82f6" if is_mine else "#ef4444"
 
         assigned_coach = _assigned_coach_for_reservation(obj)
