@@ -1168,6 +1168,15 @@ def calendar_events(request):
         if reservation.status == Reservation.STATUS_ACTIVE
     }
 
+    my_reservation_time_keys = {
+        (
+            _to_event_datetime_str(reservation.start_at) or "",
+            _to_event_datetime_str(reservation.end_at) or "",
+        )
+        for reservation in reservation_list
+        if reservation.user_id == request.user.pk and reservation.status == Reservation.STATUS_ACTIVE
+    }
+
     for obj in availability_qs.order_by("start_at", "coach_id", "court_id", "id"):
         slot_key = _slot_key(
             lesson_type=obj.lesson_type,
@@ -1226,6 +1235,14 @@ def calendar_events(request):
 
     for obj in reservation_list:
         is_mine = bool(obj.user_id == request.user.pk)
+        time_key = (
+            _to_event_datetime_str(obj.start_at) or "",
+            _to_event_datetime_str(obj.end_at) or "",
+        )
+
+        if not is_mine and obj.status == Reservation.STATUS_ACTIVE and time_key in my_reservation_time_keys:
+            continue
+
         can_cancel, cancel_reason = _can_user_cancel_reservation(request.user, obj)
         cancel_url = reverse("club:reservation_cancel", kwargs={"pk": obj.pk}) if can_cancel else ""
 
@@ -1233,7 +1250,7 @@ def calendar_events(request):
             event_title = "申請中"
             background_color = "#f59e0b"
         else:
-            event_title = "あなたの予約" if is_mine else f"予約済み {_display_name(obj.user)}"
+            event_title = "あなたの予約" if is_mine else "予約済み"
             background_color = "#3b82f6" if is_mine else "#ef4444"
 
         assigned_coach = _assigned_coach_for_reservation(obj)
