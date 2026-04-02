@@ -37,6 +37,7 @@ from .models import (
     FixedLesson,
     LineAccountLink,
     Reservation,
+    ScheduleSurveyResponse,
     TicketConsumption,
     TicketLedger,
     TicketPurchase,
@@ -71,6 +72,33 @@ def _is_coach_user(user):
     if not user or not user.is_authenticated:
         return False
     return getattr(user, "role", None) == "coach"
+
+
+def _schedule_survey_choice_context():
+    return {
+        "day_choices": ScheduleSurveyResponse.DAY_CHOICES,
+        "weekday_time_slot_choices": ScheduleSurveyResponse.WEEKDAY_TIME_SLOT_CHOICES,
+        "weekend_time_slot_choices": ScheduleSurveyResponse.WEEKEND_TIME_SLOT_CHOICES,
+        "lesson_type_choices": ScheduleSurveyResponse.LESSON_TYPE_CHOICES,
+        "frequency_choices": ScheduleSurveyResponse.FREQUENCY_CHOICES,
+    }
+
+
+def _needs_schedule_survey(user):
+    if not user or not user.is_authenticated:
+        return False
+    if getattr(user, "role", None) != "member":
+        return False
+    if _needs_profile_completion(user):
+        return False
+    return not ScheduleSurveyResponse.objects.filter(user=user).exists()
+
+
+def _require_schedule_survey(request):
+    if _needs_schedule_survey(request.user):
+        messages.info(request, "レッスン希望アンケートへの回答をお願いします。")
+        return redirect("club:schedule_survey")
+    return None
 
 
 def _to_event_datetime_str(value):
@@ -530,6 +558,13 @@ def _send_line_notification_safely(user, message_text):
 
 def home(request):
     if request.user.is_authenticated:
+        if _needs_profile_completion(request.user):
+            return redirect("club:profile_complete")
+
+        survey_redirect = _require_schedule_survey(request)
+        if survey_redirect:
+            return survey_redirect
+
         _sync_fixed_lessons()
 
     User = get_user_model()
@@ -550,6 +585,10 @@ def home(request):
 @login_required
 @require_GET
 def tickets_view(request):
+    survey_redirect = _require_schedule_survey(request)
+    if survey_redirect:
+        return survey_redirect
+
     ledgers = TicketLedger.objects.filter(user=request.user).select_related("reservation", "fixed_lesson")[:30]
     purchases = TicketPurchase.objects.filter(user=request.user).order_by("-purchased_at", "-id")[:30]
     consumptions = (
@@ -567,6 +606,245 @@ def tickets_view(request):
             "ticket_consumptions": consumptions,
             "single_ticket_price": 4000,
             "set4_ticket_price": 14000,
+        },
+    )
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def schedule_survey_view(request):
+    if getattr(request.user, "role", None) != "member":
+        return redirect("club:home")
+
+    if _needs_profile_completion(request.user):
+        return redirect("club:profile_complete")
+
+    existing_response = ScheduleSurveyResponse.objects.filter(user=request.user).first()
+    if existing_response:
+        messages.info(request, "アンケートは回答済みです。")
+        return redirect("club:home")
+
+    context = _schedule_survey_choice_context()
+    form_data = {
+        "selected_days": [],
+        "selected_weekday_time_slots": [],
+        "selected_weekend_time_slots": [],
+        "selected_lesson_types": [],
+        "preferred_frequency": "",
+        "free_comment": "",
+    }
+
+    if request.method == "POST":
+        form_data = {
+            "selected_days": request.POST.getlist("selected_days"),
+            "selected_weekday_time_slots": request.POST.getlist("selected_weekday_time_slots"),
+            "selected_weekend_time_slots": request.POST.getlist("selected_weekend_time_slots"),
+            "selected_lesson_types": request.POST.getlist("selected_lesson_types"),
+            "preferred_frequency": (request.POST.get("preferred_frequency") or "").strip(),
+            "free_comment": (request.POST.get("free_comment") or "").strip(),
+        }
+
+        response = ScheduleSurveyResponse(
+            user=request.user,
+            selected_days=form_data["selected_days"],
+            selected_weekday_time_slots=form_data["selected_weekday_time_slots"],
+            selected_weekend_time_slots=form_data["selected_weekend_time_slots"],
+            selected_lesson_types=form_data["selected_lesson_types"],
+            preferred_frequency=form_data["preferred_frequency"],
+            free_comment=form_data["free_comment"],
+            answered_at=timezone.now(),
+        )
+
+        try:
+            response.full_clean()
+            response.save()
+            messages.success(request, "アンケートの回答を保存しました。ご協力ありがとうございます。")
+            return redirect("club:home")
+        except ValidationError as e:
+            if hasattr(e, "messages"):
+                for message_text in e.messages:
+                    messages.error(request, message_text)
+            else:
+                messages.error(request, "アンケートを保存できませんでした。入力内容をご確認ください。")
+
+    return render(
+        request,
+        "survey/schedule_survey.html",
+        {
+            **context,
+            "form_data": form_data,
+        },
+    )
+
+
+@login_required
+@require_GET
+def coach_schedule_survey_summary(request):
+    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
+        return HttpResponse("Forbidden", status=403)
+
+    User = get_user_model()
+    member_users = User.objects.filter(role="member", is_active=True).order_by("full_name", "username", "id")
+    responses = list(
+        ScheduleSurveyResponse.objects.select_related("user").filter(user__role="member").order_by("-answered_at", "-id")
+    )
+
+    day_choices = list(ScheduleSurveyResponse.DAY_CHOICES)
+    weekday_slot_choices = list(ScheduleSurveyResponse.WEEKDAY_TIME_SLOT_CHOICES)
+    weekend_slot_choices = list(ScheduleSurveyResponse.WEEKEND_TIME_SLOT_CHOICES)
+    lesson_type_choices = list(ScheduleSurveyResponse.LESSON_TYPE_CHOICES)
+    frequency_choices = list(ScheduleSurveyResponse.FREQUENCY_CHOICES)
+
+    weekday_day_values = {
+        ScheduleSurveyResponse.DAY_MON,
+        ScheduleSurveyResponse.DAY_TUE,
+        ScheduleSurveyResponse.DAY_WED,
+        ScheduleSurveyResponse.DAY_THU,
+        ScheduleSurveyResponse.DAY_FRI,
+    }
+    weekend_day_values = {
+        ScheduleSurveyResponse.DAY_SAT,
+        ScheduleSurveyResponse.DAY_SUN,
+    }
+
+    day_counts = {value: 0 for value, _label in day_choices}
+    weekday_time_slot_counts = {value: 0 for value, _label in weekday_slot_choices}
+    weekend_time_slot_counts = {value: 0 for value, _label in weekend_slot_choices}
+    lesson_type_counts = {value: 0 for value, _label in lesson_type_choices}
+    frequency_counts = {value: 0 for value, _label in frequency_choices}
+
+    cross_matrix = {}
+    for day_value, _day_label in day_choices:
+        if day_value in weekday_day_values:
+            cross_matrix[day_value] = {slot_value: 0 for slot_value, _label in weekday_slot_choices}
+        else:
+            cross_matrix[day_value] = {slot_value: 0 for slot_value, _label in weekend_slot_choices}
+
+    for response in responses:
+        selected_days = list(response.selected_days or [])
+        selected_weekday_slots = list(response.selected_weekday_time_slots or [])
+        selected_weekend_slots = list(response.selected_weekend_time_slots or [])
+        selected_lesson_types = list(response.selected_lesson_types or [])
+
+        for day_value in selected_days:
+            if day_value in day_counts:
+                day_counts[day_value] += 1
+
+        for slot_value in selected_weekday_slots:
+            if slot_value in weekday_time_slot_counts:
+                weekday_time_slot_counts[slot_value] += 1
+
+        for slot_value in selected_weekend_slots:
+            if slot_value in weekend_time_slot_counts:
+                weekend_time_slot_counts[slot_value] += 1
+
+        for lesson_type in selected_lesson_types:
+            if lesson_type in lesson_type_counts:
+                lesson_type_counts[lesson_type] += 1
+
+        if response.preferred_frequency in frequency_counts:
+            frequency_counts[response.preferred_frequency] += 1
+
+        for day_value in selected_days:
+            if day_value in weekday_day_values:
+                for slot_value in selected_weekday_slots:
+                    if slot_value in cross_matrix.get(day_value, {}):
+                        cross_matrix[day_value][slot_value] += 1
+            elif day_value in weekend_day_values:
+                for slot_value in selected_weekend_slots:
+                    if slot_value in cross_matrix.get(day_value, {}):
+                        cross_matrix[day_value][slot_value] += 1
+
+    day_rows = [
+        {
+            "value": value,
+            "label": label,
+            "count": day_counts[value],
+        }
+        for value, label in day_choices
+    ]
+    weekday_time_slot_rows = [
+        {
+            "value": value,
+            "label": label,
+            "count": weekday_time_slot_counts[value],
+        }
+        for value, label in weekday_slot_choices
+    ]
+    weekend_time_slot_rows = [
+        {
+            "value": value,
+            "label": label,
+            "count": weekend_time_slot_counts[value],
+        }
+        for value, label in weekend_slot_choices
+    ]
+    lesson_type_rows = [
+        {
+            "value": value,
+            "label": label,
+            "count": lesson_type_counts[value],
+        }
+        for value, label in lesson_type_choices
+    ]
+    frequency_rows = [
+        {
+            "value": value,
+            "label": label,
+            "count": frequency_counts[value],
+        }
+        for value, label in frequency_choices
+    ]
+
+    cross_rows = []
+    for day_value, day_label in day_choices:
+        if day_value in weekday_day_values:
+            slot_choices = weekday_slot_choices
+        else:
+            slot_choices = weekend_slot_choices
+
+        cells = []
+        for slot_value, slot_label in slot_choices:
+            cells.append(
+                {
+                    "slot_value": slot_value,
+                    "slot_label": slot_label,
+                    "count": cross_matrix.get(day_value, {}).get(slot_value, 0),
+                }
+            )
+
+        cross_rows.append(
+            {
+                "day_value": day_value,
+                "day_label": day_label,
+                "cells": cells,
+            }
+        )
+
+    unanswered_users = list(member_users.filter(schedule_survey_response__isnull=True))
+    total_members = member_users.count()
+    answered_count = len(responses)
+    unanswered_count = len(unanswered_users)
+    answered_rate = round((answered_count / total_members) * 100, 1) if total_members > 0 else 0
+
+    latest_responses = responses[:50]
+
+    return render(
+        request,
+        "coach/schedule_survey_summary.html",
+        {
+            "total_members": total_members,
+            "answered_count": answered_count,
+            "unanswered_count": unanswered_count,
+            "answered_rate": answered_rate,
+            "day_rows": day_rows,
+            "weekday_time_slot_rows": weekday_time_slot_rows,
+            "weekend_time_slot_rows": weekend_time_slot_rows,
+            "lesson_type_rows": lesson_type_rows,
+            "frequency_rows": frequency_rows,
+            "cross_rows": cross_rows,
+            "unanswered_users": unanswered_users,
+            "latest_responses": latest_responses,
         },
     )
 
@@ -1058,6 +1336,8 @@ def login_view(request):
     if request.user.is_authenticated:
         if _needs_profile_completion(request.user):
             return redirect("club:profile_complete")
+        if _needs_schedule_survey(request.user):
+            return redirect("club:schedule_survey")
         return redirect("club:home")
 
     form = AuthenticationForm(request, data=request.POST or None)
@@ -1067,6 +1347,8 @@ def login_view(request):
             login(request, form.get_user())
             if _needs_profile_completion(request.user):
                 return redirect("club:profile_complete")
+            if _needs_schedule_survey(request.user):
+                return redirect("club:schedule_survey")
             return redirect("club:home")
         messages.error(request, "ユーザー名またはパスワードが正しくありません。")
 
@@ -1087,6 +1369,8 @@ def register_view(request):
     if request.user.is_authenticated:
         if _needs_profile_completion(request.user):
             return redirect("club:profile_complete")
+        if _needs_schedule_survey(request.user):
+            return redirect("club:schedule_survey")
         return redirect("club:home")
 
     form = MemberRegistrationForm(request.POST or None)
@@ -1096,6 +1380,10 @@ def register_view(request):
             user = form.save()
             _login_user_with_default_backend(request, user)
             messages.success(request, "新規会員登録が完了しました。")
+            if _needs_profile_completion(request.user):
+                return redirect("club:profile_complete")
+            if _needs_schedule_survey(request.user):
+                return redirect("club:schedule_survey")
             return redirect("club:home")
 
         messages.error(request, "新規会員登録できませんでした。入力内容をご確認ください。")
@@ -1122,6 +1410,8 @@ def profile_complete_view(request):
         if form.is_valid():
             form.save()
             messages.success(request, "会員情報の登録が完了しました。")
+            if _needs_schedule_survey(request.user):
+                return redirect("club:schedule_survey")
             return redirect("club:home")
         messages.error(request, "会員情報を保存できませんでした。入力内容をご確認ください。")
 
@@ -1348,6 +1638,10 @@ def reservation_create(request):
     if profile_redirect:
         return profile_redirect
 
+    survey_redirect = _require_schedule_survey(request)
+    if survey_redirect:
+        return survey_redirect
+
     _sync_fixed_lessons()
 
     initial = {}
@@ -1426,6 +1720,10 @@ def reservation_create(request):
 @login_required
 @require_GET
 def reservation_list(request):
+    survey_redirect = _require_schedule_survey(request)
+    if survey_redirect:
+        return survey_redirect
+
     _sync_fixed_lessons()
 
     qs = (
@@ -1771,6 +2069,10 @@ def line_login_callback(request):
             messages.info(request, "初回登録のため、会員情報を入力してください。")
             return redirect("club:profile_complete")
 
+        if _needs_schedule_survey(user):
+            messages.info(request, "初回ログインのため、レッスン希望アンケートに回答してください。")
+            return redirect("club:schedule_survey")
+
         if result == "created":
             messages.success(request, "LINEで新規登録・ログインしました。")
         else:
@@ -1873,6 +2175,15 @@ def liff_bootstrap(request):
                 }
             )
 
+        if _needs_schedule_survey(user):
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "message": "レッスン希望アンケートに回答してください。",
+                    "redirectUrl": reverse("club:schedule_survey"),
+                }
+            )
+
         if result == "created":
             message = "LINEで新規登録が完了しました。"
         else:
@@ -1895,6 +2206,10 @@ def liff_bootstrap(request):
 @login_required
 @require_http_methods(["GET"])
 def line_connect(request):
+    survey_redirect = _require_schedule_survey(request)
+    if survey_redirect:
+        return survey_redirect
+
     link = _find_line_link_for_user(request.user)
     link_token = _generate_line_link_token(request.user)
 
