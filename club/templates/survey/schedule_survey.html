@@ -2,256 +2,113 @@
 {% block title %}レッスン希望アンケート{% endblock %}
 
 {% block content %}
-<div class="page-head">
-  <h1 class="page-title">レッスン希望アンケート</h1>
-  <p class="page-subtitle">
-    今後のレッスン枠の参考にするため、参加しやすい曜日・時間帯を教えてください。
-  </p>
-</div>
-
-<div class="card">
-  <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
-    <div>
-      <h2 class="card-title">回答内容</h2>
-      <p class="card-subtitle">回答は1人1回のみです。保存後は上書きできません。</p>
-    </div>
-    {% if already_answered %}
-      <div style="padding:10px 14px; border:1px solid #bbf7d0; background:#f0fdf4; border-radius:12px; font-weight:700; color:#166534;">
-        回答済み
-      </div>
-    {% else %}
-      <div style="padding:10px 14px; border:1px solid #fde68a; background:#fffbeb; border-radius:12px; font-weight:700; color:#92400e;">
-        未回答
-      </div>
-    {% endif %}
+  <div class="page-head">
+    <h1 class="page-title">レッスン希望アンケート</h1>
+    <p class="page-subtitle">
+      今後のレッスン時間帯の参考にします。1〜2分で回答できます。
+    </p>
   </div>
-</div>
 
-{% if already_answered and survey %}
   <div class="card">
-    <h2 class="card-title">あなたの回答内容</h2>
-
-    <div class="summary-grid">
-      <div class="summary-box">
-        <div class="summary-label">参加しやすい曜日</div>
-        <div class="summary-value">{{ survey.weekday_labels|join:"、" }}</div>
-      </div>
-      <div class="summary-box">
-        <div class="summary-label">平日の参加しやすい時間帯</div>
-        <div class="summary-value">{{ survey.weekday_time_labels|join:"、" }}</div>
-      </div>
-      <div class="summary-box">
-        <div class="summary-label">土日の参加しやすい時間帯</div>
-        <div class="summary-value">{{ survey.weekend_time_labels|join:"、" }}</div>
-      </div>
-      <div class="summary-box">
-        <div class="summary-label">希望レッスン種別</div>
-        <div class="summary-value">{{ survey.lesson_type_labels|join:"、" }}</div>
-      </div>
-      <div class="summary-box">
-        <div class="summary-label">希望頻度</div>
-        <div class="summary-value">{{ survey.frequency_label }}</div>
-      </div>
-      <div class="summary-box">
-        <div class="summary-label">自由記述</div>
-        <div class="summary-value">{{ survey.free_comment|default:"（なし）" }}</div>
-      </div>
+    <div class="section-note" style="margin-bottom:16px;">
+      未回答の方は、ログイン後にこのアンケートへの回答をお願いしています。
+      回答内容は会員情報と紐付いて保存され、1人1回のみ回答できます。
     </div>
+
+    <form method="post">
+      {% csrf_token %}
+
+      <div style="margin-bottom:22px;">
+        <label>参加しやすい曜日（複数選択）</label>
+        <div class="grid-2">
+          {% for value, label in day_choices %}
+            <label style="display:flex; gap:10px; align-items:flex-start; font-weight:500; margin-bottom:0;">
+              <input
+                type="checkbox"
+                name="selected_days"
+                value="{{ value }}"
+                {% if value in form_data.selected_days %}checked{% endif %}
+                style="width:auto; min-height:auto; margin-top:2px;"
+              >
+              <span>{{ label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div style="margin-bottom:22px;">
+        <label>参加しやすい時間帯（平日・複数選択）</label>
+        <div class="grid-2">
+          {% for value, label in weekday_time_slot_choices %}
+            <label style="display:flex; gap:10px; align-items:flex-start; font-weight:500; margin-bottom:0;">
+              <input
+                type="checkbox"
+                name="selected_weekday_time_slots"
+                value="{{ value }}"
+                {% if value in form_data.selected_weekday_time_slots %}checked{% endif %}
+                style="width:auto; min-height:auto; margin-top:2px;"
+              >
+              <span>{{ label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div style="margin-bottom:22px;">
+        <label>参加しやすい時間帯（土日・複数選択）</label>
+        <div class="grid-2">
+          {% for value, label in weekend_time_slot_choices %}
+            <label style="display:flex; gap:10px; align-items:flex-start; font-weight:500; margin-bottom:0;">
+              <input
+                type="checkbox"
+                name="selected_weekend_time_slots"
+                value="{{ value }}"
+                {% if value in form_data.selected_weekend_time_slots %}checked{% endif %}
+                style="width:auto; min-height:auto; margin-top:2px;"
+              >
+              <span>{{ label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div style="margin-bottom:22px;">
+        <label>希望レッスン種別（複数選択）</label>
+        <div class="grid-2">
+          {% for value, label in lesson_type_choices %}
+            <label style="display:flex; gap:10px; align-items:flex-start; font-weight:500; margin-bottom:0;">
+              <input
+                type="checkbox"
+                name="selected_lesson_types"
+                value="{{ value }}"
+                {% if value in form_data.selected_lesson_types %}checked{% endif %}
+                style="width:auto; min-height:auto; margin-top:2px;"
+              >
+              <span>{{ label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div style="margin-bottom:22px;">
+        <label for="preferred_frequency">レッスン頻度の希望</label>
+        <select id="preferred_frequency" name="preferred_frequency">
+          <option value="">選択してください</option>
+          {% for value, label in frequency_choices %}
+            <option value="{{ value }}" {% if form_data.preferred_frequency == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div style="margin-bottom:22px;">
+        <label for="free_comment">自由記述（任意）</label>
+        <textarea id="free_comment" name="free_comment" placeholder="ご希望があればご記入ください">{{ form_data.free_comment }}</textarea>
+      </div>
+
+      <div class="actions">
+        <button type="submit">回答を保存する</button>
+        <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
+      </div>
+    </form>
   </div>
-{% else %}
-  <form method="post" class="survey-form card">
-    {% csrf_token %}
-
-    {% if errors %}
-      <div class="message error" style="margin-bottom:16px;">
-        {% for error in errors %}
-          <div>{{ error }}</div>
-        {% endfor %}
-      </div>
-    {% endif %}
-
-    <section class="survey-section">
-      <h2 class="section-title">1. 参加しやすい曜日 <span class="required-chip">必須</span></h2>
-      <p class="section-help">複数選択できます。</p>
-      <div class="choice-grid choice-grid-7">
-        {% for value, label in weekday_choices %}
-          <label class="choice-card checkbox-card">
-            <input type="checkbox" name="preferred_weekdays" value="{{ value }}" {% if value in selected_weekdays %}checked{% endif %}>
-            <span>{{ label }}</span>
-          </label>
-        {% endfor %}
-      </div>
-    </section>
-
-    <section class="survey-section">
-      <h2 class="section-title">2. 平日に参加しやすい時間帯 <span class="required-chip">必須</span></h2>
-      <p class="section-help">複数選択できます。曖昧な表現ではなく、具体的な時刻でお答えください。</p>
-      <div class="choice-grid">
-        {% for value, label in weekday_time_choices %}
-          <label class="choice-card checkbox-card">
-            <input type="checkbox" name="preferred_weekday_times" value="{{ value }}" {% if value in selected_weekday_times %}checked{% endif %}>
-            <span>{{ label }}</span>
-          </label>
-        {% endfor %}
-      </div>
-    </section>
-
-    <section class="survey-section">
-      <h2 class="section-title">3. 土日に参加しやすい時間帯 <span class="required-chip">必須</span></h2>
-      <p class="section-help">複数選択できます。</p>
-      <div class="choice-grid">
-        {% for value, label in weekend_time_choices %}
-          <label class="choice-card checkbox-card">
-            <input type="checkbox" name="preferred_weekend_times" value="{{ value }}" {% if value in selected_weekend_times %}checked{% endif %}>
-            <span>{{ label }}</span>
-          </label>
-        {% endfor %}
-      </div>
-    </section>
-
-    <section class="survey-section">
-      <h2 class="section-title">4. 希望レッスン種別 <span class="required-chip">必須</span></h2>
-      <p class="section-help">複数選択できます。</p>
-      <div class="choice-grid choice-grid-3">
-        {% for value, label in lesson_type_choices %}
-          <label class="choice-card checkbox-card">
-            <input type="checkbox" name="preferred_lesson_types" value="{{ value }}" {% if value in selected_lesson_types %}checked{% endif %}>
-            <span>{{ label }}</span>
-          </label>
-        {% endfor %}
-      </div>
-    </section>
-
-    <section class="survey-section">
-      <h2 class="section-title">5. レッスン頻度の希望 <span class="required-chip">必須</span></h2>
-      <div class="choice-grid choice-grid-2">
-        {% for value, label in frequency_choices %}
-          <label class="choice-card radio-card">
-            <input type="radio" name="preferred_frequency" value="{{ value }}" {% if value == selected_frequency %}checked{% endif %}>
-            <span>{{ label }}</span>
-          </label>
-        {% endfor %}
-      </div>
-    </section>
-
-    <section class="survey-section">
-      <h2 class="section-title">6. 自由記述 <span class="optional-chip">任意</span></h2>
-      <p class="section-help">希望曜日の補足や、参加しづらい時間帯などがあればご記入ください。</p>
-      <textarea name="free_comment" rows="5" maxlength="1000" placeholder="例：平日は19:00以降が参加しやすいです。土日は午前希望です。">{{ free_comment }}</textarea>
-    </section>
-
-    <div class="actions" style="margin-top:24px;">
-      <button type="submit" class="btn btn-primary">回答を保存する</button>
-      <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
-    </div>
-  </form>
-{% endif %}
-
-<style>
-  .survey-form{ padding:24px; }
-  .survey-section + .survey-section{
-    margin-top:28px;
-    padding-top:28px;
-    border-top:1px solid #e5e7eb;
-  }
-  .section-title{
-    margin:0 0 8px;
-    font-size:20px;
-    line-height:1.4;
-    font-weight:800;
-  }
-  .section-help{
-    margin:0 0 14px;
-    color:#6b7280;
-    font-size:14px;
-  }
-  .required-chip,
-  .optional-chip{
-    display:inline-block;
-    margin-left:8px;
-    padding:2px 8px;
-    border-radius:999px;
-    font-size:12px;
-    vertical-align:middle;
-  }
-  .required-chip{
-    background:#fee2e2;
-    color:#b91c1c;
-  }
-  .optional-chip{
-    background:#e5e7eb;
-    color:#374151;
-  }
-  .choice-grid{
-    display:grid;
-    grid-template-columns:repeat(2, minmax(0, 1fr));
-    gap:12px;
-  }
-  .choice-grid-7{
-    grid-template-columns:repeat(4, minmax(0, 1fr));
-  }
-  .choice-grid-3{
-    grid-template-columns:repeat(3, minmax(0, 1fr));
-  }
-  .choice-grid-2{
-    grid-template-columns:repeat(2, minmax(0, 1fr));
-  }
-  .choice-card{
-    display:flex;
-    align-items:flex-start;
-    gap:10px;
-    padding:14px 16px;
-    border:1px solid #d1d5db;
-    border-radius:14px;
-    background:#fff;
-    cursor:pointer;
-    transition:all .15s ease;
-    min-height:64px;
-  }
-  .choice-card:hover{
-    border-color:#93c5fd;
-    background:#f8fbff;
-  }
-  .choice-card input{
-    margin-top:2px;
-    transform:scale(1.15);
-  }
-  .choice-card span{
-    font-weight:700;
-    line-height:1.5;
-  }
-  .summary-grid{
-    display:grid;
-    grid-template-columns:repeat(2, minmax(0, 1fr));
-    gap:14px;
-  }
-  .summary-box{
-    padding:16px;
-    border-radius:14px;
-    border:1px solid #e5e7eb;
-    background:#f8fafc;
-  }
-  .summary-label{
-    font-size:13px;
-    color:#6b7280;
-    font-weight:700;
-    margin-bottom:8px;
-  }
-  .summary-value{
-    font-size:15px;
-    font-weight:700;
-    color:#111827;
-    line-height:1.7;
-    white-space:pre-wrap;
-  }
-  @media (max-width: 900px){
-    .choice-grid,
-    .choice-grid-7,
-    .choice-grid-3,
-    .choice-grid-2,
-    .summary-grid{
-      grid-template-columns:1fr;
-    }
-  }
-</style>
 {% endblock %}
