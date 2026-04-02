@@ -39,76 +39,101 @@
   <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
     <div style="font-weight:700; margin-bottom:6px;">この画面で分かること</div>
     <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
-      <li>今週いつ・どのレッスンがあるか</li>
-      <li>通常担当 / 代行コーチ</li>
-      <li>登録メンバー数と今週の予約数</li>
+      <li>今週いつ・どの固定レッスンがあるか</li>
+      <li>通常担当か、代行実施か</li>
+      <li>登録メンバー数と今週の予約状況</li>
     </ul>
   </div>
 </div>
 
 <div class="card">
   {% if fixed_lessons %}
-    <div style="overflow-x:auto;">
-      <table>
-        <thead>
-          <tr>
-            <th>曜日 / 日付</th>
-            <th>時間</th>
-            <th>レッスン</th>
-            <th>担当</th>
-            <th>メンバー</th>
-            <th>今週の予約</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in fixed_lessons %}
-            <tr>
-              <td>
-                <div style="font-weight:700;">{{ row.weekday_label }}</div>
-                <div class="muted" style="font-size:12px;">{{ row.target_date|date:"Y-m-d" }}</div>
-              </td>
-              <td>
-                <div>{{ row.start_at|date:"H:i" }} 〜 {{ row.end_at|date:"H:i" }}</div>
-              </td>
-              <td>
-                <div style="font-weight:700;">{{ row.fixed_lesson.title|default:"（名称未設定）" }}</div>
-                <div class="muted" style="font-size:12px;">
-                  {{ row.fixed_lesson.get_lesson_type_display }} / {{ row.fixed_lesson.get_target_level_display }}
-                </div>
-                <div class="muted" style="font-size:12px;">{{ row.fixed_lesson.court }}</div>
-              </td>
-              <td>
-                {% if row.has_substitute %}
-                  <div><strong>実施:</strong> {{ row.assigned_coach_name }}</div>
-                  <div class="muted" style="font-size:12px;">通常: {{ row.normal_coach_name }}</div>
-                  <div class="muted" style="font-size:12px;">代行: {{ row.substitute_coach_name }}</div>
-                {% else %}
-                  <div>{{ row.assigned_coach_name }}</div>
-                {% endif %}
-              </td>
-              <td>
-                <div>{{ row.member_count }}名</div>
-                {% if row.member_names %}
-                  <div class="muted" style="font-size:12px; line-height:1.7;">{{ row.member_names|join:" / " }}</div>
-                {% else %}
-                  <div class="muted" style="font-size:12px;">未登録</div>
-                {% endif %}
-              </td>
-              <td>
-                <div>{{ row.reservation_count }}件</div>
-                {% if row.reservation_names %}
-                  <div class="muted" style="font-size:12px; line-height:1.7;">{{ row.reservation_names|join:" / " }}</div>
-                {% else %}
-                  <div class="muted" style="font-size:12px;">未生成</div>
-                {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div style="display:grid; gap:14px;">
+      {% for row in fixed_lessons %}
+        <div style="border:1px solid #e5e7eb; border-radius:14px; padding:16px; background:#fff;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+            <div>
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <span style="display:inline-block; padding:4px 10px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:12px; font-weight:700;">
+                  {{ row.weekday_label }} {{ row.target_date|date:"m/d" }}
+                </span>
+                <span style="display:inline-block; padding:4px 10px; border-radius:999px; background:#f8fafc; color:#334155; font-size:12px; font-weight:700;">
+                  {{ row.start_at|date:"H:i" }} 〜 {{ row.end_at|date:"H:i" }}
+                </span>
+                <span style="display:inline-block; padding:4px 10px; border-radius:999px; background:#ecfeff; color:#0f766e; font-size:12px; font-weight:700;">
+                  {{ row.fixed_lesson.get_lesson_type_display }}
+                </span>
+                <span style="display:inline-block; padding:4px 10px; border-radius:999px; background:#f5f3ff; color:#6d28d9; font-size:12px; font-weight:700;">
+                  {{ row.fixed_lesson.get_target_level_display }}
+                </span>
+              </div>
+
+              <div style="margin-top:10px; font-size:20px; font-weight:800;">
+                {{ row.fixed_lesson.title|default:"（名称未設定）" }}
+              </div>
+              <div class="muted" style="margin-top:6px; font-size:13px;">
+                {{ row.fixed_lesson.court }}
+              </div>
+            </div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <div style="padding:10px 12px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px; min-width:110px;">
+                <div class="muted" style="font-size:12px;">登録メンバー</div>
+                <div style="font-size:20px; font-weight:800;">{{ row.member_count }}名</div>
+              </div>
+              <div style="padding:10px 12px; border:1px solid #dcfce7; background:#f0fdf4; border-radius:10px; min-width:110px;">
+                <div class="muted" style="font-size:12px;">今週の予約</div>
+                <div style="font-size:20px; font-weight:800;">{{ row.reservation_count }}件</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; margin-top:14px;">
+            <div style="padding:12px; border:1px solid #e5e7eb; border-radius:10px; background:#fafafa;">
+              <div class="muted" style="font-size:12px; margin-bottom:6px;">担当</div>
+              {% if row.has_substitute %}
+                <div style="font-weight:700;">実施: {{ row.assigned_coach_name }}</div>
+                <div class="muted" style="font-size:12px; margin-top:4px;">通常: {{ row.normal_coach_name }}</div>
+                <div class="muted" style="font-size:12px;">代行: {{ row.substitute_coach_name }}</div>
+              {% else %}
+                <div style="font-weight:700;">{{ row.assigned_coach_name }}</div>
+              {% endif %}
+            </div>
+
+            <div style="padding:12px; border:1px solid #e5e7eb; border-radius:10px; background:#fafafa;">
+              <div class="muted" style="font-size:12px; margin-bottom:6px;">登録メンバー</div>
+              {% if row.member_names %}
+                <div style="font-size:13px; line-height:1.8;">{{ row.member_names|join:" / " }}</div>
+              {% else %}
+                <div class="muted" style="font-size:13px;">未登録</div>
+              {% endif %}
+            </div>
+
+            <div style="padding:12px; border:1px solid #e5e7eb; border-radius:10px; background:#fafafa;">
+              <div class="muted" style="font-size:12px; margin-bottom:6px;">今週の予約者</div>
+              {% if row.reservation_names %}
+                <div style="font-size:13px; line-height:1.8;">{{ row.reservation_names|join:" / " }}</div>
+              {% else %}
+                <div class="muted" style="font-size:13px;">未生成</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
     </div>
   {% else %}
-    <p class="muted" style="margin:0;">今週表示できるレッスン予定はありません。</p>
+    <div style="padding:24px; border:1px dashed #cbd5e1; border-radius:14px; background:#f8fafc; text-align:center;">
+      <div style="font-size:18px; font-weight:700; margin-bottom:6px;">今週の予定はありません</div>
+      <div class="muted">今週表示できる固定レッスン予定はありません。</div>
+    </div>
   {% endif %}
 </div>
+
+<style>
+  @media (max-width: 900px){
+    .card div[style*="grid-template-columns:repeat(3, minmax(0, 1fr))"]{
+      grid-template-columns:1fr !important;
+    }
+  }
+</style>
 {% endblock %}
