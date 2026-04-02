@@ -717,6 +717,173 @@ class CoachExpense(models.Model):
             raise ValidationError("経費は0円以上にしてください。")
 
 
+class ScheduleSurveyResponse(models.Model):
+    DAY_MON = "mon"
+    DAY_TUE = "tue"
+    DAY_WED = "wed"
+    DAY_THU = "thu"
+    DAY_FRI = "fri"
+    DAY_SAT = "sat"
+    DAY_SUN = "sun"
+
+    DAY_CHOICES = (
+        (DAY_MON, "月曜日"),
+        (DAY_TUE, "火曜日"),
+        (DAY_WED, "水曜日"),
+        (DAY_THU, "木曜日"),
+        (DAY_FRI, "金曜日"),
+        (DAY_SAT, "土曜日"),
+        (DAY_SUN, "日曜日"),
+    )
+
+    WEEKDAY_SLOT_09_11 = "weekday_09_11"
+    WEEKDAY_SLOT_11_13 = "weekday_11_13"
+    WEEKDAY_SLOT_13_15 = "weekday_13_15"
+    WEEKDAY_SLOT_15_17 = "weekday_15_17"
+    WEEKDAY_SLOT_17_19 = "weekday_17_19"
+    WEEKDAY_SLOT_19_21 = "weekday_19_21"
+
+    WEEKDAY_TIME_SLOT_CHOICES = (
+        (WEEKDAY_SLOT_09_11, "平日 9:00〜11:00"),
+        (WEEKDAY_SLOT_11_13, "平日 11:00〜13:00"),
+        (WEEKDAY_SLOT_13_15, "平日 13:00〜15:00"),
+        (WEEKDAY_SLOT_15_17, "平日 15:00〜17:00"),
+        (WEEKDAY_SLOT_17_19, "平日 17:00〜19:00"),
+        (WEEKDAY_SLOT_19_21, "平日 19:00〜21:00"),
+    )
+
+    WEEKEND_SLOT_09_11 = "weekend_09_11"
+    WEEKEND_SLOT_11_13 = "weekend_11_13"
+    WEEKEND_SLOT_13_15 = "weekend_13_15"
+    WEEKEND_SLOT_15_17 = "weekend_15_17"
+    WEEKEND_SLOT_17_19 = "weekend_17_19"
+    WEEKEND_SLOT_19_21 = "weekend_19_21"
+
+    WEEKEND_TIME_SLOT_CHOICES = (
+        (WEEKEND_SLOT_09_11, "土日 9:00〜11:00"),
+        (WEEKEND_SLOT_11_13, "土日 11:00〜13:00"),
+        (WEEKEND_SLOT_13_15, "土日 13:00〜15:00"),
+        (WEEKEND_SLOT_15_17, "土日 15:00〜17:00"),
+        (WEEKEND_SLOT_17_19, "土日 17:00〜19:00"),
+        (WEEKEND_SLOT_19_21, "土日 19:00〜21:00"),
+    )
+
+    LESSON_GENERAL = "general"
+    LESSON_PRIVATE = "private"
+    LESSON_GROUP = "group"
+
+    LESSON_TYPE_CHOICES = (
+        (LESSON_GENERAL, "一般"),
+        (LESSON_PRIVATE, "プライベート"),
+        (LESSON_GROUP, "グループ"),
+    )
+
+    FREQUENCY_WEEKLY_1 = "weekly_1"
+    FREQUENCY_WEEKLY_2 = "weekly_2"
+    FREQUENCY_MONTHLY_2_3 = "monthly_2_3"
+    FREQUENCY_IRREGULAR = "irregular"
+
+    FREQUENCY_CHOICES = (
+        (FREQUENCY_WEEKLY_1, "週1回"),
+        (FREQUENCY_WEEKLY_2, "週2回"),
+        (FREQUENCY_MONTHLY_2_3, "月2〜3回"),
+        (FREQUENCY_IRREGULAR, "不定期"),
+    )
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="schedule_survey_response",
+    )
+    selected_days = models.JSONField(default=list, blank=True)
+    selected_weekday_time_slots = models.JSONField(default=list, blank=True)
+    selected_weekend_time_slots = models.JSONField(default=list, blank=True)
+    selected_lesson_types = models.JSONField(default=list, blank=True)
+    preferred_frequency = models.CharField(max_length=30, choices=FREQUENCY_CHOICES)
+    free_comment = models.TextField(blank=True, default="")
+    answered_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-answered_at", "-id"]
+        verbose_name = "時間帯アンケート回答"
+        verbose_name_plural = "時間帯アンケート回答"
+
+    def __str__(self):
+        return f"{self.user} / {self.answered_at:%Y-%m-%d %H:%M}"
+
+    @classmethod
+    def day_label_map(cls):
+        return dict(cls.DAY_CHOICES)
+
+    @classmethod
+    def weekday_time_slot_label_map(cls):
+        return dict(cls.WEEKDAY_TIME_SLOT_CHOICES)
+
+    @classmethod
+    def weekend_time_slot_label_map(cls):
+        return dict(cls.WEEKEND_TIME_SLOT_CHOICES)
+
+    @classmethod
+    def lesson_type_label_map(cls):
+        return dict(cls.LESSON_TYPE_CHOICES)
+
+    @classmethod
+    def frequency_label_map(cls):
+        return dict(cls.FREQUENCY_CHOICES)
+
+    def clean(self):
+        allowed_days = {value for value, _label in self.DAY_CHOICES}
+        allowed_weekday_slots = {value for value, _label in self.WEEKDAY_TIME_SLOT_CHOICES}
+        allowed_weekend_slots = {value for value, _label in self.WEEKEND_TIME_SLOT_CHOICES}
+        allowed_lesson_types = {value for value, _label in self.LESSON_TYPE_CHOICES}
+        allowed_frequencies = {value for value, _label in self.FREQUENCY_CHOICES}
+
+        self.selected_days = [value for value in (self.selected_days or []) if value in allowed_days]
+        self.selected_weekday_time_slots = [
+            value for value in (self.selected_weekday_time_slots or []) if value in allowed_weekday_slots
+        ]
+        self.selected_weekend_time_slots = [
+            value for value in (self.selected_weekend_time_slots or []) if value in allowed_weekend_slots
+        ]
+        self.selected_lesson_types = [
+            value for value in (self.selected_lesson_types or []) if value in allowed_lesson_types
+        ]
+        self.free_comment = (self.free_comment or "").strip()
+
+        if not self.selected_days:
+            raise ValidationError("参加しやすい曜日を1つ以上選択してください。")
+
+        if not self.selected_weekday_time_slots and not self.selected_weekend_time_slots:
+            raise ValidationError("参加しやすい時間帯を1つ以上選択してください。")
+
+        if not self.selected_lesson_types:
+            raise ValidationError("希望レッスン種別を1つ以上選択してください。")
+
+        if self.preferred_frequency not in allowed_frequencies:
+            raise ValidationError("レッスン頻度を選択してください。")
+
+    def selected_day_labels(self):
+        label_map = self.day_label_map()
+        return [label_map.get(value, value) for value in (self.selected_days or [])]
+
+    def selected_weekday_time_slot_labels(self):
+        label_map = self.weekday_time_slot_label_map()
+        return [label_map.get(value, value) for value in (self.selected_weekday_time_slots or [])]
+
+    def selected_weekend_time_slot_labels(self):
+        label_map = self.weekend_time_slot_label_map()
+        return [label_map.get(value, value) for value in (self.selected_weekend_time_slots or [])]
+
+    def selected_lesson_type_labels(self):
+        label_map = self.lesson_type_label_map()
+        return [label_map.get(value, value) for value in (self.selected_lesson_types or [])]
+
+    def preferred_frequency_label(self):
+        return self.frequency_label_map().get(self.preferred_frequency, self.preferred_frequency)
+
+
 def apply_ticket_change(
     *,
     user,
