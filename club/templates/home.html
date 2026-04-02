@@ -264,11 +264,19 @@
     }
 
     .fc .fc-event{
-      white-space:pre-line;
+      white-space:normal;
       cursor:pointer;
       border-radius:8px;
-      padding:2px 4px;
+      padding:3px 5px;
       font-size:12px;
+      line-height:1.25;
+      overflow:hidden;
+    }
+
+    .fc-event-title-wrap{
+      white-space:normal;
+      word-break:break-word;
+      line-height:1.25;
     }
 
     .detail-table{
@@ -442,6 +450,7 @@
         html += '<tr><th>参加者</th><td>' + escapeHtml(props.user_name || "-") + '</td></tr>';
         html += '<tr><th>レッスン種別</th><td>' + escapeHtml(props.lesson_type_display || "-") + '</td></tr>';
         html += '<tr><th>時間</th><td>' + formatDateTimeRange(event.start, event.end) + '</td></tr>';
+        html += '<tr><th>参加人数 / 定員</th><td>' + escapeHtml(props.participant_summary || "-") + '</td></tr>';
         html += '<tr><th>消費チケット</th><td>' + escapeHtml(props.tickets_used || "-") + '枚</td></tr>';
         html += '<tr><th>価格帯内訳</th><td>' + breakdownHtml + '</td></tr>';
         html += '</table>';
@@ -501,6 +510,16 @@
           hour: "2-digit",
           minute: "2-digit",
           hour12: false
+        },
+        eventContent: function(info) {
+          const wrap = document.createElement("div");
+          wrap.className = "fc-event-title-wrap";
+
+          const title = document.createElement("div");
+          title.textContent = (info.event.title || "").trim();
+
+          wrap.appendChild(title);
+          return { domNodes: [wrap] };
         },
         events: function(fetchInfo, successCallback, failureCallback) {
           const selectedCoach = coachFilter.value;
