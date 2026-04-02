@@ -1,0 +1,81 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">ホーム</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; <a href="{% url 'admin:club_user_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; チケット付与
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <h1>チケット付与（条件指定）</h1>
+
+  <div style="margin:16px 0; padding:16px; border:1px solid #ddd; border-radius:8px; background:#fff;">
+    <p style="margin-top:0;">
+      選択した会員に、指定した条件でチケットを一括付与します。
+    </p>
+
+    <h2 style="margin-bottom:8px;">対象ユーザー</h2>
+    <ul style="margin-top:0;">
+      {% for user in member_users %}
+        <li>{{ user.id }} / {{ user.display_name }} / {{ user.username }}</li>
+      {% empty %}
+        <li>対象の member はありません。</li>
+      {% endfor %}
+    </ul>
+
+    {% if skipped_users %}
+      <div style="margin-top:12px; padding:12px; border:1px solid #f0ad4e; background:#fff8e5; border-radius:6px;">
+        <strong>スキップ対象</strong>
+        <ul style="margin:8px 0 0;">
+          {% for user in skipped_users %}
+            <li>{{ user.id }} / {{ user.display_name }} / {{ user.username }} （member ではないため付与対象外）</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+  </div>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="ids" value="{{ ids }}">
+
+    <fieldset class="module aligned">
+      {% for field in form %}
+        <div class="form-row">
+          <div>
+            {{ field.errors }}
+            {{ field.label_tag }}
+            {{ field }}
+            {% if field.help_text %}
+              <div class="help">{{ field.help_text }}</div>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </fieldset>
+
+    <div class="submit-row">
+      <input type="submit" value="この内容で付与する" class="default">
+      <a href="{% url 'admin:club_user_changelist' %}" class="button cancel-link">キャンセル</a>
+    </div>
+  </form>
+</div>
+
+<style>
+  .cancel-link{
+    display:inline-block;
+    padding:10px 15px;
+    border:1px solid #ccc;
+    border-radius:4px;
+    text-decoration:none;
+    background:#f8f8f8;
+    color:#333;
+    margin-left:8px;
+  }
+</style>
+{% endblock %}
