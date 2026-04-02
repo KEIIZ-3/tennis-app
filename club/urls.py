@@ -17,6 +17,8 @@ urlpatterns = [
 
     path("tickets/", views.tickets_view, name="tickets"),
 
+    path("survey/", views.schedule_survey_view, name="schedule_survey"),
+
     path("reservations/new/", views.reservation_create, name="reservation_create"),
     path("reservations/", views.reservation_list, name="reservation_list"),
     path("reservations/<int:pk>/cancel/", views.reservation_cancel, name="reservation_cancel"),
@@ -32,6 +34,7 @@ urlpatterns = [
     path("coach/fixed-lessons/", views.coach_fixed_lesson_weekly, name="coach_fixed_lesson_weekly"),
     path("coach/ticket-summary/", views.coach_ticket_summary, name="coach_ticket_summary"),
     path("coach/payroll-summary/", views.coach_payroll_summary, name="coach_payroll_summary"),
+    path("coach/survey-summary/", views.coach_schedule_survey_summary, name="schedule_survey_summary"),
 
     path("line/", views.line_connect, name="line_connect"),
     path("line/link/", views.line_link, name="line_link"),
