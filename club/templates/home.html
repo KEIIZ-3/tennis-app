@@ -78,13 +78,12 @@
       <div class="muted" style="font-size:13px;">月次確認</div>
       <div style="font-size:22px; font-weight:800; margin-top:6px;">集計・給与</div>
       <p class="muted" style="margin:10px 0 16px;">
-        チケット消費の集計や給与計算、アンケート集計を確認します。
+        チケット消費の集計や給与計算を月ごとに確認します。
       </p>
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
         <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="btn">固定レッスン</a>
         <a href="{% url 'club:coach_ticket_summary' %}" class="btn">チケット集計</a>
         <a href="{% url 'club:coach_payroll_summary' %}" class="btn">給与計算</a>
-        <a href="{% url 'club:schedule_survey_summary' %}" class="btn">アンケート集計</a>
       </div>
     </div>
   </div>
@@ -97,7 +96,6 @@
       <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="btn" style="justify-content:flex-start;">固定レッスン</a>
       <a href="{% url 'club:coach_ticket_summary' %}" class="btn" style="justify-content:flex-start;">チケット集計</a>
       <a href="{% url 'club:coach_payroll_summary' %}" class="btn" style="justify-content:flex-start;">給与計算</a>
-      <a href="{% url 'club:schedule_survey_summary' %}" class="btn" style="justify-content:flex-start;">アンケート集計</a>
       <a href="{% url 'club:line_connect' %}" class="btn" style="justify-content:flex-start;">LINE連携</a>
     </div>
   </div>
@@ -109,24 +107,11 @@
         <li>private / group の申請確認は「スケジュール管理」から行います。</li>
         <li>チケット集計・給与計算は代行コーチ側に寄せた表示です。</li>
         <li>固定レッスンは「固定レッスン」タブから1週間単位で確認できます。</li>
-        <li>アンケート集計はリアルタイムで更新されます。</li>
       </ul>
     </div>
   </div>
 
 {% else %}
-  {% if force_schedule_survey %}
-    <div class="card" style="border:1px solid #fcd34d; background:#fffbeb;">
-      <h2 style="margin-top:0; color:#92400e;">レッスン希望アンケートに回答してください</h2>
-      <p style="margin:10px 0 0; color:#78350f;">
-        まだアンケートが未回答です。今後のレッスン時間帯の参考にするため、先にご回答をお願いします。
-      </p>
-      <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;">
-        <a href="{% url 'club:schedule_survey' %}" class="btn btn-primary">アンケートに回答する</a>
-      </div>
-    </div>
-  {% endif %}
-
   <div class="card">
     <h1 style="margin-top:0;">{{ user.display_name }} さん、こんにちは</h1>
 
@@ -137,14 +122,6 @@
         </div>
         <div style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px;">
           <strong>レベル:</strong> {{ user.get_member_level_display }}
-        </div>
-        <div style="padding:12px 14px; border:1px solid #d1fae5; background:#ecfdf5; border-radius:10px;">
-          <strong>アンケート:</strong>
-          {% if has_schedule_survey %}
-            回答済み
-          {% else %}
-            未回答
-          {% endif %}
         </div>
       {% endif %}
       <div style="padding:12px 14px; border:2px solid #93c5fd; background:#eff6ff; border-radius:10px;">
@@ -158,12 +135,6 @@
     <p style="margin:14px 0 0; color:#666;">
       一般レッスンは2時間でチケット1枚、プライベートは1時間で2枚、グループは1時間で参加人数分、イベントは都度設定です。
     </p>
-
-    {% if user.role == "member" %}
-      <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;">
-        <a href="{% url 'club:schedule_survey' %}" class="btn">アンケートを見る</a>
-      </div>
-    {% endif %}
   </div>
 
   <div class="page-grid">
@@ -194,7 +165,6 @@
           <a href="{% url 'club:reservation_list' %}" class="btn">予約一覧</a>
           {% if user.role == "member" %}
             <a href="{% url 'club:tickets' %}" class="btn">チケット</a>
-            <a href="{% url 'club:schedule_survey' %}" class="btn">アンケート</a>
           {% endif %}
           <a href="{% url 'club:line_connect' %}" class="btn">LINE連携</a>
         </div>
@@ -227,39 +197,182 @@
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/locales-all.global.min.js"></script>
 
   <style>
-    .page-grid{ display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:16px; align-items:start; }
-    .toolbar-card, .calendar-card, .detail-card{ padding:16px; }
-    .toolbar-row{ display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
-    .filter-block{ min-width:220px; }
-    .toolbar-links{ margin-top:12px; display:flex; gap:12px; flex-wrap:wrap; }
-    .legend{ display:flex; gap:8px; flex-wrap:wrap; }
-    .legend-item{ display:inline-block; padding:6px 10px; border-radius:999px; color:#fff; font-size:12px; }
-    .legend-available{ background:#22c55e; }
-    .legend-pending{ background:#f59e0b; }
-    .legend-reserved{ background:#ef4444; }
-    .legend-mine{ background:#3b82f6; }
-    #calendar{ min-height:720px; }
-    .fc .fc-event{ white-space:normal; cursor:pointer; border-radius:8px; padding:3px 5px; font-size:12px; line-height:1.2; overflow:hidden; }
-    .fc-event-title-wrap{ white-space:normal; word-break:break-word; line-height:1.2; }
-    .fc-event-line-main{ font-weight:700; }
-    .fc-event-line-sub{ font-size:11px; opacity:0.95; margin-top:2px; }
-    .detail-table{ width:100%; border-collapse:collapse; }
-    .detail-table th, .detail-table td{ text-align:left; padding:6px 0; vertical-align:top; border-bottom:1px solid #eee; font-size:14px; }
-    .detail-actions{ margin-top:16px; display:flex; gap:8px; flex-wrap:wrap; }
-    .price-chip{ display:inline-block; margin:2px 6px 2px 0; padding:5px 8px; border-radius:999px; background:#eff6ff; border:1px solid #bfdbfe; font-size:12px; color:#1d4ed8; font-weight:600; }
-    .coach-box{ margin-top:6px; padding:8px 10px; border-radius:10px; background:#f8fafc; border:1px solid #e5e7eb; font-size:13px; line-height:1.6; }
-    .muted-inline{ color:#666; font-size:13px; }
+    .page-grid{
+      display:grid;
+      grid-template-columns:minmax(0,1fr) 320px;
+      gap:16px;
+      align-items:start;
+    }
+
+    .toolbar-card,
+    .calendar-card,
+    .detail-card{
+      padding:16px;
+    }
+
+    .toolbar-row{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      flex-wrap:wrap;
+    }
+
+    .filter-block{
+      min-width:220px;
+    }
+
+    .toolbar-links{
+      margin-top:12px;
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+    }
+
+    .legend{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+
+    .legend-item{
+      display:inline-block;
+      padding:6px 10px;
+      border-radius:999px;
+      color:#fff;
+      font-size:12px;
+    }
+
+    .legend-available{
+      background:#22c55e;
+    }
+
+    .legend-pending{
+      background:#f59e0b;
+    }
+
+    .legend-reserved{
+      background:#ef4444;
+    }
+
+    .legend-mine{
+      background:#3b82f6;
+    }
+
+    #calendar{
+      min-height:720px;
+    }
+
+    .fc .fc-event{
+      white-space:normal;
+      cursor:pointer;
+      border-radius:8px;
+      padding:3px 5px;
+      font-size:12px;
+      line-height:1.2;
+      overflow:hidden;
+    }
+
+    .fc-event-title-wrap{
+      white-space:normal;
+      word-break:break-word;
+      line-height:1.2;
+    }
+
+    .fc-event-line-main{
+      font-weight:700;
+    }
+
+    .fc-event-line-sub{
+      font-size:11px;
+      opacity:0.95;
+      margin-top:2px;
+    }
+
+    .detail-table{
+      width:100%;
+      border-collapse:collapse;
+    }
+
+    .detail-table th,
+    .detail-table td{
+      text-align:left;
+      padding:6px 0;
+      vertical-align:top;
+      border-bottom:1px solid #eee;
+      font-size:14px;
+    }
+
+    .detail-actions{
+      margin-top:16px;
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+
+    .price-chip{
+      display:inline-block;
+      margin:2px 6px 2px 0;
+      padding:5px 8px;
+      border-radius:999px;
+      background:#eff6ff;
+      border:1px solid #bfdbfe;
+      font-size:12px;
+      color:#1d4ed8;
+      font-weight:600;
+    }
+
+    .coach-box{
+      margin-top:6px;
+      padding:8px 10px;
+      border-radius:10px;
+      background:#f8fafc;
+      border:1px solid #e5e7eb;
+      font-size:13px;
+      line-height:1.6;
+    }
+
+    .muted-inline{
+      color:#666;
+      font-size:13px;
+    }
+
     @media (max-width: 960px){
-      .page-grid{ grid-template-columns:1fr; }
-      #calendar{ min-height:520px; }
-      .fc .fc-toolbar{ flex-direction:column; gap:8px; }
-      .fc .fc-toolbar-title{ font-size:18px !important; }
-      .fc .fc-button{ font-size:12px !important; padding:0.3em 0.5em !important; }
+      .page-grid{
+        grid-template-columns:1fr;
+      }
+
+      #calendar{
+        min-height:520px;
+      }
+
+      .fc .fc-toolbar{
+        flex-direction:column;
+        gap:8px;
+      }
+
+      .fc .fc-toolbar-title{
+        font-size:18px !important;
+      }
+
+      .fc .fc-button{
+        font-size:12px !important;
+        padding:0.3em 0.5em !important;
+      }
+
       .fc .fc-col-header-cell-cushion,
       .fc .fc-timegrid-slot-label-cushion,
-      .fc .fc-timegrid-axis-cushion{ font-size:12px; }
-      .fc .fc-event{ font-size:11px; }
-      .fc-event-line-sub{ font-size:10px; }
+      .fc .fc-timegrid-axis-cushion{
+        font-size:12px;
+      }
+
+      .fc .fc-event{
+        font-size:11px;
+      }
+
+      .fc-event-line-sub{
+        font-size:10px;
+      }
     }
   </style>
 
@@ -276,7 +389,7 @@
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
-          .replace(/\"/g, "&quot;")
+          .replace(/"/g, "&quot;")
           .replace(/'/g, "&#039;");
       }
 
@@ -405,13 +518,24 @@
         const single = parts[0];
 
         if (single.indexOf("あなたの予約 ") === 0) {
-          return { main: "あなたの予約", sub: single.replace("あなたの予約 ", "") };
+          return {
+            main: "あなたの予約",
+            sub: single.replace("あなたの予約 ", "")
+          };
         }
+
         if (single.indexOf("予約済み ") === 0) {
-          return { main: "予約済み", sub: single.replace("予約済み ", "") };
+          return {
+            main: "予約済み",
+            sub: single.replace("予約済み ", "")
+          };
         }
+
         if (single.indexOf("申請中 ") === 0) {
-          return { main: "申請中", sub: single.replace("申請中 ", "") };
+          return {
+            main: "申請中",
+            sub: single.replace("申請中 ", "")
+          };
         }
 
         return { main: single, sub: "" };
@@ -448,30 +572,39 @@
         },
         eventContent: function(info) {
           const lines = buildEventLines(info.event);
+
           const wrap = document.createElement("div");
           wrap.className = "fc-event-title-wrap";
+
           const main = document.createElement("div");
           main.className = "fc-event-line-main";
           main.textContent = lines.main || "";
+
           wrap.appendChild(main);
+
           if (lines.sub) {
             const sub = document.createElement("div");
             sub.className = "fc-event-line-sub";
             sub.textContent = lines.sub;
             wrap.appendChild(sub);
           }
+
           return { domNodes: [wrap] };
         },
         events: function(fetchInfo, successCallback, failureCallback) {
           const selectedCoach = coachFilter.value;
           const url = new URL("{% url 'club:calendar_events' %}", window.location.origin);
+
           url.searchParams.set("start", fetchInfo.startStr);
           url.searchParams.set("end", fetchInfo.endStr);
+
           if (selectedCoach) {
             url.searchParams.set("coach", selectedCoach);
           }
 
-          fetch(url, { credentials: "same-origin" })
+          fetch(url, {
+            credentials: "same-origin"
+          })
             .then(function(response) {
               if (!response.ok) {
                 throw new Error("イベント取得に失敗しました");
