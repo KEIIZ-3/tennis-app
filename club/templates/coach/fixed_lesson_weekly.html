@@ -1,31 +1,19 @@
 {% extends "base.html" %}
-{% block title %}固定レッスン{% endblock %}
+{% block title %}レッスンスケジュール{% endblock %}
 
 {% block content %}
 <div class="card">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
     <div>
-      <h1 style="margin:0;">1週間の固定レッスン</h1>
+      <h1 style="margin:0;">1週間のレッスンスケジュール</h1>
       <p class="muted" style="margin:8px 0 0;">
-        今週分の固定レッスンだけを一覧表示します。期間: {{ week_label }}
+        今週分だけを確認する簡易表示です。期間: {{ week_label }}
       </p>
     </div>
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
       <a href="{% url 'club:coach_availability_list' %}" class="btn">スケジュール管理</a>
       <a href="{% url 'club:home' %}" class="btn btn-primary">コーチホーム</a>
     </div>
-  </div>
-</div>
-
-<div class="card">
-  <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
-    <div style="font-weight:700; margin-bottom:6px;">この画面で見るもの</div>
-    <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
-      <li>固定レッスンの曜日・開始時間・対象日</li>
-      <li>通常担当 / 代行コーチ</li>
-      <li>登録メンバー数と今週生成された予約数</li>
-      <li>今週分の実施予定を1画面で確認</li>
-    </ul>
   </div>
 </div>
 
@@ -48,45 +36,56 @@
 {% endif %}
 
 <div class="card">
+  <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
+    <div style="font-weight:700; margin-bottom:6px;">この画面で分かること</div>
+    <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
+      <li>今週いつ・どのレッスンがあるか</li>
+      <li>通常担当 / 代行コーチ</li>
+      <li>登録メンバー数と今週の予約数</li>
+    </ul>
+  </div>
+</div>
+
+<div class="card">
   {% if fixed_lessons %}
     <div style="overflow-x:auto;">
       <table>
         <thead>
           <tr>
-            <th>固定レッスン</th>
-            <th>今週の実施日</th>
+            <th>曜日 / 日付</th>
             <th>時間</th>
-            <th>種別</th>
-            <th>担当コーチ</th>
-            <th>コート</th>
-            <th>登録メンバー</th>
+            <th>レッスン</th>
+            <th>担当</th>
+            <th>メンバー</th>
             <th>今週の予約</th>
-            <th>定員</th>
           </tr>
         </thead>
         <tbody>
           {% for row in fixed_lessons %}
             <tr>
               <td>
-                <div style="font-weight:700;">{{ row.fixed_lesson.title|default:"（名称未設定）" }}</div>
-                <div class="muted" style="font-size:12px;">{{ row.weekday_label }} / {{ row.fixed_lesson.target_level|default:"-" }}</div>
+                <div style="font-weight:700;">{{ row.weekday_label }}</div>
+                <div class="muted" style="font-size:12px;">{{ row.target_date|date:"Y-m-d" }}</div>
               </td>
-              <td>{{ row.target_date|date:"Y-m-d" }} ({{ row.weekday_label }})</td>
               <td>
                 <div>{{ row.start_at|date:"H:i" }} 〜 {{ row.end_at|date:"H:i" }}</div>
-                <div class="muted" style="font-size:12px;">開始 {{ row.fixed_lesson.start_hour }}時</div>
               </td>
-              <td>{{ row.fixed_lesson.get_lesson_type_display }}</td>
+              <td>
+                <div style="font-weight:700;">{{ row.fixed_lesson.title|default:"（名称未設定）" }}</div>
+                <div class="muted" style="font-size:12px;">
+                  {{ row.fixed_lesson.get_lesson_type_display }} / {{ row.fixed_lesson.get_target_level_display }}
+                </div>
+                <div class="muted" style="font-size:12px;">{{ row.fixed_lesson.court }}</div>
+              </td>
               <td>
                 {% if row.has_substitute %}
                   <div><strong>実施:</strong> {{ row.assigned_coach_name }}</div>
-                  <div class="muted" style="font-size:12px;">通常担当: {{ row.normal_coach_name }}</div>
+                  <div class="muted" style="font-size:12px;">通常: {{ row.normal_coach_name }}</div>
                   <div class="muted" style="font-size:12px;">代行: {{ row.substitute_coach_name }}</div>
                 {% else %}
                   <div>{{ row.assigned_coach_name }}</div>
                 {% endif %}
               </td>
-              <td>{{ row.fixed_lesson.court }}</td>
               <td>
                 <div>{{ row.member_count }}名</div>
                 {% if row.member_names %}
@@ -103,17 +102,13 @@
                   <div class="muted" style="font-size:12px;">未生成</div>
                 {% endif %}
               </td>
-              <td>
-                <div>{{ row.fixed_lesson.capacity }}</div>
-                <div class="muted" style="font-size:12px;">コーチ{{ row.fixed_lesson.coach_count }}人 / コート{{ row.fixed_lesson.court_count }}面</div>
-              </td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
   {% else %}
-    <p class="muted" style="margin:0;">今週表示できる固定レッスンはありません。</p>
+    <p class="muted" style="margin:0;">今週表示できるレッスン予定はありません。</p>
   {% endif %}
 </div>
 {% endblock %}
