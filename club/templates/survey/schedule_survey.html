@@ -2,6 +2,79 @@
 {% block title %}レッスン希望アンケート{% endblock %}
 
 {% block content %}
+  <style>
+    .survey-form-section{
+      margin-bottom:22px;
+      padding:18px;
+      border:1px solid #e5e7eb;
+      border-radius:14px;
+      background:#ffffff;
+    }
+
+    .survey-form-title{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      margin-bottom:12px;
+      font-size:17px;
+      font-weight:800;
+    }
+
+    .survey-form-number{
+      width:28px;
+      height:28px;
+      border-radius:999px;
+      background:#0f172a;
+      color:#fff;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      font-size:13px;
+      font-weight:800;
+      flex:0 0 auto;
+    }
+
+    .survey-option-grid{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:10px 14px;
+    }
+
+    .survey-option{
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+      font-weight:500;
+      margin-bottom:0;
+      padding:10px 12px;
+      border:1px solid #e5e7eb;
+      border-radius:12px;
+      background:#f8fafc;
+    }
+
+    .survey-option input{
+      width:auto;
+      min-height:auto;
+      margin-top:2px;
+    }
+
+    .survey-help{
+      color:#64748b;
+      font-size:13px;
+      margin-bottom:10px;
+    }
+
+    @media (max-width: 768px){
+      .survey-option-grid{
+        grid-template-columns:1fr;
+      }
+
+      .survey-form-section{
+        padding:14px;
+      }
+    }
+  </style>
+
   <div class="page-head">
     <h1 class="page-title">レッスン希望アンケート</h1>
     <p class="page-subtitle">
@@ -18,17 +91,20 @@
     <form method="post">
       {% csrf_token %}
 
-      <div style="margin-bottom:22px;">
-        <label>参加しやすい曜日（複数選択）</label>
-        <div class="grid-2">
+      <div class="survey-form-section">
+        <div class="survey-form-title">
+          <span class="survey-form-number">1</span>
+          <span>参加しやすい曜日（複数選択）</span>
+        </div>
+        <div class="survey-help">都合の良い曜日をすべて選んでください。</div>
+        <div class="survey-option-grid">
           {% for value, label in day_choices %}
-            <label style="display:flex; gap:10px; align-items:flex-start; font-weight:500; margin-bottom:0;">
+            <label class="survey-option">
               <input
                 type="checkbox"
                 name="selected_days"
                 value="{{ value }}"
                 {% if value in form_data.selected_days %}checked{% endif %}
-                style="width:auto; min-height:auto; margin-top:2px;"
               >
               <span>{{ label }}</span>
             </label>
@@ -36,17 +112,20 @@
         </div>
       </div>
 
-      <div style="margin-bottom:22px;">
-        <label>参加しやすい時間帯（平日・複数選択）</label>
-        <div class="grid-2">
+      <div class="survey-form-section">
+        <div class="survey-form-title">
+          <span class="survey-form-number">2</span>
+          <span>参加しやすい時間帯（平日・複数選択）</span>
+        </div>
+        <div class="survey-help">平日に参加しやすい具体的な時間帯を選んでください。</div>
+        <div class="survey-option-grid">
           {% for value, label in weekday_time_slot_choices %}
-            <label style="display:flex; gap:10px; align-items:flex-start; font-weight:500; margin-bottom:0;">
+            <label class="survey-option">
               <input
                 type="checkbox"
                 name="selected_weekday_time_slots"
                 value="{{ value }}"
                 {% if value in form_data.selected_weekday_time_slots %}checked{% endif %}
-                style="width:auto; min-height:auto; margin-top:2px;"
               >
               <span>{{ label }}</span>
             </label>
@@ -54,17 +133,20 @@
         </div>
       </div>
 
-      <div style="margin-bottom:22px;">
-        <label>参加しやすい時間帯（土日・複数選択）</label>
-        <div class="grid-2">
+      <div class="survey-form-section">
+        <div class="survey-form-title">
+          <span class="survey-form-number">3</span>
+          <span>参加しやすい時間帯（土日・複数選択）</span>
+        </div>
+        <div class="survey-help">土日に参加しやすい具体的な時間帯を選んでください。</div>
+        <div class="survey-option-grid">
           {% for value, label in weekend_time_slot_choices %}
-            <label style="display:flex; gap:10px; align-items:flex-start; font-weight:500; margin-bottom:0;">
+            <label class="survey-option">
               <input
                 type="checkbox"
                 name="selected_weekend_time_slots"
                 value="{{ value }}"
                 {% if value in form_data.selected_weekend_time_slots %}checked{% endif %}
-                style="width:auto; min-height:auto; margin-top:2px;"
               >
               <span>{{ label }}</span>
             </label>
@@ -72,17 +154,20 @@
         </div>
       </div>
 
-      <div style="margin-bottom:22px;">
-        <label>希望レッスン種別（複数選択）</label>
-        <div class="grid-2">
+      <div class="survey-form-section">
+        <div class="survey-form-title">
+          <span class="survey-form-number">4</span>
+          <span>希望レッスン種別（複数選択）</span>
+        </div>
+        <div class="survey-help">興味のあるレッスン種別をすべて選んでください。</div>
+        <div class="survey-option-grid">
           {% for value, label in lesson_type_choices %}
-            <label style="display:flex; gap:10px; align-items:flex-start; font-weight:500; margin-bottom:0;">
+            <label class="survey-option">
               <input
                 type="checkbox"
                 name="selected_lesson_types"
                 value="{{ value }}"
                 {% if value in form_data.selected_lesson_types %}checked{% endif %}
-                style="width:auto; min-height:auto; margin-top:2px;"
               >
               <span>{{ label }}</span>
             </label>
@@ -90,8 +175,12 @@
         </div>
       </div>
 
-      <div style="margin-bottom:22px;">
-        <label for="preferred_frequency">レッスン頻度の希望</label>
+      <div class="survey-form-section">
+        <div class="survey-form-title">
+          <span class="survey-form-number">5</span>
+          <span>レッスン頻度の希望</span>
+        </div>
+        <div class="survey-help">現在の希望に最も近いものを選んでください。</div>
         <select id="preferred_frequency" name="preferred_frequency">
           <option value="">選択してください</option>
           {% for value, label in frequency_choices %}
@@ -100,9 +189,13 @@
         </select>
       </div>
 
-      <div style="margin-bottom:22px;">
-        <label for="free_comment">自由記述（任意）</label>
-        <textarea id="free_comment" name="free_comment" placeholder="ご希望があればご記入ください">{{ form_data.free_comment }}</textarea>
+      <div class="survey-form-section">
+        <div class="survey-form-title">
+          <span class="survey-form-number">6</span>
+          <span>自由記述（任意）</span>
+        </div>
+        <div class="survey-help">曜日や時間帯以外のご希望があればご記入ください。</div>
+        <textarea id="free_comment" name="free_comment" placeholder="例：平日の19時以降だと参加しやすいです。">{{ form_data.free_comment }}</textarea>
       </div>
 
       <div class="actions">
