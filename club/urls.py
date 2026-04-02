@@ -17,6 +17,9 @@ urlpatterns = [
 
     path("tickets/", views.tickets_view, name="tickets"),
 
+    path("survey/schedule/", views.schedule_survey_view, name="schedule_survey"),
+    path("coach/survey-summary/", views.coach_schedule_survey_summary, name="coach_schedule_survey_summary"),
+
     path("reservations/new/", views.reservation_create, name="reservation_create"),
     path("reservations/", views.reservation_list, name="reservation_list"),
     path("reservations/<int:pk>/cancel/", views.reservation_cancel, name="reservation_cancel"),
