@@ -1,117 +1,75 @@
 {% extends "base.html" %}
-{% block title %}ホーム{% endblock %}
+{% block title %}コーチスケジュール管理{% endblock %}
 
 {% block content %}
-
-{% if not user.is_authenticated %}
-  <div class="card">
-    <h1 style="margin-top:0;">Play Design Tennis へようこそ</h1>
-    <p style="margin:12px 0 0;">
-      初めての方は、<strong>LINE内の予約ボタン</strong>から進むと、そのまま会員登録とLINE連携が自動で完了します。
-    </p>
-
-    <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-      {% if liff_enabled %}
-        <a
-          href="{% url 'club:liff_entry' %}"
-          style="display:inline-block; padding:12px 18px; border-radius:10px; background:#06c755; color:#fff; text-decoration:none; font-weight:bold;"
-        >
-          LINEで始める
-        </a>
-      {% endif %}
-      <a
-        href="{% url 'club:register' %}"
-        style="display:inline-block; padding:12px 18px; border-radius:10px; background:#fff; color:#111; text-decoration:none; border:1px solid #ddd;"
-      >
-        新規会員登録
-      </a>
-      <a
-        href="{% url 'club:login' %}"
-        style="display:inline-block; padding:12px 18px; border-radius:10px; background:#fff; color:#111; text-decoration:none; border:1px solid #ddd;"
-      >
-        通常ログイン
-      </a>
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h1 style="margin:0;">コーチスケジュール管理</h1>
+      <p class="muted" style="margin:8px 0 0;">
+        登録済みのレッスン枠を確認・編集できます。代行コーチもここで設定できます。
+      </p>
     </div>
 
-    <ul style="margin-top:18px; padding-left:20px; line-height:1.8;">
-      <li>公式LINEからそのまま始められます</li>
-      <li>初回は会員登録とLINE連携が自動で完了します</li>
-      <li>ログイン後、予約作成や予約確認ができます</li>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <a href="{% url 'club:coach_availability_create' %}" class="btn btn-primary">新規登録</a>
+      <a href="{% url 'club:home' %}" class="btn">コーチホームへ戻る</a>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div style="padding:14px 16px; border:1px solid #c7d2fe; background:#eef2ff; border-radius:10px;">
+    <div style="font-weight:700; margin-bottom:6px; color:#3730a3;">Coach専用タブ対象ページ</div>
+    <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
+      <li>private / group の申請確認は、この画面の上部カードから行います。</li>
+      <li>月次の集計確認は、上部のCoachタブから移動できます。</li>
+      <li>今後、固定レッスン表示タブもこの導線に追加する想定です。</li>
     </ul>
   </div>
+</div>
 
-{% elif user.role == "coach" %}
-  <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
-      <div>
-        <h1 style="margin:0;">コーチホーム</h1>
-        <p class="muted" style="margin:8px 0 0;">
-          {{ user.display_name }} さん用のコーチ専用ダッシュボードです。
-        </p>
-      </div>
-      <div style="padding:10px 14px; border:1px solid #c7d2fe; background:#eef2ff; border-radius:10px; font-weight:700; color:#3730a3;">
-        Coachロール専用表示
-      </div>
-    </div>
+<div class="card">
+  <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px;">
+    <div style="font-weight:700; margin-bottom:6px;">表示の見方</div>
+    <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
+      <li>一般 / プライベート / グループは通常ルールでチケットが消費されます。</li>
+      <li>イベントは「イベント用チケット価格」に設定した枚数が使われます。</li>
+      <li>代行コーチを設定すると、その時間枠に紐づく予約へ自動反映されます。</li>
+      <li>プライベート / グループの申請は、この画面上で承認・却下できます。</li>
+    </ul>
   </div>
+</div>
 
-  <div class="grid-3">
-    <div class="card">
-      <div class="muted" style="font-size:13px;">おすすめ導線</div>
-      <div style="font-size:22px; font-weight:800; margin-top:6px;">申請確認</div>
-      <p class="muted" style="margin:10px 0 16px;">
-        private / group の承認待ち申請を確認して、承認・却下を行います。
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+    <div>
+      <h2 style="margin:0;">承認待ち申請</h2>
+      <p class="muted" style="margin:6px 0 0;">
+        プライベート / グループの申請一覧です。
       </p>
-      <a href="{% url 'club:coach_availability_list' %}" class="btn btn-primary">スケジュール管理へ</a>
     </div>
-
-    <div class="card">
-      <div class="muted" style="font-size:13px;">予約確認</div>
-      <div style="font-size:22px; font-weight:800; margin-top:6px;">担当予約一覧</div>
-      <p class="muted" style="margin:10px 0 16px;">
-        自分が担当する予約や、代行コーチとして入っている予約を確認します。
-      </p>
-      <a href="{% url 'club:reservation_list' %}" class="btn btn-primary">予約一覧へ</a>
-    </div>
-
-    <div class="card">
-      <div class="muted" style="font-size:13px;">月次確認</div>
-      <div style="font-size:22px; font-weight:800; margin-top:6px;">集計・給与</div>
-      <p class="muted" style="margin:10px 0 16px;">
-        チケット消費の集計や給与計算を月ごとに確認します。
-      </p>
-      <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="btn">固定レッスン</a>
-        <a href="{% url 'club:coach_ticket_summary' %}" class="btn">チケット集計</a>
-        <a href="{% url 'club:coach_payroll_summary' %}" class="btn">給与計算</a>
-      </div>
+    <div style="font-weight:700;">
+      {{ pending_reservations|length }} 件
     </div>
   </div>
 
-  <div class="card">
-    <h2 style="margin-top:0;">コーチ向けメニュー</h2>
-    <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px;">
-      <a href="{% url 'club:coach_availability_list' %}" class="btn" style="justify-content:flex-start;">スケジュール管理</a>
-      <a href="{% url 'club:reservation_list' %}" class="btn" style="justify-content:flex-start;">予約一覧</a>
-      <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="btn" style="justify-content:flex-start;">固定レッスン</a>
-      <a href="{% url 'club:coach_ticket_summary' %}" class="btn" style="justify-content:flex-start;">チケット集計</a>
-      <a href="{% url 'club:coach_payroll_summary' %}" class="btn" style="justify-content:flex-start;">給与計算</a>
-      <a href="{% url 'club:line_connect' %}" class="btn" style="justify-content:flex-start;">LINE連携</a>
-    </div>
-  </div>
-
-  <div class="card">
-    <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
-      <div style="font-weight:700; margin-bottom:6px;">運用メモ</div>
-      <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
-        <li>private / group の申請確認は「スケジュール管理」から行います。</li>
-        <li>チケット集計・給与計算は代行コーチ側に寄せた表示です。</li>
-        <li>固定レッスンは「固定レッスン」タブから1週間単位で確認できます。</li>
-      </ul>
-    </div>
-  </div>
-
-{% else %}
+  {% if pending_reservations %}
+    <div style="display:grid; gap:12px;">
+      {% for reservation in pending_reservations %}
+        <div style="border:1px solid #fcd34d; background:#fffbeb; border-radius:12px; padding:16px;">
+          <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+            <div>
+              <div style="font-size:18px; font-weight:700;">
+                {{ reservation.get_lesson_type_display }} / {{ reservation.user.display_name }}
+              </div>
+              <div class="muted" style="margin-top:6px; line-height:1.8;">
+                <div>担当コーチ: {{ reservation.coach.display_name }}</div>
+                <div>
+                  代行コーチ:
+                  {% if reservation.substitute_coach %}
+                    {{ reservation.substitute_coach.display_name }}
+                  {% else %}
   <div class="card">
     <h1 style="margin-top:0;">{{ user.display_name }} さん、こんにちは</h1>
 
@@ -154,8 +112,8 @@
           </div>
 
           <div class="legend">
-            <span class="legend-item legend-available">空き</span>
-            <span class="legend-item legend-pending">承認待ち</span>
+            <span class="legend-item legend-available">受付中</span>
+            <span class="legend-item legend-pending">申請中</span>
             <span class="legend-item legend-reserved">予約済み</span>
             <span class="legend-item legend-mine">あなたの予約</span>
           </div>
@@ -168,6 +126,10 @@
           {% endif %}
           <a href="{% url 'club:line_connect' %}" class="btn">LINE連携</a>
         </div>
+
+        <div class="toolbar-note">
+          週表示・月表示は右上から切り替えできます。予約が成立した枠は、元のレッスン枠を出さず予約情報のみ表示します。
+        </div>
       </div>
 
       <div class="card calendar-card">
@@ -179,7 +141,7 @@
       <div class="card detail-card">
         <h3 style="margin-top:0;">詳細</h3>
         <div id="detailPanel">
-          <p>カレンダー上の枠をタップしてください。</p>
+          <p>右のカレンダーから枠を選ぶと、ここに内容が表示されます。</p>
         </div>
       </div>
     </aside>
@@ -222,6 +184,13 @@
       flex-wrap:wrap;
     }
 
+    .toolbar-note{
+      margin-top:12px;
+      font-size:13px;
+      color:#666;
+      line-height:1.7;
+    }
+
     .legend{
       display:flex;
       gap:8px;
@@ -257,11 +226,35 @@
     }
 
     .fc .fc-event{
-      white-space:pre-line;
       cursor:pointer;
       border-radius:8px;
       padding:2px 4px;
       font-size:12px;
+      line-height:1.35;
+    }
+
+    .fc .fc-daygrid-event-dot{
+      display:none !important;
+    }
+
+    .fc .fc-timegrid-event-harness .fc-timegrid-event,
+    .fc .fc-daygrid-event{
+      box-shadow:none;
+    }
+
+    .fc .fc-event-main{
+      white-space:normal;
+    }
+
+    .fc .fc-list-event-title a,
+    .fc .fc-col-header-cell-cushion,
+    .fc .fc-timegrid-slot-label-cushion,
+    .fc .fc-timegrid-axis-cushion{
+      font-size:13px;
+    }
+
+    .fc .fc-toolbar-title{
+      font-size:20px;
     }
 
     .detail-table{
@@ -305,6 +298,17 @@
       border:1px solid #e5e7eb;
       font-size:13px;
       line-height:1.6;
+    }
+
+    .simple-note{
+      margin-top:10px;
+      padding:10px 12px;
+      border-radius:10px;
+      background:#f8fafc;
+      border:1px solid #e5e7eb;
+      color:#475569;
+      font-size:13px;
+      line-height:1.7;
     }
 
     @media (max-width: 960px){
@@ -390,16 +394,18 @@
 
         detailPanel.innerHTML = `
           <table class="detail-table">
-            <tr><th>種別</th><td>予約可能枠</td></tr>
+            <tr><th>状態</th><td>受付中</td></tr>
             <tr><th>レッスン種別</th><td>${escapeHtml(props.lesson_type_display || "-")}</td></tr>
             <tr><th>対象レベル</th><td>${escapeHtml(props.target_level_display || "-")}</td></tr>
             <tr><th>担当コーチ</th><td>${escapeHtml(props.coach_name || "-")}</td></tr>
             <tr><th>代行コーチ</th><td>${escapeHtml(props.substitute_coach_name || "未設定")}</td></tr>
+            <tr><th>コート</th><td>${escapeHtml(props.court || "-")}</td></tr>
             <tr><th>時間</th><td>${formatDateTimeRange(event.start, event.end)}</td></tr>
             <tr><th>定員</th><td>${capacityHtml}</td></tr>
-            <tr><th>担当コーチ人数</th><td>${escapeHtml(props.coach_count || "-")}人</td></tr>
-            <tr><th>利用コート面数</th><td>${escapeHtml(props.court_count || "-")}面</td></tr>
           </table>
+          <div class="simple-note">
+            予約成立後は、この受付中表示は消えて、予約情報のみ表示されます。
+          </div>
           <div class="detail-actions">
             ${
               props.reserve_url
@@ -456,11 +462,11 @@
 
       const calendar = new FullCalendar.Calendar(calendarEl, {
         locale: "ja",
-        initialView: isMobile ? "timeGridDay" : "timeGridWeek",
+        initialView: isMobile ? "timeGridWeek" : "timeGridWeek",
         headerToolbar: {
           left: "prev,next today",
           center: "title",
-          right: isMobile ? "timeGridDay,listDay" : "timeGridWeek,dayGridMonth,listWeek"
+          right: "timeGridWeek,dayGridMonth"
         },
         allDaySlot: false,
         nowIndicator: true,
@@ -476,6 +482,29 @@
           hour: "2-digit",
           minute: "2-digit",
           hour12: false
+        },
+        eventContent: function(arg) {
+          const props = arg.event.extendedProps || {};
+          const wrap = document.createElement("div");
+          const title = document.createElement("div");
+          title.style.whiteSpace = "normal";
+          title.style.fontWeight = "600";
+          title.textContent = arg.event.title || "";
+
+          const meta = document.createElement("div");
+          meta.style.whiteSpace = "normal";
+          meta.style.fontSize = "11px";
+          meta.style.opacity = "0.95";
+
+          if (props.kind === "availability") {
+            meta.textContent = `${props.coach_name || ""} / ${props.court || ""}`;
+          } else {
+            meta.textContent = `${props.user_name || ""} / ${props.lesson_type_display || ""}`;
+          }
+
+          wrap.appendChild(title);
+          wrap.appendChild(meta);
+          return { domNodes: [wrap] };
         },
         events: function(fetchInfo, successCallback, failureCallback) {
           const selectedCoach = coachFilter.value;
@@ -518,7 +547,7 @@
 
       coachFilter.addEventListener("change", function() {
         calendar.refetchEvents();
-        detailPanel.innerHTML = "<p>カレンダー上の枠をタップしてください。</p>";
+        detailPanel.innerHTML = "<p>右のカレンダーから枠を選ぶと、ここに内容が表示されます。</p>";
       });
 
       calendar.render();
