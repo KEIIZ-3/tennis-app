@@ -1,8 +1,13 @@
 from django import forms
 from django.contrib import admin, messages
+from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
+from django.http import HttpResponseRedirect
+from django.shortcuts import redirect, render
+from django.urls import path, reverse
 
+from .forms import TicketGrantAdminForm
 from .models import (
     CoachAvailability,
     CoachExpense,
@@ -141,7 +146,7 @@ class UserAdmin(BaseUserAdmin):
     list_filter = ("role", "member_level", "is_profile_completed", "is_staff", "is_superuser", "is_active")
     search_fields = ("username", "full_name", "email", "phone_number")
     ordering = ("id",)
-    actions = ("grant_single_ticket", "grant_set4_tickets")
+    actions = ("grant_tickets_selected", "grant_single_ticket", "grant_set4_tickets")
 
     fieldsets = (
         (None, {"fields": ("username", "password")}),
@@ -172,10 +177,115 @@ class UserAdmin(BaseUserAdmin):
         ),
     )
 
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "grant-tickets/",
+                self.admin_site.admin_view(self.grant_tickets_view),
+                name="club_user_grant_tickets",
+            ),
+        ]
+        return custom_urls + urls
+
+    @admin.action(description="チケット付与（条件指定・複数人一括対応）")
+    def grant_tickets_selected(self, request, queryset):
+        selected_ids = list(queryset.values_list("pk", flat=True))
+        if not selected_ids:
+            self.message_user(request, "対象会員を選択してください。", level=messages.WARNING)
+            return None
+
+        ids_query = ",".join([str(pk) for pk in selected_ids])
+        url = reverse("admin:club_user_grant_tickets")
+        return HttpResponseRedirect(f"{url}?ids={ids_query}")
+
+    def grant_tickets_view(self, request):
+        raw_ids = (request.GET.get("ids") or request.POST.get("ids") or "").strip()
+        selected_ids = [int(value) for value in raw_ids.split(",") if value.strip().isdigit()]
+        queryset = User.objects.filter(pk__in=selected_ids).order_by("id")
+
+        if not queryset.exists():
+            self.message_user(request, "対象会員が見つかりません。", level=messages.WARNING)
+            return redirect("admin:club_user_changelist")
+
+        members = queryset.filter(role="member")
+        skipped_users = list(queryset.exclude(role="member"))
+
+        if request.method == "POST":
+            form = TicketGrantAdminForm(request.POST)
+            if form.is_valid():
+                success_count = 0
+                error_messages = []
+
+                purchase_type = form.resolved_purchase_type()
+                reason = form.resolved_reason()
+                label = form.resolved_label()
+                note = form.resolved_note()
+                tickets = form.cleaned_data["tickets"]
+                unit_price = form.cleaned_data["unit_price"]
+
+                for user in members:
+                    try:
+                        purchase_tickets(
+                            user=user,
+                            tickets=tickets,
+                            unit_price=unit_price,
+                            purchase_type=purchase_type,
+                            reason=reason,
+                            note=note,
+                            created_by=request.user,
+                            label=label,
+                        )
+                        success_count += 1
+                    except Exception as e:
+                        error_messages.append(f"{user} の付与に失敗しました: {e}")
+
+                if skipped_users:
+                    skipped_names = "、".join([str(user) for user in skipped_users])
+                    self.message_user(
+                        request,
+                        f"member 以外はスキップしました: {skipped_names}",
+                        level=messages.WARNING,
+                    )
+
+                for message_text in error_messages:
+                    self.message_user(request, message_text, level=messages.ERROR)
+
+                if success_count:
+                    self.message_user(
+                        request,
+                        f"{success_count}件の会員へチケットを付与しました。",
+                        level=messages.SUCCESS,
+                    )
+
+                return redirect("admin:club_user_changelist")
+        else:
+            initial = {
+                "tickets": 1,
+                "unit_price": 4000,
+                "label": "1枚券",
+                "note": "管理画面から一括付与",
+            }
+            form = TicketGrantAdminForm(initial=initial)
+
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": "チケット付与（条件指定）",
+            "form": form,
+            "selected_users": queryset,
+            "member_users": members,
+            "skipped_users": skipped_users,
+            "ids": raw_ids,
+        }
+        return render(request, "admin/club/user/grant_tickets.html", context)
+
     @admin.action(description="チケット1枚を付与する（1枚 4,000円）")
     def grant_single_ticket(self, request, queryset):
         count = 0
         for user in queryset:
+            if user.role != "member":
+                continue
             try:
                 purchase_tickets(
                     user=user,
@@ -197,6 +307,8 @@ class UserAdmin(BaseUserAdmin):
     def grant_set4_tickets(self, request, queryset):
         count = 0
         for user in queryset:
+            if user.role != "member":
+                continue
             try:
                 purchase_tickets(
                     user=user,
