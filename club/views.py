@@ -396,7 +396,9 @@ def _can_user_cancel_reservation(user, reservation):
     if _is_reservation_canceled(reservation):
         return False, "この予約はすでにキャンセル済みです。"
 
-    if _is_staff_like(user) or reservation.coach_id == getattr(user, "pk", None) or getattr(reservation, "substitute_coach_id", None) == getattr(user, "pk", None):
+    if _is_staff_like(user) or reservation.coach_id == getattr(user, "pk", None) or getattr(
+        reservation, "substitute_coach_id", None
+    ) == getattr(user, "pk", None):
         return True, ""
 
     active_count = reservation.active_count_in_same_slot()
@@ -550,7 +552,11 @@ def home(request):
 def tickets_view(request):
     ledgers = TicketLedger.objects.filter(user=request.user).select_related("reservation", "fixed_lesson")[:30]
     purchases = TicketPurchase.objects.filter(user=request.user).order_by("-purchased_at", "-id")[:30]
-    consumptions = TicketConsumption.objects.filter(user=request.user).select_related("reservation", "purchase").order_by("-created_at", "-id")[:30]
+    consumptions = (
+        TicketConsumption.objects.filter(user=request.user)
+        .select_related("reservation", "purchase")
+        .order_by("-created_at", "-id")[:30]
+    )
 
     return render(
         request,
@@ -565,8 +571,6 @@ def tickets_view(request):
     )
 
 
-
-
 @login_required
 @require_GET
 def coach_fixed_lesson_weekly(request):
@@ -578,7 +582,9 @@ def coach_fixed_lesson_weekly(request):
 
     if _is_staff_like(request.user) and not _is_coach_user(request.user):
         selected_coach_id = (request.GET.get("coach_id") or "").strip()
-        selected_coach = coach_queryset.filter(pk=selected_coach_id).first() if selected_coach_id else coach_queryset.first()
+        selected_coach = (
+            coach_queryset.filter(pk=selected_coach_id).first() if selected_coach_id else coach_queryset.first()
+        )
     else:
         selected_coach = request.user
         selected_coach_id = str(request.user.pk)
@@ -603,13 +609,17 @@ def coach_fixed_lesson_weekly(request):
         target_date = week_start + timedelta(days=int(fixed.weekday))
         start_at, end_at = fixed._build_datetimes_for_date(target_date)
 
-        slot_availability = CoachAvailability.objects.filter(
-            coach=fixed.coach,
-            court=fixed.court,
-            lesson_type=fixed.lesson_type,
-            start_at=start_at,
-            end_at=end_at,
-        ).select_related("substitute_coach").first()
+        slot_availability = (
+            CoachAvailability.objects.filter(
+                coach=fixed.coach,
+                court=fixed.court,
+                lesson_type=fixed.lesson_type,
+                start_at=start_at,
+                end_at=end_at,
+            )
+            .select_related("substitute_coach")
+            .first()
+        )
 
         week_reservations = list(
             Reservation.objects.filter(
@@ -623,28 +633,28 @@ def coach_fixed_lesson_weekly(request):
 
         member_names = [member.display_name() for member in members]
         reservation_names = [reservation.user.display_name() for reservation in week_reservations]
-        assigned_coach = None
-        if slot_availability and slot_availability.substitute_coach:
-            assigned_coach = slot_availability.substitute_coach
-        else:
-            assigned_coach = fixed.coach
+        assigned_coach = slot_availability.substitute_coach if slot_availability and slot_availability.substitute_coach else fixed.coach
 
-        fixed_lessons.append({
-            "fixed_lesson": fixed,
-            "weekday_label": weekday_labels.get(fixed.weekday, str(fixed.weekday)),
-            "target_date": target_date,
-            "start_at": start_at,
-            "end_at": end_at,
-            "assigned_coach_name": _display_name(assigned_coach),
-            "normal_coach_name": _display_name(fixed.coach),
-            "substitute_coach_name": _display_name(slot_availability.substitute_coach) if slot_availability and slot_availability.substitute_coach else "",
-            "has_substitute": bool(slot_availability and slot_availability.substitute_coach),
-            "member_count": len(member_names),
-            "member_names": member_names,
-            "reservation_count": len(reservation_names),
-            "reservation_names": reservation_names,
-            "slot_availability": slot_availability,
-        })
+        fixed_lessons.append(
+            {
+                "fixed_lesson": fixed,
+                "weekday_label": weekday_labels.get(fixed.weekday, str(fixed.weekday)),
+                "target_date": target_date,
+                "start_at": start_at,
+                "end_at": end_at,
+                "assigned_coach_name": _display_name(assigned_coach),
+                "normal_coach_name": _display_name(fixed.coach),
+                "substitute_coach_name": _display_name(slot_availability.substitute_coach)
+                if slot_availability and slot_availability.substitute_coach
+                else "",
+                "has_substitute": bool(slot_availability and slot_availability.substitute_coach),
+                "member_count": len(member_names),
+                "member_names": member_names,
+                "reservation_count": len(reservation_names),
+                "reservation_names": reservation_names,
+                "slot_availability": slot_availability,
+            }
+        )
 
     return render(
         request,
@@ -660,6 +670,7 @@ def coach_fixed_lesson_weekly(request):
             "is_staff_mode": _is_staff_like(request.user) and not _is_coach_user(request.user),
         },
     )
+
 
 @login_required
 @require_GET
@@ -686,7 +697,9 @@ def coach_ticket_summary(request):
     coach_queryset = User.objects.filter(role="coach").order_by("full_name", "username", "id")
     if _is_staff_like(request.user) and not _is_coach_user(request.user):
         selected_coach_id = (request.GET.get("coach_id") or "").strip()
-        selected_coach = coach_queryset.filter(pk=selected_coach_id).first() if selected_coach_id else coach_queryset.first()
+        selected_coach = (
+            coach_queryset.filter(pk=selected_coach_id).first() if selected_coach_id else coach_queryset.first()
+        )
     else:
         selected_coach = request.user
         selected_coach_id = str(request.user.pk)
@@ -716,7 +729,11 @@ def coach_ticket_summary(request):
                 filtered_reservations.append(reservation)
 
         for reservation in filtered_reservations:
-            active_consumptions = reservation.ticket_consumptions.filter(refunded_at__isnull=True).select_related("purchase").order_by("created_at", "id")
+            active_consumptions = (
+                reservation.ticket_consumptions.filter(refunded_at__isnull=True)
+                .select_related("purchase")
+                .order_by("created_at", "id")
+            )
 
             row_breakdown_map = {}
             row_tickets = 0
@@ -764,7 +781,9 @@ def coach_ticket_summary(request):
                     "breakdown_items": breakdown_items,
                     "assigned_coach_name": reservation.assigned_coach_display(),
                     "normal_coach_name": reservation.normal_coach_display(),
-                    "substitute_coach_name": _display_name(reservation.substitute_coach) if reservation.substitute_coach else "",
+                    "substitute_coach_name": _display_name(reservation.substitute_coach)
+                    if reservation.substitute_coach
+                    else "",
                     "has_substitute": reservation.has_substitute_coach(),
                 }
             )
@@ -850,7 +869,9 @@ def coach_payroll_summary(request):
     coach_queryset = User.objects.filter(role="coach").order_by("full_name", "username", "id")
     if _is_staff_like(request.user) and not _is_coach_user(request.user):
         selected_coach_id = (request.GET.get("coach_id") or "").strip()
-        selected_coach = coach_queryset.filter(pk=selected_coach_id).first() if selected_coach_id else coach_queryset.first()
+        selected_coach = (
+            coach_queryset.filter(pk=selected_coach_id).first() if selected_coach_id else coach_queryset.first()
+        )
     else:
         selected_coach = request.user
         selected_coach_id = str(request.user.pk)
@@ -909,7 +930,11 @@ def coach_payroll_summary(request):
 
         breakdown_map = {}
         for reservation in filtered_reservations:
-            active_consumptions = reservation.ticket_consumptions.filter(refunded_at__isnull=True).select_related("purchase").order_by("created_at", "id")
+            active_consumptions = (
+                reservation.ticket_consumptions.filter(refunded_at__isnull=True)
+                .select_related("purchase")
+                .order_by("created_at", "id")
+            )
 
             row_breakdown_items = []
             row_breakdown_map = {}
@@ -952,7 +977,9 @@ def coach_payroll_summary(request):
                     "breakdown_items": row_breakdown_items,
                     "assigned_coach_name": reservation.assigned_coach_display(),
                     "normal_coach_name": reservation.normal_coach_display(),
-                    "substitute_coach_name": _display_name(reservation.substitute_coach) if reservation.substitute_coach else "",
+                    "substitute_coach_name": _display_name(reservation.substitute_coach)
+                    if reservation.substitute_coach
+                    else "",
                     "has_substitute": reservation.has_substitute_coach(),
                 }
             )
@@ -1131,7 +1158,7 @@ def calendar_events(request):
 
     availability_qs = CoachAvailability.objects.select_related("coach", "substitute_coach", "court").all()
     reservation_qs = (
-        Reservation.objects.select_related("user", "coach", "substitute_coach", "court")
+        Reservation.objects.select_related("user", "coach", "substitute_coach", "court", "availability")
         .prefetch_related("ticket_consumptions__purchase")
         .exclude(status__in=[Reservation.STATUS_CANCELED, Reservation.STATUS_RAIN_CANCELED])
     )
@@ -1147,6 +1174,7 @@ def calendar_events(request):
         availability_qs = availability_qs.filter(start_at__lt=end_filter)
         reservation_qs = reservation_qs.filter(start_at__lt=end_filter)
 
+    availability_list = list(availability_qs.order_by("start_at", "coach_id", "court_id", "id"))
     reservation_list = list(reservation_qs)
 
     if coach_filter:
@@ -1156,28 +1184,37 @@ def calendar_events(request):
             if str(_assigned_coach_id_for_reservation(reservation) or "") == str(coach_filter)
         ]
 
-    active_slot_keys = {
-        _slot_key(
+    active_slot_counts = {}
+    slot_capacity_map = {}
+    my_active_slot_keys = set()
+
+    for availability in availability_list:
+        slot_key = _slot_key(
+            lesson_type=availability.lesson_type,
+            coach_id=availability.coach_id,
+            court_id=availability.court_id,
+            start_at=availability.start_at,
+            end_at=availability.end_at,
+        )
+        slot_capacity_map[slot_key] = int(availability.capacity or 0)
+
+    for reservation in reservation_list:
+        slot_key = _slot_key(
             lesson_type=reservation.lesson_type,
             coach_id=reservation.coach_id,
             court_id=reservation.court_id,
             start_at=reservation.start_at,
             end_at=reservation.end_at,
         )
-        for reservation in reservation_list
-        if reservation.status == Reservation.STATUS_ACTIVE
-    }
+        if reservation.status == Reservation.STATUS_ACTIVE:
+            active_slot_counts.setdefault(slot_key, 0)
+            active_slot_counts[slot_key] += 1
+            if reservation.user_id == request.user.pk:
+                my_active_slot_keys.add(slot_key)
 
-    my_reservation_time_keys = {
-        (
-            _to_event_datetime_str(reservation.start_at) or "",
-            _to_event_datetime_str(reservation.end_at) or "",
-        )
-        for reservation in reservation_list
-        if reservation.user_id == request.user.pk and reservation.status == Reservation.STATUS_ACTIVE
-    }
+    active_slot_keys = set(active_slot_counts.keys())
 
-    for obj in availability_qs.order_by("start_at", "coach_id", "court_id", "id"):
+    for obj in availability_list:
         slot_key = _slot_key(
             lesson_type=obj.lesson_type,
             coach_id=obj.coach_id,
@@ -1191,12 +1228,10 @@ def calendar_events(request):
         coach = obj.coach
         court = obj.court
 
-        title_parts = [
-            _lesson_type_label(obj.lesson_type),
-            str(coach),
-            str(court),
-            "受付中",
-        ]
+        if obj.lesson_type == Reservation.LESSON_GENERAL:
+            title_text = f"{obj.start_at.astimezone(timezone.get_current_timezone()):%H:%M} - {obj.end_at.astimezone(timezone.get_current_timezone()):%H:%M}\n一般レッスン"
+        else:
+            title_text = f"{obj.start_at.astimezone(timezone.get_current_timezone()):%H:%M} - {obj.end_at.astimezone(timezone.get_current_timezone()):%H:%M}\n受付中"
 
         query = urlencode(
             {
@@ -1210,7 +1245,7 @@ def calendar_events(request):
         events.append(
             {
                 "id": f"availability-{obj.pk}",
-                "title": " / ".join(title_parts),
+                "title": title_text,
                 "start": _to_event_datetime_str(obj.start_at),
                 "end": _to_event_datetime_str(obj.end_at),
                 "display": "auto",
@@ -1235,23 +1270,48 @@ def calendar_events(request):
 
     for obj in reservation_list:
         is_mine = bool(obj.user_id == request.user.pk)
-        time_key = (
-            _to_event_datetime_str(obj.start_at) or "",
-            _to_event_datetime_str(obj.end_at) or "",
+        slot_key = _slot_key(
+            lesson_type=obj.lesson_type,
+            coach_id=obj.coach_id,
+            court_id=obj.court_id,
+            start_at=obj.start_at,
+            end_at=obj.end_at,
         )
 
-        if not is_mine and obj.status == Reservation.STATUS_ACTIVE and time_key in my_reservation_time_keys:
+        if obj.status == Reservation.STATUS_ACTIVE and not is_mine and slot_key in my_active_slot_keys:
             continue
+
+        active_count = int(active_slot_counts.get(slot_key, 0))
+        capacity = int(
+            getattr(getattr(obj, "availability", None), "capacity", 0)
+            or slot_capacity_map.get(slot_key, 0)
+            or max(active_count, 1)
+        )
 
         can_cancel, cancel_reason = _can_user_cancel_reservation(request.user, obj)
         cancel_url = reverse("club:reservation_cancel", kwargs={"pk": obj.pk}) if can_cancel else ""
 
         if obj.status == Reservation.STATUS_PENDING:
-            event_title = "申請中"
+            event_title = (
+                f"{obj.start_at.astimezone(timezone.get_current_timezone()):%H:%M} - "
+                f"{obj.end_at.astimezone(timezone.get_current_timezone()):%H:%M}\n"
+                f"申請中 {active_count}/{capacity}"
+            )
             background_color = "#f59e0b"
+        elif is_mine:
+            event_title = (
+                f"{obj.start_at.astimezone(timezone.get_current_timezone()):%H:%M} - "
+                f"{obj.end_at.astimezone(timezone.get_current_timezone()):%H:%M}\n"
+                f"あなたの予約 {active_count}/{capacity}"
+            )
+            background_color = "#3b82f6"
         else:
-            event_title = "あなたの予約" if is_mine else "予約済み"
-            background_color = "#3b82f6" if is_mine else "#ef4444"
+            event_title = (
+                f"{obj.start_at.astimezone(timezone.get_current_timezone()):%H:%M} - "
+                f"{obj.end_at.astimezone(timezone.get_current_timezone()):%H:%M}\n"
+                f"予約済み {active_count}/{capacity}"
+            )
+            background_color = "#ef4444"
 
         assigned_coach = _assigned_coach_for_reservation(obj)
 
@@ -1283,6 +1343,9 @@ def calendar_events(request):
                     "cancel_url": cancel_url,
                     "cancel_reason": cancel_reason,
                     "status_display": obj.get_status_display(),
+                    "participant_count": active_count,
+                    "capacity": capacity,
+                    "participant_summary": f"{active_count}/{capacity}",
                 },
             }
         )
