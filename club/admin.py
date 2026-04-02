@@ -15,6 +15,7 @@ from .models import (
     FixedLesson,
     LineAccountLink,
     Reservation,
+    ScheduleSurveyResponse,
     TicketConsumption,
     TicketLedger,
     TicketPurchase,
@@ -487,3 +488,21 @@ class LineAccountLinkAdmin(admin.ModelAdmin):
     list_display = ("id", "user", "line_user_id", "is_active", "linked_at", "last_event_at")
     list_filter = ("is_active",)
     search_fields = ("user__username", "user__full_name", "line_user_id")
+
+
+@admin.register(ScheduleSurveyResponse)
+class ScheduleSurveyResponseAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "user",
+        "preferred_frequency",
+        "answered_at",
+        "updated_at",
+    )
+    list_filter = ("preferred_frequency", "answered_at", "updated_at")
+    search_fields = (
+        "user__username",
+        "user__full_name",
+        "free_comment",
+    )
+    readonly_fields = ("answered_at", "created_at", "updated_at")
