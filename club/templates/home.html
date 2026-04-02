@@ -269,14 +269,24 @@
       border-radius:8px;
       padding:3px 5px;
       font-size:12px;
-      line-height:1.25;
+      line-height:1.2;
       overflow:hidden;
     }
 
     .fc-event-title-wrap{
       white-space:normal;
       word-break:break-word;
-      line-height:1.25;
+      line-height:1.2;
+    }
+
+    .fc-event-line-main{
+      font-weight:700;
+    }
+
+    .fc-event-line-sub{
+      font-size:11px;
+      opacity:0.95;
+      margin-top:2px;
     }
 
     .detail-table{
@@ -358,6 +368,10 @@
 
       .fc .fc-event{
         font-size:11px;
+      }
+
+      .fc-event-line-sub{
+        font-size:10px;
       }
     }
   </style>
@@ -482,6 +496,51 @@
         }
       }
 
+      function buildEventLines(event) {
+        const title = String(event.title || "").trim();
+        if (!title) {
+          return { main: "", sub: "" };
+        }
+
+        const parts = title.split(/\n+/).map(function(part) {
+          return part.trim();
+        }).filter(function(part) {
+          return part.length > 0;
+        });
+
+        if (parts.length >= 2) {
+          return {
+            main: parts[0],
+            sub: parts.slice(1).join(" ")
+          };
+        }
+
+        const single = parts[0];
+
+        if (single.indexOf("あなたの予約 ") === 0) {
+          return {
+            main: "あなたの予約",
+            sub: single.replace("あなたの予約 ", "")
+          };
+        }
+
+        if (single.indexOf("予約済み ") === 0) {
+          return {
+            main: "予約済み",
+            sub: single.replace("予約済み ", "")
+          };
+        }
+
+        if (single.indexOf("申請中 ") === 0) {
+          return {
+            main: "申請中",
+            sub: single.replace("申請中 ", "")
+          };
+        }
+
+        return { main: single, sub: "" };
+      }
+
       const calendar = new FullCalendar.Calendar(calendarEl, {
         locale: "ja",
         initialView: isMobile ? "timeGridDay" : "timeGridWeek",
@@ -512,13 +571,24 @@
           hour12: false
         },
         eventContent: function(info) {
+          const lines = buildEventLines(info.event);
+
           const wrap = document.createElement("div");
           wrap.className = "fc-event-title-wrap";
 
-          const title = document.createElement("div");
-          title.textContent = (info.event.title || "").trim();
+          const main = document.createElement("div");
+          main.className = "fc-event-line-main";
+          main.textContent = lines.main || "";
 
-          wrap.appendChild(title);
+          wrap.appendChild(main);
+
+          if (lines.sub) {
+            const sub = document.createElement("div");
+            sub.className = "fc-event-line-sub";
+            sub.textContent = lines.sub;
+            wrap.appendChild(sub);
+          }
+
           return { domNodes: [wrap] };
         },
         events: function(fetchInfo, successCallback, failureCallback) {
