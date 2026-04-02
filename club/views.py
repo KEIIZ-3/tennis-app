@@ -441,6 +441,16 @@ def _assigned_coach_id_for_reservation(reservation):
     return getattr(coach, "pk", None)
 
 
+def _slot_key(lesson_type, coach_id, court_id, start_at, end_at):
+    return (
+        str(lesson_type or ""),
+        str(coach_id or ""),
+        str(court_id or ""),
+        _to_event_datetime_str(start_at) or "",
+        _to_event_datetime_str(end_at) or "",
+    )
+
+
 def _pick_request_slot(selected_coach_id, lesson_type, start_at, end_at):
     qs = (
         CoachAvailability.objects.filter(
@@ -1115,13 +1125,60 @@ def calendar_events(request):
     _sync_fixed_lessons()
 
     events = []
-    coach_filter = request.GET.get("coach") or request.GET.get("coach_id")
+    coach_filter = (request.GET.get("coach") or request.GET.get("coach_id") or "").strip()
+    start_filter = _parse_query_datetime(request.GET.get("start"))
+    end_filter = _parse_query_datetime(request.GET.get("end"))
 
-    availability_qs = CoachAvailability.objects.all()
+    availability_qs = CoachAvailability.objects.select_related("coach", "substitute_coach", "court").all()
+    reservation_qs = (
+        Reservation.objects.select_related("user", "coach", "substitute_coach", "court")
+        .prefetch_related("ticket_consumptions__purchase")
+        .exclude(status__in=[Reservation.STATUS_CANCELED, Reservation.STATUS_RAIN_CANCELED])
+    )
+
     if coach_filter:
         availability_qs = availability_qs.filter(coach_id=coach_filter)
 
-    for obj in availability_qs:
+    if start_filter:
+        availability_qs = availability_qs.filter(end_at__gt=start_filter)
+        reservation_qs = reservation_qs.filter(end_at__gt=start_filter)
+
+    if end_filter:
+        availability_qs = availability_qs.filter(start_at__lt=end_filter)
+        reservation_qs = reservation_qs.filter(start_at__lt=end_filter)
+
+    reservation_list = list(reservation_qs)
+
+    if coach_filter:
+        reservation_list = [
+            reservation
+            for reservation in reservation_list
+            if str(_assigned_coach_id_for_reservation(reservation) or "") == str(coach_filter)
+        ]
+
+    active_slot_keys = {
+        _slot_key(
+            lesson_type=reservation.lesson_type,
+            coach_id=reservation.coach_id,
+            court_id=reservation.court_id,
+            start_at=reservation.start_at,
+            end_at=reservation.end_at,
+        )
+        for reservation in reservation_list
+        if reservation.status == Reservation.STATUS_ACTIVE
+    }
+
+    for obj in availability_qs.order_by("start_at", "coach_id", "court_id", "id"):
+        slot_key = _slot_key(
+            lesson_type=obj.lesson_type,
+            coach_id=obj.coach_id,
+            court_id=obj.court_id,
+            start_at=obj.start_at,
+            end_at=obj.end_at,
+        )
+        if slot_key in active_slot_keys:
+            continue
+
         coach = obj.coach
         court = obj.court
 
@@ -1167,28 +1224,12 @@ def calendar_events(request):
             }
         )
 
-    reservation_qs = Reservation.objects.select_related("user", "coach", "substitute_coach", "court").prefetch_related("ticket_consumptions__purchase").all()
-
-    if coach_filter:
-        filtered_reservations = []
-        for reservation in reservation_qs:
-            if str(_assigned_coach_id_for_reservation(reservation) or "") == str(coach_filter):
-                filtered_reservations.append(reservation)
-        reservation_qs = filtered_reservations
-
-    for obj in reservation_qs:
-        is_canceled = _is_reservation_canceled(obj)
+    for obj in reservation_list:
         is_mine = bool(obj.user_id == request.user.pk)
         can_cancel, cancel_reason = _can_user_cancel_reservation(request.user, obj)
         cancel_url = reverse("club:reservation_cancel", kwargs={"pk": obj.pk}) if can_cancel else ""
 
-        if obj.status == Reservation.STATUS_RAIN_CANCELED:
-            event_title = "雨天中止"
-            background_color = "#6b7280"
-        elif is_canceled:
-            event_title = "キャンセル済み"
-            background_color = "#9ca3af"
-        elif obj.status == Reservation.STATUS_PENDING:
+        if obj.status == Reservation.STATUS_PENDING:
             event_title = "承認待ち"
             background_color = "#f59e0b"
         else:
@@ -1219,7 +1260,7 @@ def calendar_events(request):
                     "lesson_type_display": _lesson_type_label(obj.lesson_type),
                     "tickets_used": obj.tickets_used,
                     "ticket_breakdown_text": obj.ticket_breakdown_text(),
-                    "is_canceled": is_canceled,
+                    "is_canceled": False,
                     "is_mine": is_mine,
                     "can_cancel": can_cancel,
                     "cancel_url": cancel_url,
