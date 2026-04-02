@@ -1229,9 +1229,9 @@ def calendar_events(request):
         court = obj.court
 
         if obj.lesson_type == Reservation.LESSON_GENERAL:
-            title_text = f"{obj.start_at.astimezone(timezone.get_current_timezone()):%H:%M} - {obj.end_at.astimezone(timezone.get_current_timezone()):%H:%M}\n一般レッスン"
+            title_text = "一般レッスン"
         else:
-            title_text = f"{obj.start_at.astimezone(timezone.get_current_timezone()):%H:%M} - {obj.end_at.astimezone(timezone.get_current_timezone()):%H:%M}\n受付中"
+            title_text = "受付中"
 
         query = urlencode(
             {
@@ -1292,25 +1292,13 @@ def calendar_events(request):
         cancel_url = reverse("club:reservation_cancel", kwargs={"pk": obj.pk}) if can_cancel else ""
 
         if obj.status == Reservation.STATUS_PENDING:
-            event_title = (
-                f"{obj.start_at.astimezone(timezone.get_current_timezone()):%H:%M} - "
-                f"{obj.end_at.astimezone(timezone.get_current_timezone()):%H:%M}\n"
-                f"申請中 {active_count}/{capacity}"
-            )
+            event_title = f"申請中 {active_count}/{capacity}"
             background_color = "#f59e0b"
         elif is_mine:
-            event_title = (
-                f"{obj.start_at.astimezone(timezone.get_current_timezone()):%H:%M} - "
-                f"{obj.end_at.astimezone(timezone.get_current_timezone()):%H:%M}\n"
-                f"あなたの予約 {active_count}/{capacity}"
-            )
+            event_title = f"あなたの予約 {active_count}/{capacity}"
             background_color = "#3b82f6"
         else:
-            event_title = (
-                f"{obj.start_at.astimezone(timezone.get_current_timezone()):%H:%M} - "
-                f"{obj.end_at.astimezone(timezone.get_current_timezone()):%H:%M}\n"
-                f"予約済み {active_count}/{capacity}"
-            )
+            event_title = f"予約済み {active_count}/{capacity}"
             background_color = "#ef4444"
 
         assigned_coach = _assigned_coach_for_reservation(obj)
