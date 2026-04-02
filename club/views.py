@@ -1229,9 +1229,9 @@ def calendar_events(request):
         court = obj.court
 
         if obj.lesson_type == Reservation.LESSON_GENERAL:
-            title_text = "一般レッスン"
+            title_text = f"{obj.start_at.astimezone(timezone.get_current_timezone()):%H:%M} - {obj.end_at.astimezone(timezone.get_current_timezone()):%H:%M}\n一般レッスン"
         else:
-            title_text = "受付中"
+            title_text = f"{obj.start_at.astimezone(timezone.get_current_timezone()):%H:%M} - {obj.end_at.astimezone(timezone.get_current_timezone()):%H:%M}\n受付中"
 
         query = urlencode(
             {
