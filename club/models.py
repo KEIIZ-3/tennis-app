@@ -967,6 +967,28 @@ class Reservation(models.Model, LessonTypeMixin):
 
         return 1
 
+    def matching_availability(self):
+        return CoachAvailability.objects.filter(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=self.lesson_type,
+            start_at=self.start_at,
+            end_at=self.end_at,
+        ).first()
+
+    def active_slot_reservations_qs(self):
+        qs = Reservation.objects.filter(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=self.lesson_type,
+            start_at=self.start_at,
+            end_at=self.end_at,
+            status=self.STATUS_ACTIVE,
+        )
+        if self.pk:
+            qs = qs.exclude(pk=self.pk)
+        return qs
+
     def clean(self):
         if not self.start_at or not self.end_at:
             return
@@ -1038,13 +1060,7 @@ class Reservation(models.Model, LessonTypeMixin):
         if user_overlap_qs.exists():
             raise ValidationError("同じ時間帯にすでに別の予約があります。")
 
-        availability = CoachAvailability.objects.filter(
-            coach=self.coach,
-            court=self.court,
-            lesson_type=self.lesson_type,
-            start_at=self.start_at,
-            end_at=self.end_at,
-        ).first()
+        availability = self.matching_availability()
 
         if self.lesson_type in (self.LESSON_GENERAL, self.LESSON_EVENT):
             if not availability:
@@ -1056,27 +1072,53 @@ class Reservation(models.Model, LessonTypeMixin):
             if availability.substitute_coach_id:
                 self.substitute_coach = availability.substitute_coach
 
-            slot_reservations_qs = Reservation.objects.filter(
-                coach=self.coach,
-                court=self.court,
-                lesson_type=self.lesson_type,
-                start_at=self.start_at,
-                end_at=self.end_at,
-                status=self.STATUS_ACTIVE,
-            )
-            if self.pk:
-                slot_reservations_qs = slot_reservations_qs.exclude(pk=self.pk)
-
+            slot_reservations_qs = self.active_slot_reservations_qs()
             if slot_reservations_qs.count() >= availability.capacity:
                 raise ValidationError("この時間枠は満員です。")
 
         if self.lesson_type == self.LESSON_PRIVATE:
-            self.status = self.STATUS_PENDING
+            if self.status == self.STATUS_PENDING:
+                return
+
+            if availability:
+                self.availability = availability
+                self.target_level = availability.target_level
+                self.custom_ticket_price = availability.custom_ticket_price
+                self.custom_duration_hours = availability.custom_duration_hours
+                if availability.substitute_coach_id:
+                    self.substitute_coach = availability.substitute_coach
+
+            slot_reservations_qs = self.active_slot_reservations_qs()
+            if slot_reservations_qs.exists():
+                raise ValidationError("このプライベート枠はすでに予約済みです。")
+
+            effective_capacity = 1
+            if availability:
+                effective_capacity = int(availability.capacity or 1)
+
+            if effective_capacity < 1:
+                raise ValidationError("このプライベート枠は予約できません。")
 
         if self.lesson_type == self.LESSON_GROUP:
-            self.status = self.STATUS_PENDING
+            if self.status == self.STATUS_PENDING:
+                if self.requested_court_type == Court.COURT_OTHER and not self.requested_court_note:
+                    raise ValidationError("それ以外のコートを選択した場合は、コート情報を入力してください。")
+                return
+
             if self.requested_court_type == Court.COURT_OTHER and not self.requested_court_note:
                 raise ValidationError("それ以外のコートを選択した場合は、コート情報を入力してください。")
+
+            if availability:
+                self.availability = availability
+                self.target_level = availability.target_level
+                self.custom_ticket_price = availability.custom_ticket_price
+                self.custom_duration_hours = availability.custom_duration_hours
+                if availability.substitute_coach_id:
+                    self.substitute_coach = availability.substitute_coach
+
+                slot_reservations_qs = self.active_slot_reservations_qs()
+                if slot_reservations_qs.count() >= availability.capacity:
+                    raise ValidationError("このグループ枠は満員です。")
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -1236,27 +1278,34 @@ class Reservation(models.Model, LessonTypeMixin):
             raise ValidationError("承認処理の対象外のレッスン種別です。")
 
         with transaction.atomic():
-            self.status = self.STATUS_ACTIVE
-            self.tickets_used = self.calculate_tickets_used()
+            locked_self = Reservation.objects.select_for_update().get(pk=self.pk)
+            locked_self.status = self.STATUS_ACTIVE
+            locked_self.canceled_at = None
+            locked_self.cancellation_reason = ""
 
-            Reservation.objects.filter(pk=self.pk, status=self.STATUS_PENDING).update(
-                status=self.STATUS_ACTIVE,
-                tickets_used=self.tickets_used,
-                approved_court_note=approved_note or self.approved_court_note,
-                canceled_at=None,
-                cancellation_reason="",
-            )
-
-            self.canceled_at = None
-            self.cancellation_reason = ""
             if approved_note:
-                self.approved_court_note = approved_note
+                locked_self.approved_court_note = approved_note
 
-            self.consume_tickets(
+            locked_self.tickets_used = locked_self.calculate_tickets_used()
+            locked_self.full_clean()
+            locked_self.save()
+
+            locked_self.consume_tickets(
                 reason=TicketLedger.REASON_RESERVATION_USE,
                 created_by=created_by,
-                note=f"承認済み予約のチケット消費: {self.start_at:%Y-%m-%d %H:%M}",
+                note=f"承認済み予約のチケット消費: {locked_self.start_at:%Y-%m-%d %H:%M}",
             )
+
+            self.status = locked_self.status
+            self.tickets_used = locked_self.tickets_used
+            self.canceled_at = locked_self.canceled_at
+            self.cancellation_reason = locked_self.cancellation_reason
+            self.approved_court_note = locked_self.approved_court_note
+            self.availability = locked_self.availability
+            self.substitute_coach = locked_self.substitute_coach
+            self.custom_ticket_price = locked_self.custom_ticket_price
+            self.custom_duration_hours = locked_self.custom_duration_hours
+            self.ticket_consumed_at = locked_self.ticket_consumed_at
 
         return True
 
