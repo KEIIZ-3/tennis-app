@@ -2,31 +2,28 @@
 {% block title %}アンケート集計{% endblock %}
 
 {% block content %}
-<div class="page-head">
-  <h1 class="page-title">アンケート集計</h1>
-  <p class="page-subtitle">会員の希望曜日・時間帯をリアルタイムで集計した結果です。</p>
-</div>
+  <div class="page-head">
+    <h1 class="page-title">アンケート集計</h1>
+    <p class="page-subtitle">
+      会員のレッスン希望時間帯をリアルタイム集計しています。
+    </p>
+  </div>
 
-<div class="summary-cards">
-  <div class="summary-card">
-    <div class="summary-card-label">対象会員数</div>
-    <div class="summary-card-value">{{ total_members }}人</div>
+  <div class="grid-3">
+    <div class="card">
+      <div class="muted" style="font-size:13px;">会員総数</div>
+      <div style="font-size:28px; font-weight:800; margin-top:6px;">{{ total_members }}</div>
+    </div>
+    <div class="card">
+      <div class="muted" style="font-size:13px;">回答済み</div>
+      <div style="font-size:28px; font-weight:800; margin-top:6px;">{{ answered_count }}</div>
+    </div>
+    <div class="card">
+      <div class="muted" style="font-size:13px;">回答率</div>
+      <div style="font-size:28px; font-weight:800; margin-top:6px;">{{ answered_rate }}%</div>
+    </div>
   </div>
-  <div class="summary-card">
-    <div class="summary-card-label">回答者数</div>
-    <div class="summary-card-value">{{ answered_count }}人</div>
-  </div>
-  <div class="summary-card">
-    <div class="summary-card-label">未回答者数</div>
-    <div class="summary-card-value">{{ unanswered_count }}人</div>
-  </div>
-  <div class="summary-card summary-card-highlight">
-    <div class="summary-card-label">回答率</div>
-    <div class="summary-card-value">{{ response_rate }}%</div>
-  </div>
-</div>
 
-<div class="grid-2">
   <div class="card">
     <h2 class="card-title">曜日別の希望人数</h2>
     <table>
@@ -37,280 +34,163 @@
         </tr>
       </thead>
       <tbody>
-        {% for row in weekday_rows %}
+        {% for row in day_rows %}
           <tr>
             <td>{{ row.label }}</td>
-            <td>{{ row.count }}人</td>
-          </tr>
-        {% empty %}
-          <tr>
-            <td colspan="2">まだ回答がありません。</td>
+            <td>{{ row.count }}</td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 
-  <div class="card">
-    <h2 class="card-title">希望レッスン種別</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>種別</th>
-          <th>希望人数</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in lesson_type_rows %}
+  <div class="grid-2">
+    <div class="card">
+      <h2 class="card-title">時間帯別の希望人数（平日）</h2>
+      <table>
+        <thead>
           <tr>
-            <td>{{ row.label }}</td>
-            <td>{{ row.count }}人</td>
+            <th>時間帯</th>
+            <th>希望人数</th>
           </tr>
-        {% empty %}
-          <tr>
-            <td colspan="2">まだ回答がありません。</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<div class="grid-2">
-  <div class="card">
-    <h2 class="card-title">平日の希望時間帯</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>時間帯</th>
-          <th>希望人数</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in weekday_time_rows %}
-          <tr>
-            <td>{{ row.label }}</td>
-            <td>{{ row.count }}人</td>
-          </tr>
-        {% empty %}
-          <tr>
-            <td colspan="2">まだ回答がありません。</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-  <div class="card">
-    <h2 class="card-title">土日の希望時間帯</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>時間帯</th>
-          <th>希望人数</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in weekend_time_rows %}
-          <tr>
-            <td>{{ row.label }}</td>
-            <td>{{ row.count }}人</td>
-          </tr>
-        {% empty %}
-          <tr>
-            <td colspan="2">まだ回答がありません。</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<div class="card">
-  <h2 class="card-title">曜日 × 時間帯 クロス集計</h2>
-  <p class="card-subtitle">各曜日について、平日時間帯・土日時間帯の希望人数を横断で確認できます。</p>
-
-  <div class="cross-table-wrap">
-    <table class="cross-table">
-      <thead>
-        <tr>
-          <th>曜日</th>
-          {% for column in cross_columns %}
-            <th>{{ column.label }}</th>
+        </thead>
+        <tbody>
+          {% for row in weekday_time_slot_rows %}
+            <tr>
+              <td>{{ row.label }}</td>
+              <td>{{ row.count }}</td>
+            </tr>
           {% endfor %}
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in cross_rows %}
-          <tr>
-            <th>{{ row.label }}</th>
-            {% for cell in row.cells %}
-              <td>{{ cell }}</td>
-            {% endfor %}
-          </tr>
-        {% empty %}
-          <tr>
-            <td colspan="20">まだ回答がありません。</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
+        </tbody>
+      </table>
+    </div>
 
-<div class="grid-2">
-  <div class="card">
-    <h2 class="card-title">頻度の希望</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>頻度</th>
-          <th>人数</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in frequency_rows %}
+    <div class="card">
+      <h2 class="card-title">時間帯別の希望人数（土日）</h2>
+      <table>
+        <thead>
           <tr>
-            <td>{{ row.label }}</td>
-            <td>{{ row.count }}人</td>
+            <th>時間帯</th>
+            <th>希望人数</th>
           </tr>
-        {% empty %}
-          <tr>
-            <td colspan="2">まだ回答がありません。</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-  <div class="card">
-    <h2 class="card-title">未回答者一覧</h2>
-    {% if unanswered_users %}
-      <div class="user-list">
-        {% for target_user in unanswered_users %}
-          <div class="user-chip">
-            <div class="user-chip-name">{{ target_user.display_name }}</div>
-            <div class="user-chip-sub">{{ target_user.username }}</div>
-          </div>
-        {% endfor %}
-      </div>
-    {% else %}
-      <p style="margin:0; color:#166534; font-weight:700;">未回答者はいません。</p>
-    {% endif %}
-  </div>
-</div>
-
-{% if free_comment_rows %}
-  <div class="card">
-    <h2 class="card-title">自由記述一覧</h2>
-    <div class="comment-list">
-      {% for row in free_comment_rows %}
-        <div class="comment-card">
-          <div class="comment-card-head">
-            <strong>{{ row.user_name }}</strong>
-            <span>{{ row.created_at }}</span>
-          </div>
-          <div class="comment-card-body">{{ row.comment|linebreaksbr }}</div>
-        </div>
-      {% endfor %}
+        </thead>
+        <tbody>
+          {% for row in weekend_time_slot_rows %}
+            <tr>
+              <td>{{ row.label }}</td>
+              <td>{{ row.count }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
-{% endif %}
 
-<style>
-  .summary-cards{
-    display:grid;
-    grid-template-columns:repeat(4, minmax(0, 1fr));
-    gap:16px;
-    margin-bottom:16px;
-  }
-  .summary-card{
-    background:#fff;
-    border:1px solid #e5e7eb;
-    border-radius:16px;
-    padding:18px;
-    box-shadow:0 8px 24px rgba(15, 23, 42, 0.06);
-  }
-  .summary-card-highlight{
-    background:#eff6ff;
-    border-color:#bfdbfe;
-  }
-  .summary-card-label{
-    font-size:13px;
-    color:#6b7280;
-    font-weight:700;
-  }
-  .summary-card-value{
-    margin-top:8px;
-    font-size:28px;
-    font-weight:800;
-    line-height:1.2;
-  }
-  .cross-table-wrap{
-    overflow-x:auto;
-  }
-  .cross-table th,
-  .cross-table td{
-    white-space:nowrap;
-    text-align:center;
-  }
-  .cross-table tbody th{
-    text-align:left;
-    background:#f8fafc;
-  }
-  .user-list{
-    display:flex;
-    flex-direction:column;
-    gap:10px;
-  }
-  .user-chip{
-    padding:12px 14px;
-    border-radius:12px;
-    border:1px solid #e5e7eb;
-    background:#f8fafc;
-  }
-  .user-chip-name{
-    font-weight:800;
-    color:#111827;
-  }
-  .user-chip-sub{
-    font-size:13px;
-    color:#6b7280;
-  }
-  .comment-list{
-    display:flex;
-    flex-direction:column;
-    gap:12px;
-  }
-  .comment-card{
-    border:1px solid #e5e7eb;
-    border-radius:14px;
-    background:#fff;
-    padding:14px 16px;
-  }
-  .comment-card-head{
-    display:flex;
-    justify-content:space-between;
-    gap:12px;
-    flex-wrap:wrap;
-    margin-bottom:8px;
-    color:#374151;
-    font-size:14px;
-  }
-  .comment-card-body{
-    color:#111827;
-    line-height:1.8;
-    white-space:pre-wrap;
-  }
-  @media (max-width: 900px){
-    .summary-cards{
-      grid-template-columns:repeat(2, minmax(0, 1fr));
-    }
-  }
-  @media (max-width: 640px){
-    .summary-cards{
-      grid-template-columns:1fr;
-    }
-  }
-</style>
+  <div class="card">
+    <h2 class="card-title">曜日 × 時間帯のクロス集計</h2>
+    {% for row in cross_rows %}
+      <div style="margin-bottom:18px;">
+        <div style="font-weight:800; margin-bottom:8px;">{{ row.day_label }}</div>
+        <table>
+          <thead>
+            <tr>
+              <th>時間帯</th>
+              <th>人数</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cell in row.cells %}
+              <tr>
+                <td>{{ cell.slot_label }}</td>
+                <td>{{ cell.count }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h2 class="card-title">レッスン種別の希望人数</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>種別</th>
+            <th>希望人数</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in lesson_type_rows %}
+            <tr>
+              <td>{{ row.label }}</td>
+              <td>{{ row.count }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">頻度の希望人数</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>頻度</th>
+            <th>希望人数</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in frequency_rows %}
+            <tr>
+              <td>{{ row.label }}</td>
+              <td>{{ row.count }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h2 class="card-title">未回答者一覧</h2>
+      {% if unanswered_users %}
+        <ul class="clean">
+          {% for user in unanswered_users %}
+            <li>{{ user.display_name }}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">未回答者はいません。</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">最新の回答</h2>
+      {% if latest_responses %}
+        <table>
+          <thead>
+            <tr>
+              <th>会員</th>
+              <th>頻度</th>
+              <th>回答日時</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for response in latest_responses %}
+              <tr>
+                <td>{{ response.user.display_name }}</td>
+                <td>{{ response.preferred_frequency_label }}</td>
+                <td>{{ response.answered_at|date:"Y-m-d H:i" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="muted">まだ回答がありません。</p>
+      {% endif %}
+    </div>
+  </div>
 {% endblock %}
