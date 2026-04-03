@@ -36,6 +36,7 @@
     <ul style="margin-top:18px; padding-left:20px; line-height:1.8;">
       <li>公式LINEからそのまま始められます</li>
       <li>初回は会員登録とLINE連携が自動で完了します</li>
+      <li>初回ログイン時に1〜2分のアンケート回答をお願いしています</li>
       <li>ログイン後、予約作成や予約確認ができます</li>
     </ul>
   </div>
@@ -88,26 +89,50 @@
     </div>
   </div>
 
-  <div class="card">
-    <h2 style="margin-top:0;">コーチ向けメニュー</h2>
-    <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px;">
-      <a href="{% url 'club:coach_availability_list' %}" class="btn" style="justify-content:flex-start;">スケジュール管理</a>
-      <a href="{% url 'club:reservation_list' %}" class="btn" style="justify-content:flex-start;">予約一覧</a>
-      <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="btn" style="justify-content:flex-start;">固定レッスン</a>
-      <a href="{% url 'club:coach_ticket_summary' %}" class="btn" style="justify-content:flex-start;">チケット集計</a>
-      <a href="{% url 'club:coach_payroll_summary' %}" class="btn" style="justify-content:flex-start;">給与計算</a>
-      <a href="{% url 'club:line_connect' %}" class="btn" style="justify-content:flex-start;">LINE連携</a>
-    </div>
-  </div>
+  <div class="grid-2">
+    <div class="card">
+      <h2 style="margin-top:0;">アンケートサマリー</h2>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:12px;">
+        <div style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px; min-width:170px;">
+          <div class="muted" style="font-size:12px;">回答率</div>
+          <div style="font-size:26px; font-weight:800; margin-top:4px;">{{ schedule_survey_answered_rate }}%</div>
+        </div>
+        <div style="padding:12px 14px; border:1px solid #fed7aa; background:#fff7ed; border-radius:10px; min-width:170px;">
+          <div class="muted" style="font-size:12px;">未回答者</div>
+          <div style="font-size:26px; font-weight:800; margin-top:4px;">{{ schedule_survey_unanswered_count }}人</div>
+        </div>
+      </div>
 
-  <div class="card">
-    <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
-      <div style="font-weight:700; margin-bottom:6px;">運用メモ</div>
-      <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
-        <li>private / group の申請確認は「スケジュール管理」から行います。</li>
-        <li>チケット集計・給与計算は代行コーチ側に寄せた表示です。</li>
-        <li>固定レッスンは「固定レッスン」タブから1週間単位で確認できます。</li>
-      </ul>
+      {% if schedule_survey_top_slots %}
+        <div style="margin-top:16px;">
+          <div style="font-weight:700; margin-bottom:8px;">開催候補TOP3</div>
+          <ol style="margin:0; padding-left:20px; line-height:1.9;">
+            {% for row in schedule_survey_top_slots|slice:":3" %}
+              <li>
+                <strong>{{ row.day_label }}</strong> / {{ row.slot_label }}
+                <span class="muted">（{{ row.count }}票）</span>
+              </li>
+            {% endfor %}
+          </ol>
+        </div>
+      {% endif %}
+
+      <div style="margin-top:16px;">
+        <a href="{% url 'club:schedule_survey_summary' %}" class="btn btn-primary">アンケート集計を見る</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">運用メモ</h2>
+      <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
+        <div style="font-weight:700; margin-bottom:6px;">運用メモ</div>
+        <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
+          <li>private / group の申請確認は「スケジュール管理」から行います。</li>
+          <li>チケット集計・給与計算は代行コーチ側に寄せた表示です。</li>
+          <li>固定レッスンは「固定レッスン」タブから1週間単位で確認できます。</li>
+          <li>アンケート集計で、種別別・レベル別の開催候補も順次確認できます。</li>
+        </ul>
+      </div>
     </div>
   </div>
 
@@ -135,6 +160,95 @@
     <p style="margin:14px 0 0; color:#666;">
       一般レッスンは2時間でチケット1枚、プライベートは1時間で2枚、グループは1時間で参加人数分、イベントは都度設定です。
     </p>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h2 style="margin-top:0;">アンケートから見たおすすめ開催候補</h2>
+      {% if schedule_survey_answered %}
+        <p class="muted" style="margin-top:0;">
+          あなたの回答と全体集計をもとに、参加しやすそうな時間帯を表示しています。
+        </p>
+
+        {% if schedule_survey_top_slots %}
+          <div style="margin-top:12px;">
+            <div style="font-weight:700; margin-bottom:8px;">全体ランキング TOP3</div>
+            <ol style="margin:0; padding-left:20px; line-height:1.9;">
+              {% for row in schedule_survey_top_slots|slice:":3" %}
+                <li>
+                  <strong>{{ row.day_label }}</strong> / {{ row.slot_label }}
+                  <span class="muted">（{{ row.count }}票）</span>
+                </li>
+              {% endfor %}
+            </ol>
+          </div>
+        {% endif %}
+
+        {% if schedule_survey_level_top_slots %}
+          <div style="margin-top:16px;">
+            <div style="font-weight:700; margin-bottom:8px;">{{ user.get_member_level_display }} レベルのおすすめ TOP3</div>
+            <ol style="margin:0; padding-left:20px; line-height:1.9;">
+              {% for row in schedule_survey_level_top_slots|slice:":3" %}
+                <li>
+                  <strong>{{ row.day_label }}</strong> / {{ row.slot_label }}
+                  <span class="muted">（{{ row.count }}票）</span>
+                </li>
+              {% endfor %}
+            </ol>
+          </div>
+        {% endif %}
+
+        {% if schedule_survey_lesson_type_top_slots %}
+          <div style="margin-top:16px;">
+            <div style="font-weight:700; margin-bottom:8px;">希望種別ごとのおすすめ</div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              {% for block in schedule_survey_lesson_type_top_slots %}
+                <div style="padding:12px 14px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:12px;">
+                  <div style="font-weight:700;">{{ block.lesson_type_label }}</div>
+                  <div class="muted" style="margin-top:6px; line-height:1.8;">
+                    {% for row in block.rows|slice:":2" %}
+                      <div>{{ row.day_label }} / {{ row.slot_label }}（{{ row.count }}票）</div>
+                    {% endfor %}
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+
+        <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;">
+          <a href="{% url 'club:schedule_survey' %}" class="btn">アンケート内容を見る</a>
+          <a href="{% url 'club:reservation_create' %}" class="btn btn-primary">予約を作成する</a>
+        </div>
+      {% else %}
+        <div style="padding:14px 16px; border:1px solid #fcd34d; background:#fffbeb; border-radius:12px; color:#92400e;">
+          <div style="font-weight:800;">アンケート未回答です</div>
+          <div style="margin-top:6px; line-height:1.8;">
+            今後のレッスン時間帯の参考にするため、先にアンケート回答をお願いします。
+          </div>
+        </div>
+        <div style="margin-top:16px;">
+          <a href="{% url 'club:schedule_survey' %}" class="btn btn-primary">アンケートに回答する</a>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">アンケート集計の状況</h2>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:12px;">
+        <div style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px; min-width:160px;">
+          <div class="muted" style="font-size:12px;">回答済み</div>
+          <div style="font-size:26px; font-weight:800; margin-top:4px;">{{ schedule_survey_answered_count }}人</div>
+        </div>
+        <div style="padding:12px 14px; border:1px solid #fed7aa; background:#fff7ed; border-radius:10px; min-width:160px;">
+          <div class="muted" style="font-size:12px;">回答率</div>
+          <div style="font-size:26px; font-weight:800; margin-top:4px;">{{ schedule_survey_answered_rate }}%</div>
+        </div>
+      </div>
+      <p class="muted" style="margin:14px 0 0;">
+        会員アンケートをもとに、開催しやすい曜日・時間帯を調整しています。
+      </p>
+    </div>
   </div>
 
   <div class="page-grid">
