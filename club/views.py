@@ -797,19 +797,33 @@ def coach_schedule_survey_summary(request):
     ]
 
     cross_rows = []
+    recommended_slot_rows = []
     for day_value, day_label in day_choices:
         if day_value in weekday_day_values:
             slot_choices = weekday_slot_choices
+            day_group_label = "平日"
         else:
             slot_choices = weekend_slot_choices
+            day_group_label = "土日"
 
         cells = []
         for slot_value, slot_label in slot_choices:
+            count = cross_matrix.get(day_value, {}).get(slot_value, 0)
             cells.append(
                 {
                     "slot_value": slot_value,
                     "slot_label": slot_label,
-                    "count": cross_matrix.get(day_value, {}).get(slot_value, 0),
+                    "count": count,
+                }
+            )
+            recommended_slot_rows.append(
+                {
+                    "day_value": day_value,
+                    "day_label": day_label,
+                    "day_group_label": day_group_label,
+                    "slot_value": slot_value,
+                    "slot_label": slot_label,
+                    "count": count,
                 }
             )
 
@@ -820,6 +834,49 @@ def coach_schedule_survey_summary(request):
                 "cells": cells,
             }
         )
+
+    def _attach_ranks(rows):
+        ranked_rows = []
+        last_count = None
+        current_rank = 0
+
+        for index, row in enumerate(rows, start=1):
+            count = int(row.get("count", 0))
+            if last_count is None or count != last_count:
+                current_rank = index
+                last_count = count
+            ranked_row = dict(row)
+            ranked_row["rank"] = current_rank
+            ranked_rows.append(ranked_row)
+
+        return ranked_rows
+
+    top_day_rows = _attach_ranks(
+        sorted(day_rows, key=lambda row: (-row["count"], row["label"]))
+    )
+
+    top_weekday_time_slot_rows = _attach_ranks(
+        sorted(weekday_time_slot_rows, key=lambda row: (-row["count"], row["label"]))
+    )
+
+    top_weekend_time_slot_rows = _attach_ranks(
+        sorted(weekend_time_slot_rows, key=lambda row: (-row["count"], row["label"]))
+    )
+
+    top_lesson_type_rows = _attach_ranks(
+        sorted(lesson_type_rows, key=lambda row: (-row["count"], row["label"]))
+    )
+
+    top_frequency_rows = _attach_ranks(
+        sorted(frequency_rows, key=lambda row: (-row["count"], row["label"]))
+    )
+
+    top_recommended_slot_rows = _attach_ranks(
+        sorted(
+            recommended_slot_rows,
+            key=lambda row: (-row["count"], row["day_label"], row["slot_label"]),
+        )
+    )
 
     unanswered_users = list(member_users.filter(schedule_survey_response__isnull=True))
     total_members = member_users.count()
@@ -843,11 +900,16 @@ def coach_schedule_survey_summary(request):
             "lesson_type_rows": lesson_type_rows,
             "frequency_rows": frequency_rows,
             "cross_rows": cross_rows,
+            "top_day_rows": top_day_rows[:7],
+            "top_weekday_time_slot_rows": top_weekday_time_slot_rows[:6],
+            "top_weekend_time_slot_rows": top_weekend_time_slot_rows[:6],
+            "top_lesson_type_rows": top_lesson_type_rows[:3],
+            "top_frequency_rows": top_frequency_rows[:4],
+            "top_recommended_slot_rows": top_recommended_slot_rows[:10],
             "unanswered_users": unanswered_users,
             "latest_responses": latest_responses,
         },
     )
-
 
 @login_required
 @require_GET
