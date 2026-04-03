@@ -144,6 +144,69 @@
       font-size:13px;
     }
 
+    .ranking-grid{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:16px;
+    }
+
+    .ranking-list{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+
+    .ranking-item{
+      display:grid;
+      grid-template-columns:56px 1fr auto;
+      gap:12px;
+      align-items:center;
+      padding:12px 14px;
+      border:1px solid #e5e7eb;
+      border-radius:14px;
+      background:#ffffff;
+    }
+
+    .ranking-rank{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:42px;
+      height:42px;
+      border-radius:999px;
+      background:#0f172a;
+      color:#fff;
+      font-size:14px;
+      font-weight:800;
+    }
+
+    .ranking-main{
+      font-size:14px;
+      font-weight:800;
+      color:#0f172a;
+      line-height:1.4;
+    }
+
+    .ranking-sub{
+      margin-top:2px;
+      color:#64748b;
+      font-size:12px;
+      line-height:1.4;
+    }
+
+    .ranking-count{
+      font-size:20px;
+      font-weight:800;
+      color:#1d4ed8;
+      white-space:nowrap;
+    }
+
+    .ranking-count-unit{
+      font-size:12px;
+      color:#64748b;
+      margin-left:2px;
+    }
+
     @media (max-width: 768px){
       .survey-stat-value{
         font-size:28px;
@@ -151,6 +214,26 @@
 
       .survey-detail-box{
         padding:12px;
+      }
+
+      .ranking-grid{
+        grid-template-columns:1fr;
+      }
+
+      .ranking-item{
+        grid-template-columns:48px 1fr auto;
+        gap:10px;
+        padding:10px 12px;
+      }
+
+      .ranking-rank{
+        width:38px;
+        height:38px;
+        font-size:13px;
+      }
+
+      .ranking-count{
+        font-size:18px;
       }
     }
   </style>
@@ -171,6 +254,133 @@
       <div class="survey-stat-value">{{ answered_rate }}%</div>
       <div class="survey-stat-sub">リアルタイム自動集計</div>
     </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">おすすめ開催時間帯ランキング</h2>
+    <p class="survey-muted" style="margin-top:0;">
+      曜日 × 時間帯の組み合わせで、希望人数が多い順に表示しています。
+    </p>
+    {% if top_recommended_slot_rows %}
+      <div class="ranking-list">
+        {% for row in top_recommended_slot_rows %}
+          <div class="ranking-item">
+            <div class="ranking-rank">#{{ row.rank }}</div>
+            <div>
+              <div class="ranking-main">{{ row.day_label }} × {{ row.slot_label }}</div>
+              <div class="ranking-sub">{{ row.day_group_label }}の人気開催候補</div>
+            </div>
+            <div class="ranking-count">{{ row.count }}<span class="ranking-count-unit">人</span></div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="survey-muted">まだ回答がありません。</p>
+    {% endif %}
+  </div>
+
+  <div class="ranking-grid">
+    <div class="card">
+      <h2 class="card-title">曜日ランキング</h2>
+      {% if top_day_rows %}
+        <div class="ranking-list">
+          {% for row in top_day_rows %}
+            <div class="ranking-item">
+              <div class="ranking-rank">#{{ row.rank }}</div>
+              <div>
+                <div class="ranking-main">{{ row.label }}</div>
+                <div class="ranking-sub">参加しやすい曜日</div>
+              </div>
+              <div class="ranking-count">{{ row.count }}<span class="ranking-count-unit">人</span></div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="survey-muted">まだ回答がありません。</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">レッスン種別ランキング</h2>
+      {% if top_lesson_type_rows %}
+        <div class="ranking-list">
+          {% for row in top_lesson_type_rows %}
+            <div class="ranking-item">
+              <div class="ranking-rank">#{{ row.rank }}</div>
+              <div>
+                <div class="ranking-main">{{ row.label }}</div>
+                <div class="ranking-sub">希望レッスン種別</div>
+              </div>
+              <div class="ranking-count">{{ row.count }}<span class="ranking-count-unit">人</span></div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="survey-muted">まだ回答がありません。</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="ranking-grid">
+    <div class="card">
+      <h2 class="card-title">平日時間帯ランキング</h2>
+      {% if top_weekday_time_slot_rows %}
+        <div class="ranking-list">
+          {% for row in top_weekday_time_slot_rows %}
+            <div class="ranking-item">
+              <div class="ranking-rank">#{{ row.rank }}</div>
+              <div>
+                <div class="ranking-main">{{ row.label }}</div>
+                <div class="ranking-sub">平日に参加しやすい時間帯</div>
+              </div>
+              <div class="ranking-count">{{ row.count }}<span class="ranking-count-unit">人</span></div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="survey-muted">まだ回答がありません。</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">土日時間帯ランキング</h2>
+      {% if top_weekend_time_slot_rows %}
+        <div class="ranking-list">
+          {% for row in top_weekend_time_slot_rows %}
+            <div class="ranking-item">
+              <div class="ranking-rank">#{{ row.rank }}</div>
+              <div>
+                <div class="ranking-main">{{ row.label }}</div>
+                <div class="ranking-sub">土日に参加しやすい時間帯</div>
+              </div>
+              <div class="ranking-count">{{ row.count }}<span class="ranking-count-unit">人</span></div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="survey-muted">まだ回答がありません。</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">頻度ランキング</h2>
+    {% if top_frequency_rows %}
+      <div class="ranking-list">
+        {% for row in top_frequency_rows %}
+          <div class="ranking-item">
+            <div class="ranking-rank">#{{ row.rank }}</div>
+            <div>
+              <div class="ranking-main">{{ row.label }}</div>
+              <div class="ranking-sub">希望頻度</div>
+            </div>
+            <div class="ranking-count">{{ row.count }}<span class="ranking-count-unit">人</span></div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="survey-muted">まだ回答がありません。</p>
+    {% endif %}
   </div>
 
   <div class="card">
@@ -270,52 +480,6 @@
           {% endfor %}
         </tbody>
       </table>
-    </div>
-  </div>
-
-  <div class="grid-2">
-    <div class="card">
-      <h2 class="card-title">レッスン種別の希望人数</h2>
-      <div class="survey-table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>種別</th>
-              <th>希望人数</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in lesson_type_rows %}
-              <tr>
-                <td>{{ row.label }}</td>
-                <td class="survey-count-cell {% if row.count > 0 %}survey-count-high{% endif %}">{{ row.count }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2 class="card-title">頻度の希望人数</h2>
-      <div class="survey-table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>頻度</th>
-              <th>希望人数</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in frequency_rows %}
-              <tr>
-                <td>{{ row.label }}</td>
-                <td class="survey-count-cell {% if row.count > 0 %}survey-count-high{% endif %}">{{ row.count }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
     </div>
   </div>
 
