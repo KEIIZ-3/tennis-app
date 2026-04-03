@@ -96,7 +96,7 @@ def _needs_schedule_survey(user):
 
 def _require_schedule_survey(request):
     if _needs_schedule_survey(request.user):
-        messages.info(request, "レッスン希望アンケートへの回答をお願いします。")
+        messages.warning(request, "レッスン希望アンケートが未回答です。1〜2分で終わるので、先にご回答をお願いします。")
         return redirect("club:schedule_survey")
     return None
 
@@ -547,6 +547,162 @@ def _assign_pending_request_targets(reservation, selected_coach_id):
         reservation.requested_court_note = ""
 
 
+
+def _count_cross_slots_for_responses(responses):
+    day_choices = list(ScheduleSurveyResponse.DAY_CHOICES)
+    weekday_slot_choices = list(ScheduleSurveyResponse.WEEKDAY_TIME_SLOT_CHOICES)
+    weekend_slot_choices = list(ScheduleSurveyResponse.WEEKEND_TIME_SLOT_CHOICES)
+
+    weekday_day_values = {
+        ScheduleSurveyResponse.DAY_MON,
+        ScheduleSurveyResponse.DAY_TUE,
+        ScheduleSurveyResponse.DAY_WED,
+        ScheduleSurveyResponse.DAY_THU,
+        ScheduleSurveyResponse.DAY_FRI,
+    }
+    weekend_day_values = {
+        ScheduleSurveyResponse.DAY_SAT,
+        ScheduleSurveyResponse.DAY_SUN,
+    }
+
+    cross_matrix = {}
+    for day_value, _day_label in day_choices:
+        if day_value in weekday_day_values:
+            cross_matrix[day_value] = {slot_value: 0 for slot_value, _label in weekday_slot_choices}
+        else:
+            cross_matrix[day_value] = {slot_value: 0 for slot_value, _label in weekend_slot_choices}
+
+    for response in responses:
+        selected_days = list(response.selected_days or [])
+        selected_weekday_slots = list(response.selected_weekday_time_slots or [])
+        selected_weekend_slots = list(response.selected_weekend_time_slots or [])
+
+        for day_value in selected_days:
+            if day_value in weekday_day_values:
+                for slot_value in selected_weekday_slots:
+                    if slot_value in cross_matrix.get(day_value, {}):
+                        cross_matrix[day_value][slot_value] += 1
+            elif day_value in weekend_day_values:
+                for slot_value in selected_weekend_slots:
+                    if slot_value in cross_matrix.get(day_value, {}):
+                        cross_matrix[day_value][slot_value] += 1
+
+    return cross_matrix
+
+
+def _rank_rows(rows):
+    ranked_rows = []
+    last_count = None
+    current_rank = 0
+
+    for index, row in enumerate(rows, start=1):
+        count = int(row.get("count", 0))
+        if last_count is None or count != last_count:
+            current_rank = index
+            last_count = count
+        ranked_row = dict(row)
+        ranked_row["rank"] = current_rank
+        ranked_rows.append(ranked_row)
+
+    return ranked_rows
+
+
+def _build_recommended_slot_rows_from_responses(responses):
+    day_label_map = ScheduleSurveyResponse.day_label_map()
+    weekday_label_map = ScheduleSurveyResponse.weekday_time_slot_label_map()
+    weekend_label_map = ScheduleSurveyResponse.weekend_time_slot_label_map()
+    cross_matrix = _count_cross_slots_for_responses(responses)
+
+    rows = []
+    for day_value, slot_counts in cross_matrix.items():
+        for slot_value, count in slot_counts.items():
+            if slot_value in weekday_label_map:
+                slot_label = weekday_label_map.get(slot_value, slot_value)
+            else:
+                slot_label = weekend_label_map.get(slot_value, slot_value)
+
+            rows.append(
+                {
+                    "day_value": day_value,
+                    "day_label": day_label_map.get(day_value, day_value),
+                    "slot_value": slot_value,
+                    "slot_label": slot_label,
+                    "count": int(count),
+                }
+            )
+
+    ranked = sorted(rows, key=lambda row: (-row["count"], row["day_label"], row["slot_label"]))
+    return _rank_rows(ranked)
+
+
+def _build_schedule_survey_home_context(user):
+    context = {
+        "schedule_survey_response": None,
+        "schedule_survey_answered": False,
+        "schedule_survey_answered_count": 0,
+        "schedule_survey_unanswered_count": 0,
+        "schedule_survey_answered_rate": 0,
+        "schedule_survey_top_slots": [],
+        "schedule_survey_level_top_slots": [],
+        "schedule_survey_lesson_type_top_slots": [],
+        "schedule_survey_top_lesson_type_rankings": [],
+    }
+
+    User = get_user_model()
+    member_users = list(User.objects.filter(role="member", is_active=True).order_by("id"))
+    responses = list(ScheduleSurveyResponse.objects.select_related("user").filter(user__role="member").order_by("-answered_at", "-id"))
+
+    total_members = len(member_users)
+    answered_count = len(responses)
+    unanswered_count = max(total_members - answered_count, 0)
+    answered_rate = round((answered_count / total_members) * 100, 1) if total_members > 0 else 0
+
+    context["schedule_survey_answered_count"] = answered_count
+    context["schedule_survey_unanswered_count"] = unanswered_count
+    context["schedule_survey_answered_rate"] = answered_rate
+    context["schedule_survey_top_slots"] = [row for row in _build_recommended_slot_rows_from_responses(responses) if row["count"] > 0][:5]
+
+    response_map = {response.user_id: response for response in responses}
+    if user and getattr(user, "is_authenticated", False):
+        context["schedule_survey_response"] = response_map.get(user.pk)
+        context["schedule_survey_answered"] = user.pk in response_map
+
+        same_level_responses = [
+            response
+            for response in responses
+            if getattr(getattr(response, "user", None), "member_level", "") == getattr(user, "member_level", "")
+        ]
+        context["schedule_survey_level_top_slots"] = [row for row in _build_recommended_slot_rows_from_responses(same_level_responses) if row["count"] > 0][:5]
+
+        selected_lesson_types = []
+        user_response = response_map.get(user.pk)
+        if user_response:
+            selected_lesson_types = list(user_response.selected_lesson_types or [])
+
+        lesson_type_label_map = ScheduleSurveyResponse.lesson_type_label_map()
+        lesson_type_rows = []
+        lesson_type_top_slots = []
+        for lesson_type_value in selected_lesson_types:
+            filtered_responses = [response for response in responses if lesson_type_value in list(response.selected_lesson_types or [])]
+            ranked_slots = [row for row in _build_recommended_slot_rows_from_responses(filtered_responses) if row["count"] > 0]
+            if ranked_slots:
+                lesson_type_rows.append({
+                    "lesson_type_value": lesson_type_value,
+                    "lesson_type_label": lesson_type_label_map.get(lesson_type_value, lesson_type_value),
+                    "count": len(filtered_responses),
+                    "top_slot": ranked_slots[0],
+                })
+                lesson_type_top_slots.append({
+                    "lesson_type_value": lesson_type_value,
+                    "lesson_type_label": lesson_type_label_map.get(lesson_type_value, lesson_type_value),
+                    "rows": ranked_slots[:3],
+                })
+
+        context["schedule_survey_top_lesson_type_rankings"] = lesson_type_rows
+        context["schedule_survey_lesson_type_top_slots"] = lesson_type_top_slots
+
+    return context
+
 def _send_line_notification_safely(user, message_text):
     if not user or not message_text:
         return
@@ -571,6 +727,8 @@ def home(request):
     coaches = User.objects.filter(role="coach").order_by("username")
     selected_coach = request.GET.get("coach", "")
 
+    survey_home_context = _build_schedule_survey_home_context(request.user if request.user.is_authenticated else None)
+
     return render(
         request,
         "home.html",
@@ -578,6 +736,7 @@ def home(request):
             "coaches": coaches,
             "selected_coach": selected_coach,
             "liff_enabled": _liff_enabled(),
+            **survey_home_context,
         },
     )
 
@@ -658,7 +817,7 @@ def schedule_survey_view(request):
         try:
             response.full_clean()
             response.save()
-            messages.success(request, "アンケートの回答を保存しました。ご協力ありがとうございます。")
+            messages.success(request, "アンケートの回答を保存しました。ご協力ありがとうございます。今後の開催時間帯の参考にします。")
             return redirect("club:home")
         except ValidationError as e:
             if hasattr(e, "messages"):
@@ -2132,7 +2291,7 @@ def line_login_callback(request):
             return redirect("club:profile_complete")
 
         if _needs_schedule_survey(user):
-            messages.info(request, "初回ログインのため、レッスン希望アンケートに回答してください。")
+            messages.info(request, "初回ログインありがとうございます。レッスン希望アンケートに回答していただくと、今後の開催時間帯の参考になります。")
             return redirect("club:schedule_survey")
 
         if result == "created":
@@ -2241,7 +2400,7 @@ def liff_bootstrap(request):
             return JsonResponse(
                 {
                     "ok": True,
-                    "message": "レッスン希望アンケートに回答してください。",
+                    "message": "レッスン希望アンケートへの回答をお願いします。1〜2分で完了します。",
                     "redirectUrl": reverse("club:schedule_survey"),
                 }
             )
