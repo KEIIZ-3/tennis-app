@@ -1,338 +1,96 @@
-<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Play Design Tennis{% endblock %}</title>
+{% extends "base.html" %}
+{% block title %}ガット張り依頼一覧{% endblock %}
 
-  <style>
-    :root{
-      --bg:#f6f8fb;
-      --card:#ffffff;
-      --text:#111827;
-      --muted:#6b7280;
-      --line:#e5e7eb;
-      --line-strong:#d1d5db;
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title">ガット張り依頼一覧</h1>
+    <p class="page-subtitle">
+      依頼状況と料金を確認できます。
+    </p>
+  </div>
 
-      --primary:#0f172a;
-      --primary-soft:#eef2ff;
-
-      --success-bg:#f0fdf4;
-      --success-border:#bbf7d0;
-      --error-bg:#fef2f2;
-      --error-border:#fecaca;
-      --warning-bg:#fff7ed;
-      --warning-border:#fed7aa;
-      --info-bg:#eff6ff;
-      --info-border:#bfdbfe;
-
-      --ticket-bg:#fff7ed;
-      --ticket-border:#fdba74;
-
-      --line-green:#06c755;
-      --line-green-dark:#05b74d;
-
-      --coach-tab-bg:#eef2ff;
-      --coach-tab-border:#c7d2fe;
-      --coach-tab-active:#0f172a;
-      --coach-tab-active-text:#ffffff;
-
-      --shadow:0 8px 24px rgba(15, 23, 42, 0.06);
-      --radius:16px;
-      --radius-sm:10px;
-    }
-
-    *{ box-sizing:border-box; }
-    html{ -webkit-text-size-adjust:100%; }
-    body{
-      margin:0;
-      font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background:var(--bg);
-      color:var(--text);
-      line-height:1.6;
-    }
-    a{ color:inherit; text-decoration:none; }
-
-    .topbar{
-      position:sticky;
-      top:0;
-      z-index:100;
-      background:rgba(255,255,255,0.96);
-      backdrop-filter:blur(10px);
-      border-bottom:1px solid var(--line);
-    }
-
-    .wrap{ max-width:1120px; margin:0 auto; padding:0 16px; }
-    .topbar .wrap{
-      padding-top:14px;
-      padding-bottom:14px;
-      display:flex;
-      flex-direction:column;
-      gap:12px;
-    }
-
-    .topbar-row{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      gap:16px;
-      flex-wrap:wrap;
-    }
-
-    .brand{ display:flex; align-items:center; gap:12px; min-width:0; }
-    .brand-mark{
-      width:40px; height:40px; border-radius:12px;
-      background:linear-gradient(135deg, #0f172a 0%, #334155 100%);
-      color:#fff; display:flex; align-items:center; justify-content:center;
-      font-size:18px; font-weight:700; flex:0 0 auto; box-shadow:var(--shadow);
-    }
-    .brand-text{ min-width:0; }
-    .brand-title{ font-size:20px; font-weight:800; letter-spacing:0.01em; line-height:1.2; }
-    .brand-sub{ margin-top:2px; color:var(--muted); font-size:12px; line-height:1.3; }
-
-    .top-meta{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-    .top-badge{
-      display:inline-flex; align-items:center; gap:6px; min-height:36px;
-      padding:8px 12px; border-radius:999px; border:1px solid var(--line);
-      background:#fff; color:var(--text); font-size:13px; white-space:nowrap;
-    }
-    .top-badge.ticket{ background:var(--ticket-bg); border-color:var(--ticket-border); font-weight:700; }
-    .top-badge.coach{ background:var(--coach-tab-bg); border-color:var(--coach-tab-border); font-weight:700; color:#312e81; }
-
-    .nav{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-    .nav a{
-      display:inline-flex; align-items:center; justify-content:center; min-height:40px;
-      padding:9px 13px; border:1px solid transparent; border-radius:999px;
-      color:var(--text); font-size:14px; font-weight:600; transition:all .15s ease; background:#fff;
-    }
-    .nav a:hover{ background:#f8fafc; border-color:var(--line); }
-    .nav a.nav-primary{ background:var(--primary); color:#fff; border-color:var(--primary); }
-    .nav a.line-login-link{ background:var(--line-green); color:#fff; border-color:var(--line-green); font-weight:700; }
-    .nav a.line-login-link:hover{ background:var(--line-green-dark); border-color:var(--line-green-dark); }
-
-    .coach-tabs{
-      display:flex; gap:8px; flex-wrap:wrap; padding-top:4px; border-top:1px solid var(--line);
-    }
-    .coach-tab{
-      display:inline-flex; align-items:center; justify-content:center; min-height:40px;
-      padding:9px 14px; border-radius:999px; border:1px solid var(--coach-tab-border);
-      background:var(--coach-tab-bg); color:#3730a3; font-size:14px; font-weight:700; transition:all .15s ease;
-    }
-    .coach-tab:hover{ filter:brightness(0.98); }
-    .coach-tab.active{ background:var(--coach-tab-active); color:var(--coach-tab-active-text); border-color:var(--coach-tab-active); }
-
-    .logout-form{ display:inline; margin:0; }
-    .logout-button{
-      appearance:none; border:1px solid var(--line-strong); background:#fff; color:var(--text);
-      min-height:40px; padding:9px 13px; border-radius:999px; cursor:pointer; font:inherit; font-size:14px; font-weight:600;
-      transition:all .15s ease;
-    }
-    .logout-button:hover{ background:#f8fafc; }
-
-    .main{ padding:24px 0 40px; }
-    .page-head{ margin-bottom:16px; }
-    .page-title{ margin:0 0 6px; font-size:28px; line-height:1.2; font-weight:800; letter-spacing:-0.01em; }
-    .page-subtitle{ margin:0; color:var(--muted); font-size:14px; }
-
-    .card{
-      background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
-      padding:22px; box-shadow:var(--shadow); margin-bottom:16px;
-    }
-    .card-title{ margin:0 0 8px; font-size:20px; font-weight:800; line-height:1.3; }
-    .card-subtitle{ margin:0; color:var(--muted); font-size:14px; }
-
-    .messages{ margin-bottom:16px; }
-    .message{
-      padding:13px 15px; border-radius:12px; margin-bottom:10px; border:1px solid transparent; font-size:14px;
-    }
-    .message.success{ background:var(--success-bg); border-color:var(--success-border); }
-    .message.error{ background:var(--error-bg); border-color:var(--error-border); }
-    .message.warning{ background:var(--warning-bg); border-color:var(--warning-border); }
-    .message.info{ background:var(--info-bg); border-color:var(--info-border); }
-
-    .muted{ color:var(--muted); }
-    .section-note{
-      padding:14px 16px; border-radius:12px; border:1px solid var(--info-border); background:var(--info-bg); color:#1e3a8a;
-    }
-
-    form{ margin:0; }
-    form p{ margin:0 0 14px; }
-
-    label{ display:block; margin-bottom:8px; font-size:14px; font-weight:700; color:var(--text); }
-
-    input[type="text"], input[type="email"], input[type="password"], input[type="datetime-local"],
-    input[type="date"], input[type="time"], input[type="number"], select, textarea{
-      width:100%; min-height:46px; padding:11px 13px; border:1px solid var(--line-strong);
-      border-radius:12px; background:#fff; color:var(--text); font:inherit;
-      transition:border-color .15s ease, box-shadow .15s ease;
-    }
-    input:focus, select:focus, textarea:focus{
-      outline:none; border-color:#93c5fd; box-shadow:0 0 0 4px rgba(59,130,246,0.12);
-    }
-    textarea{ min-height:120px; resize:vertical; }
-
-    button, input[type="submit"]{
-      appearance:none; border:none; background:var(--primary); color:#fff; min-height:44px;
-      padding:11px 16px; border-radius:12px; cursor:pointer; font:inherit; font-weight:700;
-      transition:transform .12s ease, opacity .12s ease;
-    }
-    button:hover, input[type="submit"]:hover{ opacity:0.95; }
-
-    .btn{
-      display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:44px; padding:11px 16px;
-      border-radius:12px; border:1px solid var(--line-strong); background:#fff; color:var(--text);
-      text-decoration:none; font-size:14px; font-weight:700; cursor:pointer; transition:all .15s ease;
-    }
-    .btn:hover{ background:#f8fafc; }
-    .btn-primary{ background:var(--primary); color:#fff; border-color:var(--primary); }
-    .btn-primary:hover{ background:#0b1220; }
-    .btn-danger{ background:#b91c1c; color:#fff; border-color:#b91c1c; }
-    .btn-danger:hover{ background:#991b1b; }
-    .btn-line{ background:var(--line-green); color:#fff; border-color:var(--line-green); }
-    .btn-line:hover{ background:var(--line-green-dark); border-color:var(--line-green-dark); }
-
-    .actions{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-    .grid-2{ display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; }
-    .grid-3{ display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:16px; }
-
-    table{
-      width:100%; border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden;
-    }
-    th, td{
-      border-bottom:1px solid var(--line); padding:12px 10px; text-align:left; vertical-align:top; font-size:14px;
-    }
-    th{ background:#f8fafc; font-weight:800; color:#334155; }
-
-    ul.clean{ margin:0; padding-left:18px; }
-    .spacer-8{ height:8px; }
-    .spacer-12{ height:12px; }
-    .spacer-16{ height:16px; }
-
-    @media (max-width: 900px){
-      .grid-3{ grid-template-columns:1fr; }
-      .grid-2{ grid-template-columns:1fr; }
-    }
-    @media (max-width: 768px){
-      .wrap{ padding:0 12px; }
-      .topbar .wrap{ padding-top:12px; padding-bottom:12px; }
-      .topbar-row{ align-items:flex-start; }
-      .brand-mark{ width:36px; height:36px; border-radius:10px; font-size:16px; }
-      .brand-title{ font-size:18px; }
-      .brand-sub{ font-size:11px; }
-      .top-meta{ width:100%; }
-      .nav{ width:100%; }
-      .nav a, .logout-button, .coach-tab{ min-height:42px; font-size:13px; }
-      .main{ padding:16px 0 28px; }
-      .page-title{ font-size:24px; }
-      .card{ padding:16px; border-radius:14px; }
-      th, td{ font-size:13px; padding:10px 8px; }
-    }
-  </style>
-</head>
-<body>
-  <header class="topbar">
-    <div class="wrap">
-      <div class="topbar-row">
-        <div class="brand">
-          <div class="brand-mark">T</div>
-          <div class="brand-text">
-            <a href="{% url 'club:home' %}" class="brand-title">Play Design Tennis</a>
-            <div class="brand-sub">予約・チケット・LINE連携</div>
-          </div>
-        </div>
-
-        {% if user.is_authenticated %}
-          <div class="top-meta">
-            <span class="top-badge">ログイン中: {{ user.display_name }}</span>
-            {% if user.role == "member" %}
-              <span class="top-badge">レベル: {{ user.get_member_level_display }}</span>
-              <span class="top-badge ticket">チケット残数: {{ user.ticket_balance }}枚</span>
-            {% elif user.role == "coach" %}
-              <span class="top-badge coach">コーチ専用メニュー表示中</span>
-            {% endif %}
-          </div>
-        {% endif %}
+  <div class="card">
+    <div class="actions" style="justify-content:space-between;">
+      <div class="muted">
+        基本料金 {{ stringing_base_price }}円 / デリバリー {{ stringing_delivery_fee }}円
       </div>
-
-      <div class="topbar-row">
-        <nav class="nav">
-          <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
-          <a href="{% url 'club:help' %}">使い方</a>
-          <a href="{% url 'club:terms' %}">利用規約</a>
-
-          {% if user.is_authenticated %}
-            {% if user.role == "member" %}
-              <a href="{% url 'club:reservation_create' %}">予約作成</a>
-              <a href="{% url 'club:reservation_list' %}">予約一覧</a>
-              <a href="{% url 'club:tickets' %}">チケット</a>
-              <a href="{% url 'club:schedule_survey' %}">アンケート</a>
-              <a href="{% url 'club:stringing_order_create' %}">ガット貼り依頼</a>
-              <a href="{% url 'club:stringing_order_list' %}">ガット貼り一覧</a>
-            {% elif user.role == "coach" or user.is_staff or user.is_superuser %}
-              <a href="{% url 'club:reservation_create' %}">予約作成</a>
-              <a href="{% url 'club:reservation_list' %}">予約一覧</a>
-              <a href="{% url 'club:coach_availability_list' %}">スケジュール管理</a>
-              <a href="{% url 'club:coach_ticket_summary' %}">チケット集計</a>
-              <a href="{% url 'club:coach_payroll_summary' %}">給与計算</a>
-              <a href="{% url 'club:stringing_order_list' %}">ガット貼り一覧</a>
-            {% endif %}
-
-            <a href="{% url 'club:line_connect' %}">LINE連携</a>
-
-            <form method="post" action="{% url 'club:logout' %}" class="logout-form">
-              {% csrf_token %}
-              <button type="submit" class="logout-button">ログアウト</button>
-            </form>
-          {% else %}
-            <a href="{% url 'club:line_login_start' %}" class="line-login-link">LINEでログイン</a>
-            <a href="{% url 'club:login' %}">通常ログイン</a>
-            <a href="{% url 'club:register' %}">新規登録</a>
-          {% endif %}
-        </nav>
-      </div>
-
-      {% if user.is_authenticated and user.role == "coach" %}
-        <div class="coach-tabs">
-          <a href="{% url 'club:home' %}" class="coach-tab {% if request.resolver_match.url_name == 'home' %}active{% endif %}">
-            コーチホーム
-          </a>
-          <a href="{% url 'club:reservation_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_list' %}active{% endif %}">
-            予約一覧
-          </a>
-          <a href="{% url 'club:coach_availability_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_availability_list' or request.resolver_match.url_name == 'coach_availability_create' or request.resolver_match.url_name == 'coach_availability_edit' %}active{% endif %}">
-            スケジュール管理
-          </a>
-          <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}active{% endif %}">
-            固定レッスン
-          </a>
-          <a href="{% url 'club:coach_ticket_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_ticket_summary' %}active{% endif %}">
-            チケット集計
-          </a>
-          <a href="{% url 'club:coach_payroll_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_payroll_summary' %}active{% endif %}">
-            給与計算
-          </a>
-          <a href="{% url 'club:schedule_survey_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'schedule_survey_summary' %}active{% endif %}">
-            アンケート集計
-          </a>
-        </div>
-      {% endif %}
+      <a href="{% url 'club:stringing_order_create' %}" class="btn btn-primary">新規依頼</a>
     </div>
-  </header>
+  </div>
 
-  <main class="main">
-    <div class="wrap">
-      {% if messages %}
-        <div class="messages">
-          {% for message in messages %}
-            <div class="message {% if message.tags %}{{ message.tags }}{% else %}info{% endif %}">
-              {{ message }}
-            </div>
+  <div class="card">
+    {% if stringing_orders %}
+      <table>
+        <thead>
+          <tr>
+            <th>依頼日時</th>
+            {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+              <th>会員</th>
+              <th>担当コーチ</th>
+            {% endif %}
+            <th>ラケット名</th>
+            <th>ガット名</th>
+            <th>デリバリー</th>
+            <th>届け場所</th>
+            <th>日時指定</th>
+            <th>希望張り上げ納期</th>
+            <th>料金</th>
+            <th>状況</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for order in stringing_orders %}
+            <tr>
+              <td>{{ order.created_at|date:"Y-m-d H:i" }}</td>
+              {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+                <td>{{ order.user.display_name }}</td>
+                <td>
+                  {% if order.assigned_coach %}
+                    {{ order.assigned_coach.display_name }}
+                  {% else %}
+                    <span class="muted">未割当</span>
+                  {% endif %}
+                </td>
+              {% endif %}
+              <td>{{ order.racket_name|default:"-" }}</td>
+              <td>{{ order.string_name|default:"-" }}</td>
+              <td>{% if order.delivery_requested %}あり{% else %}なし{% endif %}</td>
+              <td>
+                {% if order.delivery_requested %}
+                  {{ order.delivery_location|default:"-" }}
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if order.delivery_requested %}
+                  {{ order.preferred_delivery_time|default:"-" }}
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if order.delivery_requested %}
+                  <span class="muted">-</span>
+                {% else %}
+                  {{ order.preferred_delivery_time|default:"-" }}
+                {% endif %}
+              </td>
+              <td>{{ order.total_price }}円</td>
+              <td>{{ order.get_status_display }}</td>
+            </tr>
+            {% if order.note %}
+              <tr>
+                <td colspan="{% if user.role == 'coach' or user.is_staff or user.is_superuser %}11{% else %}9{% endif %}">
+                  <strong>備考:</strong> {{ order.note }}
+                </td>
+              </tr>
+            {% endif %}
           {% endfor %}
-        </div>
-      {% endif %}
-
-      {% block content %}{% endblock %}
-    </div>
-  </main>
-</body>
-</html>
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted" style="margin:0;">まだガット張り依頼はありません。</p>
+    {% endif %}
+  </div>
+{% endblock %}
