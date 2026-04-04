@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 {% block title %}ガット貼り依頼{% endblock %}
 
@@ -5,16 +6,13 @@
   <div class="page-head">
     <h1 class="page-title">ガット貼り依頼</h1>
     <p class="page-subtitle">
-      基本料金は {{ stringing_base_price }}円、デリバリー希望の場合は +{{ stringing_delivery_fee }}円です。
+      基本料金は {{ stringing_base_price }}円、デリバリー希望の場合のみ +{{ stringing_delivery_fee }}円です。
     </p>
   </div>
 
   <div class="grid-2">
     <div class="card">
       <h2 class="card-title">料金案内</h2>
-      <div class="section-note">
-        デリバリーありの場合の合計は <strong>{{ stringing_total_with_delivery }}円</strong> です。
-      </div>
 
       <table style="margin-top:16px;">
         <tbody>
@@ -26,10 +24,6 @@
             <th>デリバリー料金</th>
             <td>{{ stringing_delivery_fee }}円</td>
           </tr>
-          <tr>
-            <th>デリバリーあり合計</th>
-            <td><strong>{{ stringing_total_with_delivery }}円</strong></td>
-          </tr>
         </tbody>
       </table>
 
@@ -37,9 +31,10 @@
 
       <ul class="clean" style="line-height:1.9;">
         <li>ラケット名、ガット名は分かる範囲でご入力ください。</li>
-        <li>デリバリー希望時は、届け場所と時間指定を入力してください。</li>
+        <li>デリバリー希望時のみ、届け場所と日時指定をご入力ください。</li>
+        <li>デリバリーなしの場合は、希望張り上げ納期をご入力ください。</li>
+        <li>希望張り上げ納期の初期値は、依頼日から1週間後です。</li>
         <li>担当コーチは初期値として清水コーチに自動設定され、必要に応じて管理サイトから変更できます。</li>
-        <li>依頼送信後は一覧画面で受付状況を確認できます。</li>
       </ul>
     </div>
 
@@ -55,20 +50,86 @@
           </div>
         {% endif %}
 
-        {% for field in form %}
+        <p>
+          <label for="{{ form.racket_name.id_for_label }}">{{ form.racket_name.label }}</label>
+          {{ form.racket_name }}
+          {% if form.racket_name.help_text %}
+            <div class="muted" style="font-size:13px; margin-top:6px;">{{ form.racket_name.help_text }}</div>
+          {% endif %}
+          {% if form.racket_name.errors %}
+            <div class="message error" style="margin-top:8px;">{{ form.racket_name.errors }}</div>
+          {% endif %}
+        </p>
+
+        <p>
+          <label for="{{ form.string_name.id_for_label }}">{{ form.string_name.label }}</label>
+          {{ form.string_name }}
+          {% if form.string_name.help_text %}
+            <div class="muted" style="font-size:13px; margin-top:6px;">{{ form.string_name.help_text }}</div>
+          {% endif %}
+          {% if form.string_name.errors %}
+            <div class="message error" style="margin-top:8px;">{{ form.string_name.errors }}</div>
+          {% endif %}
+        </p>
+
+        <p>
+          <label for="{{ form.delivery_option.id_for_label }}">{{ form.delivery_option.label }}</label>
+          {{ form.delivery_option }}
+          {% if form.delivery_option.help_text %}
+            <div class="muted" style="font-size:13px; margin-top:6px;">{{ form.delivery_option.help_text }}</div>
+          {% endif %}
+          {% if form.delivery_option.errors %}
+            <div class="message error" style="margin-top:8px;">{{ form.delivery_option.errors }}</div>
+          {% endif %}
+        </p>
+
+        <div id="delivery-fields">
           <p>
-            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {{ field }}
-            {% if field.help_text %}
-              <div class="muted" style="font-size:13px; margin-top:6px;">{{ field.help_text }}</div>
+            <label for="{{ form.delivery_location.id_for_label }}">{{ form.delivery_location.label }}</label>
+            {{ form.delivery_location }}
+            {% if form.delivery_location.help_text %}
+              <div class="muted" style="font-size:13px; margin-top:6px;">{{ form.delivery_location.help_text }}</div>
             {% endif %}
-            {% if field.errors %}
-              <div class="message error" style="margin-top:8px;">
-                {{ field.errors }}
-              </div>
+            {% if form.delivery_location.errors %}
+              <div class="message error" style="margin-top:8px;">{{ form.delivery_location.errors }}</div>
             {% endif %}
           </p>
-        {% endfor %}
+
+          <p>
+            <label for="{{ form.preferred_delivery_time.id_for_label }}">{{ form.preferred_delivery_time.label }}</label>
+            {{ form.preferred_delivery_time }}
+            {% if form.preferred_delivery_time.help_text %}
+              <div class="muted" style="font-size:13px; margin-top:6px;">{{ form.preferred_delivery_time.help_text }}</div>
+            {% endif %}
+            {% if form.preferred_delivery_time.errors %}
+              <div class="message error" style="margin-top:8px;">{{ form.preferred_delivery_time.errors }}</div>
+            {% endif %}
+          </p>
+        </div>
+
+        <div id="finish-date-field">
+          <p>
+            <label for="{{ form.preferred_finish_date.id_for_label }}">{{ form.preferred_finish_date.label }}</label>
+            {{ form.preferred_finish_date }}
+            {% if form.preferred_finish_date.help_text %}
+              <div class="muted" style="font-size:13px; margin-top:6px;">{{ form.preferred_finish_date.help_text }}</div>
+            {% endif %}
+            {% if form.preferred_finish_date.errors %}
+              <div class="message error" style="margin-top:8px;">{{ form.preferred_finish_date.errors }}</div>
+            {% endif %}
+          </p>
+        </div>
+
+        <p>
+          <label for="{{ form.note.id_for_label }}">{{ form.note.label }}</label>
+          {{ form.note }}
+          {% if form.note.help_text %}
+            <div class="muted" style="font-size:13px; margin-top:6px;">{{ form.note.help_text }}</div>
+          {% endif %}
+          {% if form.note.errors %}
+            <div class="message error" style="margin-top:8px;">{{ form.note.errors }}</div>
+          {% endif %}
+        </p>
 
         <div class="actions">
           <button type="submit">依頼を送信する</button>
@@ -77,4 +138,27 @@
       </form>
     </div>
   </div>
+
+  <script>
+    (function () {
+      const deliveryOption = document.getElementById("id_delivery_option");
+      const deliveryFields = document.getElementById("delivery-fields");
+      const finishDateField = document.getElementById("finish-date-field");
+
+      function toggleFields() {
+        const isDelivery = deliveryOption && deliveryOption.value === "1";
+        if (deliveryFields) {
+          deliveryFields.style.display = isDelivery ? "block" : "none";
+        }
+        if (finishDateField) {
+          finishDateField.style.display = isDelivery ? "none" : "block";
+        }
+      }
+
+      if (deliveryOption) {
+        deliveryOption.addEventListener("change", toggleFields);
+      }
+      toggleFields();
+    })();
+  </script>
 {% endblock %}
