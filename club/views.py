@@ -29,6 +29,7 @@ from .forms import (
     LineProfileCompletionForm,
     MemberRegistrationForm,
     ReservationCreateForm,
+    StringingOrderForm,
 )
 from .models import (
     CoachAvailability,
@@ -38,6 +39,7 @@ from .models import (
     LineAccountLink,
     Reservation,
     ScheduleSurveyResponse,
+    StringingOrder,
     TicketConsumption,
     TicketLedger,
     TicketPurchase,
@@ -766,9 +768,77 @@ def home(request):
     )
 
 
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def stringing_order_create(request):
+    profile_redirect = _require_profile_completed_for_booking(request)
+    if profile_redirect:
+        return profile_redirect
+
+    survey_redirect = _require_schedule_survey(request)
+    if survey_redirect:
+        return survey_redirect
+
+    form = StringingOrderForm(request.POST or None)
+
+    if request.method == "POST":
+        if form.is_valid():
+            order = form.save(commit=False)
+            order.user = request.user
+            order.status = StringingOrder.STATUS_REQUESTED
+            order.save()
+
+            messages.success(
+                request,
+                f"ガット貼り依頼を受け付けました。料金は {order.total_price()}円 です。"
+            )
+            return redirect("club:stringing_order_list")
+
+        messages.error(request, "ガット貼り依頼を保存できませんでした。入力内容をご確認ください。")
+
+    return render(
+        request,
+        "stringing/create.html",
+        {
+            "form": form,
+            "stringing_base_price": 1200,
+            "stringing_delivery_fee": 500,
+            "stringing_total_with_delivery": 1700,
+        },
+    )
+
+
+@login_required
+@require_GET
+def stringing_order_list(request):
+    survey_redirect = _require_schedule_survey(request)
+    if survey_redirect:
+        return survey_redirect
+
+    queryset = StringingOrder.objects.select_related("user").all()
+
+    if not _is_staff_like(request.user) and not _is_coach_user(request.user):
+        queryset = queryset.filter(user=request.user)
+
+    queryset = queryset.order_by("-created_at", "-id")
+
+    return render(
+        request,
+        "stringing/list.html",
+        {
+            "stringing_orders": queryset,
+            "stringing_base_price": 1200,
+            "stringing_delivery_fee": 500,
+        },
+    )
+
+
 @login_required
 @require_GET
 def tickets_view(request):
+
     survey_redirect = _require_schedule_survey(request)
     if survey_redirect:
         return survey_redirect
