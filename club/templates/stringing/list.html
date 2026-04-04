@@ -1,164 +1,96 @@
-
 {% extends "base.html" %}
-{% block title %}ガット貼り依頼{% endblock %}
+{% block title %}ガット貼り依頼一覧{% endblock %}
 
 {% block content %}
   <div class="page-head">
-    <h1 class="page-title">ガット貼り依頼</h1>
+    <h1 class="page-title">ガット貼り依頼一覧</h1>
     <p class="page-subtitle">
-      基本料金は {{ stringing_base_price }}円、デリバリー希望の場合のみ +{{ stringing_delivery_fee }}円です。
+      依頼状況と料金を確認できます。
     </p>
   </div>
 
-  <div class="grid-2">
-    <div class="card">
-      <h2 class="card-title">料金案内</h2>
-
-      <table style="margin-top:16px;">
-        <tbody>
-          <tr>
-            <th>ガット貼り基本料金</th>
-            <td>{{ stringing_base_price }}円</td>
-          </tr>
-          <tr>
-            <th>デリバリー料金</th>
-            <td>{{ stringing_delivery_fee }}円</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <div class="spacer-16"></div>
-
-      <ul class="clean" style="line-height:1.9;">
-        <li>ラケット名、ガット名は分かる範囲でご入力ください。</li>
-        <li>デリバリー希望時のみ、届け場所と日時指定をご入力ください。</li>
-        <li>デリバリーなしの場合は、希望張り上げ納期をご入力ください。</li>
-        <li>希望張り上げ納期の初期値は、依頼日から1週間後です。</li>
-        <li>担当コーチは初期値として清水コーチに自動設定され、必要に応じて管理サイトから変更できます。</li>
-      </ul>
-    </div>
-
-    <div class="card">
-      <h2 class="card-title">依頼内容</h2>
-
-      <form method="post">
-        {% csrf_token %}
-
-        {% if form.non_field_errors %}
-          <div class="message error" style="margin-bottom:12px;">
-            {{ form.non_field_errors }}
-          </div>
-        {% endif %}
-
-        <p>
-          <label for="{{ form.racket_name.id_for_label }}">{{ form.racket_name.label }}</label>
-          {{ form.racket_name }}
-          {% if form.racket_name.help_text %}
-            <div class="muted" style="font-size:13px; margin-top:6px;">{{ form.racket_name.help_text }}</div>
-          {% endif %}
-          {% if form.racket_name.errors %}
-            <div class="message error" style="margin-top:8px;">{{ form.racket_name.errors }}</div>
-          {% endif %}
-        </p>
-
-        <p>
-          <label for="{{ form.string_name.id_for_label }}">{{ form.string_name.label }}</label>
-          {{ form.string_name }}
-          {% if form.string_name.help_text %}
-            <div class="muted" style="font-size:13px; margin-top:6px;">{{ form.string_name.help_text }}</div>
-          {% endif %}
-          {% if form.string_name.errors %}
-            <div class="message error" style="margin-top:8px;">{{ form.string_name.errors }}</div>
-          {% endif %}
-        </p>
-
-        <p>
-          <label for="{{ form.delivery_option.id_for_label }}">{{ form.delivery_option.label }}</label>
-          {{ form.delivery_option }}
-          {% if form.delivery_option.help_text %}
-            <div class="muted" style="font-size:13px; margin-top:6px;">{{ form.delivery_option.help_text }}</div>
-          {% endif %}
-          {% if form.delivery_option.errors %}
-            <div class="message error" style="margin-top:8px;">{{ form.delivery_option.errors }}</div>
-          {% endif %}
-        </p>
-
-        <div id="delivery-fields">
-          <p>
-            <label for="{{ form.delivery_location.id_for_label }}">{{ form.delivery_location.label }}</label>
-            {{ form.delivery_location }}
-            {% if form.delivery_location.help_text %}
-              <div class="muted" style="font-size:13px; margin-top:6px;">{{ form.delivery_location.help_text }}</div>
-            {% endif %}
-            {% if form.delivery_location.errors %}
-              <div class="message error" style="margin-top:8px;">{{ form.delivery_location.errors }}</div>
-            {% endif %}
-          </p>
-
-          <p>
-            <label for="{{ form.preferred_delivery_time.id_for_label }}">{{ form.preferred_delivery_time.label }}</label>
-            {{ form.preferred_delivery_time }}
-            {% if form.preferred_delivery_time.help_text %}
-              <div class="muted" style="font-size:13px; margin-top:6px;">{{ form.preferred_delivery_time.help_text }}</div>
-            {% endif %}
-            {% if form.preferred_delivery_time.errors %}
-              <div class="message error" style="margin-top:8px;">{{ form.preferred_delivery_time.errors }}</div>
-            {% endif %}
-          </p>
-        </div>
-
-        <div id="finish-date-field">
-          <p>
-            <label for="{{ form.preferred_finish_date.id_for_label }}">{{ form.preferred_finish_date.label }}</label>
-            {{ form.preferred_finish_date }}
-            {% if form.preferred_finish_date.help_text %}
-              <div class="muted" style="font-size:13px; margin-top:6px;">{{ form.preferred_finish_date.help_text }}</div>
-            {% endif %}
-            {% if form.preferred_finish_date.errors %}
-              <div class="message error" style="margin-top:8px;">{{ form.preferred_finish_date.errors }}</div>
-            {% endif %}
-          </p>
-        </div>
-
-        <p>
-          <label for="{{ form.note.id_for_label }}">{{ form.note.label }}</label>
-          {{ form.note }}
-          {% if form.note.help_text %}
-            <div class="muted" style="font-size:13px; margin-top:6px;">{{ form.note.help_text }}</div>
-          {% endif %}
-          {% if form.note.errors %}
-            <div class="message error" style="margin-top:8px;">{{ form.note.errors }}</div>
-          {% endif %}
-        </p>
-
-        <div class="actions">
-          <button type="submit">依頼を送信する</button>
-          <a href="{% url 'club:stringing_order_list' %}" class="btn">依頼一覧を見る</a>
-        </div>
-      </form>
+  <div class="card">
+    <div class="actions" style="justify-content:space-between;">
+      <div class="muted">
+        基本料金 {{ stringing_base_price }}円 / デリバリー {{ stringing_delivery_fee }}円
+      </div>
+      <a href="{% url 'club:stringing_order_create' %}" class="btn btn-primary">新規依頼</a>
     </div>
   </div>
 
-  <script>
-    (function () {
-      const deliveryOption = document.getElementById("id_delivery_option");
-      const deliveryFields = document.getElementById("delivery-fields");
-      const finishDateField = document.getElementById("finish-date-field");
-
-      function toggleFields() {
-        const isDelivery = deliveryOption && deliveryOption.value === "1";
-        if (deliveryFields) {
-          deliveryFields.style.display = isDelivery ? "block" : "none";
-        }
-        if (finishDateField) {
-          finishDateField.style.display = isDelivery ? "none" : "block";
-        }
-      }
-
-      if (deliveryOption) {
-        deliveryOption.addEventListener("change", toggleFields);
-      }
-      toggleFields();
-    })();
-  </script>
+  <div class="card">
+    {% if stringing_orders %}
+      <table>
+        <thead>
+          <tr>
+            <th>依頼日時</th>
+            {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+              <th>会員</th>
+              <th>担当コーチ</th>
+            {% endif %}
+            <th>ラケット名</th>
+            <th>ガット名</th>
+            <th>デリバリー</th>
+            <th>届け場所</th>
+            <th>日時指定</th>
+            <th>希望張り上げ納期</th>
+            <th>料金</th>
+            <th>状況</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for order in stringing_orders %}
+            <tr>
+              <td>{{ order.created_at|date:"Y-m-d H:i" }}</td>
+              {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+                <td>{{ order.user.display_name }}</td>
+                <td>
+                  {% if order.assigned_coach %}
+                    {{ order.assigned_coach.display_name }}
+                  {% else %}
+                    <span class="muted">未割当</span>
+                  {% endif %}
+                </td>
+              {% endif %}
+              <td>{{ order.racket_name|default:"-" }}</td>
+              <td>{{ order.string_name|default:"-" }}</td>
+              <td>{% if order.delivery_requested %}あり{% else %}なし{% endif %}</td>
+              <td>
+                {% if order.delivery_requested %}
+                  {{ order.delivery_location|default:"-" }}
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if order.delivery_requested %}
+                  {{ order.preferred_delivery_time|default:"-" }}
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if order.delivery_requested %}
+                  <span class="muted">-</span>
+                {% else %}
+                  {{ order.preferred_delivery_time|default:"-" }}
+                {% endif %}
+              </td>
+              <td>{{ order.total_price }}円</td>
+              <td>{{ order.get_status_display }}</td>
+            </tr>
+            {% if order.note %}
+              <tr>
+                <td colspan="{% if user.role == 'coach' or user.is_staff or user.is_superuser %}11{% else %}9{% endif %}">
+                  <strong>備考:</strong> {{ order.note }}
+                </td>
+              </tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted" style="margin:0;">まだガット貼り依頼はありません。</p>
+    {% endif %}
+  </div>
 {% endblock %}
