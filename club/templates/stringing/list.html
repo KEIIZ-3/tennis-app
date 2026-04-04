@@ -10,16 +10,39 @@
   </div>
 
   <div class="card">
-    <div class="actions" style="justify-content:space-between;">
+    <div class="actions" style="justify-content:space-between; align-items:flex-end;">
       <div class="muted">
         基本料金 {{ stringing_base_price }}円 / デリバリー {{ stringing_delivery_fee }}円
       </div>
-      <a href="{% url 'club:stringing_order_create' %}" class="btn btn-primary">新規依頼</a>
+      <div class="actions">
+        <form method="get" class="actions" style="margin:0;">
+          <div>
+            <label for="status_filter" style="margin-bottom:6px;">絞り込み</label>
+            <select id="status_filter" name="status_filter">
+              <option value="all" {% if status_filter == "all" %}selected{% endif %}>すべて ({{ status_counts.all }})</option>
+              <option value="pending" {% if status_filter == "pending" %}selected{% endif %}>未対応のみ ({{ status_counts.pending }})</option>
+              {% for value, label in stringing_status_choices %}
+                {% if value == "requested" %}
+                  <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }} ({{ status_counts.requested }})</option>
+                {% elif value == "in_progress" %}
+                  <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }} ({{ status_counts.in_progress }})</option>
+                {% elif value == "completed" %}
+                  <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }} ({{ status_counts.completed }})</option>
+                {% elif value == "canceled" %}
+                  <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }} ({{ status_counts.canceled }})</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="btn">絞り込む</button>
+        </form>
+        <a href="{% url 'club:stringing_order_create' %}" class="btn btn-primary">新規依頼</a>
+      </div>
     </div>
   </div>
 
   <div class="card">
-    {% if stringing_orders %}
+    {% if order_rows %}
       <table>
         <thead>
           <tr>
@@ -36,10 +59,14 @@
             <th>希望張り上げ納期</th>
             <th>料金</th>
             <th>状況</th>
+            {% if is_stringing_manage_mode %}
+              <th>更新</th>
+            {% endif %}
           </tr>
         </thead>
         <tbody>
-          {% for order in stringing_orders %}
+          {% for row in order_rows %}
+            {% with order=row.order %}
             <tr>
               <td>{{ order.created_at|date:"Y-m-d H:i" }}</td>
               {% if user.role == "coach" or user.is_staff or user.is_superuser %}
@@ -73,24 +100,44 @@
                 {% if order.delivery_requested %}
                   <span class="muted">-</span>
                 {% else %}
-                  {{ order.preferred_delivery_time|default:"-" }}
+                  {{ row.preferred_finish_date|default:"-" }}
                 {% endif %}
               </td>
               <td>{{ order.total_price }}円</td>
-              <td>{{ order.get_status_display }}</td>
+              <td>{{ row.status_label }}</td>
+              {% if is_stringing_manage_mode %}
+                <td>
+                  {% if row.can_manage %}
+                    <form method="post" style="margin:0; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                      {% csrf_token %}
+                      <input type="hidden" name="order_id" value="{{ order.id }}">
+                      <input type="hidden" name="status_filter" value="{{ status_filter }}">
+                      <select name="new_status" style="min-width:130px;">
+                        {% for value, label in stringing_status_choices %}
+                          <option value="{{ value }}" {% if order.status == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                      </select>
+                      <button type="submit" class="btn">更新</button>
+                    </form>
+                  {% else %}
+                    <span class="muted">更新不可</span>
+                  {% endif %}
+                </td>
+              {% endif %}
             </tr>
             {% if order.note %}
               <tr>
-                <td colspan="{% if user.role == 'coach' or user.is_staff or user.is_superuser %}11{% else %}9{% endif %}">
+                <td colspan="{% if user.role == 'coach' or user.is_staff or user.is_superuser %}{% if is_stringing_manage_mode %}12{% else %}11{% endif %}{% else %}{% if is_stringing_manage_mode %}10{% else %}9{% endif %}{% endif %}">
                   <strong>備考:</strong> {{ order.note }}
                 </td>
               </tr>
             {% endif %}
+            {% endwith %}
           {% endfor %}
         </tbody>
       </table>
     {% else %}
-      <p class="muted" style="margin:0;">まだガット張り依頼はありません。</p>
+      <p class="muted" style="margin:0;">条件に一致するガット張り依頼はありません。</p>
     {% endif %}
   </div>
 {% endblock %}
