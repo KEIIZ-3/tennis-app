@@ -633,6 +633,7 @@
         <nav class="nav">
           <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
           <a href="{% url 'club:help' %}">使い方</a>
+          <a href="{% url 'club:terms' %}">利用規約</a>
 
           {% if user.is_authenticated %}
             {% if user.role == "member" %}
