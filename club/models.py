@@ -1534,7 +1534,73 @@ class Reservation(models.Model, LessonTypeMixin):
         return True
 
 
+
+
+class StringingOrder(models.Model):
+    STATUS_REQUESTED = "requested"
+    STATUS_IN_PROGRESS = "in_progress"
+    STATUS_COMPLETED = "completed"
+    STATUS_CANCELED = "canceled"
+
+    STATUS_CHOICES = (
+        (STATUS_REQUESTED, "受付済み"),
+        (STATUS_IN_PROGRESS, "対応中"),
+        (STATUS_COMPLETED, "完了"),
+        (STATUS_CANCELED, "キャンセル"),
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="stringing_orders",
+    )
+    racket_name = models.CharField(max_length=120, blank=True, default="")
+    string_name = models.CharField(max_length=120, blank=True, default="")
+    delivery_requested = models.BooleanField(default=False)
+    delivery_location = models.CharField(max_length=255, blank=True, default="")
+    preferred_delivery_time = models.CharField(max_length=255, blank=True, default="")
+    note = models.TextField(blank=True, default="")
+    base_price = models.PositiveIntegerField(default=1200)
+    delivery_fee = models.PositiveIntegerField(default=0)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_REQUESTED)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "ガット貼り依頼"
+        verbose_name_plural = "ガット貼り依頼"
+
+    def __str__(self):
+        return f"{self.user} / ガット貼り / {self.created_at:%Y-%m-%d %H:%M}"
+
+    def clean(self):
+        self.racket_name = (self.racket_name or "").strip()
+        self.string_name = (self.string_name or "").strip()
+        self.delivery_location = (self.delivery_location or "").strip()
+        self.preferred_delivery_time = (self.preferred_delivery_time or "").strip()
+        self.note = (self.note or "").strip()
+
+        if self.base_price < 0:
+            raise ValidationError("基本料金は0円以上にしてください。")
+
+        if self.delivery_requested:
+            self.delivery_fee = 500
+            if not self.delivery_location:
+                raise ValidationError("デリバリー希望の場合は、届け場所を入力してください。")
+            if not self.preferred_delivery_time:
+                raise ValidationError("デリバリー希望の場合は、時間指定を入力してください。")
+        else:
+            self.delivery_fee = 0
+            self.delivery_location = ""
+            self.preferred_delivery_time = ""
+
+    def total_price(self):
+        return int(self.base_price or 0) + int(self.delivery_fee or 0)
+
+
 class LineAccountLink(models.Model):
+
     user = models.OneToOneField(
         User,
         on_delete=models.CASCADE,
