@@ -415,3 +415,62 @@ def build_request_rejected_for_member_message(reservation) -> str:
         message += f"理由: {data['cancellation_reason']}\n"
     message += "\n別枠でのご予約もご検討ください。"
     return message
+
+
+def _extract_stringing_order_data(order):
+    user = getattr(order, "user", None)
+    assigned_coach = getattr(order, "assigned_coach", None)
+    delivery_requested = bool(getattr(order, "delivery_requested", False))
+    delivery_location = str(getattr(order, "delivery_location", "") or "").strip()
+    preferred_delivery_time = str(getattr(order, "preferred_delivery_time", "") or "").strip()
+    racket_name = str(getattr(order, "racket_name", "") or "").strip()
+    string_name = str(getattr(order, "string_name", "") or "").strip()
+    note = str(getattr(order, "note", "") or "").strip()
+
+    try:
+        total_price = int(order.total_price() or 0)
+    except Exception:
+        total_price = 0
+
+    return {
+        "user_name": _get_user_display(user),
+        "assigned_coach_name": _get_user_display(assigned_coach) if assigned_coach else "未設定",
+        "delivery_requested": delivery_requested,
+        "delivery_location": delivery_location,
+        "preferred_delivery_time": preferred_delivery_time,
+        "racket_name": racket_name or "未入力",
+        "string_name": string_name or "未入力",
+        "note": note,
+        "total_price": total_price,
+    }
+
+
+def build_stringing_order_created_for_coach_message(order) -> str:
+    data = _extract_stringing_order_data(order)
+
+    message = (
+        "【ガット張り新規依頼】\n"
+        "会員からガット張り依頼が入りました。\n\n"
+        f"会員: {data['user_name']}\n"
+        f"担当コーチ: {data['assigned_coach_name']}\n"
+        f"ラケット名: {data['racket_name']}\n"
+        f"ガット名: {data['string_name']}\n"
+        f"料金: {data['total_price']}円\n"
+    )
+
+    if data["delivery_requested"]:
+        message += "受け渡し: デリバリー希望\n"
+        if data["delivery_location"]:
+            message += f"届け場所: {data['delivery_location']}\n"
+        if data["preferred_delivery_time"]:
+            message += f"日時指定: {data['preferred_delivery_time']}\n"
+    else:
+        message += "受け渡し: レッスン時受け渡し / デリバリーなし\n"
+        if data["preferred_delivery_time"]:
+            message += f"希望張り上げ納期: {data['preferred_delivery_time']}\n"
+
+    if data["note"]:
+        message += f"備考: {data['note']}\n"
+
+    message += "\n管理画面または一覧画面で内容をご確認ください。"
+    return message
