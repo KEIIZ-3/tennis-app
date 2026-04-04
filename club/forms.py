@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import UserCreationForm
 from django.utils import timezone
 
-from .models import CoachAvailability, Court, LineAccountLink, Reservation, TicketPurchase
+from .models import CoachAvailability, Court, LineAccountLink, Reservation, StringingOrder, TicketPurchase
 
 User = get_user_model()
 
@@ -459,7 +459,93 @@ class ReservationCreateForm(forms.ModelForm):
         return instance
 
 
+
+
+class StringingOrderForm(forms.ModelForm):
+    DELIVERY_CHOICES = (
+        ("0", "デリバリーなし"),
+        ("1", "デリバリー希望（+500円）"),
+    )
+
+    delivery_option = forms.ChoiceField(
+        label="デリバリー",
+        choices=DELIVERY_CHOICES,
+        initial="0",
+    )
+
+    class Meta:
+        model = StringingOrder
+        fields = [
+            "racket_name",
+            "string_name",
+            "delivery_location",
+            "preferred_delivery_time",
+            "note",
+        ]
+        widgets = {
+            "racket_name": forms.TextInput(attrs={"placeholder": "例: Ezone 100"}),
+            "string_name": forms.TextInput(attrs={"placeholder": "例: ポリツアープロ 125"}),
+            "delivery_location": forms.TextInput(attrs={"placeholder": "例: 西猪名公園テニスコート入口"}),
+            "preferred_delivery_time": forms.TextInput(attrs={"placeholder": "例: 4/10 18:00〜19:00"}),
+            "note": forms.Textarea(attrs={"placeholder": "その他要望があれば入力してください。", "rows": 4}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.fields["racket_name"].label = "ラケット名"
+        self.fields["string_name"].label = "ガット名"
+        self.fields["delivery_location"].label = "届け場所"
+        self.fields["preferred_delivery_time"].label = "時間指定"
+        self.fields["note"].label = "備考"
+
+        self.fields["racket_name"].required = False
+        self.fields["string_name"].required = False
+        self.fields["delivery_location"].required = False
+        self.fields["preferred_delivery_time"].required = False
+        self.fields["note"].required = False
+
+        if self.instance and getattr(self.instance, "pk", None):
+            self.fields["delivery_option"].initial = "1" if self.instance.delivery_requested else "0"
+
+        self.fields["delivery_option"].help_text = "デリバリー希望の場合は、届け場所と時間指定を入力してください。"
+        self.fields["racket_name"].help_text = "任意です。分かる範囲で入力してください。"
+        self.fields["string_name"].help_text = "任意です。希望ガットがあれば入力してください。"
+
+    def clean(self):
+        cleaned_data = super().clean()
+        delivery_option = str(cleaned_data.get("delivery_option") or "0")
+        delivery_requested = delivery_option == "1"
+        delivery_location = (cleaned_data.get("delivery_location") or "").strip()
+        preferred_delivery_time = (cleaned_data.get("preferred_delivery_time") or "").strip()
+
+        cleaned_data["delivery_requested"] = delivery_requested
+        cleaned_data["delivery_location"] = delivery_location
+        cleaned_data["preferred_delivery_time"] = preferred_delivery_time
+
+        if delivery_requested:
+            if not delivery_location:
+                self.add_error("delivery_location", "デリバリー希望の場合は、届け場所を入力してください。")
+            if not preferred_delivery_time:
+                self.add_error("preferred_delivery_time", "デリバリー希望の場合は、時間指定を入力してください。")
+
+        return cleaned_data
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.delivery_requested = self.cleaned_data.get("delivery_requested", False)
+        instance.delivery_location = self.cleaned_data.get("delivery_location") or ""
+        instance.preferred_delivery_time = self.cleaned_data.get("preferred_delivery_time") or ""
+        instance.base_price = 1200
+        instance.delivery_fee = 500 if instance.delivery_requested else 0
+
+        if commit:
+            instance.save()
+        return instance
+
+
 class TicketGrantAdminForm(forms.Form):
+
     tickets = forms.IntegerField(
         label="付与枚数",
         min_value=1,
