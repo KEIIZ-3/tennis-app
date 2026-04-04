@@ -65,7 +65,7 @@
   </div>
 
   <div class="card">
-    <div class="muted" style="font-size:13px;">レッスン換算 + ガット貼り按分</div>
+    <div class="muted" style="font-size:13px;">レッスン換算 + 担当ガット貼り売上</div>
     <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ total_amount }}円</div>
   </div>
 
@@ -82,8 +82,8 @@
   </div>
 
   <div class="card">
-    <div class="muted" style="font-size:13px;">ガット貼り売上按分</div>
-    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ per_coach_stringing_amount }}円</div>
+    <div class="muted" style="font-size:13px;">担当ガット貼り売上</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ assigned_stringing_amount }}円</div>
   </div>
 
   <div class="card">
@@ -99,7 +99,7 @@
   </div>
 
   <div class="card">
-    <div class="muted" style="font-size:13px;">勤務コーチ人数</div>
+    <div class="muted" style="font-size:13px;">勤務実績コーチ人数</div>
     <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ active_coach_count }}人</div>
   </div>
 
@@ -114,16 +114,20 @@
   <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
     <div style="font-weight:700; margin-bottom:6px;">現在の計算ルール</div>
     <div style="line-height:1.9;">
-      給与 ＝ <strong>レッスン換算額</strong> ＋ <strong>ガット貼り売上の1人あたり按分額</strong> − <strong>1人あたり按分経費</strong>
+      給与 ＝ <strong>レッスン換算額</strong> ＋ <strong>担当ガット貼り売上</strong> − <strong>1人あたり按分経費</strong>
     </div>
     <div class="muted" style="margin-top:8px;">
-      ガット貼り売上は、その月に勤務実績のあるコーチ人数で均等按分しています。代行が設定されている予約は、代行コーチ側へ計上します。
+      ガット貼り売上は、実際に担当したコーチへ直接計上します。未担当の依頼は給与に加算されません。代行が設定されている予約は、代行コーチ側へ計上します。
     </div>
   </div>
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0;">ガット貼り売上</h2>
+  <h2 style="margin-top:0;">担当ガット貼り売上</h2>
+
+  <div class="muted" style="margin:0 0 12px;">
+    この一覧には、選択中コーチが担当した依頼のみ表示しています。未担当の依頼数: {{ unassigned_stringing_count }}件
+  </div>
 
   {% if stringing_rows %}
     <div style="overflow-x:auto;">
@@ -136,6 +140,7 @@
             <th>ガット名</th>
             <th>デリバリー</th>
             <th>料金</th>
+            <th>担当コーチ</th>
             <th>状況</th>
           </tr>
         </thead>
@@ -148,6 +153,7 @@
               <td>{{ order.string_name|default:"-" }}</td>
               <td>{% if order.delivery_requested %}あり{% else %}なし{% endif %}</td>
               <td>{{ order.total_price }}円</td>
+              <td>{{ order.assigned_coach_display }}</td>
               <td>{{ order.get_status_display }}</td>
             </tr>
           {% endfor %}
@@ -155,7 +161,7 @@
       </table>
     </div>
   {% else %}
-    <p class="muted" style="margin:0;">この月のガット貼り売上はまだありません。</p>
+    <p class="muted" style="margin:0;">この月の担当ガット貼り売上はまだありません。</p>
   {% endif %}
 </div>
 
