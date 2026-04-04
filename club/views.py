@@ -1035,6 +1035,68 @@ def coach_schedule_survey_summary(request):
 
         return ranked_rows
 
+    def _build_level_ranking_groups():
+        level_groups = {}
+        for response in responses:
+            user = getattr(response, "user", None)
+            level_value = getattr(user, "member_level", "") or ""
+            if not level_value:
+                continue
+
+            try:
+                level_label = user.get_member_level_display()
+            except Exception:
+                level_label = level_value
+
+            level_groups.setdefault(
+                level_value,
+                {
+                    "level_value": level_value,
+                    "level_label": level_label,
+                    "responses": [],
+                },
+            )
+            level_groups[level_value]["responses"].append(response)
+
+        rows = []
+        for level_group in level_groups.values():
+            ranked_slots = [
+                row for row in _build_recommended_slot_rows_from_responses(level_group["responses"])
+                if row["count"] > 0
+            ]
+            rows.append(
+                {
+                    "level_value": level_group["level_value"],
+                    "level_label": level_group["level_label"],
+                    "answer_count": len(level_group["responses"]),
+                    "rows": ranked_slots[:5],
+                }
+            )
+
+        return sorted(rows, key=lambda row: (-row["answer_count"], row["level_label"]))
+
+    def _build_lesson_type_ranking_groups():
+        groups = []
+        for lesson_type_value, lesson_type_label in lesson_type_choices:
+            filtered_responses = [
+                response for response in responses
+                if lesson_type_value in list(response.selected_lesson_types or [])
+            ]
+            ranked_slots = [
+                row for row in _build_recommended_slot_rows_from_responses(filtered_responses)
+                if row["count"] > 0
+            ]
+            groups.append(
+                {
+                    "lesson_type_value": lesson_type_value,
+                    "lesson_type_label": lesson_type_label,
+                    "answer_count": len(filtered_responses),
+                    "rows": ranked_slots[:5],
+                }
+            )
+
+        return sorted(groups, key=lambda row: (-row["answer_count"], row["lesson_type_label"]))
+
     top_day_rows = _attach_ranks(
         sorted(day_rows, key=lambda row: (-row["count"], row["label"]))
     )
@@ -1062,6 +1124,9 @@ def coach_schedule_survey_summary(request):
         )
     )
 
+    level_ranking_groups = _build_level_ranking_groups()
+    lesson_type_ranking_groups = _build_lesson_type_ranking_groups()
+
     unanswered_users = list(member_users.filter(schedule_survey_response__isnull=True))
     total_members = member_users.count()
     answered_count = len(responses)
@@ -1069,6 +1134,13 @@ def coach_schedule_survey_summary(request):
     answered_rate = round((answered_count / total_members) * 100, 1) if total_members > 0 else 0
 
     latest_responses = responses[:50]
+
+    if unanswered_count > 0:
+        unanswered_guide_message = (
+            "未回答者がいるため、ログイン時案内・LINE・口頭案内でアンケート回答を促してください。"
+        )
+    else:
+        unanswered_guide_message = "全会員が回答済みです。新規会員登録時のみ案内を継続してください。"
 
     return render(
         request,
@@ -1090,7 +1162,10 @@ def coach_schedule_survey_summary(request):
             "top_lesson_type_rows": top_lesson_type_rows[:3],
             "top_frequency_rows": top_frequency_rows[:4],
             "top_recommended_slot_rows": top_recommended_slot_rows[:10],
+            "level_ranking_groups": level_ranking_groups,
+            "lesson_type_ranking_groups": lesson_type_ranking_groups,
             "unanswered_users": unanswered_users,
+            "unanswered_guide_message": unanswered_guide_message,
             "latest_responses": latest_responses,
         },
     )
