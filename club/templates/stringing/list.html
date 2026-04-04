@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}ガット貼り依頼一覧{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title">ガット貼り依頼一覧</h1>
+    <p class="page-subtitle">
+      依頼状況と料金を確認できます。
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="actions" style="justify-content:space-between;">
+      <div class="muted">
+        基本料金 {{ stringing_base_price }}円 / デリバリー {{ stringing_delivery_fee }}円
+      </div>
+      <a href="{% url 'club:stringing_order_create' %}" class="btn btn-primary">新規依頼</a>
+    </div>
+  </div>
+
+  <div class="card">
+    {% if stringing_orders %}
+      <table>
+        <thead>
+          <tr>
+            <th>依頼日時</th>
+            {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+              <th>会員</th>
+            {% endif %}
+            <th>ラケット名</th>
+            <th>ガット名</th>
+            <th>デリバリー</th>
+            <th>届け場所</th>
+            <th>時間指定</th>
+            <th>料金</th>
+            <th>状況</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for order in stringing_orders %}
+            <tr>
+              <td>{{ order.created_at|date:"Y-m-d H:i" }}</td>
+              {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+                <td>{{ order.user.display_name }}</td>
+              {% endif %}
+              <td>{{ order.racket_name|default:"-" }}</td>
+              <td>{{ order.string_name|default:"-" }}</td>
+              <td>{% if order.delivery_requested %}あり{% else %}なし{% endif %}</td>
+              <td>{{ order.delivery_location|default:"-" }}</td>
+              <td>{{ order.preferred_delivery_time|default:"-" }}</td>
+              <td>{{ order.total_price }}円</td>
+              <td>{{ order.get_status_display }}</td>
+            </tr>
+            {% if order.note %}
+              <tr>
+                <td colspan="{% if user.role == 'coach' or user.is_staff or user.is_superuser %}9{% else %}8{% endif %}">
+                  <strong>備考:</strong> {{ order.note }}
+                </td>
+              </tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted" style="margin:0;">まだガット貼り依頼はありません。</p>
+    {% endif %}
+  </div>
+{% endblock %}
