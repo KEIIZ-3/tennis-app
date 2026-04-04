@@ -26,6 +26,7 @@
             <th>依頼日時</th>
             {% if user.role == "coach" or user.is_staff or user.is_superuser %}
               <th>会員</th>
+              <th>担当コーチ</th>
             {% endif %}
             <th>ラケット名</th>
             <th>ガット名</th>
@@ -42,6 +43,13 @@
               <td>{{ order.created_at|date:"Y-m-d H:i" }}</td>
               {% if user.role == "coach" or user.is_staff or user.is_superuser %}
                 <td>{{ order.user.display_name }}</td>
+                <td>
+                  {% if order.assigned_coach %}
+                    {{ order.assigned_coach.display_name }}
+                  {% else %}
+                    <span class="muted">未割当</span>
+                  {% endif %}
+                </td>
               {% endif %}
               <td>{{ order.racket_name|default:"-" }}</td>
               <td>{{ order.string_name|default:"-" }}</td>
@@ -53,7 +61,7 @@
             </tr>
             {% if order.note %}
               <tr>
-                <td colspan="{% if user.role == 'coach' or user.is_staff or user.is_superuser %}9{% else %}8{% endif %}">
+                <td colspan="{% if user.role == 'coach' or user.is_staff or user.is_superuser %}10{% else %}8{% endif %}">
                   <strong>備考:</strong> {{ order.note }}
                 </td>
               </tr>
