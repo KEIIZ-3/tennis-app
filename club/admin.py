@@ -1,6 +1,5 @@
 from django import forms
 from django.contrib import admin, messages
-from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 from django.http import HttpResponseRedirect
@@ -16,6 +15,7 @@ from .models import (
     LineAccountLink,
     Reservation,
     ScheduleSurveyResponse,
+    StringingOrder,
     TicketConsumption,
     TicketLedger,
     TicketPurchase,
@@ -112,6 +112,21 @@ class CoachExpenseAdminForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["created_by"].queryset = User.objects.filter(role="coach").order_by("full_name", "username", "id")
         self.fields["created_by"].required = False
+
+
+class StringingOrderAdminForm(forms.ModelForm):
+    class Meta:
+        model = StringingOrder
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "assigned_coach" in self.fields:
+            self.fields["assigned_coach"].queryset = User.objects.filter(role="coach").order_by(
+                "full_name", "username", "id"
+            )
+            self.fields["assigned_coach"].required = False
+            self.fields["assigned_coach"].label = "担当コーチ"
 
 
 class CustomUserCreationForm(UserCreationForm):
@@ -479,8 +494,70 @@ class CoachExpenseAdmin(admin.ModelAdmin):
     list_display = ("id", "expense_date", "category", "amount", "note", "created_by", "created_at")
     list_filter = ("category", "expense_date")
     search_fields = ("note",)
-    # created_by は coach のみ表示したいので autocomplete は使わない
-    # form 側の queryset 制限をそのまま反映させる
+
+
+@admin.register(StringingOrder)
+class StringingOrderAdmin(admin.ModelAdmin):
+    form = StringingOrderAdminForm
+    list_display = (
+        "id",
+        "user",
+        "assigned_coach",
+        "racket_name",
+        "string_name",
+        "delivery_requested",
+        "base_price",
+        "delivery_fee",
+        "status",
+        "created_at",
+        "updated_at",
+    )
+    list_filter = ("status", "delivery_requested", "assigned_coach", "created_at")
+    search_fields = (
+        "user__username",
+        "user__full_name",
+        "assigned_coach__username",
+        "assigned_coach__full_name",
+        "racket_name",
+        "string_name",
+        "delivery_location",
+        "preferred_delivery_time",
+        "note",
+    )
+    autocomplete_fields = ("user",)
+    readonly_fields = ("created_at", "updated_at")
+
+    fieldsets = (
+        ("依頼情報", {
+            "fields": (
+                "user",
+                "assigned_coach",
+                "status",
+            )
+        }),
+        ("内容", {
+            "fields": (
+                "racket_name",
+                "string_name",
+                "delivery_requested",
+                "delivery_location",
+                "preferred_delivery_time",
+                "note",
+            )
+        }),
+        ("料金", {
+            "fields": (
+                "base_price",
+                "delivery_fee",
+            )
+        }),
+        ("日時", {
+            "fields": (
+                "created_at",
+                "updated_at",
+            )
+        }),
+    )
 
 
 @admin.register(LineAccountLink)
