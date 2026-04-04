@@ -2338,14 +2338,8 @@ def reservation_list(request):
         .all()
     )
 
-    if _is_staff_like(request.user):
+    if _is_coach_user(request.user) or _is_staff_like(request.user):
         pass
-    elif _is_coach_user(request.user):
-        filtered_qs = []
-        for reservation in qs:
-            if reservation.coach_id == request.user.pk or getattr(reservation, "substitute_coach_id", None) == request.user.pk:
-                filtered_qs.append(reservation.pk)
-        qs = qs.filter(pk__in=filtered_qs)
     else:
         qs = qs.filter(user=request.user)
 
