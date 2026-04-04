@@ -150,6 +150,26 @@
       gap:16px;
     }
 
+    .ranking-grid-1{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:16px;
+    }
+
+    .guide-box{
+      padding:14px 16px;
+      border-radius:14px;
+      border:1px solid #bfdbfe;
+      background:#eff6ff;
+      color:#1e3a8a;
+    }
+
+    .guide-title{
+      font-size:16px;
+      font-weight:800;
+      margin-bottom:6px;
+    }
+
     .ranking-list{
       display:flex;
       flex-direction:column;
@@ -253,6 +273,19 @@
       <div class="muted" style="font-size:13px;">回答率</div>
       <div class="survey-stat-value">{{ answered_rate }}%</div>
       <div class="survey-stat-sub">リアルタイム自動集計</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="guide-box">
+      <div class="guide-title">未回答者への案内導線</div>
+      <div>{{ unanswered_guide_message }}</div>
+      {% if unanswered_users %}
+        <div style="margin-top:10px;">
+          <span class="survey-muted">未回答者数:</span>
+          <strong>{{ unanswered_count }}人</strong>
+        </div>
+      {% endif %}
     </div>
   </div>
 
@@ -480,6 +513,77 @@
           {% endfor %}
         </tbody>
       </table>
+    </div>
+  </div>
+
+
+  <div class="ranking-grid">
+    <div class="card">
+      <h2 class="card-title">レベル別おすすめ時間帯</h2>
+      {% if level_ranking_groups %}
+        <div class="ranking-list">
+          {% for group in level_ranking_groups %}
+            <div class="survey-detail-box">
+              <div class="survey-detail-user">
+                <div class="survey-detail-name">{{ group.level_label }}</div>
+                <div class="survey-detail-date">回答 {{ group.answer_count }} 件</div>
+              </div>
+              {% if group.rows %}
+                <div class="ranking-list">
+                  {% for row in group.rows|slice:":3" %}
+                    <div class="ranking-item">
+                      <div class="ranking-rank">#{{ row.rank }}</div>
+                      <div>
+                        <div class="ranking-main">{{ row.day_label }} × {{ row.slot_label }}</div>
+                        <div class="ranking-sub">このレベル帯のおすすめ時間帯</div>
+                      </div>
+                      <div class="ranking-count">{{ row.count }}<span class="ranking-count-unit">人</span></div>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="survey-muted">このレベル帯の回答はまだありません。</p>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="survey-muted">レベル別集計に十分な回答がありません。</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">種別別おすすめ時間帯</h2>
+      {% if lesson_type_ranking_groups %}
+        <div class="ranking-list">
+          {% for group in lesson_type_ranking_groups %}
+            <div class="survey-detail-box">
+              <div class="survey-detail-user">
+                <div class="survey-detail-name">{{ group.lesson_type_label }}</div>
+                <div class="survey-detail-date">回答 {{ group.answer_count }} 件</div>
+              </div>
+              {% if group.rows %}
+                <div class="ranking-list">
+                  {% for row in group.rows|slice:":3" %}
+                    <div class="ranking-item">
+                      <div class="ranking-rank">#{{ row.rank }}</div>
+                      <div>
+                        <div class="ranking-main">{{ row.day_label }} × {{ row.slot_label }}</div>
+                        <div class="ranking-sub">この種別のおすすめ時間帯</div>
+                      </div>
+                      <div class="ranking-count">{{ row.count }}<span class="ranking-count-unit">人</span></div>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <p class="survey-muted">この種別の回答はまだありません。</p>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="survey-muted">種別別集計に十分な回答がありません。</p>
+      {% endif %}
     </div>
   </div>
 
