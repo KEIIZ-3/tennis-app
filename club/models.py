@@ -1554,6 +1554,14 @@ class StringingOrder(models.Model):
         on_delete=models.CASCADE,
         related_name="stringing_orders",
     )
+    assigned_coach = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_stringing_orders",
+        limit_choices_to={"role": "coach"},
+    )
     racket_name = models.CharField(max_length=120, blank=True, default="")
     string_name = models.CharField(max_length=120, blank=True, default="")
     delivery_requested = models.BooleanField(default=False)
@@ -1594,6 +1602,11 @@ class StringingOrder(models.Model):
             self.delivery_fee = 0
             self.delivery_location = ""
             self.preferred_delivery_time = ""
+
+    def assigned_coach_display(self):
+        if self.assigned_coach:
+            return self.assigned_coach.display_name()
+        return "-"
 
     def total_price(self):
         return int(self.base_price or 0) + int(self.delivery_fee or 0)
