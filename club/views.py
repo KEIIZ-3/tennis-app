@@ -96,7 +96,10 @@ def _needs_schedule_survey(user):
 
 def _require_schedule_survey(request):
     if _needs_schedule_survey(request.user):
-        messages.warning(request, "レッスン希望アンケートが未回答です。1〜2分で終わるので、先にご回答をお願いします。")
+        messages.warning(
+            request,
+            "レッスン希望アンケートが未回答です。1〜2分で終わるので、先にご回答をお願いします。回答内容は今後の開催曜日・時間帯の参考になります。"
+        )
         return redirect("club:schedule_survey")
     return None
 
@@ -646,6 +649,8 @@ def _build_schedule_survey_home_context(user):
         "schedule_survey_level_top_slots": [],
         "schedule_survey_lesson_type_top_slots": [],
         "schedule_survey_top_lesson_type_rankings": [],
+        "schedule_survey_member_help_message": "アンケート回答内容をもとに、今後のレッスン開催曜日・時間帯を調整しています。",
+        "schedule_survey_coach_top_lesson_types": [],
     }
 
     User = get_user_model()
@@ -700,6 +705,26 @@ def _build_schedule_survey_home_context(user):
 
         context["schedule_survey_top_lesson_type_rankings"] = lesson_type_rows
         context["schedule_survey_lesson_type_top_slots"] = lesson_type_top_slots
+    else:
+        lesson_type_label_map = ScheduleSurveyResponse.lesson_type_label_map()
+        lesson_type_counts = {}
+        for response in responses:
+            for lesson_type_value in list(response.selected_lesson_types or []):
+                lesson_type_counts.setdefault(lesson_type_value, 0)
+                lesson_type_counts[lesson_type_value] += 1
+
+        ranked_lesson_types = sorted(
+            [
+                {
+                    "lesson_type_value": lesson_type_value,
+                    "lesson_type_label": lesson_type_label_map.get(lesson_type_value, lesson_type_value),
+                    "count": count,
+                }
+                for lesson_type_value, count in lesson_type_counts.items()
+            ],
+            key=lambda row: (-row["count"], row["lesson_type_label"]),
+        )
+        context["schedule_survey_coach_top_lesson_types"] = ranked_lesson_types[:3]
 
     return context
 
@@ -1569,6 +1594,7 @@ def login_view(request):
             if _needs_profile_completion(request.user):
                 return redirect("club:profile_complete")
             if _needs_schedule_survey(request.user):
+                messages.info(request, "ログインありがとうございます。最初にアンケートへご回答ください。")
                 return redirect("club:schedule_survey")
             return redirect("club:home")
         messages.error(request, "ユーザー名またはパスワードが正しくありません。")
@@ -1604,6 +1630,7 @@ def register_view(request):
             if _needs_profile_completion(request.user):
                 return redirect("club:profile_complete")
             if _needs_schedule_survey(request.user):
+                messages.info(request, "最初にレッスン希望アンケートへご回答ください。")
                 return redirect("club:schedule_survey")
             return redirect("club:home")
 
@@ -1632,6 +1659,7 @@ def profile_complete_view(request):
             form.save()
             messages.success(request, "会員情報の登録が完了しました。")
             if _needs_schedule_survey(request.user):
+                messages.info(request, "続けてアンケートへご回答ください。")
                 return redirect("club:schedule_survey")
             return redirect("club:home")
         messages.error(request, "会員情報を保存できませんでした。入力内容をご確認ください。")
