@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}ガット貼り依頼{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title">ガット貼り依頼</h1>
+    <p class="page-subtitle">
+      基本料金は {{ stringing_base_price }}円、デリバリー希望の場合は +{{ stringing_delivery_fee }}円です。
+    </p>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h2 class="card-title">料金案内</h2>
+      <div class="section-note">
+        デリバリーありの場合の合計は <strong>{{ stringing_total_with_delivery }}円</strong> です。
+      </div>
+
+      <table style="margin-top:16px;">
+        <tbody>
+          <tr>
+            <th>ガット貼り基本料金</th>
+            <td>{{ stringing_base_price }}円</td>
+          </tr>
+          <tr>
+            <th>デリバリー料金</th>
+            <td>{{ stringing_delivery_fee }}円</td>
+          </tr>
+          <tr>
+            <th>デリバリーあり合計</th>
+            <td><strong>{{ stringing_total_with_delivery }}円</strong></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="spacer-16"></div>
+
+      <ul class="clean" style="line-height:1.9;">
+        <li>ラケット名、ガット名は分かる範囲でご入力ください。</li>
+        <li>デリバリー希望時は、届け場所と時間指定を入力してください。</li>
+        <li>依頼送信後は一覧画面で受付状況を確認できます。</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">依頼内容</h2>
+
+      <form method="post">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+          <div class="message error" style="margin-bottom:12px;">
+            {{ form.non_field_errors }}
+          </div>
+        {% endif %}
+
+        {% for field in form %}
+          <p>
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}
+              <div class="muted" style="font-size:13px; margin-top:6px;">{{ field.help_text }}</div>
+            {% endif %}
+            {% if field.errors %}
+              <div class="message error" style="margin-top:8px;">
+                {{ field.errors }}
+              </div>
+            {% endif %}
+          </p>
+        {% endfor %}
+
+        <div class="actions">
+          <button type="submit">依頼を送信する</button>
+          <a href="{% url 'club:stringing_order_list' %}" class="btn">依頼一覧を見る</a>
+        </div>
+      </form>
+    </div>
+  </div>
+{% endblock %}
