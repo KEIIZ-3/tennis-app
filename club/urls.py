@@ -18,6 +18,8 @@ urlpatterns = [
     path("tickets/", views.tickets_view, name="tickets"),
     path("help/", views.help_view, name="help"),
     path("terms/", views.terms_view, name="terms"),
+    path("stringing/new/", views.stringing_order_create, name="stringing_order_create"),
+    path("stringing/", views.stringing_order_list, name="stringing_order_list"),
 
     path("survey/", views.schedule_survey_view, name="schedule_survey"),
 
