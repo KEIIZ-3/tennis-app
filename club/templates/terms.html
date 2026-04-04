@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}利用規約{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title">利用規約</h1>
+    <p class="page-subtitle">
+      Play Design Tennis の予約・チケット・関連機能をご利用いただく際の基本ルールです。
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="section-note">
+      本ページは運用開始用の基本版です。今後、ガット貼り機能や物販機能の追加に合わせて内容を更新します。
+    </div>
+  </div>
+
+  {% for section in terms_sections %}
+    <div class="card">
+      <h2 class="card-title">{{ section.title }}</h2>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        {% for row in section.body %}
+          <p style="margin:0; line-height:1.9;">{{ row }}</p>
+        {% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+
+  <div class="card">
+    <h2 class="card-title">お問い合わせ</h2>
+    <p style="margin:0; line-height:1.9;">
+      規約や運用に関する確認事項がある場合は、コーチまたは運営へご確認ください。
+    </p>
+
+    <div class="actions" style="margin-top:18px;">
+      <a href="{% url 'club:home' %}" class="btn btn-primary">ホームへ戻る</a>
+      <a href="{% url 'club:help' %}" class="btn">使い方を見る</a>
+    </div>
+  </div>
+{% endblock %}
