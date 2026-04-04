@@ -65,13 +65,30 @@
   </div>
 
   <div class="card">
-    <div class="muted" style="font-size:13px;">価格帯換算合計</div>
+    <div class="muted" style="font-size:13px;">レッスン換算 + ガット貼り按分</div>
     <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ total_amount }}円</div>
   </div>
 
   <div class="card">
     <div class="muted" style="font-size:13px;">概算給与</div>
     <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ estimated_salary }}円</div>
+  </div>
+</div>
+
+<div class="grid-3">
+  <div class="card">
+    <div class="muted" style="font-size:13px;">レッスン換算額</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ lesson_total_amount }}円</div>
+  </div>
+
+  <div class="card">
+    <div class="muted" style="font-size:13px;">ガット貼り売上按分</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ per_coach_stringing_amount }}円</div>
+  </div>
+
+  <div class="card">
+    <div class="muted" style="font-size:13px;">ガット貼り売上合計</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ total_stringing_amount }}円</div>
   </div>
 </div>
 
@@ -97,12 +114,49 @@
   <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
     <div style="font-weight:700; margin-bottom:6px;">現在の計算ルール</div>
     <div style="line-height:1.9;">
-      給与 ＝ <strong>消費されたチケットの価格帯換算合計</strong> − <strong>1人あたり按分経費</strong>
+      給与 ＝ <strong>レッスン換算額</strong> ＋ <strong>ガット貼り売上の1人あたり按分額</strong> − <strong>1人あたり按分経費</strong>
     </div>
     <div class="muted" style="margin-top:8px;">
-      経費は、その月に実際にチケット消費があった担当コーチ人数で均等割りしています。代行が設定されている予約は、代行コーチ側へ計上します。
+      ガット貼り売上は、その月に勤務実績のあるコーチ人数で均等按分しています。代行が設定されている予約は、代行コーチ側へ計上します。
     </div>
   </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">ガット貼り売上</h2>
+
+  {% if stringing_rows %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>依頼日時</th>
+            <th>会員</th>
+            <th>ラケット名</th>
+            <th>ガット名</th>
+            <th>デリバリー</th>
+            <th>料金</th>
+            <th>状況</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for order in stringing_rows %}
+            <tr>
+              <td>{{ order.created_at|date:"Y-m-d H:i" }}</td>
+              <td>{{ order.user.display_name }}</td>
+              <td>{{ order.racket_name|default:"-" }}</td>
+              <td>{{ order.string_name|default:"-" }}</td>
+              <td>{% if order.delivery_requested %}あり{% else %}なし{% endif %}</td>
+              <td>{{ order.total_price }}円</td>
+              <td>{{ order.get_status_display }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="muted" style="margin:0;">この月のガット貼り売上はまだありません。</p>
+  {% endif %}
 </div>
 
 <div class="card">
