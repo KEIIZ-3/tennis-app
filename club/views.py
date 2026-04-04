@@ -1498,10 +1498,14 @@ def coach_payroll_summary(request):
         if assigned_coach and getattr(assigned_coach, "role", "") == "coach":
             active_coach_ids.add(assigned_coach.pk)
 
+    if not active_coach_ids:
+        active_coach_ids = set(coach_queryset.values_list("pk", flat=True))
+
     active_coach_count = len(active_coach_ids)
     per_coach_expense = int(total_expense_amount / active_coach_count) if active_coach_count > 0 else 0
 
     total_tickets = 0
+    lesson_total_amount = 0
     total_amount = 0
     breakdown_rows = []
     reservation_rows = []
@@ -1552,7 +1556,7 @@ def coach_payroll_summary(request):
                 continue
 
             total_tickets += row_tickets
-            total_amount += row_amount
+            lesson_total_amount += row_amount
 
             for unit_price, tickets in sorted(row_breakdown_map.items(), key=lambda x: x[0]):
                 row_breakdown_items.append(
@@ -1587,6 +1591,16 @@ def coach_payroll_summary(request):
                 }
             )
 
+    stringing_order_qs = StringingOrder.objects.filter(
+        created_at__date__gte=month_start,
+        created_at__date__lt=next_month,
+    ).order_by("-created_at", "-id")
+
+    stringing_rows = list(stringing_order_qs)
+    total_stringing_amount = sum([int(order.total_price()) for order in stringing_rows])
+    per_coach_stringing_amount = int(total_stringing_amount / active_coach_count) if active_coach_count > 0 else 0
+
+    total_amount = lesson_total_amount + per_coach_stringing_amount
     estimated_salary = total_amount - per_coach_expense
 
     category_totals = {}
@@ -1635,7 +1649,11 @@ def coach_payroll_summary(request):
             "reservation_rows": reservation_rows,
             "expense_rows": expense_rows,
             "category_rows": category_rows,
+            "stringing_rows": stringing_rows,
             "total_tickets": total_tickets,
+            "lesson_total_amount": lesson_total_amount,
+            "total_stringing_amount": total_stringing_amount,
+            "per_coach_stringing_amount": per_coach_stringing_amount,
             "total_amount": total_amount,
             "total_expense_amount": total_expense_amount,
             "active_coach_count": active_coach_count,
