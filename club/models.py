@@ -1534,9 +1534,10 @@ class Reservation(models.Model, LessonTypeMixin):
         return True
 
 
-
-
 class StringingOrder(models.Model):
+    DEFAULT_ASSIGNED_COACH_USERNAME = "12line_7c39cda5a465"
+    DEFAULT_ASSIGNED_COACH_EMAIL = "torekku0713@icloud.com"
+
     STATUS_REQUESTED = "requested"
     STATUS_IN_PROGRESS = "in_progress"
     STATUS_COMPLETED = "completed"
@@ -1582,12 +1583,43 @@ class StringingOrder(models.Model):
     def __str__(self):
         return f"{self.user} / ガット貼り / {self.created_at:%Y-%m-%d %H:%M}"
 
+    @classmethod
+    def default_assigned_coach(cls):
+        coach = User.objects.filter(
+            role="coach",
+            username=cls.DEFAULT_ASSIGNED_COACH_USERNAME,
+        ).first()
+        if coach:
+            return coach
+
+        coach = User.objects.filter(
+            role="coach",
+            email__iexact=cls.DEFAULT_ASSIGNED_COACH_EMAIL,
+        ).first()
+        if coach:
+            return coach
+
+        return None
+
+    def assigned_coach_display(self):
+        if self.assigned_coach:
+            return self.assigned_coach.display_name()
+        return "未割当"
+
     def clean(self):
         self.racket_name = (self.racket_name or "").strip()
         self.string_name = (self.string_name or "").strip()
         self.delivery_location = (self.delivery_location or "").strip()
         self.preferred_delivery_time = (self.preferred_delivery_time or "").strip()
         self.note = (self.note or "").strip()
+
+        if not self.assigned_coach_id:
+            default_coach = self.default_assigned_coach()
+            if default_coach:
+                self.assigned_coach = default_coach
+
+        if self.assigned_coach and getattr(self.assigned_coach, "role", "") != "coach":
+            raise ValidationError("担当コーチには coach ロールのユーザーを指定してください。")
 
         if self.base_price < 0:
             raise ValidationError("基本料金は0円以上にしてください。")
@@ -1603,17 +1635,11 @@ class StringingOrder(models.Model):
             self.delivery_location = ""
             self.preferred_delivery_time = ""
 
-    def assigned_coach_display(self):
-        if self.assigned_coach:
-            return self.assigned_coach.display_name()
-        return "-"
-
     def total_price(self):
         return int(self.base_price or 0) + int(self.delivery_fee or 0)
 
 
 class LineAccountLink(models.Model):
-
     user = models.OneToOneField(
         User,
         on_delete=models.CASCADE,
