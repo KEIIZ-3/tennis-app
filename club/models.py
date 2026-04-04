@@ -1,3 +1,4 @@
+
 from datetime import datetime, time, timedelta
 
 from django.conf import settings
@@ -1629,17 +1630,19 @@ class StringingOrder(models.Model):
             if not self.delivery_location:
                 raise ValidationError("デリバリー希望の場合は、届け場所を入力してください。")
             if not self.preferred_delivery_time:
-                raise ValidationError("デリバリー希望の場合は、時間指定を入力してください。")
+                raise ValidationError("デリバリー希望の場合は、日時指定を入力してください。")
         else:
             self.delivery_fee = 0
             self.delivery_location = ""
-            self.preferred_delivery_time = ""
+            if not self.preferred_delivery_time:
+                raise ValidationError("デリバリーなしの場合は、希望張り上げ納期を入力してください。")
 
     def total_price(self):
         return int(self.base_price or 0) + int(self.delivery_fee or 0)
 
 
 class LineAccountLink(models.Model):
+
     user = models.OneToOneField(
         User,
         on_delete=models.CASCADE,
