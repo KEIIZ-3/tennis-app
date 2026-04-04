@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}使い方ヘルプ{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title">使い方ヘルプ</h1>
+    <p class="page-subtitle">
+      よく使う流れを3つに絞って、分かりやすくまとめています。
+    </p>
+  </div>
+
+  <div class="grid-3">
+    {% for section in help_sections %}
+      <div class="card">
+        <h2 class="card-title">{{ section.title }}</h2>
+        <ol class="clean" style="line-height:1.9;">
+          {% for item in section.items %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ol>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">おすすめの見方</h2>
+    <div class="grid-2">
+      <div>
+        <div style="font-weight:700; margin-bottom:8px;">会員の方</div>
+        <ul class="clean" style="line-height:1.9;">
+          <li>まず「ホーム」でおすすめ時間帯を確認</li>
+          <li>次に「予約作成」から希望日時で申請</li>
+          <li>「予約一覧」で承認状況を確認</li>
+        </ul>
+      </div>
+      <div>
+        <div style="font-weight:700; margin-bottom:8px;">コーチの方</div>
+        <ul class="clean" style="line-height:1.9;">
+          <li>「スケジュール管理」で申請確認</li>
+          <li>「アンケート集計」で希望時間帯を確認</li>
+          <li>「チケット集計」「給与計算」で月次確認</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="actions" style="margin-top:18px;">
+      <a href="{% url 'club:home' %}" class="btn btn-primary">ホームへ戻る</a>
+      {% if user.is_authenticated and user.role == "member" %}
+        <a href="{% url 'club:reservation_create' %}" class="btn">予約作成へ</a>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}
