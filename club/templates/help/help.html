@@ -33,14 +33,17 @@
           <li>「予約一覧」で承認状況を確認</li>
         </ul>
       </div>
-      <div>
-        <div style="font-weight:700; margin-bottom:8px;">コーチの方</div>
-        <ul class="clean" style="line-height:1.9;">
-          <li>「スケジュール管理」で申請確認</li>
-          <li>「アンケート集計」で希望時間帯を確認</li>
-          <li>「チケット集計」「給与計算」で月次確認</li>
-        </ul>
-      </div>
+
+      {% if user.is_authenticated and user.role == "coach" %}
+        <div>
+          <div style="font-weight:700; margin-bottom:8px;">コーチの方</div>
+          <ul class="clean" style="line-height:1.9;">
+            <li>「スケジュール管理」で申請確認</li>
+            <li>「アンケート集計」で希望時間帯を確認</li>
+            <li>「チケット集計」「給与計算」で月次確認</li>
+          </ul>
+        </div>
+      {% endif %}
     </div>
 
     <div class="actions" style="margin-top:18px;">
