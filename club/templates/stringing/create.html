@@ -1,10 +1,9 @@
-
 {% extends "base.html" %}
-{% block title %}ガット貼り依頼{% endblock %}
+{% block title %}ガット張り依頼{% endblock %}
 
 {% block content %}
   <div class="page-head">
-    <h1 class="page-title">ガット貼り依頼</h1>
+    <h1 class="page-title">ガット張り依頼</h1>
     <p class="page-subtitle">
       基本料金は {{ stringing_base_price }}円、デリバリー希望の場合のみ +{{ stringing_delivery_fee }}円です。
     </p>
@@ -17,7 +16,7 @@
       <table style="margin-top:16px;">
         <tbody>
           <tr>
-            <th>ガット貼り基本料金</th>
+            <th>ガット張り基本料金</th>
             <td>{{ stringing_base_price }}円</td>
           </tr>
           <tr>
@@ -75,6 +74,9 @@
         <p>
           <label for="{{ form.delivery_option.id_for_label }}">{{ form.delivery_option.label }}</label>
           {{ form.delivery_option }}
+          <div class="muted" style="font-size:13px; margin-top:6px;">
+            レッスンでの受け渡しの場合はデリバリー無しを選択してください。
+          </div>
           {% if form.delivery_option.help_text %}
             <div class="muted" style="font-size:13px; margin-top:6px;">{{ form.delivery_option.help_text }}</div>
           {% endif %}
@@ -86,10 +88,16 @@
         <div id="delivery-fields">
           <p>
             <label for="{{ form.delivery_location.id_for_label }}">{{ form.delivery_location.label }}</label>
-            {{ form.delivery_location }}
-            {% if form.delivery_location.help_text %}
-              <div class="muted" style="font-size:13px; margin-top:6px;">{{ form.delivery_location.help_text }}</div>
-            {% endif %}
+            <input
+              type="text"
+              name="{{ form.delivery_location.html_name }}"
+              id="{{ form.delivery_location.id_for_label }}"
+              value="{{ form.delivery_location.value|default_if_none:'' }}"
+              placeholder="例: ご自宅、職場、指定テニスコートなど"
+            >
+            <div class="muted" style="font-size:13px; margin-top:6px;">
+              デリバリー希望の場合のみ入力してください。
+            </div>
             {% if form.delivery_location.errors %}
               <div class="message error" style="margin-top:8px;">{{ form.delivery_location.errors }}</div>
             {% endif %}
