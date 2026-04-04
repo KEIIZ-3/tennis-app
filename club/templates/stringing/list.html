@@ -32,7 +32,8 @@
             <th>ガット名</th>
             <th>デリバリー</th>
             <th>届け場所</th>
-            <th>時間指定</th>
+            <th>日時指定</th>
+            <th>希望張り上げ納期</th>
             <th>料金</th>
             <th>状況</th>
           </tr>
@@ -54,14 +55,33 @@
               <td>{{ order.racket_name|default:"-" }}</td>
               <td>{{ order.string_name|default:"-" }}</td>
               <td>{% if order.delivery_requested %}あり{% else %}なし{% endif %}</td>
-              <td>{{ order.delivery_location|default:"-" }}</td>
-              <td>{{ order.preferred_delivery_time|default:"-" }}</td>
+              <td>
+                {% if order.delivery_requested %}
+                  {{ order.delivery_location|default:"-" }}
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if order.delivery_requested %}
+                  {{ order.preferred_delivery_time|default:"-" }}
+                {% else %}
+                  <span class="muted">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if order.delivery_requested %}
+                  <span class="muted">-</span>
+                {% else %}
+                  {{ order.preferred_delivery_time|default:"-" }}
+                {% endif %}
+              </td>
               <td>{{ order.total_price }}円</td>
               <td>{{ order.get_status_display }}</td>
             </tr>
             {% if order.note %}
               <tr>
-                <td colspan="{% if user.role == 'coach' or user.is_staff or user.is_superuser %}10{% else %}8{% endif %}">
+                <td colspan="{% if user.role == 'coach' or user.is_staff or user.is_superuser %}11{% else %}9{% endif %}">
                   <strong>備考:</strong> {{ order.note }}
                 </td>
               </tr>
