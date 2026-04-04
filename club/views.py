@@ -48,6 +48,7 @@ from .notifications import (
     build_pending_request_for_coach_message,
     build_request_approved_for_member_message,
     build_request_rejected_for_member_message,
+    build_stringing_order_created_for_coach_message,
     notify_user,
     verify_line_signature,
 )
@@ -787,18 +788,20 @@ def stringing_order_create(request):
         if form.is_valid():
             order = form.save(commit=False)
             order.user = request.user
-            if _is_coach_user(request.user):
-                order.assigned_coach = request.user
             order.status = StringingOrder.STATUS_REQUESTED
             order.save()
 
+            if getattr(request.user, "role", "") == "member" and order.assigned_coach:
+                coach_message = build_stringing_order_created_for_coach_message(order)
+                _send_line_notification_safely(order.assigned_coach, coach_message)
+
             messages.success(
                 request,
-                f"ガット貼り依頼を受け付けました。料金は {order.total_price()}円 です。"
+                f"ガット張り依頼を受け付けました。料金は {order.total_price()}円 です。"
             )
             return redirect("club:stringing_order_list")
 
-        messages.error(request, "ガット貼り依頼を保存できませんでした。入力内容をご確認ください。")
+        messages.error(request, "ガット張り依頼を保存できませんでした。入力内容をご確認ください。")
 
     return render(
         request,
@@ -819,7 +822,7 @@ def stringing_order_list(request):
     if survey_redirect:
         return survey_redirect
 
-    queryset = StringingOrder.objects.select_related("user", "assigned_coach").all()
+    queryset = StringingOrder.objects.select_related("user").all()
 
     if not _is_staff_like(request.user) and not _is_coach_user(request.user):
         queryset = queryset.filter(user=request.user)
@@ -1500,19 +1503,6 @@ def coach_payroll_summary(request):
         if assigned_coach and getattr(assigned_coach, "role", "") == "coach":
             active_coach_ids.add(assigned_coach.pk)
 
-    stringing_order_qs = (
-        StringingOrder.objects.filter(
-            created_at__date__gte=month_start,
-            created_at__date__lt=next_month,
-        )
-        .select_related("user", "assigned_coach")
-        .order_by("-created_at", "-id")
-    )
-
-    for order in stringing_order_qs:
-        if order.assigned_coach_id and getattr(order.assigned_coach, "role", "") == "coach":
-            active_coach_ids.add(order.assigned_coach_id)
-
     if not active_coach_ids:
         active_coach_ids = set(coach_queryset.values_list("pk", flat=True))
 
@@ -1606,18 +1596,16 @@ def coach_payroll_summary(request):
                 }
             )
 
+    stringing_order_qs = StringingOrder.objects.filter(
+        created_at__date__gte=month_start,
+        created_at__date__lt=next_month,
+    ).order_by("-created_at", "-id")
+
     stringing_rows = list(stringing_order_qs)
     total_stringing_amount = sum([int(order.total_price()) for order in stringing_rows])
+    per_coach_stringing_amount = int(total_stringing_amount / active_coach_count) if active_coach_count > 0 else 0
 
-    assigned_stringing_rows = []
-    assigned_stringing_amount = 0
-    if selected_coach:
-        for order in stringing_rows:
-            if order.assigned_coach_id == selected_coach.pk:
-                assigned_stringing_rows.append(order)
-                assigned_stringing_amount += int(order.total_price())
-
-    total_amount = lesson_total_amount + assigned_stringing_amount
+    total_amount = lesson_total_amount + per_coach_stringing_amount
     estimated_salary = total_amount - per_coach_expense
 
     category_totals = {}
@@ -1634,8 +1622,6 @@ def coach_payroll_summary(request):
                 "amount": amount,
             }
         )
-
-    unassigned_stringing_count = len([order for order in stringing_rows if not order.assigned_coach_id])
 
     prev_year = selected_year
     prev_month = selected_month - 1
@@ -1668,17 +1654,16 @@ def coach_payroll_summary(request):
             "reservation_rows": reservation_rows,
             "expense_rows": expense_rows,
             "category_rows": category_rows,
-            "stringing_rows": assigned_stringing_rows,
+            "stringing_rows": stringing_rows,
             "total_tickets": total_tickets,
             "lesson_total_amount": lesson_total_amount,
             "total_stringing_amount": total_stringing_amount,
-            "assigned_stringing_amount": assigned_stringing_amount,
+            "per_coach_stringing_amount": per_coach_stringing_amount,
             "total_amount": total_amount,
             "total_expense_amount": total_expense_amount,
             "active_coach_count": active_coach_count,
             "per_coach_expense": per_coach_expense,
             "estimated_salary": estimated_salary,
-            "unassigned_stringing_count": unassigned_stringing_count,
         },
     )
 
