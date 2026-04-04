@@ -1,143 +1,401 @@
 {% extends "base.html" %}
-{% block title %}ガット張り依頼一覧{% endblock %}
+{% block title %}給与計算{% endblock %}
 
 {% block content %}
-  <div class="page-head">
-    <h1 class="page-title">ガット張り依頼一覧</h1>
-    <p class="page-subtitle">
-      依頼状況と料金を確認できます。
-    </p>
-  </div>
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h1 style="margin:0;">給与計算</h1>
+      <p class="muted" style="margin:8px 0 0;">
+        {{ month_label }} の概算給与を確認できます。
+      </p>
+    </div>
 
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <a href="{% url 'club:coach_ticket_summary' %}" class="btn">チケット集計へ</a>
+      <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <form method="get" style="display:flex; gap:12px; flex-wrap:wrap; align-items:end;">
+    <div style="min-width:120px;">
+      <label for="year">年</label>
+      <input type="number" id="year" name="year" value="{{ selected_year }}">
+    </div>
+
+    <div style="min-width:120px;">
+      <label for="month">月</label>
+      <input type="number" id="month" name="month" min="1" max="12" value="{{ selected_month }}">
+    </div>
+
+    {% if is_staff_mode %}
+      <div style="min-width:220px;">
+        <label for="coach_id">コーチ</label>
+        <select id="coach_id" name="coach_id">
+          {% for coach in coach_options %}
+            <option value="{{ coach.id }}" {% if selected_coach and coach.id == selected_coach.id %}selected{% endif %}>
+              {{ coach.display_name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    {% endif %}
+
+    <button type="submit" class="btn btn-primary">表示する</button>
+  </form>
+
+  <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="?year={{ prev_year }}&month={{ prev_month }}{% if selected_coach %}&coach_id={{ selected_coach.id }}{% endif %}" class="btn">前の月</a>
+    <a href="?year={{ next_year }}&month={{ next_month }}{% if selected_coach %}&coach_id={{ selected_coach.id }}{% endif %}" class="btn">次の月</a>
+  </div>
+</div>
+
+<div class="grid-3">
   <div class="card">
-    <div class="actions" style="justify-content:space-between; align-items:flex-end;">
-      <div class="muted">
-        基本料金 {{ stringing_base_price }}円 / デリバリー {{ stringing_delivery_fee }}円
-      </div>
-      <div class="actions">
-        <form method="get" class="actions" style="margin:0;">
-          <div>
-            <label for="status_filter" style="margin-bottom:6px;">絞り込み</label>
-            <select id="status_filter" name="status_filter">
-              <option value="all" {% if status_filter == "all" %}selected{% endif %}>すべて ({{ status_counts.all }})</option>
-              <option value="pending" {% if status_filter == "pending" %}selected{% endif %}>未対応のみ ({{ status_counts.pending }})</option>
-              {% for value, label in stringing_status_choices %}
-                {% if value == "requested" %}
-                  <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }} ({{ status_counts.requested }})</option>
-                {% elif value == "in_progress" %}
-                  <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }} ({{ status_counts.in_progress }})</option>
-                {% elif value == "completed" %}
-                  <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }} ({{ status_counts.completed }})</option>
-                {% elif value == "canceled" %}
-                  <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }} ({{ status_counts.canceled }})</option>
-                {% endif %}
-              {% endfor %}
-            </select>
-          </div>
-          <button type="submit" class="btn">絞り込む</button>
-        </form>
-        <a href="{% url 'club:stringing_order_create' %}" class="btn btn-primary">新規依頼</a>
-      </div>
+    <div class="muted" style="font-size:13px;">対象コーチ</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">
+      {% if selected_coach %}
+        {{ selected_coach.display_name }}
+      {% else %}
+        -
+      {% endif %}
     </div>
   </div>
 
   <div class="card">
-    {% if order_rows %}
+    <div class="muted" style="font-size:13px;">レッスン換算 + 担当ガット張り売上</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ total_amount }}円</div>
+  </div>
+
+  <div class="card">
+    <div class="muted" style="font-size:13px;">概算給与</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ estimated_salary }}円</div>
+  </div>
+</div>
+
+<div class="grid-3">
+  <div class="card">
+    <div class="muted" style="font-size:13px;">レッスン換算額</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ lesson_total_amount }}円</div>
+  </div>
+
+  <div class="card">
+    <div class="muted" style="font-size:13px;">担当ガット張り売上</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ assigned_stringing_amount }}円</div>
+  </div>
+
+  <div class="card">
+    <div class="muted" style="font-size:13px;">月全体のガット張り売上</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ total_stringing_amount }}円</div>
+  </div>
+</div>
+
+<div class="grid-3">
+  <div class="card">
+    <div class="muted" style="font-size:13px;">総経費</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ total_expense_amount }}円</div>
+  </div>
+
+  <div class="card">
+    <div class="muted" style="font-size:13px;">勤務実績コーチ人数</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ active_coach_count }}人</div>
+  </div>
+
+  <div class="card">
+    <div class="muted" style="font-size:13px;">1人あたり按分経費</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ per_coach_expense }}円</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">計算式</h2>
+  <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
+    <div style="font-weight:700; margin-bottom:6px;">現在の計算ルール</div>
+    <div style="line-height:1.9;">
+      給与 ＝ <strong>レッスン換算額</strong> ＋ <strong>担当ガット張り売上</strong> − <strong>1人あたり按分経費</strong>
+    </div>
+    <div class="muted" style="margin-top:8px;">
+      ガット張り売上は、実際に担当したコーチへ直接計上します。未担当の依頼は給与に加算されません。代行が設定されている予約は、代行コーチ側へ計上します。
+    </div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <h2 style="margin-top:0;">担当ガット張り売上の状況別集計</h2>
+    {% if stringing_status_rows %}
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>状況</th>
+              <th>件数</th>
+              <th>売上</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in stringing_status_rows %}
+              <tr>
+                <td>{{ row.label }}</td>
+                <td>{{ row.count }}件</td>
+                <td>{{ row.amount }}円</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted" style="margin:0;">この月の状況別集計はまだありません。</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">担当ガット張り売上の受け渡し別集計</h2>
+    {% if stringing_delivery_rows %}
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>受け渡し方法</th>
+              <th>件数</th>
+              <th>売上</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in stringing_delivery_rows %}
+              <tr>
+                <td>{{ row.label }}</td>
+                <td>{{ row.count }}件</td>
+                <td>{{ row.amount }}円</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted" style="margin:0;">この月の受け渡し別集計はまだありません。</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">担当ガット張り売上</h2>
+
+  <div class="muted" style="margin:0 0 12px;">
+    この一覧には、選択中コーチが担当した依頼のみ表示しています。未担当の依頼数: {{ unassigned_stringing_count }}件
+  </div>
+
+  {% if stringing_rows %}
+    <div style="overflow-x:auto;">
       <table>
         <thead>
           <tr>
             <th>依頼日時</th>
-            {% if user.role == "coach" or user.is_staff or user.is_superuser %}
-              <th>会員</th>
-              <th>担当コーチ</th>
-            {% endif %}
+            <th>会員</th>
             <th>ラケット名</th>
             <th>ガット名</th>
-            <th>デリバリー</th>
+            <th>受け渡し</th>
             <th>届け場所</th>
             <th>日時指定</th>
             <th>希望張り上げ納期</th>
             <th>料金</th>
+            <th>担当コーチ</th>
             <th>状況</th>
-            {% if is_stringing_manage_mode %}
-              <th>更新</th>
-            {% endif %}
           </tr>
         </thead>
         <tbody>
-          {% for row in order_rows %}
-            {% with order=row.order %}
+          {% for row in stringing_rows %}
             <tr>
-              <td>{{ order.created_at|date:"Y-m-d H:i" }}</td>
-              {% if user.role == "coach" or user.is_staff or user.is_superuser %}
-                <td>{{ order.user.display_name }}</td>
-                <td>
-                  {% if order.assigned_coach %}
-                    {{ order.assigned_coach.display_name }}
-                  {% else %}
-                    <span class="muted">未割当</span>
-                  {% endif %}
-                </td>
-              {% endif %}
-              <td>{{ order.racket_name|default:"-" }}</td>
-              <td>{{ order.string_name|default:"-" }}</td>
-              <td>{% if order.delivery_requested %}あり{% else %}なし{% endif %}</td>
+              <td>{{ row.order.created_at|date:"Y-m-d H:i" }}</td>
+              <td>{{ row.order.user.display_name }}</td>
+              <td>{{ row.order.racket_name|default:"-" }}</td>
+              <td>{{ row.order.string_name|default:"-" }}</td>
+              <td>{{ row.delivery_label }}</td>
               <td>
-                {% if order.delivery_requested %}
-                  {{ order.delivery_location|default:"-" }}
+                {% if row.order.delivery_requested %}
+                  {{ row.order.delivery_location|default:"-" }}
                 {% else %}
                   <span class="muted">-</span>
                 {% endif %}
               </td>
               <td>
-                {% if order.delivery_requested %}
-                  {{ order.preferred_delivery_time|default:"-" }}
+                {% if row.order.delivery_requested %}
+                  {{ row.order.preferred_delivery_time|default:"-" }}
                 {% else %}
                   <span class="muted">-</span>
                 {% endif %}
               </td>
               <td>
-                {% if order.delivery_requested %}
+                {% if row.order.delivery_requested %}
                   <span class="muted">-</span>
                 {% else %}
-                  {{ row.preferred_finish_date|default:"-" }}
+                  {{ row.preferred_label|default:"-" }}
                 {% endif %}
               </td>
-              <td>{{ order.total_price }}円</td>
+              <td>{{ row.order.total_price }}円</td>
+              <td>{{ row.order.assigned_coach_display }}</td>
               <td>{{ row.status_label }}</td>
-              {% if is_stringing_manage_mode %}
-                <td>
-                  {% if row.can_manage %}
-                    <form method="post" style="margin:0; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                      {% csrf_token %}
-                      <input type="hidden" name="order_id" value="{{ order.id }}">
-                      <input type="hidden" name="status_filter" value="{{ status_filter }}">
-                      <select name="new_status" style="min-width:130px;">
-                        {% for value, label in stringing_status_choices %}
-                          <option value="{{ value }}" {% if order.status == value %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                      </select>
-                      <button type="submit" class="btn">更新</button>
-                    </form>
-                  {% else %}
-                    <span class="muted">更新不可</span>
-                  {% endif %}
-                </td>
-              {% endif %}
             </tr>
-            {% if order.note %}
+            {% if row.order.note %}
               <tr>
-                <td colspan="{% if user.role == 'coach' or user.is_staff or user.is_superuser %}{% if is_stringing_manage_mode %}12{% else %}11{% endif %}{% else %}{% if is_stringing_manage_mode %}10{% else %}9{% endif %}{% endif %}">
-                  <strong>備考:</strong> {{ order.note }}
+                <td colspan="11">
+                  <strong>備考:</strong> {{ row.order.note }}
                 </td>
               </tr>
             {% endif %}
-            {% endwith %}
           {% endfor %}
         </tbody>
       </table>
-    {% else %}
-      <p class="muted" style="margin:0;">条件に一致するガット張り依頼はありません。</p>
-    {% endif %}
-  </div>
+    </div>
+  {% else %}
+    <p class="muted" style="margin:0;">この月の担当ガット張り売上はまだありません。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">価格帯別集計</h2>
+
+  {% if breakdown_rows %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>価格帯</th>
+            <th>消費枚数</th>
+            <th>換算額</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in breakdown_rows %}
+            <tr>
+              <td>{{ row.label }}</td>
+              <td>{{ row.tickets }}枚</td>
+              <td>{{ row.amount }}円</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="muted" style="margin:0;">この月の価格帯別データはまだありません。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">経費内訳</h2>
+
+  {% if category_rows %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>区分</th>
+            <th>金額</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in category_rows %}
+            <tr>
+              <td>{{ row.label }}</td>
+              <td>{{ row.amount }}円</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="muted" style="margin:0;">この月の経費はまだ登録されていません。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">経費明細</h2>
+
+  {% if expense_rows %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>日付</th>
+            <th>区分</th>
+            <th>金額</th>
+            <th>備考</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for expense in expense_rows %}
+            <tr>
+              <td>{{ expense.expense_date|date:"Y-m-d" }}</td>
+              <td>{{ expense.get_category_display }}</td>
+              <td>{{ expense.amount }}円</td>
+              <td>{{ expense.note|default:"-" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="muted" style="margin:0;">この月の経費明細はまだありません。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">予約ごとの換算内訳</h2>
+
+  {% if reservation_rows %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>日時</th>
+            <th>会員</th>
+            <th>種別</th>
+            <th>担当コーチ</th>
+            <th>コート</th>
+            <th>消費枚数</th>
+            <th>価格帯内訳</th>
+            <th>換算額</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in reservation_rows %}
+            <tr>
+              <td>
+                <div>{{ row.reservation.start_at|date:"Y-m-d H:i" }}</div>
+                <div class="muted" style="font-size:12px;">〜 {{ row.reservation.end_at|date:"H:i" }}</div>
+              </td>
+              <td>{{ row.reservation.user.display_name }}</td>
+              <td>{{ row.reservation.get_lesson_type_display }}</td>
+              <td>
+                {% if row.has_substitute %}
+                  <div><strong>実施:</strong> {{ row.assigned_coach_name }}</div>
+                  <div class="muted" style="font-size:12px;">通常担当: {{ row.normal_coach_name }}</div>
+                  <div class="muted" style="font-size:12px;">代行: {{ row.substitute_coach_name }}</div>
+                {% else %}
+                  <div>{{ row.assigned_coach_name }}</div>
+                {% endif %}
+              </td>
+              <td>{{ row.reservation.court }}</td>
+              <td>{{ row.tickets }}枚</td>
+              <td>
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                  {% for item in row.breakdown_items %}
+                    <div style="display:inline-block; padding:6px 8px; border:1px solid #dbeafe; background:#eff6ff; border-radius:8px; font-size:13px;">
+                      {{ item.label }} × {{ item.tickets }}枚
+                    </div>
+                  {% endfor %}
+                </div>
+              </td>
+              <td>{{ row.amount }}円</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="muted" style="margin:0;">この月の予約換算データはまだありません。</p>
+  {% endif %}
+</div>
 {% endblock %}
