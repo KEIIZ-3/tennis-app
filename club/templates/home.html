@@ -37,6 +37,7 @@
       <li>公式LINEからそのまま始められます</li>
       <li>初回は会員登録とLINE連携が自動で完了します</li>
       <li>初回ログイン時に1〜2分のアンケート回答をお願いしています</li>
+      <li>アンケート結果をもとに、おすすめ開催時間帯をランキング表示しています</li>
       <li>ログイン後、予約作成や予約確認ができます</li>
     </ul>
   </div>
@@ -110,6 +111,20 @@
             {% for row in schedule_survey_top_slots|slice:":3" %}
               <li>
                 <strong>{{ row.day_label }}</strong> / {{ row.slot_label }}
+                <span class="muted">（{{ row.count }}票）</span>
+              </li>
+            {% endfor %}
+          </ol>
+        </div>
+      {% endif %}
+
+      {% if schedule_survey_coach_top_lesson_types %}
+        <div style="margin-top:16px;">
+          <div style="font-weight:700; margin-bottom:8px;">人気のレッスン種別</div>
+          <ol style="margin:0; padding-left:20px; line-height:1.9;">
+            {% for row in schedule_survey_coach_top_lesson_types %}
+              <li>
+                <strong>{{ row.lesson_type_label }}</strong>
                 <span class="muted">（{{ row.count }}票）</span>
               </li>
             {% endfor %}
@@ -246,7 +261,7 @@
         </div>
       </div>
       <p class="muted" style="margin:14px 0 0;">
-        会員アンケートをもとに、開催しやすい曜日・時間帯を調整しています。
+        {{ schedule_survey_member_help_message }}
       </p>
     </div>
   </div>
