@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}経費登録{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title">経費登録</h1>
+    <p class="page-subtitle">
+      コーチ用の経費を登録できます。給与計算にはここで登録した経費が反映されます。
+    </p>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h2 class="card-title">新規登録</h2>
+      <form method="post">
+        {% csrf_token %}
+
+        <p>
+          <label for="id_expense_date">経費日付</label>
+          <input type="date" id="id_expense_date" name="expense_date" value="{{ today_value }}" required>
+        </p>
+
+        <p>
+          <label for="id_category">カテゴリ</label>
+          <select id="id_category" name="category" required>
+            {% for value, label in expense_category_choices %}
+              <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </p>
+
+        <p>
+          <label for="id_amount">金額</label>
+          <input type="number" id="id_amount" name="amount" min="0" step="1" placeholder="例: 1200" required>
+        </p>
+
+        <p>
+          <label for="id_note">メモ</label>
+          <textarea id="id_note" name="note" rows="4" placeholder="例: ボール購入 / コート代 / 駐車場代"></textarea>
+        </p>
+
+        <div class="actions">
+          <button type="submit">経費を登録する</button>
+          <a href="{% url 'club:coach_payroll_summary' %}" class="btn">給与計算を見る</a>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">当月サマリー</h2>
+      <table>
+        <tbody>
+          <tr>
+            <th>当月合計</th>
+            <td><strong>{{ current_month_total }}円</strong></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="spacer-16"></div>
+
+      {% if category_rows %}
+        <table>
+          <thead>
+            <tr>
+              <th>カテゴリ</th>
+              <th>金額</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in category_rows %}
+              <tr>
+                <td>{{ row.label }}</td>
+                <td>{{ row.amount }}円</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="muted" style="margin:0;">今月の経費はまだ登録されていません。</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">最近の登録</h2>
+
+    {% if recent_expenses %}
+      <table>
+        <thead>
+          <tr>
+            <th>日付</th>
+            <th>カテゴリ</th>
+            <th>金額</th>
+            <th>メモ</th>
+            {% if is_admin_mode %}
+              <th>登録者</th>
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for expense in recent_expenses %}
+            <tr>
+              <td>{{ expense.expense_date|date:"Y-m-d" }}</td>
+              <td>{{ expense.get_category_display }}</td>
+              <td>{{ expense.amount }}円</td>
+              <td>{{ expense.note|default:"-" }}</td>
+              {% if is_admin_mode %}
+                <td>{% if expense.created_by %}{{ expense.created_by.display_name }}{% else %}-{% endif %}</td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted" style="margin:0;">まだ経費登録はありません。</p>
+    {% endif %}
+  </div>
+{% endblock %}
