@@ -38,6 +38,7 @@ urlpatterns = [
     path("coach/fixed-lessons/", views.coach_fixed_lesson_weekly, name="coach_fixed_lesson_weekly"),
     path("coach/ticket-summary/", views.coach_ticket_summary, name="coach_ticket_summary"),
     path("coach/payroll-summary/", views.coach_payroll_summary, name="coach_payroll_summary"),
+    path("coach/expenses/", views.coach_expense_manage, name="coach_expense_manage"),
     path("coach/survey-summary/", views.coach_schedule_survey_summary, name="schedule_survey_summary"),
 
     path("line/", views.line_connect, name="line_connect"),
