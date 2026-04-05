@@ -48,7 +48,6 @@ from .notifications import (
     build_pending_request_for_coach_message,
     build_request_approved_for_member_message,
     build_request_rejected_for_member_message,
-    build_reservation_rain_canceled_message,
     build_stringing_order_created_for_coach_message,
     notify_user,
     verify_line_signature,
@@ -741,67 +740,6 @@ def _send_line_notification_safely(user, message_text):
         pass
 
 
-STRINGING_STATUS_LABELS = {
-    StringingOrder.STATUS_REQUESTED: "受付済み",
-    StringingOrder.STATUS_IN_PROGRESS: "配送待ち",
-    StringingOrder.STATUS_COMPLETED: "完了",
-    StringingOrder.STATUS_CANCELED: "キャンセル",
-}
-
-STRINGING_PENDING_STATUSES = {
-    StringingOrder.STATUS_REQUESTED,
-    StringingOrder.STATUS_IN_PROGRESS,
-}
-
-
-def _stringing_status_label(status_value):
-    return STRINGING_STATUS_LABELS.get(status_value, str(status_value or "-"))
-
-
-def _stringing_status_choices():
-    return [
-        (StringingOrder.STATUS_REQUESTED, "受付済み"),
-        (StringingOrder.STATUS_IN_PROGRESS, "配送待ち"),
-        (StringingOrder.STATUS_COMPLETED, "完了"),
-        (StringingOrder.STATUS_CANCELED, "キャンセル"),
-    ]
-
-
-def _stringing_can_manage(user, order):
-    if not user or not getattr(user, "is_authenticated", False):
-        return False
-    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
-        return True
-    if _is_coach_user(user) and getattr(order, "assigned_coach_id", None) == getattr(user, "pk", None):
-        return True
-    return False
-
-
-def _availability_can_manage(user, availability):
-    if not user or not getattr(user, "is_authenticated", False):
-        return False
-    if _is_staff_like(user):
-        return True
-    if _is_coach_user(user) and getattr(availability, "coach_id", None) == getattr(user, "pk", None):
-        return True
-    return False
-
-
-def _active_reservations_for_availability(availability):
-    return list(
-        Reservation.objects.select_related("user", "coach", "substitute_coach", "court")
-        .filter(
-            coach=availability.coach,
-            court=availability.court,
-            lesson_type=availability.lesson_type,
-            start_at=availability.start_at,
-            end_at=availability.end_at,
-            status=Reservation.STATUS_ACTIVE,
-        )
-        .order_by("start_at", "id")
-    )
-
-
 def home(request):
     if request.user.is_authenticated:
         if _needs_profile_completion(request.user):
@@ -878,94 +816,26 @@ def stringing_order_create(request):
 
 
 @login_required
-@require_http_methods(["GET", "POST"])
+@require_GET
 def stringing_order_list(request):
     survey_redirect = _require_schedule_survey(request)
     if survey_redirect:
         return survey_redirect
 
-    base_queryset = StringingOrder.objects.select_related("user", "assigned_coach").all()
+    queryset = StringingOrder.objects.select_related("user").all()
 
-    is_admin_mode = bool(getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False))
-    is_coach_mode = _is_coach_user(request.user)
+    if not _is_staff_like(request.user) and not _is_coach_user(request.user):
+        queryset = queryset.filter(user=request.user)
 
-    if is_admin_mode:
-        visible_queryset = base_queryset
-    elif is_coach_mode:
-        visible_queryset = base_queryset.filter(assigned_coach=request.user)
-    else:
-        visible_queryset = base_queryset.filter(user=request.user)
-
-    default_filter = "pending" if (is_admin_mode or is_coach_mode) else "all"
-    status_filter = (request.POST.get("status_filter") or request.GET.get("status_filter") or default_filter).strip()
-
-    if request.method == "POST":
-        if not (is_admin_mode or is_coach_mode):
-            return HttpResponse("Forbidden", status=403)
-
-        order_id = (request.POST.get("order_id") or "").strip()
-        new_status = (request.POST.get("new_status") or "").strip()
-        valid_statuses = {value for value, _label in _stringing_status_choices()}
-
-        target_order = visible_queryset.filter(pk=order_id).first()
-        if not target_order:
-            messages.error(request, "対象のガット張り依頼が見つかりません。")
-        elif not _stringing_can_manage(request.user, target_order):
-            messages.error(request, "この依頼の状況を更新する権限がありません。")
-        elif new_status not in valid_statuses:
-            messages.error(request, "更新先の状況が不正です。")
-        else:
-            target_order.status = new_status
-            target_order.save(update_fields=["status", "updated_at"])
-            messages.success(request, f"依頼状況を「{_stringing_status_label(new_status)}」に更新しました。")
-
-        return redirect(f"{reverse('club:stringing_order_list')}?status_filter={status_filter}")
-
-    filtered_queryset = visible_queryset
-    if status_filter == "pending":
-        filtered_queryset = filtered_queryset.filter(status__in=list(STRINGING_PENDING_STATUSES))
-    elif status_filter in {value for value, _label in _stringing_status_choices()}:
-        filtered_queryset = filtered_queryset.filter(status=status_filter)
-    else:
-        status_filter = "all"
-
-    all_visible_orders = list(visible_queryset.order_by("-created_at", "-id"))
-    stringing_orders = list(filtered_queryset.order_by("-created_at", "-id"))
-
-    status_counts = {
-        "all": len(all_visible_orders),
-        "pending": len([order for order in all_visible_orders if order.status in STRINGING_PENDING_STATUSES]),
-    }
-    for value, _label in _stringing_status_choices():
-        status_counts[value] = len([order for order in all_visible_orders if order.status == value])
-
-    order_rows = []
-    for order in stringing_orders:
-        preferred_finish_date = ""
-        if not order.delivery_requested and getattr(order, "preferred_delivery_time", ""):
-            preferred_finish_date = str(order.preferred_delivery_time or "")
-
-        order_rows.append(
-            {
-                "order": order,
-                "status_label": _stringing_status_label(order.status),
-                "can_manage": _stringing_can_manage(request.user, order),
-                "preferred_finish_date": preferred_finish_date,
-            }
-        )
+    queryset = queryset.order_by("-created_at", "-id")
 
     return render(
         request,
         "stringing/list.html",
         {
-            "stringing_orders": stringing_orders,
-            "order_rows": order_rows,
+            "stringing_orders": queryset,
             "stringing_base_price": 1200,
             "stringing_delivery_fee": 500,
-            "status_filter": status_filter,
-            "status_counts": status_counts,
-            "stringing_status_choices": _stringing_status_choices(),
-            "is_stringing_manage_mode": bool(is_admin_mode or is_coach_mode),
         },
     )
 
@@ -1633,19 +1503,6 @@ def coach_payroll_summary(request):
         if assigned_coach and getattr(assigned_coach, "role", "") == "coach":
             active_coach_ids.add(assigned_coach.pk)
 
-    stringing_order_qs = (
-        StringingOrder.objects.filter(
-            created_at__date__gte=month_start,
-            created_at__date__lt=next_month,
-        )
-        .select_related("user", "assigned_coach")
-        .order_by("-created_at", "-id")
-    )
-
-    for order in stringing_order_qs:
-        if order.assigned_coach_id and getattr(order.assigned_coach, "role", "") == "coach":
-            active_coach_ids.add(order.assigned_coach_id)
-
     if not active_coach_ids:
         active_coach_ids = set(coach_queryset.values_list("pk", flat=True))
 
@@ -1739,43 +1596,16 @@ def coach_payroll_summary(request):
                 }
             )
 
-    monthly_stringing_rows = list(stringing_order_qs)
-    total_stringing_amount = sum([int(order.total_price()) for order in monthly_stringing_rows])
+    stringing_order_qs = StringingOrder.objects.filter(
+        created_at__date__gte=month_start,
+        created_at__date__lt=next_month,
+    ).order_by("-created_at", "-id")
 
-    assigned_stringing_rows = []
-    assigned_stringing_amount = 0
-    stringing_status_map = {}
-    stringing_delivery_map = {"delivery": {"count": 0, "amount": 0}, "lesson": {"count": 0, "amount": 0}}
+    stringing_rows = list(stringing_order_qs)
+    total_stringing_amount = sum([int(order.total_price()) for order in stringing_rows])
+    per_coach_stringing_amount = int(total_stringing_amount / active_coach_count) if active_coach_count > 0 else 0
 
-    if selected_coach:
-        for order in monthly_stringing_rows:
-            if order.assigned_coach_id == selected_coach.pk:
-                amount = int(order.total_price() or 0)
-                assigned_stringing_amount += amount
-
-                status_key = str(order.status or "")
-                stringing_status_map.setdefault(status_key, {"count": 0, "amount": 0})
-                stringing_status_map[status_key]["count"] += 1
-                stringing_status_map[status_key]["amount"] += amount
-
-                delivery_key = "delivery" if order.delivery_requested else "lesson"
-                stringing_delivery_map[delivery_key]["count"] += 1
-                stringing_delivery_map[delivery_key]["amount"] += amount
-
-                assigned_stringing_rows.append(
-                    {
-                        "order": order,
-                        "status_label": _stringing_status_label(order.status),
-                        "delivery_label": "デリバリー" if order.delivery_requested else "レッスン受け渡し",
-                        "preferred_label": (
-                            str(order.preferred_delivery_time or "")
-                            if not order.delivery_requested
-                            else ""
-                        ),
-                    }
-                )
-
-    total_amount = lesson_total_amount + assigned_stringing_amount
+    total_amount = lesson_total_amount + per_coach_stringing_amount
     estimated_salary = total_amount - per_coach_expense
 
     category_totals = {}
@@ -1792,32 +1622,6 @@ def coach_payroll_summary(request):
                 "amount": amount,
             }
         )
-
-    stringing_status_rows = []
-    for value, label in _stringing_status_choices():
-        summary = stringing_status_map.get(value, {"count": 0, "amount": 0})
-        stringing_status_rows.append(
-            {
-                "label": label,
-                "count": summary["count"],
-                "amount": summary["amount"],
-            }
-        )
-
-    stringing_delivery_rows = [
-        {
-            "label": "デリバリーあり",
-            "count": stringing_delivery_map["delivery"]["count"],
-            "amount": stringing_delivery_map["delivery"]["amount"],
-        },
-        {
-            "label": "レッスン受け渡し / デリバリーなし",
-            "count": stringing_delivery_map["lesson"]["count"],
-            "amount": stringing_delivery_map["lesson"]["amount"],
-        },
-    ]
-
-    unassigned_stringing_count = len([order for order in monthly_stringing_rows if not order.assigned_coach_id])
 
     prev_year = selected_year
     prev_month = selected_month - 1
@@ -1850,19 +1654,117 @@ def coach_payroll_summary(request):
             "reservation_rows": reservation_rows,
             "expense_rows": expense_rows,
             "category_rows": category_rows,
-            "stringing_rows": assigned_stringing_rows,
-            "stringing_status_rows": stringing_status_rows,
-            "stringing_delivery_rows": stringing_delivery_rows,
+            "stringing_rows": stringing_rows,
             "total_tickets": total_tickets,
             "lesson_total_amount": lesson_total_amount,
             "total_stringing_amount": total_stringing_amount,
-            "assigned_stringing_amount": assigned_stringing_amount,
+            "per_coach_stringing_amount": per_coach_stringing_amount,
             "total_amount": total_amount,
             "total_expense_amount": total_expense_amount,
             "active_coach_count": active_coach_count,
             "per_coach_expense": per_coach_expense,
             "estimated_salary": estimated_salary,
-            "unassigned_stringing_count": unassigned_stringing_count,
+        },
+    )
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def coach_expense_manage(request):
+    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
+        return HttpResponse("Forbidden", status=403)
+
+    is_admin_mode = bool(getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False))
+    visible_queryset = CoachExpense.objects.all().order_by("-expense_date", "-id")
+    if not is_admin_mode:
+        visible_queryset = visible_queryset.filter(created_by=request.user)
+
+    if request.method == "POST":
+        raw_expense_date = (request.POST.get("expense_date") or "").strip()
+        raw_category = (request.POST.get("category") or "").strip()
+        raw_amount = (request.POST.get("amount") or "").strip()
+        raw_note = (request.POST.get("note") or "").strip()
+
+        valid_categories = {value for value, _label in CoachExpense.CATEGORY_CHOICES}
+
+        try:
+            expense_date_value = date.fromisoformat(raw_expense_date) if raw_expense_date else timezone.localdate()
+        except Exception:
+            messages.error(request, "経費日付の形式が正しくありません。")
+            return redirect("club:coach_expense_manage")
+
+        try:
+            amount_value = int(raw_amount or "0")
+        except Exception:
+            messages.error(request, "金額は整数で入力してください。")
+            return redirect("club:coach_expense_manage")
+
+        if raw_category not in valid_categories:
+            messages.error(request, "経費カテゴリが不正です。")
+            return redirect("club:coach_expense_manage")
+
+        if amount_value < 0:
+            messages.error(request, "金額は0円以上で入力してください。")
+            return redirect("club:coach_expense_manage")
+
+        try:
+            expense = CoachExpense(
+                expense_date=expense_date_value,
+                category=raw_category,
+                amount=amount_value,
+                note=raw_note,
+                created_by=request.user,
+            )
+            expense.full_clean()
+            expense.save()
+            messages.success(request, "経費を登録しました。")
+        except ValidationError as e:
+            if hasattr(e, "messages"):
+                for message_text in e.messages:
+                    messages.error(request, message_text)
+            else:
+                messages.error(request, "経費を登録できませんでした。")
+        except Exception as e:
+            messages.error(request, f"経費を登録できませんでした: {e}")
+
+        return redirect("club:coach_expense_manage")
+
+    today = timezone.localdate()
+    month_start = today.replace(day=1)
+    if today.month == 12:
+        next_month = date(today.year + 1, 1, 1)
+    else:
+        next_month = date(today.year, today.month + 1, 1)
+
+    current_month_queryset = visible_queryset.filter(expense_date__gte=month_start, expense_date__lt=next_month)
+    current_month_total = sum(int(obj.amount or 0) for obj in current_month_queryset)
+
+    category_totals = {}
+    for expense in current_month_queryset:
+        label = expense.get_category_display()
+        category_totals.setdefault(label, 0)
+        category_totals[label] += int(expense.amount or 0)
+
+    category_rows = [
+        {
+            "label": label,
+            "amount": amount,
+        }
+        for label, amount in sorted(category_totals.items(), key=lambda x: x[0])
+    ]
+
+    recent_expenses = list(visible_queryset[:30])
+
+    return render(
+        request,
+        "coach/expense_form.html",
+        {
+            "recent_expenses": recent_expenses,
+            "expense_category_choices": CoachExpense.CATEGORY_CHOICES,
+            "current_month_total": current_month_total,
+            "category_rows": category_rows,
+            "today_value": today.isoformat(),
+            "is_admin_mode": is_admin_mode,
         },
     )
 
@@ -2429,110 +2331,16 @@ def reservation_cancel(request, pk):
 
 
 @login_required
-@require_http_methods(["GET", "POST"])
+@require_GET
 def coach_availability_list(request):
     _sync_fixed_lessons()
-
-    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
-        return HttpResponse("Forbidden", status=403)
-
-    if request.method == "POST":
-        action = (request.POST.get("action") or "").strip()
-
-        if action == "rain_cancel_slot":
-            availability_id = (request.POST.get("availability_id") or "").strip()
-            availability = get_object_or_404(
-                CoachAvailability.objects.select_related("coach", "substitute_coach", "court"),
-                pk=availability_id,
-            )
-
-            if not _availability_can_manage(request.user, availability):
-                return HttpResponse("Forbidden", status=403)
-
-            active_reservations = _active_reservations_for_availability(availability)
-            if not active_reservations:
-                messages.warning(request, "この時間枠に雨天中止対象の予約はありません。")
-                return redirect("club:coach_availability_list")
-
-            canceled_count = 0
-            for reservation in active_reservations:
-                try:
-                    with transaction.atomic():
-                        succeeded = reservation.mark_rain_canceled(
-                            created_by=request.user,
-                            reason="雨天中止（スケジュール管理から実行）",
-                        )
-                    if succeeded:
-                        canceled_count += 1
-                        member_message = build_reservation_rain_canceled_message(reservation)
-                        _send_line_notification_safely(reservation.user, member_message)
-                except Exception:
-                    continue
-
-            if canceled_count > 0:
-                messages.success(
-                    request,
-                    f"雨天中止を実行しました。対象予約 {canceled_count} 件を中止し、会員へ通知しました。"
-                )
-            else:
-                messages.warning(request, "雨天中止の対象予約はありませんでした。")
-
-            return redirect("club:coach_availability_list")
-
-        if action == "create_expense":
-            expense_date_raw = (request.POST.get("expense_date") or "").strip()
-            category = (request.POST.get("category") or "").strip()
-            amount_raw = (request.POST.get("amount") or "").strip()
-            note = (request.POST.get("note") or "").strip()
-
-            try:
-                expense_date = datetime.strptime(expense_date_raw, "%Y-%m-%d").date() if expense_date_raw else timezone.localdate()
-            except Exception:
-                messages.error(request, "経費日付の形式が不正です。")
-                return redirect("club:coach_availability_list")
-
-            valid_categories = {value for value, _label in CoachExpense.CATEGORY_CHOICES}
-            if category not in valid_categories:
-                messages.error(request, "経費カテゴリが不正です。")
-                return redirect("club:coach_availability_list")
-
-            try:
-                amount = int(amount_raw)
-            except Exception:
-                messages.error(request, "金額は整数で入力してください。")
-                return redirect("club:coach_availability_list")
-
-            expense = CoachExpense(
-                expense_date=expense_date,
-                category=category,
-                amount=amount,
-                note=note,
-                created_by=request.user,
-            )
-            try:
-                expense.full_clean()
-                expense.save()
-                messages.success(request, "経費を登録しました。")
-            except ValidationError as e:
-                if hasattr(e, "messages"):
-                    for message_text in e.messages:
-                        messages.error(request, message_text)
-                else:
-                    messages.error(request, "経費を登録できませんでした。")
-            except Exception as e:
-                messages.error(request, f"経費登録に失敗しました: {e}")
-
-            return redirect("club:coach_availability_list")
-
-        messages.error(request, "不正な操作です。")
-        return redirect("club:coach_availability_list")
 
     qs = CoachAvailability.objects.select_related("coach", "substitute_coach", "court").all()
 
     if _is_coach_user(request.user):
         qs = qs.filter(coach=request.user)
 
-    availabilities = list(qs.order_by("start_at"))
+    qs = qs.order_by("start_at")
 
     pending_qs = (
         Reservation.objects.select_related("user", "coach", "substitute_coach", "court")
@@ -2545,46 +2353,21 @@ def coach_availability_list(request):
 
     if _is_staff_like(request.user) and not _is_coach_user(request.user):
         pending_reservations = list(pending_qs)
-        expense_qs = CoachExpense.objects.select_related("created_by").all()
-    else:
+    elif _is_coach_user(request.user):
         pending_reservations = [
             reservation
             for reservation in pending_qs
             if reservation.coach_id == request.user.pk or getattr(reservation, "substitute_coach_id", None) == request.user.pk
         ]
-        expense_qs = CoachExpense.objects.select_related("created_by").filter(created_by=request.user)
-
-    availability_rows = []
-    for availability in availabilities:
-        active_reservations = _active_reservations_for_availability(availability)
-        availability_rows.append(
-            {
-                "availability": availability,
-                "active_reservation_count": len(active_reservations),
-                "can_rain_cancel": _availability_can_manage(request.user, availability) and len(active_reservations) > 0,
-            }
-        )
-
-    today = timezone.localdate()
-    month_start, next_month = _month_start_end(today.year, today.month)
-    monthly_expenses = list(
-        expense_qs.filter(expense_date__gte=month_start, expense_date__lt=next_month).order_by("-expense_date", "-id")
-    )
-    recent_expenses = list(expense_qs.order_by("-expense_date", "-id")[:10])
-    monthly_expense_total = sum(int(obj.amount or 0) for obj in monthly_expenses)
+    else:
+        return HttpResponse("Forbidden", status=403)
 
     return render(
         request,
         "coach/availability_list.html",
         {
-            "availabilities": availabilities,
-            "availability_rows": availability_rows,
+            "availabilities": qs,
             "pending_reservations": pending_reservations,
-            "expense_category_choices": CoachExpense.CATEGORY_CHOICES,
-            "expense_today": today,
-            "recent_expenses": recent_expenses,
-            "monthly_expense_total": monthly_expense_total,
-            "monthly_expense_label": f"{today.year}年{today.month}月",
         },
     )
 
