@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}物販申込確認{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title">物販申込確認</h1>
+    <p class="page-subtitle">申込内容を確認できます。必要があれば同内容を再利用して、別の見積もりもすぐ作れます。</p>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h2 class="card-title">申込サマリー</h2>
+      <table style="margin-top:12px;">
+        <tbody>
+          <tr>
+            <th>申込ID</th>
+            <td>{{ shop_request.id }}</td>
+          </tr>
+          <tr>
+            <th>申込日時</th>
+            <td>{{ shop_request.created_at|date:"Y-m-d H:i" }}</td>
+          </tr>
+          <tr>
+            <th>カテゴリ</th>
+            <td>{{ shop_request.get_product_category_display }}</td>
+          </tr>
+          <tr>
+            <th>ブランド</th>
+            <td>{{ shop_request.get_brand_display }}</td>
+          </tr>
+          <tr>
+            <th>メイン商品</th>
+            <td>{{ shop_request.main_product_name|default:shop_request.main_keyword|default:"-" }}</td>
+          </tr>
+          <tr>
+            <th>メイン商品定価</th>
+            <td>{{ shop_request.main_official_price }}円</td>
+          </tr>
+          <tr>
+            <th>メイン商品販売価格</th>
+            <td>{{ shop_request.main_sale_price }}円</td>
+          </tr>
+          <tr>
+            <th>ガット</th>
+            <td>{{ shop_request.get_string_source_display }}</td>
+          </tr>
+          {% if shop_request.string_source == "official" %}
+            <tr>
+              <th>ガット商品</th>
+              <td>{{ shop_request.string_product_name|default:shop_request.string_keyword|default:"-" }}</td>
+            </tr>
+            <tr>
+              <th>ガット定価</th>
+              <td>{{ shop_request.string_official_price }}円</td>
+            </tr>
+            <tr>
+              <th>ガット販売価格</th>
+              <td>{{ shop_request.string_sale_price }}円</td>
+            </tr>
+          {% endif %}
+          <tr>
+            <th>ガット張り</th>
+            <td>{% if shop_request.request_stringing %}依頼する{% else %}依頼しない{% endif %}</td>
+          </tr>
+          {% if shop_request.request_stringing %}
+            <tr>
+              <th>張り上げテンション</th>
+              <td>{{ shop_request.tension_lbs }} lbs</td>
+            </tr>
+            <tr>
+              <th>ガット張り料金</th>
+              <td>{{ shop_request.stringing_fee }}円</td>
+            </tr>
+          {% endif %}
+          <tr>
+            <th>合計目安</th>
+            <td><strong>{{ shop_request.estimated_total }}円</strong></td>
+          </tr>
+          <tr>
+            <th>備考</th>
+            <td>{{ shop_request.note|default:"-" }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">次の操作</h2>
+      <div class="section-note">
+        申込は保存済みです。正式な商品画像・価格確認は、必ず各ブランドの公式ページで行ってください。
+      </div>
+
+      <div class="spacer-16"></div>
+
+      <div class="actions">
+        <a href="{% url 'club:shop_estimate' %}?copy_from={{ shop_request.id }}" class="btn btn-primary">この内容で再見積もり</a>
+        <a href="{% url 'club:shop_estimate' %}" class="btn">新しく見積もる</a>
+      </div>
+
+      <div class="spacer-16"></div>
+
+      <h3 style="margin:0 0 10px;">確認ポイント</h3>
+      <ul class="clean" style="line-height:1.9;">
+        <li>商品名と品番が公式ページと一致しているか</li>
+        <li>税込定価が公式ページ記載と一致しているか</li>
+        <li>ガット張り有無とテンション指定が正しいか</li>
+        <li>受け渡しや希望事項が備考に入っているか</li>
+      </ul>
+    </div>
+  </div>
+{% endblock %}
