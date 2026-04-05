@@ -15,6 +15,7 @@ from .models import (
     LineAccountLink,
     Reservation,
     ScheduleSurveyResponse,
+    ShopEstimateRequest,
     StringingOrder,
     TicketConsumption,
     TicketLedger,
@@ -586,3 +587,29 @@ class ScheduleSurveyResponseAdmin(admin.ModelAdmin):
         "free_comment",
     )
     readonly_fields = ("answered_at", "created_at", "updated_at")
+
+@admin.register(ShopEstimateRequest)
+class ShopEstimateRequestAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "user",
+        "product_category",
+        "brand",
+        "main_product_name",
+        "main_official_price",
+        "string_source",
+        "request_stringing",
+        "tension_lbs",
+        "created_at",
+    )
+    list_filter = ("product_category", "brand", "string_source", "request_stringing", "created_at")
+    search_fields = (
+        "user__username",
+        "user__full_name",
+        "main_keyword",
+        "main_product_name",
+        "string_keyword",
+        "string_product_name",
+        "note",
+    )
+    readonly_fields = ("created_at", "updated_at")
