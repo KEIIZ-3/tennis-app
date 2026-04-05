@@ -39,6 +39,7 @@ from .models import (
     LineAccountLink,
     Reservation,
     ScheduleSurveyResponse,
+    ShopEstimateRequest,
     StringingOrder,
     TicketConsumption,
     TicketLedger,
@@ -2938,3 +2939,203 @@ def line_webhook(request):
                 pass
 
     return HttpResponse("OK")
+
+
+
+def _shop_brand_label_map():
+    return dict(ShopEstimateRequest.BRAND_CHOICES)
+
+
+
+def _shop_brand_search_links(brand_value, keyword):
+    keyword = (keyword or "").strip()
+    if not keyword:
+        return []
+
+    encoded = urllib.parse.quote(keyword)
+    links = {
+        ShopEstimateRequest.BRAND_YONEX: [
+            {
+                "label": "YONEX 公式サイトで検索",
+                "url": f"https://www.yonex.co.jp/search/?keyword={encoded}",
+            }
+        ],
+        ShopEstimateRequest.BRAND_WILSON: [
+            {
+                "label": "Wilson 公式サイトで検索",
+                "url": f"https://jp.wilson.com/search?q={encoded}",
+            }
+        ],
+        ShopEstimateRequest.BRAND_BABOLAT: [
+            {
+                "label": "Babolat 公式サイトで検索",
+                "url": f"https://www.babolat.com/jp/search?cgid=root&prefn1=country&prefv1=JP&q={encoded}",
+            }
+        ],
+        ShopEstimateRequest.BRAND_HEAD: [
+            {
+                "label": "HEAD 公式サイトで検索",
+                "url": f"https://www.head.com/ja_JP/search/{encoded}",
+            }
+        ],
+        ShopEstimateRequest.BRAND_PRINCE: [
+            {
+                "label": "Prince 公式サイトで検索",
+                "url": f"https://prince.co.jp/tennis/search/?q={encoded}",
+            }
+        ],
+        ShopEstimateRequest.BRAND_DUNLOP: [
+            {
+                "label": "DUNLOP 公式サイトで検索",
+                "url": f"https://sports.dunlop.co.jp/tennis/search/?keyword={encoded}",
+            }
+        ],
+        ShopEstimateRequest.BRAND_TECHNIFIBRE: [
+            {
+                "label": "Tecnifibre 公式サイトで検索",
+                "url": f"https://www.tecnifibre.com/en/search?text={encoded}",
+            }
+        ],
+        ShopEstimateRequest.BRAND_OTHER: [],
+    }
+    return links.get(brand_value, [])
+
+
+
+def _safe_int(value, default=0):
+    try:
+        return int(str(value).replace(',', '').strip() or default)
+    except Exception:
+        return default
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def shop_estimate_view(request):
+    profile_redirect = _require_profile_completed_for_booking(request)
+    if profile_redirect:
+        return profile_redirect
+
+    survey_redirect = _require_schedule_survey(request)
+    if survey_redirect:
+        return survey_redirect
+
+    brand_choices = list(ShopEstimateRequest.BRAND_CHOICES)
+    category_choices = list(ShopEstimateRequest.CATEGORY_CHOICES)
+    string_source_choices = list(ShopEstimateRequest.STRING_SOURCE_CHOICES)
+    tension_choices = [(value, f"{value} lbs") for value in range(30, 61)]
+    brand_label_map = _shop_brand_label_map()
+
+    form_data = {
+        "product_category": ShopEstimateRequest.CATEGORY_RACKET,
+        "brand": ShopEstimateRequest.BRAND_YONEX,
+        "main_keyword": "",
+        "main_product_name": "",
+        "main_official_price": "",
+        "string_source": ShopEstimateRequest.STRING_SOURCE_NONE,
+        "string_keyword": "",
+        "string_product_name": "",
+        "string_official_price": "",
+        "request_stringing": "0",
+        "tension_lbs": "50",
+        "note": "",
+    }
+    estimate_result = None
+    saved_request = None
+    official_links = []
+    page_error = ""
+
+    if request.method == "POST":
+        form_data = {
+            "product_category": (request.POST.get("product_category") or ShopEstimateRequest.CATEGORY_RACKET).strip(),
+            "brand": (request.POST.get("brand") or ShopEstimateRequest.BRAND_YONEX).strip(),
+            "main_keyword": (request.POST.get("main_keyword") or "").strip(),
+            "main_product_name": (request.POST.get("main_product_name") or "").strip(),
+            "main_official_price": (request.POST.get("main_official_price") or "").strip(),
+            "string_source": (request.POST.get("string_source") or ShopEstimateRequest.STRING_SOURCE_NONE).strip(),
+            "string_keyword": (request.POST.get("string_keyword") or "").strip(),
+            "string_product_name": (request.POST.get("string_product_name") or "").strip(),
+            "string_official_price": (request.POST.get("string_official_price") or "").strip(),
+            "request_stringing": "1" if (request.POST.get("request_stringing") or "") in ("1", "true", "on") else "0",
+            "tension_lbs": (request.POST.get("tension_lbs") or "50").strip(),
+            "note": (request.POST.get("note") or "").strip(),
+        }
+
+        main_official_price = _safe_int(form_data["main_official_price"], 0)
+        string_official_price = _safe_int(form_data["string_official_price"], 0)
+        request_stringing = form_data["request_stringing"] == "1"
+        tension_lbs = _safe_int(form_data["tension_lbs"], 50) if request_stringing else None
+
+        official_links = _shop_brand_search_links(form_data["brand"], form_data["main_keyword"])
+        if form_data["string_source"] == ShopEstimateRequest.STRING_SOURCE_OFFICIAL and form_data["string_keyword"]:
+            official_links += _shop_brand_search_links(form_data["brand"], form_data["string_keyword"])
+
+        if main_official_price <= 0:
+            page_error = "商品定価を入力してください。"
+        elif request_stringing and (tension_lbs is None or tension_lbs < 30 or tension_lbs > 60):
+            page_error = "張り上げテンションは30〜60lbsで指定してください。"
+        elif form_data["string_source"] == ShopEstimateRequest.STRING_SOURCE_OFFICIAL and string_official_price <= 0:
+            page_error = "ガットも購入する場合は、ガット定価を入力してください。"
+        else:
+            main_sale_price = ShopEstimateRequest.sale_price_from_list_price(main_official_price)
+            string_sale_price = ShopEstimateRequest.sale_price_from_list_price(string_official_price)
+            stringing_fee = 1200 if request_stringing else 0
+            estimate_result = {
+                "brand_label": brand_label_map.get(form_data["brand"], form_data["brand"]),
+                "category_label": dict(category_choices).get(form_data["product_category"], form_data["product_category"]),
+                "main_product_name": form_data["main_product_name"],
+                "main_keyword": form_data["main_keyword"],
+                "main_official_price": main_official_price,
+                "main_sale_price": main_sale_price,
+                "string_source_label": dict(string_source_choices).get(form_data["string_source"], form_data["string_source"]),
+                "string_product_name": form_data["string_product_name"],
+                "string_keyword": form_data["string_keyword"],
+                "string_official_price": string_official_price,
+                "string_sale_price": string_sale_price,
+                "request_stringing": request_stringing,
+                "tension_lbs": tension_lbs,
+                "stringing_fee": stringing_fee,
+                "estimated_total": main_sale_price + string_sale_price + stringing_fee,
+            }
+
+            if (request.POST.get("action") or "") == "purchase":
+                try:
+                    saved_request = ShopEstimateRequest.objects.create(
+                        user=request.user,
+                        product_category=form_data["product_category"],
+                        brand=form_data["brand"],
+                        main_keyword=form_data["main_keyword"],
+                        main_product_name=form_data["main_product_name"],
+                        main_official_price=main_official_price,
+                        string_source=form_data["string_source"],
+                        string_keyword=form_data["string_keyword"],
+                        string_product_name=form_data["string_product_name"],
+                        string_official_price=string_official_price,
+                        request_stringing=request_stringing,
+                        tension_lbs=tension_lbs,
+                        note=form_data["note"],
+                    )
+                    messages.success(request, "物販の購入申込を受け付けました。管理画面から内容を確認できます。")
+                except Exception as e:
+                    page_error = f"購入申込の保存に失敗しました: {e}"
+
+    if request.method == "GET":
+        official_links = _shop_brand_search_links(form_data["brand"], form_data["main_keyword"])
+
+    return render(
+        request,
+        "shop/estimate.html",
+        {
+            "brand_choices": brand_choices,
+            "category_choices": category_choices,
+            "string_source_choices": string_source_choices,
+            "tension_choices": tension_choices,
+            "form_data": form_data,
+            "estimate_result": estimate_result,
+            "official_links": official_links,
+            "page_error": page_error,
+            "saved_request": saved_request,
+            "stringing_fee": 1200,
+        },
+    )
+
