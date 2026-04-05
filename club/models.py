@@ -1662,3 +1662,123 @@ class LineAccountLink(models.Model):
 
     def __str__(self):
         return f"{self.user.username} <-> {self.line_user_id}"
+
+
+class ShopEstimateRequest(models.Model):
+    CATEGORY_RACKET = "racket"
+    CATEGORY_STRING = "string"
+    CATEGORY_ACCESSORY = "accessory"
+
+    CATEGORY_CHOICES = (
+        (CATEGORY_RACKET, "ラケット"),
+        (CATEGORY_STRING, "ガット"),
+        (CATEGORY_ACCESSORY, "アクセサリ"),
+    )
+
+    STRING_SOURCE_OFFICIAL = "official"
+    STRING_SOURCE_BRING_IN = "bring_in"
+    STRING_SOURCE_NONE = "none"
+
+    STRING_SOURCE_CHOICES = (
+        (STRING_SOURCE_OFFICIAL, "ガットも購入する"),
+        (STRING_SOURCE_BRING_IN, "ガット持ち込み"),
+        (STRING_SOURCE_NONE, "ガット不要"),
+    )
+
+    BRAND_YONEX = "yonex"
+    BRAND_WILSON = "wilson"
+    BRAND_BABOLAT = "babolat"
+    BRAND_HEAD = "head"
+    BRAND_PRINCE = "prince"
+    BRAND_DUNLOP = "dunlop"
+    BRAND_TECHNIFIBRE = "tecnifibre"
+    BRAND_OTHER = "other"
+
+    BRAND_CHOICES = (
+        (BRAND_YONEX, "YONEX"),
+        (BRAND_WILSON, "Wilson"),
+        (BRAND_BABOLAT, "Babolat"),
+        (BRAND_HEAD, "HEAD"),
+        (BRAND_PRINCE, "Prince"),
+        (BRAND_DUNLOP, "DUNLOP"),
+        (BRAND_TECHNIFIBRE, "Tecnifibre"),
+        (BRAND_OTHER, "その他"),
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="shop_estimate_requests",
+    )
+    product_category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default=CATEGORY_RACKET)
+    brand = models.CharField(max_length=30, choices=BRAND_CHOICES, default=BRAND_YONEX)
+    main_keyword = models.CharField(max_length=255, blank=True, default="")
+    main_product_name = models.CharField(max_length=255, blank=True, default="")
+    main_official_price = models.PositiveIntegerField(default=0)
+    string_source = models.CharField(max_length=20, choices=STRING_SOURCE_CHOICES, default=STRING_SOURCE_NONE)
+    string_keyword = models.CharField(max_length=255, blank=True, default="")
+    string_product_name = models.CharField(max_length=255, blank=True, default="")
+    string_official_price = models.PositiveIntegerField(default=0)
+    request_stringing = models.BooleanField(default=False)
+    tension_lbs = models.PositiveIntegerField(null=True, blank=True)
+    note = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "物販見積もり依頼"
+        verbose_name_plural = "物販見積もり依頼"
+
+    def __str__(self):
+        return f"{self.user} / {self.get_product_category_display()} / {self.main_product_name or self.main_keyword or '-'}"
+
+    def clean(self):
+        self.main_keyword = (self.main_keyword or "").strip()
+        self.main_product_name = (self.main_product_name or "").strip()
+        self.string_keyword = (self.string_keyword or "").strip()
+        self.string_product_name = (self.string_product_name or "").strip()
+        self.note = (self.note or "").strip()
+
+        if self.main_official_price < 0:
+            raise ValidationError("商品定価は0円以上にしてください。")
+
+        if self.string_official_price < 0:
+            raise ValidationError("ガット定価は0円以上にしてください。")
+
+        if self.string_source == self.STRING_SOURCE_OFFICIAL and self.string_official_price <= 0:
+            raise ValidationError("ガットも購入する場合は、ガット定価を入力してください。")
+
+        if self.string_source != self.STRING_SOURCE_OFFICIAL:
+            self.string_keyword = ""
+            self.string_product_name = ""
+            self.string_official_price = 0
+
+        if self.request_stringing:
+            if not self.tension_lbs:
+                self.tension_lbs = 50
+            if int(self.tension_lbs) < 30 or int(self.tension_lbs) > 60:
+                raise ValidationError("張り上げテンションは30〜60lbsで指定してください。")
+        else:
+            self.tension_lbs = None
+
+    @staticmethod
+    def sale_price_from_list_price(price):
+        return int(int(price or 0) * 0.8)
+
+    @property
+    def main_sale_price(self):
+        return self.sale_price_from_list_price(self.main_official_price)
+
+    @property
+    def string_sale_price(self):
+        return self.sale_price_from_list_price(self.string_official_price)
+
+    @property
+    def stringing_fee(self):
+        return 1200 if self.request_stringing else 0
+
+    @property
+    def estimated_total(self):
+        return int(self.main_sale_price) + int(self.string_sale_price) + int(self.stringing_fee)
+
