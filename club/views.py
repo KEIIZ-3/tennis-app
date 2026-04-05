@@ -3116,6 +3116,42 @@ def _shop_brand_search_links(brand_value, keyword, item_label="商品"):
     return links.get(brand_value, [])
 
 
+def _shop_brand_site_domain(brand_value):
+    domain_map = {
+        ShopEstimateRequest.BRAND_YONEX: "www.yonex.co.jp",
+        ShopEstimateRequest.BRAND_WILSON: "jp.wilson.com",
+        ShopEstimateRequest.BRAND_BABOLAT: "www.babolat.com",
+        ShopEstimateRequest.BRAND_HEAD: "www.head.com",
+        ShopEstimateRequest.BRAND_PRINCE: "prince.co.jp",
+        ShopEstimateRequest.BRAND_DUNLOP: "sports.dunlop.co.jp",
+        ShopEstimateRequest.BRAND_TECHNIFIBRE: "www.tecnifibre.com",
+    }
+    return domain_map.get(brand_value, "")
+
+
+
+def _shop_brand_assist_links(brand_value, keyword, item_label="商品"):
+    keyword = (keyword or "").strip()
+    if not keyword:
+        return []
+
+    domain = _shop_brand_site_domain(brand_value)
+    if not domain:
+        return []
+
+    query = urllib.parse.quote(f"site:{domain} {keyword}")
+    image_query = urllib.parse.quote(f"site:{domain} {keyword}")
+    return [
+        {
+            "label": f"公式ページを横断検索",
+            "url": f"https://www.google.com/search?q={query}",
+        },
+        {
+            "label": f"公式画像を確認",
+            "url": f"https://www.google.com/search?tbm=isch&q={image_query}",
+        },
+    ]
+
 
 def _safe_int(value, default=0):
     try:
@@ -3158,15 +3194,40 @@ def shop_estimate_view(request):
         "note": "",
     }
     estimate_result = None
-    saved_request = None
     page_error = ""
     main_official_links = []
     main_catalog_links = []
+    main_assist_links = []
     string_official_links = []
     string_catalog_links = []
+    string_assist_links = []
     recent_requests = list(
         ShopEstimateRequest.objects.filter(user=request.user).order_by("-created_at", "-id")[:5]
     )
+
+    reuse_id = (request.GET.get("copy_from") or "").strip()
+    if request.method == "GET" and reuse_id.isdigit():
+        reuse_obj = (
+            ShopEstimateRequest.objects.filter(user=request.user, pk=int(reuse_id))
+            .order_by("-id")
+            .first()
+        )
+        if reuse_obj:
+            form_data = {
+                "product_category": reuse_obj.product_category,
+                "brand": reuse_obj.brand,
+                "main_keyword": reuse_obj.main_keyword,
+                "main_product_name": reuse_obj.main_product_name,
+                "main_official_price": str(reuse_obj.main_official_price or ""),
+                "string_source": reuse_obj.string_source,
+                "string_keyword": reuse_obj.string_keyword,
+                "string_product_name": reuse_obj.string_product_name,
+                "string_official_price": str(reuse_obj.string_official_price or ""),
+                "request_stringing": "1" if reuse_obj.request_stringing else "0",
+                "tension_lbs": str(reuse_obj.tension_lbs or 50),
+                "note": reuse_obj.note,
+            }
+            messages.info(request, "過去の物販申込内容をフォームに再入力しました。必要に応じて修正してください。")
 
     if request.method == "POST":
         form_data = {
@@ -3191,9 +3252,11 @@ def shop_estimate_view(request):
 
         main_official_links = _shop_brand_search_links(form_data["brand"], form_data["main_keyword"], item_label="商品")
         main_catalog_links = _shop_brand_catalog_links(form_data["brand"], form_data["product_category"])
+        main_assist_links = _shop_brand_assist_links(form_data["brand"], form_data["main_keyword"], item_label="商品")
         if form_data["string_source"] == ShopEstimateRequest.STRING_SOURCE_OFFICIAL:
             string_official_links = _shop_brand_search_links(form_data["brand"], form_data["string_keyword"], item_label="ガット")
             string_catalog_links = _shop_brand_catalog_links(form_data["brand"], ShopEstimateRequest.CATEGORY_STRING)
+            string_assist_links = _shop_brand_assist_links(form_data["brand"], form_data["string_keyword"], item_label="ガット")
 
         if main_official_price <= 0:
             page_error = "商品定価を入力してください。"
@@ -3245,16 +3308,19 @@ def shop_estimate_view(request):
                         tension_lbs=tension_lbs,
                         note=form_data["note"],
                     )
-                    recent_requests = list(
-                        ShopEstimateRequest.objects.filter(user=request.user).order_by("-created_at", "-id")[:5]
-                    )
-                    messages.success(request, "物販の購入申込を受け付けました。管理画面から内容を確認できます。")
+                    messages.success(request, "物販の購入申込を受け付けました。内容確認ページを表示しています。")
+                    return redirect("club:shop_estimate_complete", pk=saved_request.pk)
                 except Exception as e:
                     page_error = f"購入申込の保存に失敗しました: {e}"
 
     if request.method == "GET":
         main_catalog_links = _shop_brand_catalog_links(form_data["brand"], form_data["product_category"])
         main_official_links = _shop_brand_search_links(form_data["brand"], form_data["main_keyword"], item_label="商品")
+        main_assist_links = _shop_brand_assist_links(form_data["brand"], form_data["main_keyword"], item_label="商品")
+        if form_data["string_source"] == ShopEstimateRequest.STRING_SOURCE_OFFICIAL:
+            string_catalog_links = _shop_brand_catalog_links(form_data["brand"], ShopEstimateRequest.CATEGORY_STRING)
+            string_official_links = _shop_brand_search_links(form_data["brand"], form_data["string_keyword"], item_label="ガット")
+            string_assist_links = _shop_brand_assist_links(form_data["brand"], form_data["string_keyword"], item_label="ガット")
 
     return render(
         request,
@@ -3268,10 +3334,11 @@ def shop_estimate_view(request):
             "estimate_result": estimate_result,
             "main_official_links": main_official_links,
             "main_catalog_links": main_catalog_links,
+            "main_assist_links": main_assist_links,
             "string_official_links": string_official_links,
             "string_catalog_links": string_catalog_links,
+            "string_assist_links": string_assist_links,
             "page_error": page_error,
-            "saved_request": saved_request,
             "stringing_fee": 1200,
             "recent_requests": recent_requests,
             "string_source_none": ShopEstimateRequest.STRING_SOURCE_NONE,
@@ -3280,3 +3347,16 @@ def shop_estimate_view(request):
         },
     )
 
+
+@login_required
+@require_GET
+def shop_estimate_complete_view(request, pk):
+    shop_request = get_object_or_404(ShopEstimateRequest, pk=pk, user=request.user)
+
+    return render(
+        request,
+        "shop/complete.html",
+        {
+            "shop_request": shop_request,
+        },
+    )
