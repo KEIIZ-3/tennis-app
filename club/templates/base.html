@@ -274,7 +274,6 @@
               <a href="{% url 'club:coach_availability_list' %}">スケジュール管理</a>
               <a href="{% url 'club:coach_ticket_summary' %}">チケット集計</a>
               <a href="{% url 'club:coach_payroll_summary' %}">給与計算</a>
-              <a href="{% url 'club:coach_availability_list' %}">経費登録</a>
               <a href="{% url 'club:stringing_order_list' %}">ガット貼り一覧</a>
             {% endif %}
 
@@ -311,6 +310,9 @@
           </a>
           <a href="{% url 'club:coach_payroll_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_payroll_summary' %}active{% endif %}">
             給与計算
+          </a>
+          <a href="{% url 'club:coach_expense_manage' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_expense_manage' %}active{% endif %}">
+            経費登録
           </a>
           <a href="{% url 'club:schedule_survey_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'schedule_survey_summary' %}active{% endif %}">
             アンケート集計
