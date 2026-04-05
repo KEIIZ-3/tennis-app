@@ -5,7 +5,7 @@
   <div class="page-head">
     <h1 class="page-title">物販見積もり</h1>
     <p class="page-subtitle">
-      第1段階として、見積もり作成と購入申込の土台を追加しています。定価の80％で販売価格を計算します。
+      ブランド公式サイトを確認しながら、ラケット・ガット・アクセサリの見積もりを作成できます。販売価格は定価の80％で計算します。
     </p>
   </div>
 
@@ -16,7 +16,7 @@
   <div class="grid-2">
     <div class="card">
       <h2 class="card-title">見積もり入力</h2>
-      <p class="card-subtitle">商品名と定価を入れると、その場で見積もりを出せます。</p>
+      <p class="card-subtitle">公式サイトの商品価格を見ながら入力してください。見積もりだけ出すことも、購入申込まで進むこともできます。</p>
 
       <form method="post">
         {% csrf_token %}
@@ -42,7 +42,7 @@
         <p>
           <label for="id_main_keyword">商品検索キーワード</label>
           <input type="text" name="main_keyword" id="id_main_keyword" value="{{ form_data.main_keyword }}" placeholder="例: EZONE 100 / PURE DRIVE / SHIFT 99">
-          <div class="muted" style="font-size:13px; margin-top:6px;">このキーワードをもとに、下に公式サイト検索リンクを出します。</div>
+          <div class="muted" style="font-size:13px; margin-top:6px;">右側にブランド公式サイトへの検索リンクを表示します。</div>
         </p>
 
         <p>
@@ -69,7 +69,7 @@
         <div id="string-purchase-fields">
           <p>
             <label for="id_string_keyword">ガット検索キーワード</label>
-            <input type="text" name="string_keyword" id="id_string_keyword" value="{{ form_data.string_keyword }}" placeholder="例: ポリツアープロ 125">
+            <input type="text" name="string_keyword" id="id_string_keyword" value="{{ form_data.string_keyword }}" placeholder="例: ポリツアープロ 125 / RPM BLAST / ALU POWER">
           </p>
 
           <p>
@@ -101,13 +101,12 @@
                 <option value="{{ value }}" {% if form_data.tension_lbs == value|stringformat:'s' %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
             </select>
-            <div class="muted" style="font-size:13px; margin-top:6px;">ガット張りを依頼する場合のみ使用します。</div>
           </p>
         </div>
 
         <p>
           <label for="id_note">備考</label>
-          <textarea name="note" id="id_note" rows="4" placeholder="例: グリップサイズ2希望、レッスン時受け取り希望など">{{ form_data.note }}</textarea>
+          <textarea name="note" id="id_note" rows="4" placeholder="希望カラー、グリップサイズ、受け渡しメモなど">{{ form_data.note }}</textarea>
         </p>
 
         <div class="actions">
@@ -119,25 +118,68 @@
 
     <div class="card">
       <h2 class="card-title">公式サイト検索リンク</h2>
-      <p class="card-subtitle">このバッチでは、ブランド公式サイトを開きながら見積もりを作る形にしています。</p>
+      <p class="card-subtitle">ブランド公式サイトの一覧ページや検索ページを開いて、商品名・定価・画像を確認してください。</p>
 
-      {% if official_links %}
-        <div style="display:flex; flex-direction:column; gap:10px; margin-top:14px;">
-          {% for link in official_links %}
-            <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer" class="btn">{{ link.label }}</a>
-          {% endfor %}
-        </div>
-      {% else %}
-        <div class="section-note" style="margin-top:14px;">
-          ブランドと検索キーワードを入れると、公式サイト検索リンクを表示します。
-        </div>
-      {% endif %}
+      <div class="spacer-12"></div>
+
+      <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px; margin-bottom:14px;">
+        <div style="font-weight:800; margin-bottom:8px;">メイン商品</div>
+        {% if main_catalog_links or main_official_links %}
+          <div class="actions">
+            {% for link in main_catalog_links %}
+              <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn">{{ link.label }}</a>
+            {% endfor %}
+            {% for link in main_official_links %}
+              <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn btn-primary">{{ link.label }}</a>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="muted">ブランド・カテゴリ・商品キーワードを入れると、ここにリンクが出ます。</div>
+        {% endif %}
+      </div>
+
+      <div style="padding:14px 16px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:12px;">
+        <div style="font-weight:800; margin-bottom:8px;">ガット</div>
+        {% if form_data.string_source == string_source_official %}
+          {% if string_catalog_links or string_official_links %}
+            <div class="actions">
+              {% for link in string_catalog_links %}
+                <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn">{{ link.label }}</a>
+              {% endfor %}
+              {% for link in string_official_links %}
+                <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn btn-primary">{{ link.label }}</a>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="muted">ガット検索キーワードを入れると、ここに公式リンクが出ます。</div>
+          {% endif %}
+        {% elif form_data.string_source == string_source_bring_in %}
+          <div class="muted">ガット持ち込みが選択されています。ガット購入分の計算は入りません。</div>
+        {% else %}
+          <div class="muted">ガット不要が選択されています。</div>
+        {% endif %}
+      </div>
 
       <div class="spacer-16"></div>
 
-      <h2 class="card-title" style="font-size:18px;">見積もり結果</h2>
+      <h2 class="card-title">見積もり結果</h2>
       {% if estimate_result %}
-        <table style="margin-top:12px;">
+        <div class="grid-3" style="margin-top:12px;">
+          <div style="padding:16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
+            <div class="muted" style="font-size:12px;">メイン商品販売価格</div>
+            <div style="font-size:28px; font-weight:800; margin-top:6px;">{{ estimate_result.main_sale_price }}円</div>
+          </div>
+          <div style="padding:16px; border:1px solid #fed7aa; background:#fff7ed; border-radius:12px;">
+            <div class="muted" style="font-size:12px;">ガット販売価格</div>
+            <div style="font-size:28px; font-weight:800; margin-top:6px;">{{ estimate_result.string_sale_price }}円</div>
+          </div>
+          <div style="padding:16px; border:1px solid #c7d2fe; background:#eef2ff; border-radius:12px;">
+            <div class="muted" style="font-size:12px;">見積もり合計</div>
+            <div style="font-size:28px; font-weight:800; margin-top:6px;">{{ estimate_result.estimated_total }}円</div>
+          </div>
+        </div>
+
+        <table style="margin-top:16px;">
           <tbody>
             <tr>
               <th>ブランド</th>
@@ -148,57 +190,97 @@
               <td>{{ estimate_result.category_label }}</td>
             </tr>
             <tr>
-              <th>商品</th>
-              <td>{{ estimate_result.main_product_name|default:estimate_result.main_keyword }}</td>
+              <th>メイン商品</th>
+              <td>{{ estimate_result.main_product_name|default:estimate_result.main_keyword|default:"-" }}</td>
             </tr>
             <tr>
-              <th>商品定価</th>
+              <th>メイン商品定価</th>
               <td>{{ estimate_result.main_official_price }}円</td>
             </tr>
             <tr>
-              <th>商品販売価格</th>
-              <td><strong>{{ estimate_result.main_sale_price }}円</strong></td>
+              <th>メイン商品販売価格</th>
+              <td>{{ estimate_result.main_sale_price }}円</td>
             </tr>
             <tr>
               <th>ガット</th>
               <td>{{ estimate_result.string_source_label }}</td>
             </tr>
-            {% if estimate_result.string_official_price > 0 %}
+            {% if estimate_result.string_source == string_source_official %}
+              <tr>
+                <th>ガット商品</th>
+                <td>{{ estimate_result.string_product_name|default:estimate_result.string_keyword|default:"-" }}</td>
+              </tr>
               <tr>
                 <th>ガット定価</th>
                 <td>{{ estimate_result.string_official_price }}円</td>
               </tr>
               <tr>
                 <th>ガット販売価格</th>
-                <td><strong>{{ estimate_result.string_sale_price }}円</strong></td>
+                <td>{{ estimate_result.string_sale_price }}円</td>
               </tr>
             {% endif %}
             <tr>
               <th>ガット張り</th>
-              <td>
-                {% if estimate_result.request_stringing %}
-                  依頼する（{{ estimate_result.tension_lbs }} lbs）
-                {% else %}
-                  依頼しない
-                {% endif %}
-              </td>
+              <td>{% if estimate_result.request_stringing %}依頼する{% else %}依頼しない{% endif %}</td>
             </tr>
-            <tr>
-              <th>ガット張り料金</th>
-              <td>{{ estimate_result.stringing_fee }}円</td>
-            </tr>
+            {% if estimate_result.request_stringing %}
+              <tr>
+                <th>張り上げテンション</th>
+                <td>{{ estimate_result.tension_lbs }} lbs</td>
+              </tr>
+              <tr>
+                <th>ガット張り料金</th>
+                <td>{{ estimate_result.stringing_fee }}円</td>
+              </tr>
+            {% endif %}
             <tr>
               <th>見積もり合計</th>
-              <td><strong style="font-size:18px;">{{ estimate_result.estimated_total }}円</strong></td>
+              <td><strong>{{ estimate_result.estimated_total }}円</strong></td>
             </tr>
           </tbody>
         </table>
       {% else %}
-        <div class="section-note" style="margin-top:14px;">
+        <div class="section-note" style="margin-top:12px;">
           入力後に「見積もりを出す」を押すと、ここに販売価格と合計が表示されます。
         </div>
       {% endif %}
+
+      {% if saved_request %}
+        <div class="message success" style="margin-top:16px;">
+          購入申込を保存しました。申込ID: {{ saved_request.id }}
+        </div>
+      {% endif %}
     </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">最近の物販申込</h2>
+    {% if recent_requests %}
+      <table style="margin-top:12px;">
+        <thead>
+          <tr>
+            <th>日時</th>
+            <th>カテゴリ</th>
+            <th>ブランド</th>
+            <th>商品</th>
+            <th>合計目安</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in recent_requests %}
+            <tr>
+              <td>{{ row.created_at|date:"Y-m-d H:i" }}</td>
+              <td>{{ row.get_product_category_display }}</td>
+              <td>{{ row.get_brand_display }}</td>
+              <td>{{ row.main_product_name|default:row.main_keyword|default:"-" }}</td>
+              <td>{{ row.estimated_total }}円</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="muted">まだ物販申込はありません。</div>
+    {% endif %}
   </div>
 
   <script>
@@ -209,16 +291,16 @@
       const tensionField = document.getElementById("tension-field");
 
       function toggleStringFields() {
-        const needsStringPurchase = stringSource && stringSource.value === "official";
+        const mode = stringSource ? stringSource.value : "none";
         if (stringPurchaseFields) {
-          stringPurchaseFields.style.display = needsStringPurchase ? "block" : "none";
+          stringPurchaseFields.style.display = mode === "official" ? "block" : "none";
         }
       }
 
       function toggleTensionField() {
-        const needsTension = requestStringing && requestStringing.value === "1";
+        const enabled = requestStringing && requestStringing.value === "1";
         if (tensionField) {
-          tensionField.style.display = needsTension ? "block" : "none";
+          tensionField.style.display = enabled ? "block" : "none";
         }
       }
 
