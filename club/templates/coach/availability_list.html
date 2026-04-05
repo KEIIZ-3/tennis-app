@@ -7,7 +7,7 @@
     <div>
       <h1 style="margin:0;">コーチスケジュール管理</h1>
       <p class="muted" style="margin:8px 0 0;">
-        登録済みのレッスン枠を確認・編集できます。代行コーチ設定、雨天中止処理、経費登録もこの画面から行えます。
+        登録済みのレッスン枠を確認・編集できます。代行コーチ設定や雨天中止処理もこの画面から行えます。
       </p>
     </div>
 
@@ -19,170 +19,25 @@
   </div>
 </div>
 
-<div class="grid-2">
-  <div class="card">
-    <div style="padding:14px 16px; border:1px solid #c7d2fe; background:#eef2ff; border-radius:10px;">
-      <div style="font-weight:700; margin-bottom:6px; color:#3730a3;">Coach専用タブ対象ページ</div>
-      <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
-        <li>private / group の申請確認は、この画面の上部カードから行います。</li>
-        <li>雨天中止は、各レッスン枠の「雨天中止」ボタンから実行できます。</li>
-        <li>月次の集計確認は、上部のCoachタブや給与計算ボタンから移動できます。</li>
-      </ul>
-    </div>
+<div class="card">
+  <div style="padding:14px 16px; border:1px solid #c7d2fe; background:#eef2ff; border-radius:10px; margin-bottom:14px;">
+    <div style="font-weight:700; margin-bottom:6px; color:#3730a3;">Coach専用タブ対象ページ</div>
+    <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
+      <li>private / group の申請確認は、この画面の上部カードから行います。</li>
+      <li>雨天中止は、各レッスン枠の「雨天中止」ボタンから実行できます。</li>
+      <li>経費登録は別タブの「経費登録」から行ってください。</li>
+      <li>月次の集計確認は、上部のCoachタブや給与計算ボタンから移動できます。</li>
+    </ul>
   </div>
 
-  <div class="card">
-    <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px;">
-      <div style="font-weight:700; margin-bottom:6px;">表示の見方</div>
-      <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
-        <li>一般 / プライベート / グループは通常ルールでチケットが消費されます。</li>
-        <li>イベントは「イベント用チケット価格」に設定した枚数が使われます。</li>
-        <li>代行コーチを設定すると、その時間枠に紐づく予約へ自動反映されます。</li>
-        <li>雨天中止を実行すると、その枠の予約中会員へ返却処理と通知が行われます。</li>
-      </ul>
-    </div>
-  </div>
-</div>
-
-<div class="grid-2">
-  <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
-      <div>
-        <h2 style="margin:0;">承認待ち申請</h2>
-        <p class="muted" style="margin:6px 0 0;">
-          プライベート / グループの申請一覧です。
-        </p>
-      </div>
-      <div style="font-weight:700;">
-        {{ pending_reservations|length }} 件
-      </div>
-    </div>
-
-    {% if pending_reservations %}
-      <div style="display:grid; gap:12px;">
-        {% for reservation in pending_reservations %}
-          <div style="border:1px solid #fcd34d; background:#fffbeb; border-radius:12px; padding:16px;">
-            <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-              <div>
-                <div style="font-size:18px; font-weight:700;">
-                  {{ reservation.get_lesson_type_display }} / {{ reservation.user.display_name }}
-                </div>
-                <div class="muted" style="margin-top:6px; line-height:1.8;">
-                  <div>担当コーチ: {{ reservation.coach.display_name }}</div>
-                  <div>
-                    代行コーチ:
-                    {% if reservation.substitute_coach %}
-                      {{ reservation.substitute_coach.display_name }}
-                    {% else %}
-                      未設定
-                    {% endif %}
-                  </div>
-                  <div>コート: {{ reservation.court }}</div>
-                  <div>開始: {{ reservation.start_at|date:"Y-m-d H:i" }}</div>
-                  <div>終了: {{ reservation.end_at|date:"Y-m-d H:i" }}</div>
-                  <div>チケット予定消費: {{ reservation.tickets_used }} 枚</div>
-                  <div>申請メモ: {{ reservation.requested_court_note|default:"-" }}</div>
-                </div>
-              </div>
-
-              <div style="display:flex; flex-direction:column; gap:8px; min-width:140px;">
-                <form method="post" action="{% url 'club:coach_request_approve' reservation.pk %}" style="margin:0;">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn-primary" style="width:100%;" onclick="return confirm('この申請を承認しますか？');">
-                    承認
-                  </button>
-                </form>
-
-                <form method="post" action="{% url 'club:coach_request_reject' reservation.pk %}" style="margin:0;">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn-danger" style="width:100%;" onclick="return confirm('この申請を却下しますか？');">
-                    却下
-                  </button>
-                </form>
-              </div>
-            </div>
-          </div>
-        {% endfor %}
-      </div>
-    {% else %}
-      <p class="muted" style="margin:0;">承認待ち申請はありません。</p>
-    {% endif %}
-  </div>
-
-  <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
-      <div>
-        <h2 style="margin:0;">経費登録</h2>
-        <p class="muted" style="margin:6px 0 0;">
-          {{ monthly_expense_label }} の登録経費合計: <strong>{{ monthly_expense_total }}円</strong>
-        </p>
-      </div>
-    </div>
-
-    <form method="post" style="margin-bottom:18px;">
-      {% csrf_token %}
-      <input type="hidden" name="action" value="create_expense">
-
-      <div class="grid-2">
-        <p>
-          <label for="id_expense_date">経費日付</label>
-          <input type="date" id="id_expense_date" name="expense_date" value="{{ expense_today|date:'Y-m-d' }}">
-        </p>
-        <p>
-          <label for="id_expense_category">カテゴリ</label>
-          <select id="id_expense_category" name="category">
-            {% for value, label in expense_category_choices %}
-              <option value="{{ value }}">{{ label }}</option>
-            {% endfor %}
-          </select>
-        </p>
-      </div>
-
-      <div class="grid-2">
-        <p>
-          <label for="id_expense_amount">金額</label>
-          <input type="number" id="id_expense_amount" name="amount" min="0" step="1" placeholder="例: 2500">
-        </p>
-        <p>
-          <label for="id_expense_note">メモ</label>
-          <input type="text" id="id_expense_note" name="note" placeholder="例: ボール購入 / コート代 / 駐車場代">
-        </p>
-      </div>
-
-      <div class="actions">
-        <button type="submit" class="btn btn-primary">経費を登録する</button>
-      </div>
-    </form>
-
-    <h3 style="margin:0 0 10px;">最近の登録</h3>
-    {% if recent_expenses %}
-      <div style="overflow-x:auto;">
-        <table>
-          <thead>
-            <tr>
-              <th>日付</th>
-              <th>カテゴリ</th>
-              <th>金額</th>
-              <th>メモ</th>
-              <th>登録者</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for expense in recent_expenses %}
-              <tr>
-                <td>{{ expense.expense_date|date:"Y-m-d" }}</td>
-                <td>{{ expense.get_category_display }}</td>
-                <td>{{ expense.amount }}円</td>
-                <td>{{ expense.note|default:"-" }}</td>
-                <td>{% if expense.created_by %}{{ expense.created_by.display_name }}{% else %}-{% endif %}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <p class="muted" style="margin:0;">まだ経費登録はありません。</p>
-    {% endif %}
+  <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px;">
+    <div style="font-weight:700; margin-bottom:6px;">表示の見方</div>
+    <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
+      <li>一般 / プライベート / グループは通常ルールでチケットが消費されます。</li>
+      <li>イベントは「イベント用チケット価格」に設定した枚数が使われます。</li>
+      <li>代行コーチを設定すると、その時間枠に紐づく予約へ自動反映されます。</li>
+      <li>雨天中止を実行すると、その枠の予約中会員へ返却処理と通知が行われます。</li>
+    </ul>
   </div>
 </div>
 
