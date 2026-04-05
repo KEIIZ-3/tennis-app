@@ -593,6 +593,7 @@ class ShopEstimateRequestAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "user",
+        "status",
         "product_category",
         "brand",
         "main_product_name",
@@ -600,9 +601,10 @@ class ShopEstimateRequestAdmin(admin.ModelAdmin):
         "string_source",
         "request_stringing",
         "tension_lbs",
+        "estimated_total_display",
         "created_at",
     )
-    list_filter = ("product_category", "brand", "string_source", "request_stringing", "created_at")
+    list_filter = ("status", "product_category", "brand", "string_source", "request_stringing", "created_at")
     search_fields = (
         "user__username",
         "user__full_name",
@@ -611,5 +613,39 @@ class ShopEstimateRequestAdmin(admin.ModelAdmin):
         "string_keyword",
         "string_product_name",
         "note",
+        "admin_memo",
     )
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+        "estimated_total_display",
+        "main_sale_price_display",
+        "string_sale_price_display",
+        "stringing_fee_display",
+    )
+    list_editable = ("status",)
+    autocomplete_fields = ("user",)
+    fieldsets = (
+        ("基本情報", {"fields": ("user", "status", "product_category", "brand")} ),
+        ("メイン商品", {"fields": ("main_keyword", "main_product_name", "main_official_price", "main_sale_price_display")} ),
+        ("ガット", {"fields": ("string_source", "string_keyword", "string_product_name", "string_official_price", "string_sale_price_display")} ),
+        ("ガット張り", {"fields": ("request_stringing", "tension_lbs", "stringing_fee_display")} ),
+        ("メモ", {"fields": ("note", "admin_memo")} ),
+        ("集計", {"fields": ("estimated_total_display", "created_at", "updated_at")} ),
+    )
+
+    def main_sale_price_display(self, obj):
+        return f"{obj.main_sale_price}円"
+    main_sale_price_display.short_description = "メイン商品販売価格"
+
+    def string_sale_price_display(self, obj):
+        return f"{obj.string_sale_price}円"
+    string_sale_price_display.short_description = "ガット販売価格"
+
+    def stringing_fee_display(self, obj):
+        return f"{obj.stringing_fee}円"
+    stringing_fee_display.short_description = "ガット張り料金"
+
+    def estimated_total_display(self, obj):
+        return f"{obj.estimated_total}円"
+    estimated_total_display.short_description = "見積もり合計"
