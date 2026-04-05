@@ -48,6 +48,7 @@ from .notifications import (
     build_pending_request_for_coach_message,
     build_request_approved_for_member_message,
     build_request_rejected_for_member_message,
+    build_reservation_rain_canceled_message,
     build_stringing_order_created_for_coach_message,
     notify_user,
     verify_line_signature,
@@ -738,6 +739,31 @@ def _send_line_notification_safely(user, message_text):
         notify_user(user, message_text)
     except Exception:
         pass
+
+
+def _availability_can_manage(user, availability):
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if _is_staff_like(user):
+        return True
+    if _is_coach_user(user) and getattr(availability, "coach_id", None) == getattr(user, "pk", None):
+        return True
+    return False
+
+
+def _active_reservations_for_availability(availability):
+    return list(
+        Reservation.objects.select_related("user", "coach", "substitute_coach", "court")
+        .filter(
+            coach=availability.coach,
+            court=availability.court,
+            lesson_type=availability.lesson_type,
+            start_at=availability.start_at,
+            end_at=availability.end_at,
+            status=Reservation.STATUS_ACTIVE,
+        )
+        .order_by("start_at", "id")
+    )
 
 
 def home(request):
@@ -2331,16 +2357,65 @@ def reservation_cancel(request, pk):
 
 
 @login_required
-@require_GET
+@require_http_methods(["GET", "POST"])
 def coach_availability_list(request):
     _sync_fixed_lessons()
+
+    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
+        return HttpResponse("Forbidden", status=403)
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+
+        if action == "rain_cancel_slot":
+            availability_id = (request.POST.get("availability_id") or "").strip()
+            availability = get_object_or_404(
+                CoachAvailability.objects.select_related("coach", "substitute_coach", "court"),
+                pk=availability_id,
+            )
+
+            if not _availability_can_manage(request.user, availability):
+                return HttpResponse("Forbidden", status=403)
+
+            active_reservations = _active_reservations_for_availability(availability)
+            if not active_reservations:
+                messages.warning(request, "この時間枠に雨天中止対象の予約はありません。")
+                return redirect("club:coach_availability_list")
+
+            canceled_count = 0
+            for reservation in active_reservations:
+                try:
+                    with transaction.atomic():
+                        succeeded = reservation.mark_rain_canceled(
+                            created_by=request.user,
+                            reason="雨天中止（スケジュール管理から実行）",
+                        )
+                    if succeeded:
+                        canceled_count += 1
+                        member_message = build_reservation_rain_canceled_message(reservation)
+                        _send_line_notification_safely(reservation.user, member_message)
+                except Exception:
+                    continue
+
+            if canceled_count > 0:
+                messages.success(
+                    request,
+                    f"雨天中止を実行しました。対象予約 {canceled_count} 件を中止し、会員へ通知しました。"
+                )
+            else:
+                messages.warning(request, "雨天中止の対象予約はありませんでした。")
+
+            return redirect("club:coach_availability_list")
+
+        messages.error(request, "不正な操作です。")
+        return redirect("club:coach_availability_list")
 
     qs = CoachAvailability.objects.select_related("coach", "substitute_coach", "court").all()
 
     if _is_coach_user(request.user):
         qs = qs.filter(coach=request.user)
 
-    qs = qs.order_by("start_at")
+    availabilities = list(qs.order_by("start_at"))
 
     pending_qs = (
         Reservation.objects.select_related("user", "coach", "substitute_coach", "court")
@@ -2353,20 +2428,29 @@ def coach_availability_list(request):
 
     if _is_staff_like(request.user) and not _is_coach_user(request.user):
         pending_reservations = list(pending_qs)
-    elif _is_coach_user(request.user):
+    else:
         pending_reservations = [
             reservation
             for reservation in pending_qs
             if reservation.coach_id == request.user.pk or getattr(reservation, "substitute_coach_id", None) == request.user.pk
         ]
-    else:
-        return HttpResponse("Forbidden", status=403)
+
+    availability_rows = []
+    for availability in availabilities:
+        active_reservations = _active_reservations_for_availability(availability)
+        availability_rows.append(
+            {
+                "availability": availability,
+                "active_reservation_count": len(active_reservations),
+                "can_rain_cancel": len(active_reservations) > 0,
+            }
+        )
 
     return render(
         request,
         "coach/availability_list.html",
         {
-            "availabilities": qs,
+            "availability_rows": availability_rows,
             "pending_reservations": pending_reservations,
         },
     )
