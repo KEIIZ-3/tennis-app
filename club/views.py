@@ -3116,48 +3116,46 @@ def _shop_brand_search_links(brand_value, keyword, item_label="商品"):
     return links.get(brand_value, [])
 
 
-def _shop_brand_site_domain(brand_value):
-    domain_map = {
-        ShopEstimateRequest.BRAND_YONEX: "www.yonex.co.jp",
-        ShopEstimateRequest.BRAND_WILSON: "jp.wilson.com",
-        ShopEstimateRequest.BRAND_BABOLAT: "www.babolat.com",
-        ShopEstimateRequest.BRAND_HEAD: "www.head.com",
-        ShopEstimateRequest.BRAND_PRINCE: "prince.co.jp",
-        ShopEstimateRequest.BRAND_DUNLOP: "sports.dunlop.co.jp",
-        ShopEstimateRequest.BRAND_TECHNIFIBRE: "www.tecnifibre.com",
-    }
-    return domain_map.get(brand_value, "")
-
-
-
-def _shop_brand_assist_links(brand_value, keyword, item_label="商品"):
-    keyword = (keyword or "").strip()
-    if not keyword:
-        return []
-
-    domain = _shop_brand_site_domain(brand_value)
-    if not domain:
-        return []
-
-    query = urllib.parse.quote(f"site:{domain} {keyword}")
-    image_query = urllib.parse.quote(f"site:{domain} {keyword}")
-    return [
-        {
-            "label": f"公式ページを横断検索",
-            "url": f"https://www.google.com/search?q={query}",
-        },
-        {
-            "label": f"公式画像を確認",
-            "url": f"https://www.google.com/search?tbm=isch&q={image_query}",
-        },
-    ]
-
 
 def _safe_int(value, default=0):
     try:
         return int(str(value).replace(',', '').strip() or default)
     except Exception:
         return default
+
+
+def _shop_build_form_data_from_request_obj(obj):
+    return {
+        "product_category": getattr(obj, "product_category", ShopEstimateRequest.CATEGORY_RACKET),
+        "brand": getattr(obj, "brand", ShopEstimateRequest.BRAND_YONEX),
+        "main_keyword": getattr(obj, "main_keyword", "") or "",
+        "main_product_name": getattr(obj, "main_product_name", "") or "",
+        "main_official_price": str(getattr(obj, "main_official_price", "") or ""),
+        "string_source": getattr(obj, "string_source", ShopEstimateRequest.STRING_SOURCE_NONE),
+        "string_keyword": getattr(obj, "string_keyword", "") or "",
+        "string_product_name": getattr(obj, "string_product_name", "") or "",
+        "string_official_price": str(getattr(obj, "string_official_price", "") or ""),
+        "request_stringing": "1" if getattr(obj, "request_stringing", False) else "0",
+        "tension_lbs": str(getattr(obj, "tension_lbs", 50) or 50),
+        "note": getattr(obj, "note", "") or "",
+    }
+
+
+def _shop_image_search_links(brand_value, keyword, item_label="商品画像"):
+    keyword = (keyword or "").strip()
+    brand_label = _shop_brand_label_map().get(brand_value, brand_value)
+    if not keyword:
+        return []
+
+    official_like_query = f"{brand_label} {keyword} tennis"
+    image_query = urllib.parse.quote(official_like_query)
+    return [
+        {
+            "label": f"{brand_label} {item_label}確認",
+            "url": f"https://www.google.com/search?tbm=isch&q={image_query}",
+        }
+    ]
+
 
 
 @login_required
@@ -3194,40 +3192,34 @@ def shop_estimate_view(request):
         "note": "",
     }
     estimate_result = None
+    saved_request = None
     page_error = ""
     main_official_links = []
     main_catalog_links = []
-    main_assist_links = []
+    main_image_links = []
     string_official_links = []
     string_catalog_links = []
-    string_assist_links = []
+    string_image_links = []
+    reused_request = None
     recent_requests = list(
-        ShopEstimateRequest.objects.filter(user=request.user).order_by("-created_at", "-id")[:5]
+        ShopEstimateRequest.objects.filter(user=request.user).order_by("-created_at", "-id")[:8]
     )
 
-    reuse_id = (request.GET.get("copy_from") or "").strip()
-    if request.method == "GET" and reuse_id.isdigit():
-        reuse_obj = (
-            ShopEstimateRequest.objects.filter(user=request.user, pk=int(reuse_id))
-            .order_by("-id")
-            .first()
-        )
-        if reuse_obj:
-            form_data = {
-                "product_category": reuse_obj.product_category,
-                "brand": reuse_obj.brand,
-                "main_keyword": reuse_obj.main_keyword,
-                "main_product_name": reuse_obj.main_product_name,
-                "main_official_price": str(reuse_obj.main_official_price or ""),
-                "string_source": reuse_obj.string_source,
-                "string_keyword": reuse_obj.string_keyword,
-                "string_product_name": reuse_obj.string_product_name,
-                "string_official_price": str(reuse_obj.string_official_price or ""),
-                "request_stringing": "1" if reuse_obj.request_stringing else "0",
-                "tension_lbs": str(reuse_obj.tension_lbs or 50),
-                "note": reuse_obj.note,
-            }
-            messages.info(request, "過去の物販申込内容をフォームに再入力しました。必要に応じて修正してください。")
+    if request.method == "GET":
+        reuse_id = (request.GET.get("reuse") or "").strip()
+        if reuse_id.isdigit():
+            reused_request = ShopEstimateRequest.objects.filter(user=request.user, pk=int(reuse_id)).first()
+            if reused_request:
+                form_data = _shop_build_form_data_from_request_obj(reused_request)
+                messages.info(request, f"申込ID {reused_request.id} の内容をフォームへ再読み込みしました。")
+
+        main_catalog_links = _shop_brand_catalog_links(form_data["brand"], form_data["product_category"])
+        main_official_links = _shop_brand_search_links(form_data["brand"], form_data["main_keyword"], item_label="商品")
+        main_image_links = _shop_image_search_links(form_data["brand"], form_data["main_keyword"], item_label="商品画像")
+        if form_data["string_source"] == ShopEstimateRequest.STRING_SOURCE_OFFICIAL:
+            string_catalog_links = _shop_brand_catalog_links(form_data["brand"], ShopEstimateRequest.CATEGORY_STRING)
+            string_official_links = _shop_brand_search_links(form_data["brand"], form_data["string_keyword"], item_label="ガット")
+            string_image_links = _shop_image_search_links(form_data["brand"], form_data["string_keyword"], item_label="ガット画像")
 
     if request.method == "POST":
         form_data = {
@@ -3252,11 +3244,11 @@ def shop_estimate_view(request):
 
         main_official_links = _shop_brand_search_links(form_data["brand"], form_data["main_keyword"], item_label="商品")
         main_catalog_links = _shop_brand_catalog_links(form_data["brand"], form_data["product_category"])
-        main_assist_links = _shop_brand_assist_links(form_data["brand"], form_data["main_keyword"], item_label="商品")
+        main_image_links = _shop_image_search_links(form_data["brand"], form_data["main_keyword"], item_label="商品画像")
         if form_data["string_source"] == ShopEstimateRequest.STRING_SOURCE_OFFICIAL:
             string_official_links = _shop_brand_search_links(form_data["brand"], form_data["string_keyword"], item_label="ガット")
             string_catalog_links = _shop_brand_catalog_links(form_data["brand"], ShopEstimateRequest.CATEGORY_STRING)
-            string_assist_links = _shop_brand_assist_links(form_data["brand"], form_data["string_keyword"], item_label="ガット")
+            string_image_links = _shop_image_search_links(form_data["brand"], form_data["string_keyword"], item_label="ガット画像")
 
         if main_official_price <= 0:
             page_error = "商品定価を入力してください。"
@@ -3289,6 +3281,7 @@ def shop_estimate_view(request):
                 "tension_lbs": tension_lbs,
                 "stringing_fee": stringing_fee,
                 "estimated_total": main_sale_price + string_sale_price + stringing_fee,
+                "note": form_data["note"],
             }
 
             if (request.POST.get("action") or "") == "purchase":
@@ -3308,19 +3301,10 @@ def shop_estimate_view(request):
                         tension_lbs=tension_lbs,
                         note=form_data["note"],
                     )
-                    messages.success(request, "物販の購入申込を受け付けました。内容確認ページを表示しています。")
+                    messages.success(request, "物販の購入申込を受け付けました。")
                     return redirect("club:shop_estimate_complete", pk=saved_request.pk)
                 except Exception as e:
                     page_error = f"購入申込の保存に失敗しました: {e}"
-
-    if request.method == "GET":
-        main_catalog_links = _shop_brand_catalog_links(form_data["brand"], form_data["product_category"])
-        main_official_links = _shop_brand_search_links(form_data["brand"], form_data["main_keyword"], item_label="商品")
-        main_assist_links = _shop_brand_assist_links(form_data["brand"], form_data["main_keyword"], item_label="商品")
-        if form_data["string_source"] == ShopEstimateRequest.STRING_SOURCE_OFFICIAL:
-            string_catalog_links = _shop_brand_catalog_links(form_data["brand"], ShopEstimateRequest.CATEGORY_STRING)
-            string_official_links = _shop_brand_search_links(form_data["brand"], form_data["string_keyword"], item_label="ガット")
-            string_assist_links = _shop_brand_assist_links(form_data["brand"], form_data["string_keyword"], item_label="ガット")
 
     return render(
         request,
@@ -3334,13 +3318,15 @@ def shop_estimate_view(request):
             "estimate_result": estimate_result,
             "main_official_links": main_official_links,
             "main_catalog_links": main_catalog_links,
-            "main_assist_links": main_assist_links,
+            "main_image_links": main_image_links,
             "string_official_links": string_official_links,
             "string_catalog_links": string_catalog_links,
-            "string_assist_links": string_assist_links,
+            "string_image_links": string_image_links,
             "page_error": page_error,
+            "saved_request": saved_request,
             "stringing_fee": 1200,
             "recent_requests": recent_requests,
+            "reused_request": reused_request,
             "string_source_none": ShopEstimateRequest.STRING_SOURCE_NONE,
             "string_source_official": ShopEstimateRequest.STRING_SOURCE_OFFICIAL,
             "string_source_bring_in": ShopEstimateRequest.STRING_SOURCE_BRING_IN,
@@ -3351,12 +3337,68 @@ def shop_estimate_view(request):
 @login_required
 @require_GET
 def shop_estimate_complete_view(request, pk):
-    shop_request = get_object_or_404(ShopEstimateRequest, pk=pk, user=request.user)
+    profile_redirect = _require_profile_completed_for_booking(request)
+    if profile_redirect:
+        return profile_redirect
+
+    survey_redirect = _require_schedule_survey(request)
+    if survey_redirect:
+        return survey_redirect
+
+    estimate_request = get_object_or_404(
+        ShopEstimateRequest.objects.filter(user=request.user),
+        pk=pk,
+    )
+
+    main_catalog_links = _shop_brand_catalog_links(
+        estimate_request.brand,
+        estimate_request.product_category,
+    )
+    main_official_links = _shop_brand_search_links(
+        estimate_request.brand,
+        estimate_request.main_keyword or estimate_request.main_product_name,
+        item_label="商品",
+    )
+    main_image_links = _shop_image_search_links(
+        estimate_request.brand,
+        estimate_request.main_keyword or estimate_request.main_product_name,
+        item_label="商品画像",
+    )
+
+    string_catalog_links = []
+    string_official_links = []
+    string_image_links = []
+    if estimate_request.string_source == ShopEstimateRequest.STRING_SOURCE_OFFICIAL:
+        string_catalog_links = _shop_brand_catalog_links(
+            estimate_request.brand,
+            ShopEstimateRequest.CATEGORY_STRING,
+        )
+        string_official_links = _shop_brand_search_links(
+            estimate_request.brand,
+            estimate_request.string_keyword or estimate_request.string_product_name,
+            item_label="ガット",
+        )
+        string_image_links = _shop_image_search_links(
+            estimate_request.brand,
+            estimate_request.string_keyword or estimate_request.string_product_name,
+            item_label="ガット画像",
+        )
 
     return render(
         request,
         "shop/complete.html",
         {
-            "shop_request": shop_request,
+            "estimate_request": estimate_request,
+            "main_catalog_links": main_catalog_links,
+            "main_official_links": main_official_links,
+            "main_image_links": main_image_links,
+            "string_catalog_links": string_catalog_links,
+            "string_official_links": string_official_links,
+            "string_image_links": string_image_links,
+            "string_source_official": ShopEstimateRequest.STRING_SOURCE_OFFICIAL,
+            "string_source_bring_in": ShopEstimateRequest.STRING_SOURCE_BRING_IN,
+            "string_source_none": ShopEstimateRequest.STRING_SOURCE_NONE,
         },
     )
+
+
