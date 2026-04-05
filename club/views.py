@@ -3204,6 +3204,18 @@ def shop_estimate_view(request):
     recent_requests = list(
         ShopEstimateRequest.objects.filter(user=request.user).order_by("-created_at", "-id")[:8]
     )
+    recent_status_summary = []
+    for status_value, status_label in ShopEstimateRequest.STATUS_CHOICES:
+        count = 0
+        for obj in recent_requests:
+            if obj.status == status_value:
+                count += 1
+        if count > 0:
+            recent_status_summary.append({
+                "value": status_value,
+                "label": status_label,
+                "count": count,
+            })
 
     if request.method == "GET":
         reuse_id = (request.GET.get("reuse") or "").strip()
@@ -3300,6 +3312,7 @@ def shop_estimate_view(request):
                         request_stringing=request_stringing,
                         tension_lbs=tension_lbs,
                         note=form_data["note"],
+                        status=ShopEstimateRequest.STATUS_NEW,
                     )
                     messages.success(request, "物販の購入申込を受け付けました。")
                     return redirect("club:shop_estimate_complete", pk=saved_request.pk)
@@ -3326,6 +3339,7 @@ def shop_estimate_view(request):
             "saved_request": saved_request,
             "stringing_fee": 1200,
             "recent_requests": recent_requests,
+            "recent_status_summary": recent_status_summary,
             "reused_request": reused_request,
             "string_source_none": ShopEstimateRequest.STRING_SOURCE_NONE,
             "string_source_official": ShopEstimateRequest.STRING_SOURCE_OFFICIAL,
