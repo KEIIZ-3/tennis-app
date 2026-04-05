@@ -1705,22 +1705,6 @@ class ShopEstimateRequest(models.Model):
         (BRAND_OTHER, "その他"),
     )
 
-    STATUS_NEW = "new"
-    STATUS_REVIEWING = "reviewing"
-    STATUS_QUOTED = "quoted"
-    STATUS_ORDERED = "ordered"
-    STATUS_COMPLETED = "completed"
-    STATUS_CANCELED = "canceled"
-
-    STATUS_CHOICES = (
-        (STATUS_NEW, "新規受付"),
-        (STATUS_REVIEWING, "確認中"),
-        (STATUS_QUOTED, "見積提示済み"),
-        (STATUS_ORDERED, "発注済み"),
-        (STATUS_COMPLETED, "受け渡し完了"),
-        (STATUS_CANCELED, "キャンセル"),
-    )
-
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -1728,7 +1712,6 @@ class ShopEstimateRequest(models.Model):
     )
     product_category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default=CATEGORY_RACKET)
     brand = models.CharField(max_length=30, choices=BRAND_CHOICES, default=BRAND_YONEX)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_NEW)
     main_keyword = models.CharField(max_length=255, blank=True, default="")
     main_product_name = models.CharField(max_length=255, blank=True, default="")
     main_official_price = models.PositiveIntegerField(default=0)
@@ -1739,7 +1722,6 @@ class ShopEstimateRequest(models.Model):
     request_stringing = models.BooleanField(default=False)
     tension_lbs = models.PositiveIntegerField(null=True, blank=True)
     note = models.TextField(blank=True, default="")
-    admin_memo = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -1757,7 +1739,6 @@ class ShopEstimateRequest(models.Model):
         self.string_keyword = (self.string_keyword or "").strip()
         self.string_product_name = (self.string_product_name or "").strip()
         self.note = (self.note or "").strip()
-        self.admin_memo = (self.admin_memo or "").strip()
 
         if self.main_official_price < 0:
             raise ValidationError("商品定価は0円以上にしてください。")
@@ -1801,6 +1782,3 @@ class ShopEstimateRequest(models.Model):
     def estimated_total(self):
         return int(self.main_sale_price) + int(self.string_sale_price) + int(self.stringing_fee)
 
-    @property
-    def item_summary(self):
-        return self.main_product_name or self.main_keyword or "-"
