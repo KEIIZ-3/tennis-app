@@ -20,7 +20,7 @@
   <div class="grid-2">
     <div class="card">
       <h2 class="card-title">見積もり入力</h2>
-      <p class="card-subtitle">公式サイトの商品価格を見ながら入力してください。見積もりだけ出すことも、購入申込まで進むこともできます。最近の申込状況確認や再見積もりにも対応しています。</p>
+      <p class="card-subtitle">公式サイトの商品価格を見ながら入力してください。見積もりだけ出すことも、購入申込まで進むこともできます。</p>
 
       <form method="post">
         {% csrf_token %}
@@ -86,8 +86,6 @@
             <input type="number" name="string_official_price" id="id_string_official_price" value="{{ form_data.string_official_price }}" min="0" step="1" placeholder="例: 2860">
           </p>
         </div>
-
-        <div id="string-bringin-note" class="shop-bringin-note">ガット持ち込みが選択されています。ガット商品名や定価の入力は不要です。見積もりには張り代のみ加算されます。</div>
 
         <hr style="border:none; border-top:1px solid #e5e7eb; margin:20px 0;">
 
@@ -266,67 +264,40 @@
     </div>
   </div>
 
-  <style>
-  .shop-status-summary{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
-  .shop-status-badge{display:inline-flex;align-items:center;justify-content:center;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:800;border:1px solid #cbd5e1;background:#f8fafc;color:#334155;}
-  .shop-status-badge.new{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8;}
-  .shop-status-badge.reviewing{background:#fff7ed;border-color:#fed7aa;color:#c2410c;}
-  .shop-status-badge.quoted{background:#eef2ff;border-color:#c7d2fe;color:#4338ca;}
-  .shop-status-badge.ordered{background:#ecfeff;border-color:#a5f3fc;color:#0f766e;}
-  .shop-status-badge.completed{background:#f0fdf4;border-color:#bbf7d0;color:#15803d;}
-  .shop-status-badge.canceled{background:#fef2f2;border-color:#fecaca;color:#b91c1c;}
-  .shop-recent-cards{display:flex;flex-direction:column;gap:12px;margin-top:12px;}
-  .shop-recent-card{border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;background:#fff;}
-  .shop-recent-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;}
-  .shop-recent-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:12px;}
-  .shop-recent-kpi{padding:10px 12px;border:1px solid #e5e7eb;border-radius:10px;background:#fafafa;}
-  .shop-recent-kpi .label{font-size:12px;color:#64748b;}
-  .shop-recent-kpi .value{font-weight:800;margin-top:4px;}
-  .shop-bringin-note{padding:12px 14px;border-radius:12px;border:1px solid #e5e7eb;background:#f8fafc;color:#475569;line-height:1.7;display:none;}
-  @media (max-width: 900px){.shop-recent-meta{grid-template-columns:repeat(2,minmax(0,1fr));}}
-</style>
-
   <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
-      <div>
-        <h2 class="card-title">最近の物販申込</h2>
-        <p class="card-subtitle">申込状況を確認しながら、同じ内容で再見積もりできます。</p>
-      </div>
-      {% if recent_status_summary %}
-        <div class="shop-status-summary">
-          {% for row in recent_status_summary %}
-            <span class="shop-status-badge {{ row.value }}">{{ row.label }} {{ row.count }}件</span>
-          {% endfor %}
-        </div>
-      {% endif %}
-    </div>
+    <h2 class="card-title">最近の物販申込</h2>
     {% if recent_requests %}
-      <div class="shop-recent-cards">
-        {% for item in recent_requests %}
-          <div class="shop-recent-card">
-            <div class="shop-recent-head">
-              <div>
-                <div style="font-size:16px; font-weight:800;">申込ID {{ item.id }} / {{ item.item_summary }}</div>
-                <div class="muted" style="margin-top:4px; font-size:13px;">{{ item.created_at|date:"Y-m-d H:i" }} ・ {{ item.get_product_category_display }} ・ {{ item.get_brand_display }}</div>
-              </div>
-              <span class="shop-status-badge {{ item.status }}">{{ item.get_status_display }}</span>
-            </div>
-            <div class="shop-recent-meta">
-              <div class="shop-recent-kpi"><div class="label">メイン商品販売価格</div><div class="value">{{ item.main_sale_price }}円</div></div>
-              <div class="shop-recent-kpi"><div class="label">ガット販売価格</div><div class="value">{{ item.string_sale_price }}円</div></div>
-              <div class="shop-recent-kpi"><div class="label">張り代</div><div class="value">{{ item.stringing_fee }}円</div></div>
-              <div class="shop-recent-kpi"><div class="label">見積もり合計</div><div class="value">{{ item.estimated_total }}円</div></div>
-            </div>
-            <div class="muted" style="margin-top:10px; font-size:13px;">ガット: {{ item.get_string_source_display }}{% if item.request_stringing and item.tension_lbs %} / 張り上げ {{ item.tension_lbs }} lbs{% endif %}</div>
-            <div class="actions" style="margin-top:12px;">
-              <a href="{% url 'club:shop_estimate' %}?reuse={{ item.id }}" class="btn">この内容で再見積もり</a>
-              <a href="{% url 'club:shop_estimate_complete' item.id %}" class="btn btn-primary">申込確認</a>
-            </div>
-          </div>
-        {% endfor %}
-      </div>
+      <table style="margin-top:12px;">
+        <thead>
+          <tr>
+            <th>日時</th>
+            <th>カテゴリ</th>
+            <th>ブランド</th>
+            <th>商品</th>
+            <th>合計目安</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in recent_requests %}
+            <tr>
+              <td>{{ row.created_at|date:"Y-m-d H:i" }}</td>
+              <td>{{ row.get_product_category_display }}</td>
+              <td>{{ row.get_brand_display }}</td>
+              <td>{{ row.main_product_name|default:row.main_keyword|default:"-" }}</td>
+              <td>{{ row.estimated_total }}円</td>
+              <td>
+                <div class="actions">
+                  <a href="{% url 'club:shop_estimate' %}?reuse={{ row.id }}" class="btn">再利用</a>
+                  <a href="{% url 'club:shop_estimate_complete' row.id %}" class="btn btn-primary">申込確認</a>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     {% else %}
-      <div class="section-note" style="margin-top:12px;">まだ物販申込はありません。</div>
+      <div class="muted">まだ物販申込はありません。</div>
     {% endif %}
   </div>
 
