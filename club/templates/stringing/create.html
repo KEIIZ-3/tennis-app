@@ -30,6 +30,7 @@
 
       <ul class="clean" style="line-height:1.9;">
         <li>ラケット名、ガット名は分かる範囲でご入力ください。</li>
+        <li>張り上げテンションは 30〜60 lbs の範囲で選択できます。初期値は 50 lbs です。</li>
         <li>デリバリー希望時のみ、届け場所と日時指定をご入力ください。</li>
         <li>デリバリーなしの場合は、希望張り上げ納期をご入力ください。</li>
         <li>希望張り上げ納期の初期値は、依頼日から1週間後です。</li>
@@ -68,6 +69,17 @@
           {% endif %}
           {% if form.string_name.errors %}
             <div class="message error" style="margin-top:8px;">{{ form.string_name.errors }}</div>
+          {% endif %}
+        </p>
+
+        <p>
+          <label for="{{ form.tension_lbs.id_for_label }}">{{ form.tension_lbs.label }}</label>
+          {{ form.tension_lbs }}
+          {% if form.tension_lbs.help_text %}
+            <div class="muted" style="font-size:13px; margin-top:6px;">{{ form.tension_lbs.help_text }}</div>
+          {% endif %}
+          {% if form.tension_lbs.errors %}
+            <div class="message error" style="margin-top:8px;">{{ form.tension_lbs.errors }}</div>
           {% endif %}
         </p>
 
