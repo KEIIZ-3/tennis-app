@@ -2947,7 +2947,122 @@ def _shop_brand_label_map():
 
 
 
-def _shop_brand_search_links(brand_value, keyword):
+def _shop_category_label_map():
+    return dict(ShopEstimateRequest.CATEGORY_CHOICES)
+
+
+
+def _shop_brand_catalog_links(brand_value, category_value):
+    category_links = {
+        ShopEstimateRequest.BRAND_YONEX: {
+            ShopEstimateRequest.CATEGORY_RACKET: [
+                {"label": "YONEX ラケット一覧", "url": "https://www.yonex.co.jp/tennis/racquets/"},
+                {"label": "YONEX テニス TOP", "url": "https://www.yonex.co.jp/tennis/"},
+            ],
+            ShopEstimateRequest.CATEGORY_STRING: [
+                {"label": "YONEX ストリング一覧", "url": "https://www.yonex.co.jp/tennis/strings/"},
+                {"label": "YONEX テニス TOP", "url": "https://www.yonex.co.jp/tennis/"},
+            ],
+            ShopEstimateRequest.CATEGORY_ACCESSORY: [
+                {"label": "YONEX アクセサリ一覧", "url": "https://www.yonex.co.jp/tennis/accessories/"},
+                {"label": "YONEX テニス TOP", "url": "https://www.yonex.co.jp/tennis/"},
+            ],
+        },
+        ShopEstimateRequest.BRAND_WILSON: {
+            ShopEstimateRequest.CATEGORY_RACKET: [
+                {"label": "Wilson ラケット一覧", "url": "https://jp.wilson.com/collections/tennis-rackets"},
+                {"label": "Wilson Tennis TOP", "url": "https://jp.wilson.com/collections/tennis"},
+            ],
+            ShopEstimateRequest.CATEGORY_STRING: [
+                {"label": "Wilson ストリング一覧", "url": "https://jp.wilson.com/collections/tennis-strings"},
+                {"label": "Wilson Tennis TOP", "url": "https://jp.wilson.com/collections/tennis"},
+            ],
+            ShopEstimateRequest.CATEGORY_ACCESSORY: [
+                {"label": "Wilson アクセサリ一覧", "url": "https://jp.wilson.com/collections/tennis-accessories"},
+                {"label": "Wilson Tennis TOP", "url": "https://jp.wilson.com/collections/tennis"},
+            ],
+        },
+        ShopEstimateRequest.BRAND_BABOLAT: {
+            ShopEstimateRequest.CATEGORY_RACKET: [
+                {"label": "Babolat ラケット一覧", "url": "https://www.babolat.com/jp/tennis/racquets.html"},
+                {"label": "Babolat Tennis TOP", "url": "https://www.babolat.com/jp/tennis.html"},
+            ],
+            ShopEstimateRequest.CATEGORY_STRING: [
+                {"label": "Babolat ストリング一覧", "url": "https://www.babolat.com/jp/tennis/strings.html"},
+                {"label": "Babolat Tennis TOP", "url": "https://www.babolat.com/jp/tennis.html"},
+            ],
+            ShopEstimateRequest.CATEGORY_ACCESSORY: [
+                {"label": "Babolat アクセサリ一覧", "url": "https://www.babolat.com/jp/tennis/accessories.html"},
+                {"label": "Babolat Tennis TOP", "url": "https://www.babolat.com/jp/tennis.html"},
+            ],
+        },
+        ShopEstimateRequest.BRAND_HEAD: {
+            ShopEstimateRequest.CATEGORY_RACKET: [
+                {"label": "HEAD ラケット一覧", "url": "https://www.head.com/ja_JP/tennis/racquets"},
+                {"label": "HEAD Tennis TOP", "url": "https://www.head.com/ja_JP/tennis"},
+            ],
+            ShopEstimateRequest.CATEGORY_STRING: [
+                {"label": "HEAD ストリング一覧", "url": "https://www.head.com/ja_JP/tennis/strings"},
+                {"label": "HEAD Tennis TOP", "url": "https://www.head.com/ja_JP/tennis"},
+            ],
+            ShopEstimateRequest.CATEGORY_ACCESSORY: [
+                {"label": "HEAD アクセサリ一覧", "url": "https://www.head.com/ja_JP/tennis/accessories"},
+                {"label": "HEAD Tennis TOP", "url": "https://www.head.com/ja_JP/tennis"},
+            ],
+        },
+        ShopEstimateRequest.BRAND_PRINCE: {
+            ShopEstimateRequest.CATEGORY_RACKET: [
+                {"label": "Prince ラケット一覧", "url": "https://prince.co.jp/tennis/rackets/"},
+                {"label": "Prince Tennis TOP", "url": "https://prince.co.jp/tennis/"},
+            ],
+            ShopEstimateRequest.CATEGORY_STRING: [
+                {"label": "Prince ストリング一覧", "url": "https://prince.co.jp/tennis/strings/"},
+                {"label": "Prince Tennis TOP", "url": "https://prince.co.jp/tennis/"},
+            ],
+            ShopEstimateRequest.CATEGORY_ACCESSORY: [
+                {"label": "Prince アクセサリ一覧", "url": "https://prince.co.jp/tennis/goods/"},
+                {"label": "Prince Tennis TOP", "url": "https://prince.co.jp/tennis/"},
+            ],
+        },
+        ShopEstimateRequest.BRAND_DUNLOP: {
+            ShopEstimateRequest.CATEGORY_RACKET: [
+                {"label": "DUNLOP ラケット一覧", "url": "https://sports.dunlop.co.jp/tennis/products/racket/"},
+                {"label": "DUNLOP Tennis TOP", "url": "https://sports.dunlop.co.jp/tennis/"},
+            ],
+            ShopEstimateRequest.CATEGORY_STRING: [
+                {"label": "DUNLOP ストリング一覧", "url": "https://sports.dunlop.co.jp/tennis/products/string/"},
+                {"label": "DUNLOP Tennis TOP", "url": "https://sports.dunlop.co.jp/tennis/"},
+            ],
+            ShopEstimateRequest.CATEGORY_ACCESSORY: [
+                {"label": "DUNLOP アクセサリ一覧", "url": "https://sports.dunlop.co.jp/tennis/products/accessory/"},
+                {"label": "DUNLOP Tennis TOP", "url": "https://sports.dunlop.co.jp/tennis/"},
+            ],
+        },
+        ShopEstimateRequest.BRAND_TECHNIFIBRE: {
+            ShopEstimateRequest.CATEGORY_RACKET: [
+                {"label": "Tecnifibre ラケット一覧", "url": "https://www.tecnifibre.com/en/c/tennis-racquets/"},
+                {"label": "Tecnifibre Tennis TOP", "url": "https://www.tecnifibre.com/en/tennis/"},
+            ],
+            ShopEstimateRequest.CATEGORY_STRING: [
+                {"label": "Tecnifibre ストリング一覧", "url": "https://www.tecnifibre.com/en/c/tennis-strings/"},
+                {"label": "Tecnifibre Tennis TOP", "url": "https://www.tecnifibre.com/en/tennis/"},
+            ],
+            ShopEstimateRequest.CATEGORY_ACCESSORY: [
+                {"label": "Tecnifibre アクセサリ一覧", "url": "https://www.tecnifibre.com/en/c/accessories/"},
+                {"label": "Tecnifibre Tennis TOP", "url": "https://www.tecnifibre.com/en/tennis/"},
+            ],
+        },
+        ShopEstimateRequest.BRAND_OTHER: {
+            ShopEstimateRequest.CATEGORY_RACKET: [],
+            ShopEstimateRequest.CATEGORY_STRING: [],
+            ShopEstimateRequest.CATEGORY_ACCESSORY: [],
+        },
+    }
+    return category_links.get(brand_value, {}).get(category_value, [])
+
+
+
+def _shop_brand_search_links(brand_value, keyword, item_label="商品"):
     keyword = (keyword or "").strip()
     if not keyword:
         return []
@@ -2956,43 +3071,43 @@ def _shop_brand_search_links(brand_value, keyword):
     links = {
         ShopEstimateRequest.BRAND_YONEX: [
             {
-                "label": "YONEX 公式サイトで検索",
+                "label": f"YONEX 公式で{item_label}検索",
                 "url": f"https://www.yonex.co.jp/search/?keyword={encoded}",
             }
         ],
         ShopEstimateRequest.BRAND_WILSON: [
             {
-                "label": "Wilson 公式サイトで検索",
+                "label": f"Wilson 公式で{item_label}検索",
                 "url": f"https://jp.wilson.com/search?q={encoded}",
             }
         ],
         ShopEstimateRequest.BRAND_BABOLAT: [
             {
-                "label": "Babolat 公式サイトで検索",
+                "label": f"Babolat 公式で{item_label}検索",
                 "url": f"https://www.babolat.com/jp/search?cgid=root&prefn1=country&prefv1=JP&q={encoded}",
             }
         ],
         ShopEstimateRequest.BRAND_HEAD: [
             {
-                "label": "HEAD 公式サイトで検索",
+                "label": f"HEAD 公式で{item_label}検索",
                 "url": f"https://www.head.com/ja_JP/search/{encoded}",
             }
         ],
         ShopEstimateRequest.BRAND_PRINCE: [
             {
-                "label": "Prince 公式サイトで検索",
+                "label": f"Prince 公式で{item_label}検索",
                 "url": f"https://prince.co.jp/tennis/search/?q={encoded}",
             }
         ],
         ShopEstimateRequest.BRAND_DUNLOP: [
             {
-                "label": "DUNLOP 公式サイトで検索",
+                "label": f"DUNLOP 公式で{item_label}検索",
                 "url": f"https://sports.dunlop.co.jp/tennis/search/?keyword={encoded}",
             }
         ],
         ShopEstimateRequest.BRAND_TECHNIFIBRE: [
             {
-                "label": "Tecnifibre 公式サイトで検索",
+                "label": f"Tecnifibre 公式で{item_label}検索",
                 "url": f"https://www.tecnifibre.com/en/search?text={encoded}",
             }
         ],
@@ -3025,6 +3140,8 @@ def shop_estimate_view(request):
     string_source_choices = list(ShopEstimateRequest.STRING_SOURCE_CHOICES)
     tension_choices = [(value, f"{value} lbs") for value in range(30, 61)]
     brand_label_map = _shop_brand_label_map()
+    category_label_map = _shop_category_label_map()
+    string_source_label_map = dict(string_source_choices)
 
     form_data = {
         "product_category": ShopEstimateRequest.CATEGORY_RACKET,
@@ -3042,8 +3159,14 @@ def shop_estimate_view(request):
     }
     estimate_result = None
     saved_request = None
-    official_links = []
     page_error = ""
+    main_official_links = []
+    main_catalog_links = []
+    string_official_links = []
+    string_catalog_links = []
+    recent_requests = list(
+        ShopEstimateRequest.objects.filter(user=request.user).order_by("-created_at", "-id")[:5]
+    )
 
     if request.method == "POST":
         form_data = {
@@ -3066,9 +3189,11 @@ def shop_estimate_view(request):
         request_stringing = form_data["request_stringing"] == "1"
         tension_lbs = _safe_int(form_data["tension_lbs"], 50) if request_stringing else None
 
-        official_links = _shop_brand_search_links(form_data["brand"], form_data["main_keyword"])
-        if form_data["string_source"] == ShopEstimateRequest.STRING_SOURCE_OFFICIAL and form_data["string_keyword"]:
-            official_links += _shop_brand_search_links(form_data["brand"], form_data["string_keyword"])
+        main_official_links = _shop_brand_search_links(form_data["brand"], form_data["main_keyword"], item_label="商品")
+        main_catalog_links = _shop_brand_catalog_links(form_data["brand"], form_data["product_category"])
+        if form_data["string_source"] == ShopEstimateRequest.STRING_SOURCE_OFFICIAL:
+            string_official_links = _shop_brand_search_links(form_data["brand"], form_data["string_keyword"], item_label="ガット")
+            string_catalog_links = _shop_brand_catalog_links(form_data["brand"], ShopEstimateRequest.CATEGORY_STRING)
 
         if main_official_price <= 0:
             page_error = "商品定価を入力してください。"
@@ -3078,16 +3203,21 @@ def shop_estimate_view(request):
             page_error = "ガットも購入する場合は、ガット定価を入力してください。"
         else:
             main_sale_price = ShopEstimateRequest.sale_price_from_list_price(main_official_price)
-            string_sale_price = ShopEstimateRequest.sale_price_from_list_price(string_official_price)
+            string_sale_price = (
+                ShopEstimateRequest.sale_price_from_list_price(string_official_price)
+                if form_data["string_source"] == ShopEstimateRequest.STRING_SOURCE_OFFICIAL
+                else 0
+            )
             stringing_fee = 1200 if request_stringing else 0
             estimate_result = {
                 "brand_label": brand_label_map.get(form_data["brand"], form_data["brand"]),
-                "category_label": dict(category_choices).get(form_data["product_category"], form_data["product_category"]),
+                "category_label": category_label_map.get(form_data["product_category"], form_data["product_category"]),
                 "main_product_name": form_data["main_product_name"],
                 "main_keyword": form_data["main_keyword"],
                 "main_official_price": main_official_price,
                 "main_sale_price": main_sale_price,
-                "string_source_label": dict(string_source_choices).get(form_data["string_source"], form_data["string_source"]),
+                "string_source": form_data["string_source"],
+                "string_source_label": string_source_label_map.get(form_data["string_source"], form_data["string_source"]),
                 "string_product_name": form_data["string_product_name"],
                 "string_keyword": form_data["string_keyword"],
                 "string_official_price": string_official_price,
@@ -3115,12 +3245,16 @@ def shop_estimate_view(request):
                         tension_lbs=tension_lbs,
                         note=form_data["note"],
                     )
+                    recent_requests = list(
+                        ShopEstimateRequest.objects.filter(user=request.user).order_by("-created_at", "-id")[:5]
+                    )
                     messages.success(request, "物販の購入申込を受け付けました。管理画面から内容を確認できます。")
                 except Exception as e:
                     page_error = f"購入申込の保存に失敗しました: {e}"
 
     if request.method == "GET":
-        official_links = _shop_brand_search_links(form_data["brand"], form_data["main_keyword"])
+        main_catalog_links = _shop_brand_catalog_links(form_data["brand"], form_data["product_category"])
+        main_official_links = _shop_brand_search_links(form_data["brand"], form_data["main_keyword"], item_label="商品")
 
     return render(
         request,
@@ -3132,10 +3266,17 @@ def shop_estimate_view(request):
             "tension_choices": tension_choices,
             "form_data": form_data,
             "estimate_result": estimate_result,
-            "official_links": official_links,
+            "main_official_links": main_official_links,
+            "main_catalog_links": main_catalog_links,
+            "string_official_links": string_official_links,
+            "string_catalog_links": string_catalog_links,
             "page_error": page_error,
             "saved_request": saved_request,
             "stringing_fee": 1200,
+            "recent_requests": recent_requests,
+            "string_source_none": ShopEstimateRequest.STRING_SOURCE_NONE,
+            "string_source_official": ShopEstimateRequest.STRING_SOURCE_OFFICIAL,
+            "string_source_bring_in": ShopEstimateRequest.STRING_SOURCE_BRING_IN,
         },
     )
 
