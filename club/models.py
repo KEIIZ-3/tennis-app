@@ -1566,6 +1566,7 @@ class StringingOrder(models.Model):
     )
     racket_name = models.CharField(max_length=120, blank=True, default="")
     string_name = models.CharField(max_length=120, blank=True, default="")
+    tension_lbs = models.PositiveIntegerField(default=50)
     delivery_requested = models.BooleanField(default=False)
     delivery_location = models.CharField(max_length=255, blank=True, default="")
     preferred_delivery_time = models.CharField(max_length=255, blank=True, default="")
@@ -1578,11 +1579,11 @@ class StringingOrder(models.Model):
 
     class Meta:
         ordering = ["-created_at", "-id"]
-        verbose_name = "ガット貼り依頼"
-        verbose_name_plural = "ガット貼り依頼"
+        verbose_name = "ガット張り依頼"
+        verbose_name_plural = "ガット張り依頼"
 
     def __str__(self):
-        return f"{self.user} / ガット貼り / {self.created_at:%Y-%m-%d %H:%M}"
+        return f"{self.user} / ガット張り / {self.tension_lbs}lbs / {self.created_at:%Y-%m-%d %H:%M}"
 
     @classmethod
     def default_assigned_coach(cls):
@@ -1624,6 +1625,9 @@ class StringingOrder(models.Model):
 
         if self.base_price < 0:
             raise ValidationError("基本料金は0円以上にしてください。")
+
+        if int(self.tension_lbs or 0) < 30 or int(self.tension_lbs or 0) > 60:
+            raise ValidationError("張り上げテンションは 30〜60 lbs の範囲で指定してください。")
 
         if self.delivery_requested:
             self.delivery_fee = 500
