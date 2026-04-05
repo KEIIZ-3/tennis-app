@@ -1,4 +1,3 @@
-
 from datetime import datetime, timedelta
 
 from django import forms
@@ -15,6 +14,7 @@ BUSINESS_END_HOUR = 21
 
 START_HOUR_CHOICES = [(str(h), f"{h:02d}:00") for h in range(BUSINESS_START_HOUR, BUSINESS_END_HOUR)]
 END_HOUR_CHOICES = [(str(h), f"{h:02d}:00") for h in range(BUSINESS_START_HOUR + 1, BUSINESS_END_HOUR + 1)]
+TENSION_CHOICES = [(str(value), f"{value} lbs") for value in range(30, 61)]
 
 
 class LoginForm(forms.Form):
@@ -410,6 +410,11 @@ class StringingOrderForm(forms.ModelForm):
         choices=DELIVERY_CHOICES,
         initial="0",
     )
+    tension_lbs = forms.ChoiceField(
+        label="張り上げテンション",
+        choices=TENSION_CHOICES,
+        initial="50",
+    )
     preferred_finish_date = forms.DateField(
         label="希望張り上げ納期",
         required=False,
@@ -421,6 +426,7 @@ class StringingOrderForm(forms.ModelForm):
         fields = [
             "racket_name",
             "string_name",
+            "tension_lbs",
             "delivery_location",
             "preferred_delivery_time",
             "note",
@@ -453,6 +459,7 @@ class StringingOrderForm(forms.ModelForm):
         if self.instance and getattr(self.instance, "pk", None):
             is_delivery = bool(self.instance.delivery_requested)
             self.fields["delivery_option"].initial = "1" if is_delivery else "0"
+            self.fields["tension_lbs"].initial = str(getattr(self.instance, "tension_lbs", 50) or 50)
             if is_delivery:
                 self.fields["preferred_delivery_time"].initial = self.instance.preferred_delivery_time
             elif self.instance.preferred_delivery_time:
@@ -464,6 +471,7 @@ class StringingOrderForm(forms.ModelForm):
                     self.fields["preferred_finish_date"].initial = timezone.localdate() + timedelta(days=7)
         else:
             self.fields["preferred_finish_date"].initial = timezone.localdate() + timedelta(days=7)
+            self.fields["tension_lbs"].initial = "50"
 
         self.fields["delivery_option"].help_text = "デリバリー希望の場合のみ、届け場所と日時指定を入力してください。"
         self.fields["delivery_location"].help_text = "デリバリー希望の場合のみ入力してください。"
@@ -471,6 +479,7 @@ class StringingOrderForm(forms.ModelForm):
         self.fields["preferred_finish_date"].help_text = "デリバリーなしの場合のみ入力してください。初期値は依頼日から1週間後です。"
         self.fields["racket_name"].help_text = "任意です。分かる範囲で入力してください。"
         self.fields["string_name"].help_text = "任意です。希望ガットがあれば入力してください。"
+        self.fields["tension_lbs"].help_text = "30〜60 lbs の範囲で選択してください。初期値は 50 lbs です。"
 
     def clean(self):
         cleaned_data = super().clean()
@@ -479,9 +488,14 @@ class StringingOrderForm(forms.ModelForm):
         delivery_location = (cleaned_data.get("delivery_location") or "").strip()
         preferred_delivery_time = (cleaned_data.get("preferred_delivery_time") or "").strip()
         preferred_finish_date = cleaned_data.get("preferred_finish_date")
+        tension_lbs = int(cleaned_data.get("tension_lbs") or 50)
 
         cleaned_data["delivery_requested"] = delivery_requested
         cleaned_data["delivery_location"] = delivery_location
+        cleaned_data["tension_lbs"] = tension_lbs
+
+        if tension_lbs < 30 or tension_lbs > 60:
+            self.add_error("tension_lbs", "張り上げテンションは 30〜60 lbs の範囲で選択してください。")
 
         if delivery_requested:
             cleaned_data["preferred_delivery_time"] = preferred_delivery_time
@@ -501,6 +515,7 @@ class StringingOrderForm(forms.ModelForm):
         instance = super().save(commit=False)
         instance.delivery_requested = self.cleaned_data.get("delivery_requested", False)
         instance.delivery_location = self.cleaned_data.get("delivery_location") or ""
+        instance.tension_lbs = int(self.cleaned_data.get("tension_lbs") or 50)
         instance.base_price = 1200
         instance.delivery_fee = 500 if instance.delivery_requested else 0
 
