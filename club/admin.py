@@ -505,6 +505,7 @@ class StringingOrderAdmin(admin.ModelAdmin):
         "assigned_coach",
         "racket_name",
         "string_name",
+        "tension_lbs",
         "delivery_requested",
         "base_price",
         "delivery_fee",
@@ -522,6 +523,7 @@ class StringingOrderAdmin(admin.ModelAdmin):
         "string_name",
         "delivery_location",
         "preferred_delivery_time",
+        "tension_lbs",
         "note",
     )
     autocomplete_fields = ("user",)
@@ -540,6 +542,7 @@ class StringingOrderAdmin(admin.ModelAdmin):
                 "racket_name",
                 "string_name",
                 "delivery_requested",
+                "tension_lbs",
                 "delivery_location",
                 "preferred_delivery_time",
                 "note",
