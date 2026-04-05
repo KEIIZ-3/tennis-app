@@ -13,6 +13,10 @@
     <div class="message error">{{ page_error }}</div>
   {% endif %}
 
+  {% if reused_request %}
+    <div class="message info">申込ID {{ reused_request.id }} の内容をフォームへ再読み込みしています。</div>
+  {% endif %}
+
   <div class="grid-2">
     <div class="card">
       <h2 class="card-title">見積もり入力</h2>
@@ -118,13 +122,13 @@
 
     <div class="card">
       <h2 class="card-title">公式サイト検索リンク</h2>
-      <p class="card-subtitle">ブランド公式サイトの一覧ページ・公式内検索・画像確認を使い分けて、商品名・定価・画像を確認してください。</p>
+      <p class="card-subtitle">ブランド公式サイトの一覧ページや検索ページを開いて、商品名・定価・画像を確認してください。</p>
 
       <div class="spacer-12"></div>
 
       <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px; margin-bottom:14px;">
         <div style="font-weight:800; margin-bottom:8px;">メイン商品</div>
-        {% if main_catalog_links or main_official_links or main_assist_links %}
+        {% if main_catalog_links or main_official_links %}
           <div class="actions">
             {% for link in main_catalog_links %}
               <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn">{{ link.label }}</a>
@@ -132,8 +136,8 @@
             {% for link in main_official_links %}
               <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn btn-primary">{{ link.label }}</a>
             {% endfor %}
-            {% for link in main_assist_links %}
-              <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn">{{ link.label }}</a>
+            {% for link in main_image_links %}
+              <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn">公式画像を確認</a>
             {% endfor %}
           </div>
         {% else %}
@@ -144,7 +148,7 @@
       <div style="padding:14px 16px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:12px;">
         <div style="font-weight:800; margin-bottom:8px;">ガット</div>
         {% if form_data.string_source == string_source_official %}
-          {% if string_catalog_links or string_official_links or string_assist_links %}
+          {% if string_catalog_links or string_official_links %}
             <div class="actions">
               {% for link in string_catalog_links %}
                 <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn">{{ link.label }}</a>
@@ -152,8 +156,8 @@
               {% for link in string_official_links %}
                 <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn btn-primary">{{ link.label }}</a>
               {% endfor %}
-              {% for link in string_assist_links %}
-                <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn">{{ link.label }}</a>
+              {% for link in string_image_links %}
+                <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn">公式画像を確認</a>
               {% endfor %}
             </div>
           {% else %}
@@ -251,9 +255,12 @@
         </div>
       {% endif %}
 
-      <div class="section-note" style="margin-top:16px;">
-        商品画像・税込定価は必ず公式ページで確認してください。購入申込を送信すると、確認ページへ進みます。
-      </div>
+      {% if saved_request %}
+        <div class="message success" style="margin-top:16px;">
+          購入申込を保存しました。
+          <a href="{% url 'club:shop_estimate_complete' saved_request.id %}" class="btn" style="margin-left:8px;">申込内容を確認する</a>
+        </div>
+      {% endif %}
     </div>
   </div>
 
@@ -281,7 +288,7 @@
               <td>{{ row.estimated_total }}円</td>
               <td>
                 <div class="actions">
-                  <a href="{% url 'club:shop_estimate' %}?copy_from={{ row.id }}" class="btn">再利用</a>
+                  <a href="{% url 'club:shop_estimate' %}?reuse={{ row.id }}" class="btn">再利用</a>
                   <a href="{% url 'club:shop_estimate_complete' row.id %}" class="btn btn-primary">申込確認</a>
                 </div>
               </td>
