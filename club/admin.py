@@ -16,6 +16,7 @@ from .models import (
     Reservation,
     ScheduleSurveyResponse,
     ShopEstimateRequest,
+    ShopProductMaster,
     StringingOrder,
     TicketConsumption,
     TicketLedger,
@@ -587,6 +588,74 @@ class ScheduleSurveyResponseAdmin(admin.ModelAdmin):
         "free_comment",
     )
     readonly_fields = ("answered_at", "created_at", "updated_at")
+
+
+@admin.register(ShopProductMaster)
+class ShopProductMasterAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "product_type",
+        "category",
+        "brand",
+        "display_label_admin",
+        "product_code",
+        "official_price_display",
+        "sale_price_display",
+        "is_active",
+        "sort_order",
+        "updated_at",
+    )
+    list_filter = ("product_type", "category", "brand", "is_active")
+    search_fields = ("product_name", "display_name", "product_code", "description")
+    readonly_fields = ("created_at", "updated_at", "sale_price_display")
+    list_per_page = 100
+    ordering = ("brand", "category", "product_type", "sort_order", "product_name", "id")
+
+    fieldsets = (
+        ("基本情報", {
+            "fields": (
+                "product_type",
+                "category",
+                "brand",
+                "product_name",
+                "display_name",
+                "product_code",
+                "official_price",
+                "sale_price_display",
+                "is_active",
+                "sort_order",
+            )
+        }),
+        ("リンク", {
+            "fields": (
+                "product_url",
+                "image_url",
+            )
+        }),
+        ("補足", {
+            "fields": (
+                "description",
+            )
+        }),
+        ("日時", {
+            "fields": (
+                "created_at",
+                "updated_at",
+            )
+        }),
+    )
+
+    @admin.display(description="表示名")
+    def display_label_admin(self, obj):
+        return obj.display_name or obj.product_name
+
+    @admin.display(description="定価")
+    def official_price_display(self, obj):
+        return f"{int(obj.official_price or 0)}円"
+
+    @admin.display(description="販売価格")
+    def sale_price_display(self, obj):
+        return f"{int(obj.sale_price or 0)}円"
 
 
 @admin.register(ShopEstimateRequest)
