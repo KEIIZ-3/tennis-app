@@ -50,8 +50,11 @@
 
       <div id="category-guide" style="padding:12px 14px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:12px; margin-bottom:16px;">
         <div style="font-weight:800; margin-bottom:6px;">入力のコツ</div>
-        <div id="category-guide-text" class="muted">
+        <div id="category-guide-text" class="muted" style="margin-bottom:8px;">
           商品カテゴリに応じて、検索キーワードや商品名の入れ方の目安をここに表示します。
+        </div>
+        <div id="brand-guide-text" class="muted" style="font-size:12px;">
+          ブランドごとの検索例もここに表示します。
         </div>
       </div>
 
@@ -345,7 +348,13 @@
   <script>
     (function () {
       const category = document.getElementById("id_product_category");
+      const brand = document.getElementById("id_brand");
+      const mainKeyword = document.getElementById("id_main_keyword");
+      const mainProductName = document.getElementById("id_main_product_name");
+      const stringKeyword = document.getElementById("id_string_keyword");
+      const stringProductName = document.getElementById("id_string_product_name");
       const categoryGuideText = document.getElementById("category-guide-text");
+      const brandGuideText = document.getElementById("brand-guide-text");
       const stringSource = document.getElementById("id_string_source");
       const stringPurchaseFields = document.getElementById("string-purchase-fields");
       const stringBringinNote = document.getElementById("string-bringin-note");
@@ -358,10 +367,69 @@
         accessory: "アクセサリは、商品名そのものを短く入れると探しやすいです。例: グリップテープ / 振動止め / ラケットバッグ"
       };
 
+      const brandGuides = {
+        yonex: "YONEX なら、EZONE / VCORE / PERCEPT / POLYTOUR 系で探すと見つけやすいです。",
+        wilson: "Wilson なら、SHIFT / BLADE / CLASH / PRO STAFF / NXT 系で探すと見つけやすいです。",
+        babolat: "Babolat なら、PURE DRIVE / PURE AERO / PURE STRIKE / RPM BLAST 系で探すと見つけやすいです。",
+        head: "HEAD なら、SPEED / BOOM / EXTREME / RADICAL / LYNX 系で探すと見つけやすいです。",
+        prince: "Prince なら、PHANTOM / BEAST / TOUR / EMBLEM 系で探すと見つけやすいです。",
+        dunlop: "DUNLOP なら、SX / CX / FX 系で探すと見つけやすいです。",
+        tecnifibre: "Tecnifibre なら、TFIGHT / TEMPO / RAZOR CODE / X-ONE BIPHASE 系で探すと見つけやすいです。",
+        other: "その他ブランドは、ブランド名 + 商品名で短く検索すると見つけやすいです。"
+      };
+
+      const placeholders = {
+        racket: {
+          keyword: "例: EZONE 100 / PURE DRIVE / SHIFT 99",
+          name: "例: EZONE 100 2025"
+        },
+        string: {
+          keyword: "例: POLYTOUR PRO 125 / RPM BLAST / ALU POWER",
+          name: "例: POLYTOUR PRO 125"
+        },
+        accessory: {
+          keyword: "例: グリップテープ / 振動止め / ラケットバッグ",
+          name: "例: ウェットスーパーグリップ 3本入"
+        }
+      };
+
       function updateCategoryGuide() {
         const key = category ? category.value : "racket";
         if (categoryGuideText) {
           categoryGuideText.textContent = categoryGuides[key] || categoryGuides.racket;
+        }
+        if (mainKeyword) {
+          mainKeyword.placeholder = placeholders[key]?.keyword || placeholders.racket.keyword;
+        }
+        if (mainProductName) {
+          mainProductName.placeholder = placeholders[key]?.name || placeholders.racket.name;
+        }
+      }
+
+      function updateBrandGuide() {
+        const key = brand ? brand.value : "yonex";
+        if (brandGuideText) {
+          brandGuideText.textContent = brandGuides[key] || brandGuides.other;
+        }
+      }
+
+      function updateStringPlaceholders() {
+        const key = brand ? brand.value : "yonex";
+        const brandStringExamples = {
+          yonex: { keyword: "例: ポリツアープロ 125 / レクシススピード 125", name: "例: POLYTOUR PRO 125" },
+          wilson: { keyword: "例: NXT 16 / REV 125 / ALU POWER", name: "例: NXT 16" },
+          babolat: { keyword: "例: RPM BLAST 125 / ADDIXION 125", name: "例: RPM BLAST 125" },
+          head: { keyword: "例: LYNX TOUR 125 / HAWK TOUCH 125", name: "例: LYNX TOUR 125" },
+          prince: { keyword: "例: TOUR XT 125 / LIGHTNING XX", name: "例: TOUR XT 125" },
+          dunlop: { keyword: "例: EXPLOSIVE SPIN 125 / ICONIC ALL", name: "例: EXPLOSIVE SPIN 125" },
+          tecnifibre: { keyword: "例: RAZOR CODE 125 / X-ONE BIPHASE 124", name: "例: RAZOR CODE 125" },
+          other: { keyword: "例: 商品名 + ゲージ", name: "例: 商品名 125" }
+        };
+        if (stringKeyword) {
+          stringKeyword.placeholder = brandStringExamples[key]?.keyword || brandStringExamples.other.keyword;
+        }
+        if (stringProductName) {
+          stringProductName.placeholder = brandStringExamples[key]?.name || brandStringExamples.other.name;
         }
       }
 
@@ -385,6 +453,12 @@
       if (category) {
         category.addEventListener("change", updateCategoryGuide);
       }
+      if (brand) {
+        brand.addEventListener("change", function () {
+          updateBrandGuide();
+          updateStringPlaceholders();
+        });
+      }
       if (stringSource) {
         stringSource.addEventListener("change", toggleStringFields);
       }
@@ -393,6 +467,8 @@
       }
 
       updateCategoryGuide();
+      updateBrandGuide();
+      updateStringPlaceholders();
       toggleStringFields();
       toggleTensionField();
     })();
