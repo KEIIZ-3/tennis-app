@@ -165,7 +165,7 @@
       <div class="shop-auto-note">
         {{ shop_candidate_support_message }}
         <br>
-        まず候補カードをクリックすると、商品名・定価・画像プレビューが自動反映されます。
+        ブランドとカテゴリを変えると、商品マスタに登録された候補へ自動で切り替わります。
       </div>
 
       <div id="category-guide" style="padding:12px 14px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:12px; margin-bottom:16px;">
@@ -341,6 +341,21 @@
     </div>
 
     <div class="card shop-sticky-panel">
+      <h2 class="card-title">商品マスタ候補</h2>
+      <p class="card-subtitle">ブランドとカテゴリに応じて、商品マスタの候補を表示します。カードをクリックすると、商品名・定価・画像プレビューが自動反映されます。</p>
+
+      <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px; margin-bottom:14px;">
+        <div style="font-weight:800; margin-bottom:8px;">メイン商品候補</div>
+        <div id="shop-main-candidates" class="shop-auto-grid"></div>
+      </div>
+
+      <div style="padding:14px 16px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:12px;">
+        <div style="font-weight:800; margin-bottom:8px;">ガット候補</div>
+        <div id="shop-string-candidates" class="shop-auto-grid"></div>
+      </div>
+
+      <div class="spacer-16"></div>
+
       <h2 class="card-title">公式サイト検索リンク</h2>
       <p class="card-subtitle">ブランド公式サイトの一覧ページや検索ページを開いて、商品名・定価・画像を確認してください。スクロール中も右側に表示されます。</p>
 
@@ -525,6 +540,8 @@
     {% endif %}
   </div>
 
+  {{ shop_all_product_masters_json|json_script:"shop-product-master-data" }}
+
   <script>
     (function () {
       const category = document.getElementById("id_product_category");
@@ -561,24 +578,28 @@
       const shopSelectedMainImage = document.getElementById("shop-selected-main-image");
       const shopSelectedMainTitle = document.getElementById("shop-selected-main-title");
       const shopSelectedMainSub = document.getElementById("shop-selected-main-sub");
+      const productMasterDataElement = document.getElementById("shop-product-master-data");
 
-      const candidateApiUrl = "{{ shop_candidate_api_url|escapejs }}";
+      const allProductMasters = productMasterDataElement ? JSON.parse(productMasterDataElement.textContent || "[]") : [];
+      const placeholderImage = "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="520" viewBox="0 0 800 520"><rect width="800" height="520" rx="32" fill="#eff6ff"/><rect x="36" y="36" width="728" height="448" rx="28" fill="#ffffff"/><text x="60" y="165" fill="#0f172a" font-size="34" font-weight="700" font-family="Arial, sans-serif">Shop Product</text><text x="60" y="245" fill="#475569" font-size="22" font-weight="600" font-family="Arial, sans-serif">画像URLが未登録です</text></svg>'
+      );
 
       const categoryGuides = {
-        racket: "この画面では、ブランド候補カードをクリックして商品名と定価を自動反映します。まずは右側の候補から選んでください。",
-        string: "ストリング単体カテゴリでも、右側の候補カードをクリックして定価を自動反映できます。",
+        racket: "この画面では、商品マスタの候補カードをクリックして商品名と定価を自動反映します。まずは右側の候補から選んでください。",
+        string: "ストリング単体カテゴリでも、商品マスタの候補カードをクリックして定価を自動反映できます。",
         accessory: "アクセサリは現時点では自動候補対象外です。候補追加は次段階で対応します。"
       };
 
       const brandGuides = {
-        yonex: "現在は YONEX の候補カード表示に対応しています。今後、他ブランドも順次追加可能です。",
-        wilson: "現在このブランドの自動候補は未対応です。次段階で追加できます。",
-        babolat: "現在このブランドの自動候補は未対応です。次段階で追加できます。",
-        head: "現在このブランドの自動候補は未対応です。次段階で追加できます。",
-        prince: "現在このブランドの自動候補は未対応です。次段階で追加できます。",
-        dunlop: "現在このブランドの自動候補は未対応です。次段階で追加できます。",
-        tecnifibre: "現在このブランドの自動候補は未対応です。次段階で追加できます。",
-        other: "現在このブランドの自動候補は未対応です。"
+        yonex: "現在のブランド候補は、管理画面の Shop商品マスタから編集できます。",
+        wilson: "現在のブランド候補は、管理画面の Shop商品マスタから編集できます。",
+        babolat: "現在のブランド候補は、管理画面の Shop商品マスタから編集できます。",
+        head: "現在のブランド候補は、管理画面の Shop商品マスタから編集できます。",
+        prince: "現在のブランド候補は、管理画面の Shop商品マスタから編集できます。",
+        dunlop: "現在のブランド候補は、管理画面の Shop商品マスタから編集できます。",
+        tecnifibre: "現在のブランド候補は、管理画面の Shop商品マスタから編集できます。",
+        other: "現在のブランド候補は、管理画面の Shop商品マスタから編集できます。"
       };
 
       function yen(value) {
@@ -682,7 +703,7 @@
           items.push({ ok: tensionFilled, text: tensionFilled ? "張り上げテンションが選択されています。" : "張り上げテンションを選択してください。" });
         }
 
-        items.push({ ok: true, text: "候補価格は公式オンラインショップ掲載価格を元に自動入力しています。" });
+        items.push({ ok: true, text: "候補価格は商品マスタに登録された定価を元に自動入力しています。" });
 
         preSubmitCheckList.innerHTML = items.map(item => {
           const color = item.ok ? "#166534" : "#b91c1c";
@@ -754,7 +775,7 @@
           return;
         }
         shopSelectedMainPreview.style.display = "block";
-        shopSelectedMainImage.src = candidate.image_url || "";
+        shopSelectedMainImage.src = candidate.image_url || placeholderImage;
         shopSelectedMainImage.alt = candidate.product_name || "選択商品";
         shopSelectedMainTitle.textContent = candidate.product_name || "";
         shopSelectedMainSub.innerHTML = `定価：<strong>${yen(candidate.official_price || 0)}</strong><br>候補クリックで自動反映済み`;
@@ -812,7 +833,7 @@
                   data-image-url="${(item.image_url || "").replace(/"/g, "&quot;")}"
                   data-product-url="${(item.product_url || "").replace(/"/g, "&quot;")}"
                   data-note="${(item.note || "").replace(/"/g, "&quot;")}">
-            <img src="${item.image_url || ""}" alt="${item.product_name || ""}">
+            <img src="${item.image_url || placeholderImage}" alt="${item.product_name || ""}">
             <div class="shop-auto-card-title">${item.product_name || ""}</div>
             <div class="shop-auto-card-price">¥${Number(item.official_price || 0).toLocaleString("ja-JP")}</div>
             <div class="shop-auto-card-meta">${item.note || ""}</div>
@@ -820,25 +841,27 @@
         `).join("");
       }
 
-      async function reloadAutoCandidates() {
-        if (!candidateApiUrl || !brand || !category) return;
-        try {
-          const params = new URLSearchParams({
-            brand: brand.value || "",
-            product_category: category.value || ""
-          });
-          const response = await fetch(`${candidateApiUrl}?${params.toString()}`, {
-            headers: { "X-Requested-With": "XMLHttpRequest" }
-          });
-          if (!response.ok) return;
-          const data = await response.json();
-          renderCandidateCards(shopMainCandidates, data.main_candidates || [], "shop-main-candidate");
-          renderCandidateCards(shopStringCandidates, data.string_candidates || [], "shop-string-candidate");
-          attachMainCandidateEvents();
-          attachStringCandidateEvents();
-        } catch (error) {
-          // 候補取得に失敗しても既存入力は継続
-        }
+      function getFilteredMainCandidates() {
+        return allProductMasters.filter((item) => {
+          return item.product_type === "main"
+            && item.brand === (brand ? brand.value : "")
+            && item.category === (category ? category.value : "");
+        });
+      }
+
+      function getFilteredStringCandidates() {
+        return allProductMasters.filter((item) => {
+          return item.product_type === "string"
+            && item.brand === (brand ? brand.value : "")
+            && item.category === "string";
+        });
+      }
+
+      function renderCandidatesBySelection() {
+        renderCandidateCards(shopMainCandidates, getFilteredMainCandidates(), "shop-main-candidate");
+        renderCandidateCards(shopStringCandidates, getFilteredStringCandidates(), "shop-string-candidate");
+        attachMainCandidateEvents();
+        attachStringCandidateEvents();
       }
 
       function refreshAll() {
@@ -853,13 +876,13 @@
         updateFinalReview();
       }
 
-      if (category) category.addEventListener("change", async function () {
-        await reloadAutoCandidates();
+      if (category) category.addEventListener("change", function () {
+        renderCandidatesBySelection();
         refreshAll();
       });
 
-      if (brand) brand.addEventListener("change", async function () {
-        await reloadAutoCandidates();
+      if (brand) brand.addEventListener("change", function () {
+        renderCandidatesBySelection();
         refreshAll();
       });
 
@@ -868,8 +891,7 @@
       if (note) note.addEventListener("input", refreshAll);
       if (tension) tension.addEventListener("change", refreshAll);
 
-      attachMainCandidateEvents();
-      attachStringCandidateEvents();
+      renderCandidatesBySelection();
 
       if (mainProductName && mainProductName.value && mainOfficialPrice && mainOfficialPrice.value) {
         renderSelectedMainPreview({
