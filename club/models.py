@@ -1674,12 +1674,35 @@ class ShopProductMaster(models.Model):
         (PRODUCT_TYPE_STRING, "ガット"),
     )
 
-    CATEGORY_RACKET = ShopEstimateRequest.CATEGORY_RACKET
-    CATEGORY_STRING = ShopEstimateRequest.CATEGORY_STRING
-    CATEGORY_ACCESSORY = ShopEstimateRequest.CATEGORY_ACCESSORY
+    CATEGORY_RACKET = "racket"
+    CATEGORY_STRING = "string"
+    CATEGORY_ACCESSORY = "accessory"
 
-    CATEGORY_CHOICES = ShopEstimateRequest.CATEGORY_CHOICES
-    BRAND_CHOICES = ShopEstimateRequest.BRAND_CHOICES
+    CATEGORY_CHOICES = (
+        (CATEGORY_RACKET, "ラケット"),
+        (CATEGORY_STRING, "ガット"),
+        (CATEGORY_ACCESSORY, "アクセサリ"),
+    )
+
+    BRAND_YONEX = "yonex"
+    BRAND_WILSON = "wilson"
+    BRAND_BABOLAT = "babolat"
+    BRAND_HEAD = "head"
+    BRAND_PRINCE = "prince"
+    BRAND_DUNLOP = "dunlop"
+    BRAND_TECHNIFIBRE = "tecnifibre"
+    BRAND_OTHER = "other"
+
+    BRAND_CHOICES = (
+        (BRAND_YONEX, "YONEX"),
+        (BRAND_WILSON, "Wilson"),
+        (BRAND_BABOLAT, "Babolat"),
+        (BRAND_HEAD, "HEAD"),
+        (BRAND_PRINCE, "Prince"),
+        (BRAND_DUNLOP, "DUNLOP"),
+        (BRAND_TECHNIFIBRE, "Tecnifibre"),
+        (BRAND_OTHER, "その他"),
+    )
 
     product_type = models.CharField(
         max_length=20,
