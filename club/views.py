@@ -40,6 +40,7 @@ from .models import (
     Reservation,
     ScheduleSurveyResponse,
     ShopEstimateRequest,
+    ShopProductMaster,
     StringingOrder,
     TicketConsumption,
     TicketLedger,
@@ -3158,150 +3159,65 @@ def _shop_image_search_links(brand_value, keyword, item_label="商品画像"):
 
 
 
-def _shop_candidate_preview_data_url(title, accent_start="#dbeafe", accent_end="#eff6ff"):
-    safe_title = (title or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    svg = f'''
-    <svg xmlns="http://www.w3.org/2000/svg" width="800" height="520" viewBox="0 0 800 520">
-      <defs>
-        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="{accent_start}"/>
-          <stop offset="100%" stop-color="{accent_end}"/>
-        </linearGradient>
-      </defs>
-      <rect width="800" height="520" rx="32" fill="url(#bg)"/>
-      <rect x="34" y="34" width="732" height="452" rx="28" fill="#ffffff" fill-opacity="0.85"/>
-      <text x="60" y="130" fill="#0f172a" font-size="34" font-weight="700" font-family="Arial, sans-serif">YONEX</text>
-      <text x="60" y="205" fill="#334155" font-size="22" font-weight="700" font-family="Arial, sans-serif">Shop candidate preview</text>
-      <text x="60" y="300" fill="#0f172a" font-size="42" font-weight="800" font-family="Arial, sans-serif">{safe_title}</text>
-      <text x="60" y="362" fill="#475569" font-size="24" font-weight="600" font-family="Arial, sans-serif">価格は候補クリックで自動入力されます</text>
-    </svg>
-    '''.strip()
-    return "data:image/svg+xml;charset=utf-8," + urllib.parse.quote(svg)
+
+def _shop_product_master_queryset():
+    return (
+        ShopProductMaster.objects.filter(is_active=True)
+        .order_by("brand", "category", "product_type", "sort_order", "product_name", "id")
+    )
 
 
-def _shop_external_candidates(brand_value, category_value):
-    if brand_value != ShopEstimateRequest.BRAND_YONEX:
-        return {
-            "supported": False,
-            "support_message": "自動候補表示は現在 YONEX のみ対応です。",
-            "main_candidates": [],
-            "string_candidates": [],
-        }
+def _shop_product_master_to_candidate_dict(obj):
+    display_label = obj.display_name or obj.product_name
+    keyword = obj.product_code or display_label
+    return {
+        "id": obj.pk,
+        "product_type": obj.product_type,
+        "category": obj.category,
+        "brand": obj.brand,
+        "product_name": display_label,
+        "keyword": keyword,
+        "official_price": int(obj.official_price or 0),
+        "image_url": obj.image_url or "",
+        "product_url": obj.product_url or "",
+        "note": obj.description or "",
+        "is_active": bool(obj.is_active),
+    }
 
-    if category_value == ShopEstimateRequest.CATEGORY_RACKET:
-        main_candidates = [
-            {
-                "id": "yonex-racket-ezone-100",
-                "brand": ShopEstimateRequest.BRAND_YONEX,
-                "category": ShopEstimateRequest.CATEGORY_RACKET,
-                "product_name": "Eゾーン 100",
-                "keyword": "EZONE 100",
-                "official_price": 41800,
-                "product_url": "https://yonexshop.jp/item/detail/1_1_08EZ100_1/",
-                "image_url": _shop_candidate_preview_data_url("EZONE 100", "#bfdbfe", "#dbeafe"),
-                "note": "YONEX公式オンラインショップ掲載価格",
-            },
-            {
-                "id": "yonex-racket-vcore-100",
-                "brand": ShopEstimateRequest.BRAND_YONEX,
-                "category": ShopEstimateRequest.CATEGORY_RACKET,
-                "product_name": "Vコア 100",
-                "keyword": "VCORE 100",
-                "official_price": 41800,
-                "product_url": "https://yonexshop.jp/item/detail/1_1_08VC100_1/",
-                "image_url": _shop_candidate_preview_data_url("VCORE 100", "#fecaca", "#fee2e2"),
-                "note": "YONEX公式オンラインショップ掲載価格",
-            },
-            {
-                "id": "yonex-racket-percept-100",
-                "brand": ShopEstimateRequest.BRAND_YONEX,
-                "category": ShopEstimateRequest.CATEGORY_RACKET,
-                "product_name": "パーセプト 100",
-                "keyword": "PERCEPT 100",
-                "official_price": 41800,
-                "product_url": "https://yonexshop.jp/item/detail/1_1_01PE100_1/",
-                "image_url": _shop_candidate_preview_data_url("PERCEPT 100", "#c7d2fe", "#e0e7ff"),
-                "note": "YONEX公式オンラインショップ掲載価格",
-            },
-        ]
-    else:
-        main_candidates = []
+
+def _shop_master_candidate_lists(form_data):
+    all_candidates = [
+        _shop_product_master_to_candidate_dict(obj)
+        for obj in _shop_product_master_queryset()
+    ]
+
+    main_candidates = [
+        item
+        for item in all_candidates
+        if item["product_type"] == ShopProductMaster.PRODUCT_TYPE_MAIN
+        and item["brand"] == form_data["brand"]
+        and item["category"] == form_data["product_category"]
+    ]
 
     string_candidates = [
-        {
-            "id": "yonex-string-polytour-pro-125",
-            "brand": ShopEstimateRequest.BRAND_YONEX,
-            "category": ShopEstimateRequest.CATEGORY_STRING,
-            "product_name": "ポリツアー プロ 125",
-            "keyword": "POLYTOUR PRO 125",
-            "official_price": 2970,
-            "product_url": "https://yonexshop.jp/item/detail/1_1_PTGP125_1/",
-            "image_url": _shop_candidate_preview_data_url("POLYTOUR PRO 125", "#fde68a", "#fef3c7"),
-            "note": "YONEX公式オンラインショップ掲載価格",
-        },
-        {
-            "id": "yonex-string-polytour-rev-125",
-            "brand": ShopEstimateRequest.BRAND_YONEX,
-            "category": ShopEstimateRequest.CATEGORY_STRING,
-            "product_name": "ポリツアーレブ 125",
-            "keyword": "POLYTOUR REV 125",
-            "official_price": 3300,
-            "product_url": "https://yonexshop.jp/item/detail/1_1_PTGR125_1/",
-            "image_url": _shop_candidate_preview_data_url("POLYTOUR REV 125", "#ddd6fe", "#ede9fe"),
-            "note": "YONEX公式オンラインショップ掲載価格",
-        },
-        {
-            "id": "yonex-string-rexis-speed-125",
-            "brand": ShopEstimateRequest.BRAND_YONEX,
-            "category": ShopEstimateRequest.CATEGORY_STRING,
-            "product_name": "レクシススピード 125",
-            "keyword": "REXIS SPEED 125",
-            "official_price": 3740,
-            "product_url": "https://yonexshop.jp/item/detail/1_1_TGRSP125_1/011",
-            "image_url": _shop_candidate_preview_data_url("REXIS SPEED 125", "#bae6fd", "#e0f2fe"),
-            "note": "YONEX公式オンラインショップ掲載価格",
-        },
+        item
+        for item in all_candidates
+        if item["product_type"] == ShopProductMaster.PRODUCT_TYPE_STRING
+        and item["brand"] == form_data["brand"]
+        and item["category"] == ShopProductMaster.CATEGORY_STRING
     ]
 
     return {
-        "supported": True,
-        "support_message": "現在は YONEX の候補カードを表示しています。クリックすると商品名・定価が自動入力されます。",
+        "all_candidates": all_candidates,
         "main_candidates": main_candidates,
         "string_candidates": string_candidates,
     }
 
 
-
-
-@login_required
-@require_GET
-def shop_candidate_api(request):
-    profile_redirect = _require_profile_completed_for_booking(request)
-    if profile_redirect:
-        return JsonResponse({"ok": False, "message": "プロフィール入力が必要です。"}, status=403)
-
-    survey_redirect = _require_schedule_survey(request)
-    if survey_redirect:
-        return JsonResponse({"ok": False, "message": "アンケート回答が必要です。"}, status=403)
-
-    brand_value = (request.GET.get("brand") or ShopEstimateRequest.BRAND_YONEX).strip()
-    category_value = (request.GET.get("product_category") or ShopEstimateRequest.CATEGORY_RACKET).strip()
-
-    payload = _shop_external_candidates(brand_value, category_value)
-    return JsonResponse(
-        {
-            "ok": True,
-            "supported": bool(payload.get("supported")),
-            "support_message": payload.get("support_message", ""),
-            "main_candidates": payload.get("main_candidates", []),
-            "string_candidates": payload.get("string_candidates", []),
-        }
-    )
-
-
 @login_required
 @require_http_methods(["GET", "POST"])
 def shop_estimate_view(request):
+
     profile_redirect = _require_profile_completed_for_booking(request)
     if profile_redirect:
         return profile_redirect
@@ -3345,11 +3261,6 @@ def shop_estimate_view(request):
     recent_requests = list(
         ShopEstimateRequest.objects.filter(user=request.user).order_by("-created_at", "-id")[:8]
     )
-    candidate_payload = _shop_external_candidates(
-        form_data["brand"],
-        form_data["product_category"],
-    )
-
 
     if request.method == "GET":
         reuse_id = (request.GET.get("reuse") or "").strip()
@@ -3358,7 +3269,7 @@ def shop_estimate_view(request):
             if reused_request:
                 form_data = _shop_build_form_data_from_request_obj(reused_request)
                 messages.info(request, f"申込ID {reused_request.id} の内容をフォームへ再読み込みしました。")
-                candidate_payload = _shop_external_candidates(form_data["brand"], form_data["product_category"])
+                master_candidate_context = _shop_master_candidate_lists(form_data)
 
         main_catalog_links = _shop_brand_catalog_links(form_data["brand"], form_data["product_category"])
         main_official_links = _shop_brand_search_links(form_data["brand"], form_data["main_keyword"], item_label="商品")
@@ -3383,8 +3294,7 @@ def shop_estimate_view(request):
             "tension_lbs": (request.POST.get("tension_lbs") or "50").strip(),
             "note": (request.POST.get("note") or "").strip(),
         }
-
-        candidate_payload = _shop_external_candidates(form_data["brand"], form_data["product_category"])
+        master_candidate_context = _shop_master_candidate_lists(form_data)
 
         main_official_price = _safe_int(form_data["main_official_price"], 0)
         string_official_price = _safe_int(form_data["string_official_price"], 0)
@@ -3479,11 +3389,10 @@ def shop_estimate_view(request):
             "string_source_none": ShopEstimateRequest.STRING_SOURCE_NONE,
             "string_source_official": ShopEstimateRequest.STRING_SOURCE_OFFICIAL,
             "string_source_bring_in": ShopEstimateRequest.STRING_SOURCE_BRING_IN,
-            "shop_candidate_api_url": reverse("club:shop_candidate_api"),
-            "shop_candidate_support_message": candidate_payload.get("support_message", ""),
-            "shop_auto_main_candidates": candidate_payload.get("main_candidates", []),
-            "shop_auto_string_candidates": candidate_payload.get("string_candidates", []),
-            "shop_auto_supported": bool(candidate_payload.get("supported")),
+            "shop_candidate_support_message": "商品マスタから候補を表示しています。候補カードをクリックすると、商品名・定価・画像プレビューが自動反映されます。",
+            "shop_main_candidates": master_candidate_context.get("main_candidates", []),
+            "shop_string_candidates": master_candidate_context.get("string_candidates", []),
+            "shop_all_product_masters_json": json.dumps(master_candidate_context.get("all_candidates", []), ensure_ascii=False),
         },
     )
 
@@ -3607,4 +3516,3 @@ def shop_estimate_complete_view(request, pk):
             "string_source_none": ShopEstimateRequest.STRING_SOURCE_NONE,
         },
     )
-
