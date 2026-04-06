@@ -9,24 +9,6 @@
     </p>
   </div>
 
-  <div class="grid-3" style="margin-bottom:16px;">
-    <div class="card" style="padding:16px;">
-      <div class="muted" style="font-size:12px;">販売価格ルール</div>
-      <div style="font-size:24px; font-weight:800; margin-top:6px;">定価の80%</div>
-      <div class="muted" style="margin-top:8px;">ラケット・ガットともに、公式定価から自動で20%引き計算です。</div>
-    </div>
-    <div class="card" style="padding:16px;">
-      <div class="muted" style="font-size:12px;">ガット張り料金</div>
-      <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ stringing_fee }}円</div>
-      <div class="muted" style="margin-top:8px;">依頼するを選ぶと、見積もり合計に自動加算します。</div>
-    </div>
-    <div class="card" style="padding:16px;">
-      <div class="muted" style="font-size:12px;">入力のコツ</div>
-      <div style="font-size:18px; font-weight:800; margin-top:6px;">型番まで入れる</div>
-      <div class="muted" style="margin-top:8px;">例: EZONE 100 2025 / POLYTOUR PRO 125 など、型番まで入れると確認しやすいです。</div>
-    </div>
-  </div>
-
   {% if page_error %}
     <div class="message error">{{ page_error }}</div>
   {% endif %}
@@ -34,6 +16,29 @@
   {% if reused_request %}
     <div class="message info">申込ID {{ reused_request.id }} の内容をフォームへ再読み込みしています。</div>
   {% endif %}
+
+  <div class="card" style="margin-bottom:16px;">
+    <h2 class="card-title">見積もりルール</h2>
+    <div class="grid-3" style="margin-top:12px;">
+      <div style="padding:16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
+        <div class="muted" style="font-size:12px;">メイン商品</div>
+        <div style="font-size:24px; font-weight:800; margin-top:6px;">定価の80％</div>
+      </div>
+      <div style="padding:16px; border:1px solid #fed7aa; background:#fff7ed; border-radius:12px;">
+        <div class="muted" style="font-size:12px;">ガット購入時</div>
+        <div style="font-size:24px; font-weight:800; margin-top:6px;">定価の80％</div>
+      </div>
+      <div style="padding:16px; border:1px solid #c7d2fe; background:#eef2ff; border-radius:12px;">
+        <div class="muted" style="font-size:12px;">ガット張り</div>
+        <div style="font-size:24px; font-weight:800; margin-top:6px;">一律1200円</div>
+      </div>
+    </div>
+    <ul class="clean" style="margin-top:14px; line-height:1.8;">
+      <li>ラケット・ガット・アクセサリは、ブランド公式サイトの定価を見ながら入力してください。</li>
+      <li>ガット持ち込みを選んだ場合、ガット代は見積もりに含まれません。</li>
+      <li>ガット張りを依頼する場合のみ、張り上げテンションを 30〜60 lbs で選択してください。</li>
+    </ul>
+  </div>
 
   <div class="grid-2">
     <div class="card">
@@ -77,15 +82,6 @@
           <input type="number" name="main_official_price" id="id_main_official_price" value="{{ form_data.main_official_price }}" min="0" step="1" placeholder="例: 39600">
         </p>
 
-        <div style="padding:12px 14px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:12px; margin:16px 0;">
-          <div style="font-weight:800; margin-bottom:6px;">ラケット購入の基本フロー</div>
-          <ul class="clean" style="line-height:1.8; margin:0;">
-            <li>ラケットを検索して定価を確認</li>
-            <li>必要ならガットも購入する / 持ち込む / 不要 を選択</li>
-            <li>必要ならガット張りを依頼して、テンションを指定</li>
-          </ul>
-        </div>
-
         <hr style="border:none; border-top:1px solid #e5e7eb; margin:20px 0;">
 
         <p>
@@ -96,6 +92,10 @@
             {% endfor %}
           </select>
         </p>
+
+        <div id="string-bringin-note" style="display:none; padding:12px 14px; border:1px solid #fde68a; background:#fffbeb; border-radius:10px; margin-bottom:14px;">
+          ガット持ち込みが選択されています。ガット代は見積もりに含まれず、ガット張り料金のみ加算されます。
+        </div>
 
         <div id="string-purchase-fields">
           <p>
@@ -112,11 +112,6 @@
             <label for="id_string_official_price">ガット定価（税込）</label>
             <input type="number" name="string_official_price" id="id_string_official_price" value="{{ form_data.string_official_price }}" min="0" step="1" placeholder="例: 2860">
           </p>
-        </div>
-
-        <div id="string-bring-in-note" style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px; margin:12px 0; display:none;">
-          <div style="font-weight:800; margin-bottom:6px;">ガット持ち込みを選択中です</div>
-          <div class="muted">ガット代は見積もりに入りません。備考欄にガット名や色、ゲージを書いておくと運用しやすいです。</div>
         </div>
 
         <hr style="border:none; border-top:1px solid #e5e7eb; margin:20px 0;">
@@ -260,11 +255,6 @@
                 <th>ガット販売価格</th>
                 <td>{{ estimate_result.string_sale_price }}円</td>
               </tr>
-            {% elif estimate_result.string_source == string_source_bring_in %}
-              <tr>
-                <th>ガット商品</th>
-                <td>持ち込み</td>
-              </tr>
             {% endif %}
             <tr>
               <th>ガット張り</th>
@@ -286,11 +276,6 @@
             </tr>
           </tbody>
         </table>
-
-        <div style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px; margin-top:16px;">
-          <div style="font-weight:800; margin-bottom:6px;">合計の考え方</div>
-          <div class="muted">メイン商品80%価格{% if estimate_result.string_source != string_source_none %} + ガット{% endif %}{% if estimate_result.request_stringing %} + ガット張り料金{% endif %} の合計です。</div>
-        </div>
       {% else %}
         <div class="section-note" style="margin-top:12px;">
           入力後に「見積もりを出す」を押すと、ここに販売価格と合計が表示されます。
@@ -311,26 +296,15 @@
     {% if recent_requests %}
       <div class="grid-2" style="margin-top:12px;">
         {% for row in recent_requests %}
-          <div style="padding:14px 16px; border:1px solid #e5e7eb; background:#fff; border-radius:12px;">
-            <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; align-items:center;">
-              <div style="font-weight:800;">{{ row.main_product_name|default:row.main_keyword|default:"-" }}</div>
-              <div class="muted" style="font-size:12px;">{{ row.created_at|date:"Y-m-d H:i" }}</div>
+          <div style="border:1px solid #e5e7eb; border-radius:12px; padding:16px; background:#fff;">
+            <div class="muted" style="font-size:12px;">申込ID {{ row.id }} / {{ row.created_at|date:"Y-m-d H:i" }}</div>
+            <div style="font-size:18px; font-weight:800; margin-top:6px;">
+              {{ row.main_product_name|default:row.main_keyword|default:"-" }}
             </div>
-            <div class="muted" style="margin-top:6px; line-height:1.8;">
-              <div>{{ row.get_product_category_display }} / {{ row.get_brand_display }}</div>
-              <div>見積合計目安: <strong>{{ row.estimated_total }}円</strong></div>
-              <div>
-                ガット:
-                {% if row.string_source == string_source_official %}
-                  公式購入
-                {% elif row.string_source == string_source_bring_in %}
-                  持ち込み
-                {% else %}
-                  不要
-                {% endif %}
-                / ガット張り: {% if row.request_stringing %}依頼する{% else %}依頼しない{% endif %}
-              </div>
+            <div class="muted" style="margin-top:6px;">
+              {{ row.get_product_category_display }} / {{ row.get_brand_display }}
             </div>
+            <div style="margin-top:10px; font-size:20px; font-weight:800;">{{ row.estimated_total }}円</div>
             <div class="actions" style="margin-top:12px;">
               <a href="{% url 'club:shop_estimate' %}?reuse={{ row.id }}" class="btn">再利用</a>
               <a href="{% url 'club:shop_estimate_complete' row.id %}" class="btn btn-primary">申込確認</a>
@@ -347,7 +321,7 @@
     (function () {
       const stringSource = document.getElementById("id_string_source");
       const stringPurchaseFields = document.getElementById("string-purchase-fields");
-      const stringBringInNote = document.getElementById("string-bring-in-note");
+      const stringBringinNote = document.getElementById("string-bringin-note");
       const requestStringing = document.getElementById("id_request_stringing");
       const tensionField = document.getElementById("tension-field");
 
@@ -356,8 +330,8 @@
         if (stringPurchaseFields) {
           stringPurchaseFields.style.display = mode === "official" ? "block" : "none";
         }
-        if (stringBringInNote) {
-          stringBringInNote.style.display = mode === "bring_in" ? "block" : "none";
+        if (stringBringinNote) {
+          stringBringinNote.style.display = mode === "bring_in" ? "block" : "none";
         }
       }
 
