@@ -110,6 +110,14 @@
         </ul>
       </div>
 
+      <div id="final-review-card" class="card" style="padding:16px; margin-bottom:16px; border:2px solid #c7d2fe; background:#f8faff;">
+        <div style="font-weight:800; margin-bottom:10px;">送信前の最終確認</div>
+        <div class="muted" style="font-size:12px; margin-bottom:10px;">購入申込を押す前に、この内容を確認してください。</div>
+        <div id="final-review-content" style="line-height:1.9;">
+          ここに送信前の確認内容を表示します。
+        </div>
+      </div>
+
       <form method="post">
         {% csrf_token %}
 
@@ -426,6 +434,7 @@
       const preSubmitCheckList = document.getElementById("pre-submit-check-list");
       const summaryLines = document.getElementById("summary-lines");
       const recommendedActionsList = document.getElementById("recommended-actions-list");
+      const finalReviewContent = document.getElementById("final-review-content");
 
       const categoryGuides = {
         racket: "ラケットは、シリーズ名 + フェイスサイズやモデル年で検索すると見つけやすいです。例: EZONE 100 / PURE DRIVE 2025",
@@ -468,6 +477,17 @@
         return Math.floor(n * 0.8);
       }
 
+      function getCategoryText() { return category ? category.options[category.selectedIndex]?.text || "-" : "-"; }
+      function getBrandText() { return brand ? brand.options[brand.selectedIndex]?.text || "-" : "-"; }
+      function getMainText() { return (mainProductName && mainProductName.value.trim()) || (mainKeyword && mainKeyword.value.trim()) || "未入力"; }
+      function getStringMode() { return stringSource ? stringSource.value : "none"; }
+      function getStringText() {
+        const mode = getStringMode();
+        if (mode === "official") return (stringProductName && stringProductName.value.trim()) || (stringKeyword && stringKeyword.value.trim()) || "未入力";
+        if (mode === "bring_in") return "持ち込み";
+        return "不要";
+      }
+
       function updateCategoryGuide() {
         const key = category ? category.value : "racket";
         if (categoryGuideText) categoryGuideText.textContent = categoryGuides[key] || categoryGuides.racket;
@@ -499,35 +519,25 @@
       function renderQuickPicks() {
         const key = brand ? brand.value : "yonex";
         const examples = quickExamples[key] || quickExamples.other;
-        if (quickPicksMain) {
-          quickPicksMain.innerHTML = examples.main.map(item => `<button type="button" class="btn quick-main" data-value="${item}">${item}</button>`).join("");
-        }
-        if (quickPicksString) {
-          quickPicksString.innerHTML = examples.string.map(item => `<button type="button" class="btn quick-string" data-value="${item}">${item}</button>`).join("");
-        }
-        if (quickPicksStringWrap) {
-          quickPicksStringWrap.style.display = (stringSource && stringSource.value === "official") ? "block" : "none";
-        }
+        if (quickPicksMain) quickPicksMain.innerHTML = examples.main.map(item => `<button type="button" class="btn quick-main" data-value="${item}">${item}</button>`).join("");
+        if (quickPicksString) quickPicksString.innerHTML = examples.string.map(item => `<button type="button" class="btn quick-string" data-value="${item}">${item}</button>`).join("");
+        if (quickPicksStringWrap) quickPicksStringWrap.style.display = (stringSource && stringSource.value === "official") ? "block" : "none";
 
-        document.querySelectorAll(".quick-main").forEach(btn => {
-          btn.addEventListener("click", function () {
-            if (mainKeyword) mainKeyword.value = this.dataset.value || "";
-            if (mainProductName && !mainProductName.value) mainProductName.value = this.dataset.value || "";
-            updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions();
-          });
-        });
+        document.querySelectorAll(".quick-main").forEach(btn => btn.addEventListener("click", function () {
+          if (mainKeyword) mainKeyword.value = this.dataset.value || "";
+          if (mainProductName && !mainProductName.value) mainProductName.value = this.dataset.value || "";
+          refreshAll();
+        }));
 
-        document.querySelectorAll(".quick-string").forEach(btn => {
-          btn.addEventListener("click", function () {
-            if (stringKeyword) stringKeyword.value = this.dataset.value || "";
-            if (stringProductName && !stringProductName.value) stringProductName.value = this.dataset.value || "";
-            updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions();
-          });
-        });
+        document.querySelectorAll(".quick-string").forEach(btn => btn.addEventListener("click", function () {
+          if (stringKeyword) stringKeyword.value = this.dataset.value || "";
+          if (stringProductName && !stringProductName.value) stringProductName.value = this.dataset.value || "";
+          refreshAll();
+        }));
       }
 
       function toggleStringFields() {
-        const mode = stringSource ? stringSource.value : "none";
+        const mode = getStringMode();
         if (stringPurchaseFields) stringPurchaseFields.style.display = mode === "official" ? "block" : "none";
         if (stringBringinNote) stringBringinNote.style.display = mode === "bring_in" ? "block" : "none";
         if (quickPicksStringWrap) quickPicksStringWrap.style.display = mode === "official" ? "block" : "none";
@@ -540,7 +550,7 @@
 
       function updateLiveEstimate() {
         const mainSale = salePrice(mainOfficialPrice ? mainOfficialPrice.value : 0);
-        const stringMode = stringSource ? stringSource.value : "none";
+        const stringMode = getStringMode();
         const stringSale = stringMode === "official" ? salePrice(stringOfficialPrice ? stringOfficialPrice.value : 0) : 0;
         const stringingFee = requestStringing && requestStringing.value === "1" ? 1200 : 0;
         const total = mainSale + stringSale + stringingFee;
@@ -562,9 +572,9 @@
       function updatePreSubmitCheck() {
         if (!preSubmitCheckList) return;
         const items = [];
-        const mainNameFilled = !!((mainProductName && mainProductName.value.trim()) || (mainKeyword && mainKeyword.value.trim()));
+        const mainNameFilled = !!getMainText() && getMainText() !== "未入力";
         const mainPriceFilled = !!(mainOfficialPrice && String(mainOfficialPrice.value).trim());
-        const stringMode = stringSource ? stringSource.value : "none";
+        const stringMode = getStringMode();
         const wantsStringing = requestStringing && requestStringing.value === "1";
         const tensionFilled = !wantsStringing || !!(tension && tension.value);
 
@@ -572,7 +582,7 @@
         items.push({ ok: mainPriceFilled, text: mainPriceFilled ? "メイン商品の定価が入っています。" : "メイン商品の定価を入れてください。" });
 
         if (stringMode === "official") {
-          const stringNameFilled = !!((stringProductName && stringProductName.value.trim()) || (stringKeyword && stringKeyword.value.trim()));
+          const stringNameFilled = !!getStringText() && getStringText() !== "未入力";
           const stringPriceFilled = !!(stringOfficialPrice && String(stringOfficialPrice.value).trim());
           items.push({ ok: stringNameFilled, text: stringNameFilled ? "ガット商品名または検索キーワードが入っています。" : "ガット商品名または検索キーワードを入れてください。" });
           items.push({ ok: stringPriceFilled, text: stringPriceFilled ? "ガット定価が入っています。" : "ガット定価を入れてください。" });
@@ -593,23 +603,17 @@
 
       function updateSummaryCard() {
         if (!summaryLines) return;
-        const categoryText = category ? category.options[category.selectedIndex]?.text || "-" : "-";
-        const brandText = brand ? brand.options[brand.selectedIndex]?.text || "-" : "-";
-        const mainText = (mainProductName && mainProductName.value.trim()) || (mainKeyword && mainKeyword.value.trim()) || "未入力";
+        const stringMode = getStringMode();
         const mainPriceText = mainOfficialPrice && mainOfficialPrice.value ? `${mainOfficialPrice.value}円` : "未入力";
-        const stringMode = stringSource ? stringSource.value : "none";
-        let stringText = "不要";
-        if (stringMode === "official") stringText = (stringProductName && stringProductName.value.trim()) || (stringKeyword && stringKeyword.value.trim()) || "未入力";
-        else if (stringMode === "bring_in") stringText = "持ち込み";
         const stringPriceText = (stringMode === "official" && stringOfficialPrice && stringOfficialPrice.value) ? `${stringOfficialPrice.value}円` : (stringMode === "official" ? "未入力" : "-");
         const stringingText = requestStringing && requestStringing.value === "1" ? `依頼する / ${tension && tension.value ? `${tension.value} lbs` : "テンション未選択"}` : "依頼しない";
         const noteText = note && note.value.trim() ? note.value.trim() : "なし";
 
         summaryLines.innerHTML = [
-          `カテゴリ：<strong>${categoryText}</strong>`,
-          `ブランド：<strong>${brandText}</strong>`,
-          `メイン商品：<strong>${mainText}</strong> / 定価 <strong>${mainPriceText}</strong>`,
-          `ガット：<strong>${stringText}</strong> ${stringMode === "official" ? `/ 定価 <strong>${stringPriceText}</strong>` : ""}`,
+          `カテゴリ：<strong>${getCategoryText()}</strong>`,
+          `ブランド：<strong>${getBrandText()}</strong>`,
+          `メイン商品：<strong>${getMainText()}</strong> / 定価 <strong>${mainPriceText}</strong>`,
+          `ガット：<strong>${getStringText()}</strong> ${stringMode === "official" ? `/ 定価 <strong>${stringPriceText}</strong>` : ""}`,
           `ガット張り：<strong>${stringingText}</strong>`,
           `備考：<strong>${noteText}</strong>`
         ].join("<br>");
@@ -619,8 +623,8 @@
         if (!recommendedActionsList) return;
 
         const actions = [];
-        const stringMode = stringSource ? stringSource.value : "none";
-        const mainNameFilled = !!((mainProductName && mainProductName.value.trim()) || (mainKeyword && mainKeyword.value.trim()));
+        const stringMode = getStringMode();
+        const mainNameFilled = getMainText() !== "未入力";
         const mainPriceFilled = !!(mainOfficialPrice && String(mainOfficialPrice.value).trim());
 
         if (!mainNameFilled) actions.push("まずはメイン商品の候補ボタンを押すか、商品名を入力してください。");
@@ -628,45 +632,70 @@
         if (stringMode === "official" && !(stringOfficialPrice && String(stringOfficialPrice.value).trim())) {
           actions.push("ガットも購入する場合は、公式サイトでガット定価を確認して入力してください。");
         }
-        if (stringMode === "bring_in") {
-          actions.push("ガット持ち込みなので、必要ならそのままガット張りの有無だけ決めてください。");
-        }
+        if (stringMode === "bring_in") actions.push("ガット持ち込みなので、必要ならそのままガット張りの有無だけ決めてください。");
         if (requestStringing && requestStringing.value === "1" && !(tension && tension.value)) {
           actions.push("ガット張りを依頼するので、張り上げテンションを選択してください。");
         }
         if (mainNameFilled && mainPriceFilled) {
           actions.push("入力が進んでいます。公式サイトの画像・価格を最後に確認したら見積もりまたは購入申込へ進めます。");
         }
-        if (!actions.length) {
-          actions.push("必要項目の入力が進んでいます。見積もりを出すか、購入申込を送信してください。");
-        }
+        if (!actions.length) actions.push("必要項目の入力が進んでいます。見積もりを出すか、購入申込を送信してください。");
 
         recommendedActionsList.innerHTML = actions.map(text => `<li>・${text}</li>`).join("");
       }
 
-      if (category) category.addEventListener("change", function () { updateCategoryGuide(); updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
-      if (brand) brand.addEventListener("change", function () { updateBrandGuide(); updateStringPlaceholders(); renderQuickPicks(); updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
-      if (stringSource) stringSource.addEventListener("change", function () { toggleStringFields(); updateLiveEstimate(); renderQuickPicks(); updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
-      if (requestStringing) requestStringing.addEventListener("change", function () { toggleTensionField(); updateLiveEstimate(); updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
-      if (mainOfficialPrice) mainOfficialPrice.addEventListener("input", function () { updateLiveEstimate(); updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
-      if (stringOfficialPrice) stringOfficialPrice.addEventListener("input", function () { updateLiveEstimate(); updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
-      if (mainKeyword) mainKeyword.addEventListener("input", function () { updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
-      if (mainProductName) mainProductName.addEventListener("input", function () { updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
-      if (stringKeyword) stringKeyword.addEventListener("input", function () { updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
-      if (stringProductName) stringProductName.addEventListener("input", function () { updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
-      if (note) note.addEventListener("input", updateSummaryCard);
-      if (tension) tension.addEventListener("change", function () { updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
+      function updateFinalReview() {
+        if (!finalReviewContent) return;
 
-      updateCategoryGuide();
-      updateBrandGuide();
-      updateStringPlaceholders();
+        const stringMode = getStringMode();
+        const mainSale = salePrice(mainOfficialPrice ? mainOfficialPrice.value : 0);
+        const stringSale = stringMode === "official" ? salePrice(stringOfficialPrice ? stringOfficialPrice.value : 0) : 0;
+        const stringingFee = requestStringing && requestStringing.value === "1" ? 1200 : 0;
+        const total = mainSale + stringSale + stringingFee;
+
+        const items = [
+          `カテゴリ：<strong>${getCategoryText()}</strong>`,
+          `ブランド：<strong>${getBrandText()}</strong>`,
+          `メイン商品：<strong>${getMainText()}</strong>`,
+          `メイン販売価格：<strong>${yen(mainSale)}</strong>`,
+          `ガット：<strong>${getStringText()}</strong>`,
+          `ガット販売価格：<strong>${yen(stringSale)}</strong>`,
+          `ガット張り：<strong>${requestStringing && requestStringing.value === "1" ? `依頼する / ${tension && tension.value ? `${tension.value} lbs` : "テンション未選択"}` : "依頼しない"}</strong>`,
+          `張り料金：<strong>${yen(stringingFee)}</strong>`,
+          `見積もり合計：<strong>${yen(total)}</strong>`
+        ];
+
+        finalReviewContent.innerHTML = items.join("<br>");
+      }
+
+      function refreshAll() {
+        updateCategoryGuide();
+        updateBrandGuide();
+        updateStringPlaceholders();
+        toggleStringFields();
+        toggleTensionField();
+        updateLiveEstimate();
+        updatePreSubmitCheck();
+        updateSummaryCard();
+        updateRecommendedActions();
+        updateFinalReview();
+      }
+
+      if (category) category.addEventListener("change", refreshAll);
+      if (brand) brand.addEventListener("change", function () { renderQuickPicks(); refreshAll(); });
+      if (stringSource) stringSource.addEventListener("change", function () { renderQuickPicks(); refreshAll(); });
+      if (requestStringing) requestStringing.addEventListener("change", refreshAll);
+      if (mainOfficialPrice) mainOfficialPrice.addEventListener("input", refreshAll);
+      if (stringOfficialPrice) stringOfficialPrice.addEventListener("input", refreshAll);
+      if (mainKeyword) mainKeyword.addEventListener("input", refreshAll);
+      if (mainProductName) mainProductName.addEventListener("input", refreshAll);
+      if (stringKeyword) stringKeyword.addEventListener("input", refreshAll);
+      if (stringProductName) stringProductName.addEventListener("input", refreshAll);
+      if (note) note.addEventListener("input", refreshAll);
+      if (tension) tension.addEventListener("change", refreshAll);
+
       renderQuickPicks();
-      toggleStringFields();
-      toggleTensionField();
-      updateLiveEstimate();
-      updatePreSubmitCheck();
-      updateSummaryCard();
-      updateRecommendedActions();
+      refreshAll();
     })();
   </script>
 {% endblock %}
