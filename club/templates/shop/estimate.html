@@ -96,6 +96,13 @@
         </ul>
       </div>
 
+      <div id="summary-card" class="card" style="padding:16px; margin-bottom:16px; border:1px solid #e5e7eb; background:#fff;">
+        <div style="font-weight:800; margin-bottom:10px;">入力内容の要約</div>
+        <div id="summary-lines" class="muted" style="line-height:1.9;">
+          ここに現在の入力内容の要約を表示します。
+        </div>
+      </div>
+
       <form method="post">
         {% csrf_token %}
 
@@ -393,6 +400,7 @@
       const stringKeyword = document.getElementById("id_string_keyword");
       const stringProductName = document.getElementById("id_string_product_name");
       const stringOfficialPrice = document.getElementById("id_string_official_price");
+      const note = document.getElementById("id_note");
       const categoryGuideText = document.getElementById("category-guide-text");
       const brandGuideText = document.getElementById("brand-guide-text");
       const stringSource = document.getElementById("id_string_source");
@@ -400,6 +408,7 @@
       const stringBringinNote = document.getElementById("string-bringin-note");
       const requestStringing = document.getElementById("id_request_stringing");
       const tensionField = document.getElementById("tension-field");
+      const tension = document.getElementById("id_tension_lbs");
       const liveMainSale = document.getElementById("live-main-sale");
       const liveStringSale = document.getElementById("live-string-sale");
       const liveTotal = document.getElementById("live-total");
@@ -408,6 +417,7 @@
       const quickPicksString = document.getElementById("quick-picks-string");
       const quickPicksStringWrap = document.getElementById("quick-picks-string-wrap");
       const preSubmitCheckList = document.getElementById("pre-submit-check-list");
+      const summaryLines = document.getElementById("summary-lines");
 
       const categoryGuides = {
         racket: "ラケットは、シリーズ名 + フェイスサイズやモデル年で検索すると見つけやすいです。例: EZONE 100 / PURE DRIVE 2025",
@@ -503,6 +513,7 @@
             if (mainKeyword) mainKeyword.value = this.dataset.value || "";
             if (mainProductName && !mainProductName.value) mainProductName.value = this.dataset.value || "";
             updatePreSubmitCheck();
+            updateSummaryCard();
           });
         });
 
@@ -511,6 +522,7 @@
             if (stringKeyword) stringKeyword.value = this.dataset.value || "";
             if (stringProductName && !stringProductName.value) stringProductName.value = this.dataset.value || "";
             updatePreSubmitCheck();
+            updateSummaryCard();
           });
         });
       }
@@ -556,7 +568,7 @@
         const mainPriceFilled = !!(mainOfficialPrice && String(mainOfficialPrice.value).trim());
         const stringMode = stringSource ? stringSource.value : "none";
         const wantsStringing = requestStringing && requestStringing.value === "1";
-        const tensionFilled = !wantsStringing || !!(document.getElementById("id_tension_lbs") && document.getElementById("id_tension_lbs").value);
+        const tensionFilled = !wantsStringing || !!(tension && tension.value);
 
         items.push({
           ok: mainNameFilled,
@@ -600,9 +612,46 @@
         }).join("");
       }
 
+      function updateSummaryCard() {
+        if (!summaryLines) return;
+
+        const categoryText = category ? category.options[category.selectedIndex]?.text || "-" : "-";
+        const brandText = brand ? brand.options[brand.selectedIndex]?.text || "-" : "-";
+        const mainText = (mainProductName && mainProductName.value.trim()) || (mainKeyword && mainKeyword.value.trim()) || "未入力";
+        const mainPriceText = mainOfficialPrice && mainOfficialPrice.value ? `${mainOfficialPrice.value}円` : "未入力";
+        const stringMode = stringSource ? stringSource.value : "none";
+
+        let stringText = "不要";
+        if (stringMode === "official") {
+          stringText = (stringProductName && stringProductName.value.trim()) || (stringKeyword && stringKeyword.value.trim()) || "未入力";
+        } else if (stringMode === "bring_in") {
+          stringText = "持ち込み";
+        }
+
+        const stringPriceText = (stringMode === "official" && stringOfficialPrice && stringOfficialPrice.value)
+          ? `${stringOfficialPrice.value}円`
+          : (stringMode === "official" ? "未入力" : "-");
+
+        const stringingText = requestStringing && requestStringing.value === "1"
+          ? `依頼する / ${tension && tension.value ? `${tension.value} lbs` : "テンション未選択"}`
+          : "依頼しない";
+
+        const noteText = note && note.value.trim() ? note.value.trim() : "なし";
+
+        summaryLines.innerHTML = [
+          `カテゴリ：<strong>${categoryText}</strong>`,
+          `ブランド：<strong>${brandText}</strong>`,
+          `メイン商品：<strong>${mainText}</strong> / 定価 <strong>${mainPriceText}</strong>`,
+          `ガット：<strong>${stringText}</strong> ${stringMode === "official" ? `/ 定価 <strong>${stringPriceText}</strong>` : ""}`,
+          `ガット張り：<strong>${stringingText}</strong>`,
+          `備考：<strong>${noteText}</strong>`
+        ].join("<br>");
+      }
+
       if (category) category.addEventListener("change", function () {
         updateCategoryGuide();
         updatePreSubmitCheck();
+        updateSummaryCard();
       });
       if (brand) {
         brand.addEventListener("change", function () {
@@ -610,6 +659,7 @@
           updateStringPlaceholders();
           renderQuickPicks();
           updatePreSubmitCheck();
+          updateSummaryCard();
         });
       }
       if (stringSource) {
@@ -618,6 +668,7 @@
           updateLiveEstimate();
           renderQuickPicks();
           updatePreSubmitCheck();
+          updateSummaryCard();
         });
       }
       if (requestStringing) {
@@ -625,22 +676,25 @@
           toggleTensionField();
           updateLiveEstimate();
           updatePreSubmitCheck();
+          updateSummaryCard();
         });
       }
       if (mainOfficialPrice) mainOfficialPrice.addEventListener("input", function () {
         updateLiveEstimate();
         updatePreSubmitCheck();
+        updateSummaryCard();
       });
       if (stringOfficialPrice) stringOfficialPrice.addEventListener("input", function () {
         updateLiveEstimate();
         updatePreSubmitCheck();
+        updateSummaryCard();
       });
-      if (mainKeyword) mainKeyword.addEventListener("input", updatePreSubmitCheck);
-      if (mainProductName) mainProductName.addEventListener("input", updatePreSubmitCheck);
-      if (stringKeyword) stringKeyword.addEventListener("input", updatePreSubmitCheck);
-      if (stringProductName) stringProductName.addEventListener("input", updatePreSubmitCheck);
-      const tension = document.getElementById("id_tension_lbs");
-      if (tension) tension.addEventListener("change", updatePreSubmitCheck);
+      if (mainKeyword) mainKeyword.addEventListener("input", function () { updatePreSubmitCheck(); updateSummaryCard(); });
+      if (mainProductName) mainProductName.addEventListener("input", function () { updatePreSubmitCheck(); updateSummaryCard(); });
+      if (stringKeyword) stringKeyword.addEventListener("input", function () { updatePreSubmitCheck(); updateSummaryCard(); });
+      if (stringProductName) stringProductName.addEventListener("input", function () { updatePreSubmitCheck(); updateSummaryCard(); });
+      if (note) note.addEventListener("input", updateSummaryCard);
+      if (tension) tension.addEventListener("change", function () { updatePreSubmitCheck(); updateSummaryCard(); });
 
       updateCategoryGuide();
       updateBrandGuide();
@@ -650,6 +704,7 @@
       toggleTensionField();
       updateLiveEstimate();
       updatePreSubmitCheck();
+      updateSummaryCard();
     })();
   </script>
 {% endblock %}
