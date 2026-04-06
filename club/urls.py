@@ -21,6 +21,7 @@ urlpatterns = [
     path("stringing/new/", views.stringing_order_create, name="stringing_order_create"),
     path("stringing/", views.stringing_order_list, name="stringing_order_list"),
     path("shop/estimate/", views.shop_estimate_view, name="shop_estimate"),
+    path("shop/history/", views.shop_estimate_history_view, name="shop_estimate_history"),
     path("shop/estimate/complete/<int:pk>/", views.shop_estimate_complete_view, name="shop_estimate_complete"),
 
     path("survey/", views.schedule_survey_view, name="schedule_survey"),
