@@ -595,6 +595,7 @@ class ShopEstimateRequestAdmin(admin.ModelAdmin):
         "id",
         "created_at",
         "user_display",
+        "handling_status",
         "product_category",
         "brand",
         "main_product_display",
@@ -604,7 +605,14 @@ class ShopEstimateRequestAdmin(admin.ModelAdmin):
         "stringing_fee_display",
         "estimated_total_display",
     )
-    list_filter = ("product_category", "brand", "string_source", "request_stringing", "created_at")
+    list_filter = (
+        "handling_status",
+        "product_category",
+        "brand",
+        "string_source",
+        "request_stringing",
+        "created_at",
+    )
     search_fields = (
         "user__username",
         "user__full_name",
@@ -613,6 +621,7 @@ class ShopEstimateRequestAdmin(admin.ModelAdmin):
         "string_keyword",
         "string_product_name",
         "note",
+        "admin_note",
     )
     readonly_fields = (
         "created_at",
@@ -630,9 +639,11 @@ class ShopEstimateRequestAdmin(admin.ModelAdmin):
         ("基本情報", {
             "fields": (
                 "user",
+                "handling_status",
                 "product_category",
                 "brand",
                 "note",
+                "admin_note",
             )
         }),
         ("メイン商品", {
