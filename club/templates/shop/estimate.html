@@ -58,6 +58,27 @@
         </div>
       </div>
 
+      <div class="card" style="padding:16px; margin-bottom:16px; border:1px solid #dbeafe; background:#f8fbff;">
+        <div style="font-weight:800; margin-bottom:10px;">入力中の見積もりプレビュー</div>
+        <div class="grid-3">
+          <div>
+            <div class="muted" style="font-size:12px;">メイン販売価格</div>
+            <div id="live-main-sale" style="font-size:22px; font-weight:800; margin-top:6px;">0円</div>
+          </div>
+          <div>
+            <div class="muted" style="font-size:12px;">ガット販売価格</div>
+            <div id="live-string-sale" style="font-size:22px; font-weight:800; margin-top:6px;">0円</div>
+          </div>
+          <div>
+            <div class="muted" style="font-size:12px;">見積もり合計</div>
+            <div id="live-total" style="font-size:22px; font-weight:800; margin-top:6px;">0円</div>
+          </div>
+        </div>
+        <div id="live-breakdown" class="muted" style="font-size:12px; margin-top:10px;">
+          定価を入力すると、ここに概算内訳を表示します。
+        </div>
+      </div>
+
       <form method="post">
         {% csrf_token %}
 
@@ -351,8 +372,10 @@
       const brand = document.getElementById("id_brand");
       const mainKeyword = document.getElementById("id_main_keyword");
       const mainProductName = document.getElementById("id_main_product_name");
+      const mainOfficialPrice = document.getElementById("id_main_official_price");
       const stringKeyword = document.getElementById("id_string_keyword");
       const stringProductName = document.getElementById("id_string_product_name");
+      const stringOfficialPrice = document.getElementById("id_string_official_price");
       const categoryGuideText = document.getElementById("category-guide-text");
       const brandGuideText = document.getElementById("brand-guide-text");
       const stringSource = document.getElementById("id_string_source");
@@ -360,6 +383,10 @@
       const stringBringinNote = document.getElementById("string-bringin-note");
       const requestStringing = document.getElementById("id_request_stringing");
       const tensionField = document.getElementById("tension-field");
+      const liveMainSale = document.getElementById("live-main-sale");
+      const liveStringSale = document.getElementById("live-string-sale");
+      const liveTotal = document.getElementById("live-total");
+      const liveBreakdown = document.getElementById("live-breakdown");
 
       const categoryGuides = {
         racket: "ラケットは、シリーズ名 + フェイスサイズやモデル年で検索すると見つけやすいです。例: EZONE 100 / PURE DRIVE 2025",
@@ -379,38 +406,33 @@
       };
 
       const placeholders = {
-        racket: {
-          keyword: "例: EZONE 100 / PURE DRIVE / SHIFT 99",
-          name: "例: EZONE 100 2025"
-        },
-        string: {
-          keyword: "例: POLYTOUR PRO 125 / RPM BLAST / ALU POWER",
-          name: "例: POLYTOUR PRO 125"
-        },
-        accessory: {
-          keyword: "例: グリップテープ / 振動止め / ラケットバッグ",
-          name: "例: ウェットスーパーグリップ 3本入"
-        }
+        racket: { keyword: "例: EZONE 100 / PURE DRIVE / SHIFT 99", name: "例: EZONE 100 2025" },
+        string: { keyword: "例: POLYTOUR PRO 125 / RPM BLAST / ALU POWER", name: "例: POLYTOUR PRO 125" },
+        accessory: { keyword: "例: グリップテープ / 振動止め / ラケットバッグ", name: "例: ウェットスーパーグリップ 3本入" }
       };
+
+      function yen(value) {
+        return `${value}円`;
+      }
+
+      function salePrice(value) {
+        const n = parseInt(String(value || "0").replace(/,/g, ""), 10);
+        if (!Number.isFinite(n) || n <= 0) {
+          return 0;
+        }
+        return Math.floor(n * 0.8);
+      }
 
       function updateCategoryGuide() {
         const key = category ? category.value : "racket";
-        if (categoryGuideText) {
-          categoryGuideText.textContent = categoryGuides[key] || categoryGuides.racket;
-        }
-        if (mainKeyword) {
-          mainKeyword.placeholder = placeholders[key]?.keyword || placeholders.racket.keyword;
-        }
-        if (mainProductName) {
-          mainProductName.placeholder = placeholders[key]?.name || placeholders.racket.name;
-        }
+        if (categoryGuideText) categoryGuideText.textContent = categoryGuides[key] || categoryGuides.racket;
+        if (mainKeyword) mainKeyword.placeholder = placeholders[key]?.keyword || placeholders.racket.keyword;
+        if (mainProductName) mainProductName.placeholder = placeholders[key]?.name || placeholders.racket.name;
       }
 
       function updateBrandGuide() {
         const key = brand ? brand.value : "yonex";
-        if (brandGuideText) {
-          brandGuideText.textContent = brandGuides[key] || brandGuides.other;
-        }
+        if (brandGuideText) brandGuideText.textContent = brandGuides[key] || brandGuides.other;
       }
 
       function updateStringPlaceholders() {
@@ -425,34 +447,47 @@
           tecnifibre: { keyword: "例: RAZOR CODE 125 / X-ONE BIPHASE 124", name: "例: RAZOR CODE 125" },
           other: { keyword: "例: 商品名 + ゲージ", name: "例: 商品名 125" }
         };
-        if (stringKeyword) {
-          stringKeyword.placeholder = brandStringExamples[key]?.keyword || brandStringExamples.other.keyword;
-        }
-        if (stringProductName) {
-          stringProductName.placeholder = brandStringExamples[key]?.name || brandStringExamples.other.name;
-        }
+        if (stringKeyword) stringKeyword.placeholder = brandStringExamples[key]?.keyword || brandStringExamples.other.keyword;
+        if (stringProductName) stringProductName.placeholder = brandStringExamples[key]?.name || brandStringExamples.other.name;
       }
 
       function toggleStringFields() {
         const mode = stringSource ? stringSource.value : "none";
-        if (stringPurchaseFields) {
-          stringPurchaseFields.style.display = mode === "official" ? "block" : "none";
-        }
-        if (stringBringinNote) {
-          stringBringinNote.style.display = mode === "bring_in" ? "block" : "none";
-        }
+        if (stringPurchaseFields) stringPurchaseFields.style.display = mode === "official" ? "block" : "none";
+        if (stringBringinNote) stringBringinNote.style.display = mode === "bring_in" ? "block" : "none";
       }
 
       function toggleTensionField() {
         const enabled = requestStringing && requestStringing.value === "1";
-        if (tensionField) {
-          tensionField.style.display = enabled ? "block" : "none";
+        if (tensionField) tensionField.style.display = enabled ? "block" : "none";
+      }
+
+      function updateLiveEstimate() {
+        const mainSale = salePrice(mainOfficialPrice ? mainOfficialPrice.value : 0);
+        const stringMode = stringSource ? stringSource.value : "none";
+        const stringSale = stringMode === "official" ? salePrice(stringOfficialPrice ? stringOfficialPrice.value : 0) : 0;
+        const stringingFee = requestStringing && requestStringing.value === "1" ? 1200 : 0;
+        const total = mainSale + stringSale + stringingFee;
+
+        if (liveMainSale) liveMainSale.textContent = yen(mainSale);
+        if (liveStringSale) liveStringSale.textContent = yen(stringSale);
+        if (liveTotal) liveTotal.textContent = yen(total);
+
+        if (liveBreakdown) {
+          const parts = [`メイン ${yen(mainSale)}`];
+          if (stringMode === "official") {
+            parts.push(`ガット ${yen(stringSale)}`);
+          } else if (stringMode === "bring_in") {
+            parts.push("ガット 持ち込み");
+          } else {
+            parts.push("ガット 不要");
+          }
+          parts.push(stringingFee > 0 ? `張り ${yen(stringingFee)}` : "張り なし");
+          liveBreakdown.textContent = parts.join(" / ");
         }
       }
 
-      if (category) {
-        category.addEventListener("change", updateCategoryGuide);
-      }
+      if (category) category.addEventListener("change", updateCategoryGuide);
       if (brand) {
         brand.addEventListener("change", function () {
           updateBrandGuide();
@@ -460,17 +495,26 @@
         });
       }
       if (stringSource) {
-        stringSource.addEventListener("change", toggleStringFields);
+        stringSource.addEventListener("change", function () {
+          toggleStringFields();
+          updateLiveEstimate();
+        });
       }
       if (requestStringing) {
-        requestStringing.addEventListener("change", toggleTensionField);
+        requestStringing.addEventListener("change", function () {
+          toggleTensionField();
+          updateLiveEstimate();
+        });
       }
+      if (mainOfficialPrice) mainOfficialPrice.addEventListener("input", updateLiveEstimate);
+      if (stringOfficialPrice) stringOfficialPrice.addEventListener("input", updateLiveEstimate);
 
       updateCategoryGuide();
       updateBrandGuide();
       updateStringPlaceholders();
       toggleStringFields();
       toggleTensionField();
+      updateLiveEstimate();
     })();
   </script>
 {% endblock %}
