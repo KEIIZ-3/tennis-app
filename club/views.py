@@ -3261,6 +3261,7 @@ def shop_estimate_view(request):
     recent_requests = list(
         ShopEstimateRequest.objects.filter(user=request.user).order_by("-created_at", "-id")[:8]
     )
+    master_candidate_context = _shop_master_candidate_lists(form_data)
 
     if request.method == "GET":
         reuse_id = (request.GET.get("reuse") or "").strip()
