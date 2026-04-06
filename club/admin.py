@@ -15,6 +15,7 @@ from .models import (
     LineAccountLink,
     Reservation,
     ScheduleSurveyResponse,
+    ShopEstimateRequest,
     StringingOrder,
     TicketConsumption,
     TicketLedger,
@@ -523,6 +524,7 @@ class StringingOrderAdmin(admin.ModelAdmin):
         "string_name",
         "delivery_location",
         "preferred_delivery_time",
+        "tension_lbs",
         "note",
     )
     autocomplete_fields = ("user",)
@@ -540,8 +542,8 @@ class StringingOrderAdmin(admin.ModelAdmin):
             "fields": (
                 "racket_name",
                 "string_name",
-                "tension_lbs",
                 "delivery_requested",
+                "tension_lbs",
                 "delivery_location",
                 "preferred_delivery_time",
                 "note",
@@ -594,14 +596,11 @@ class ShopEstimateRequestAdmin(admin.ModelAdmin):
         "user",
         "product_category",
         "brand",
-        "main_item_display",
+        "main_product_name",
         "main_official_price",
-        "main_sale_price_display",
         "string_source",
-        "string_sale_price_display",
-        "stringing_fee_display",
-        "estimated_total_display",
         "request_stringing",
+        "tension_lbs",
         "created_at",
     )
     list_filter = ("product_category", "brand", "string_source", "request_stringing", "created_at")
@@ -614,84 +613,4 @@ class ShopEstimateRequestAdmin(admin.ModelAdmin):
         "string_product_name",
         "note",
     )
-    readonly_fields = (
-        "created_at",
-        "updated_at",
-        "main_sale_price_display",
-        "string_sale_price_display",
-        "stringing_fee_display",
-        "estimated_total_display",
-    )
-    autocomplete_fields = ("user",)
-    list_select_related = ("user",)
-    list_per_page = 50
-
-    fieldsets = (
-        ("申込情報", {
-            "fields": (
-                "user",
-                "product_category",
-                "brand",
-                "created_at",
-                "updated_at",
-            )
-        }),
-        ("メイン商品", {
-            "fields": (
-                "main_keyword",
-                "main_product_name",
-                "main_official_price",
-                "main_sale_price_display",
-            )
-        }),
-        ("ガット", {
-            "fields": (
-                "string_source",
-                "string_keyword",
-                "string_product_name",
-                "string_official_price",
-                "string_sale_price_display",
-            )
-        }),
-        ("ガット張り", {
-            "fields": (
-                "request_stringing",
-                "tension_lbs",
-                "stringing_fee_display",
-            )
-        }),
-        ("合計・備考", {
-            "fields": (
-                "estimated_total_display",
-                "note",
-            )
-        }),
-    )
-
-    @staticmethod
-    def _resolve(value):
-        return value() if callable(value) else value
-
-    @admin.display(description="商品")
-    def main_item_display(self, obj):
-        return obj.main_product_name or obj.main_keyword or "-"
-
-    @admin.display(description="メイン販売価格")
-    def main_sale_price_display(self, obj):
-        value = self._resolve(getattr(obj, "main_sale_price", 0)) or 0
-        return f"{int(value)}円"
-
-    @admin.display(description="ガット販売価格")
-    def string_sale_price_display(self, obj):
-        value = self._resolve(getattr(obj, "string_sale_price", 0)) or 0
-        return f"{int(value)}円"
-
-    @admin.display(description="張り料金")
-    def stringing_fee_display(self, obj):
-        value = self._resolve(getattr(obj, "stringing_fee", 0)) or 0
-        return f"{int(value)}円"
-
-    @admin.display(description="見積合計")
-    def estimated_total_display(self, obj):
-        value = self._resolve(getattr(obj, "estimated_total", 0)) or 0
-        return f"{int(value)}円"
+    readonly_fields = ("created_at", "updated_at")
