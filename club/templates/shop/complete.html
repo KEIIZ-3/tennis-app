@@ -4,108 +4,162 @@
 {% block content %}
   <div class="page-head">
     <h1 class="page-title">物販申込確認</h1>
-    <p class="page-subtitle">申込内容を確認できます。必要があれば同内容を再利用して、別の見積もりもすぐ作れます。</p>
+    <p class="page-subtitle">
+      申込ID {{ estimate_request.id }} の内容です。ブランド公式ページ確認用リンクもここから開けます。
+    </p>
+  </div>
+
+  <div class="grid-3" style="margin-bottom:16px;">
+    <div class="card" style="padding:16px;">
+      <div class="muted" style="font-size:12px;">メイン商品販売価格</div>
+      <div style="font-size:26px; font-weight:800; margin-top:6px;">{{ estimate_request.main_sale_price }}円</div>
+    </div>
+    <div class="card" style="padding:16px;">
+      <div class="muted" style="font-size:12px;">ガット販売価格</div>
+      <div style="font-size:26px; font-weight:800; margin-top:6px;">{{ estimate_request.string_sale_price }}円</div>
+    </div>
+    <div class="card" style="padding:16px;">
+      <div class="muted" style="font-size:12px;">見積もり合計</div>
+      <div style="font-size:26px; font-weight:800; margin-top:6px;">{{ estimate_request.estimated_total }}円</div>
+    </div>
   </div>
 
   <div class="grid-2">
     <div class="card">
-      <h2 class="card-title">申込サマリー</h2>
+      <h2 class="card-title">申込内容</h2>
+
       <table style="margin-top:12px;">
         <tbody>
           <tr>
-            <th>申込ID</th>
-            <td>{{ shop_request.id }}</td>
-          </tr>
-          <tr>
             <th>申込日時</th>
-            <td>{{ shop_request.created_at|date:"Y-m-d H:i" }}</td>
+            <td>{{ estimate_request.created_at|date:"Y-m-d H:i" }}</td>
           </tr>
           <tr>
             <th>カテゴリ</th>
-            <td>{{ shop_request.get_product_category_display }}</td>
+            <td>{{ estimate_request.get_product_category_display }}</td>
           </tr>
           <tr>
             <th>ブランド</th>
-            <td>{{ shop_request.get_brand_display }}</td>
+            <td>{{ estimate_request.get_brand_display }}</td>
           </tr>
           <tr>
             <th>メイン商品</th>
-            <td>{{ shop_request.main_product_name|default:shop_request.main_keyword|default:"-" }}</td>
+            <td>{{ estimate_request.main_product_name|default:estimate_request.main_keyword|default:"-" }}</td>
           </tr>
           <tr>
             <th>メイン商品定価</th>
-            <td>{{ shop_request.main_official_price }}円</td>
+            <td>{{ estimate_request.main_official_price }}円</td>
           </tr>
           <tr>
             <th>メイン商品販売価格</th>
-            <td>{{ shop_request.main_sale_price }}円</td>
+            <td>{{ estimate_request.main_sale_price }}円</td>
           </tr>
           <tr>
             <th>ガット</th>
-            <td>{{ shop_request.get_string_source_display }}</td>
+            <td>{{ estimate_request.get_string_source_display }}</td>
           </tr>
-          {% if shop_request.string_source == "official" %}
+          {% if estimate_request.string_source == string_source_official %}
             <tr>
               <th>ガット商品</th>
-              <td>{{ shop_request.string_product_name|default:shop_request.string_keyword|default:"-" }}</td>
+              <td>{{ estimate_request.string_product_name|default:estimate_request.string_keyword|default:"-" }}</td>
             </tr>
             <tr>
               <th>ガット定価</th>
-              <td>{{ shop_request.string_official_price }}円</td>
+              <td>{{ estimate_request.string_official_price }}円</td>
             </tr>
             <tr>
               <th>ガット販売価格</th>
-              <td>{{ shop_request.string_sale_price }}円</td>
+              <td>{{ estimate_request.string_sale_price }}円</td>
+            </tr>
+          {% elif estimate_request.string_source == string_source_bring_in %}
+            <tr>
+              <th>ガット商品</th>
+              <td>持ち込み</td>
             </tr>
           {% endif %}
           <tr>
             <th>ガット張り</th>
-            <td>{% if shop_request.request_stringing %}依頼する{% else %}依頼しない{% endif %}</td>
+            <td>{% if estimate_request.request_stringing %}依頼する{% else %}依頼しない{% endif %}</td>
           </tr>
-          {% if shop_request.request_stringing %}
+          {% if estimate_request.request_stringing %}
             <tr>
               <th>張り上げテンション</th>
-              <td>{{ shop_request.tension_lbs }} lbs</td>
+              <td>{{ estimate_request.tension_lbs }} lbs</td>
             </tr>
             <tr>
               <th>ガット張り料金</th>
-              <td>{{ shop_request.stringing_fee }}円</td>
+              <td>{{ estimate_request.stringing_fee }}円</td>
             </tr>
           {% endif %}
           <tr>
-            <th>合計目安</th>
-            <td><strong>{{ shop_request.estimated_total }}円</strong></td>
+            <th>備考</th>
+            <td>{{ estimate_request.note|default:"-" }}</td>
           </tr>
           <tr>
-            <th>備考</th>
-            <td>{{ shop_request.note|default:"-" }}</td>
+            <th>見積もり合計</th>
+            <td><strong>{{ estimate_request.estimated_total }}円</strong></td>
           </tr>
         </tbody>
       </table>
+
+      <div style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px; margin-top:16px;">
+        <div style="font-weight:800; margin-bottom:6px;">この申込の計算ルール</div>
+        <div class="muted">メイン商品80%価格{% if estimate_request.string_source != string_source_none %} + ガット{% endif %}{% if estimate_request.request_stringing %} + ガット張り料金{% endif %} の合計です。</div>
+      </div>
+
+      <div class="actions" style="margin-top:16px;">
+        <a href="{% url 'club:shop_estimate' %}?reuse={{ estimate_request.id }}" class="btn">この内容で再見積もり</a>
+        <a href="{% url 'club:shop_estimate' %}" class="btn btn-primary">物販見積もりへ戻る</a>
+      </div>
     </div>
 
     <div class="card">
-      <h2 class="card-title">次の操作</h2>
-      <div class="section-note">
-        申込は保存済みです。正式な商品画像・価格確認は、必ず各ブランドの公式ページで行ってください。
+      <h2 class="card-title">公式サイト確認リンク</h2>
+
+      <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px; margin-bottom:14px;">
+        <div style="font-weight:800; margin-bottom:8px;">メイン商品</div>
+        <div class="actions">
+          {% for link in main_catalog_links %}
+            <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn">{{ link.label }}</a>
+          {% endfor %}
+          {% for link in main_official_links %}
+            <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn btn-primary">{{ link.label }}</a>
+          {% endfor %}
+          {% for link in main_image_links %}
+            <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn">公式画像を確認</a>
+          {% endfor %}
+        </div>
       </div>
 
-      <div class="spacer-16"></div>
-
-      <div class="actions">
-        <a href="{% url 'club:shop_estimate' %}?copy_from={{ shop_request.id }}" class="btn btn-primary">この内容で再見積もり</a>
-        <a href="{% url 'club:shop_estimate' %}" class="btn">新しく見積もる</a>
+      <div style="padding:14px 16px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:12px; margin-bottom:14px;">
+        <div style="font-weight:800; margin-bottom:8px;">ガット</div>
+        {% if estimate_request.string_source == string_source_official %}
+          <div class="actions">
+            {% for link in string_catalog_links %}
+              <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn">{{ link.label }}</a>
+            {% endfor %}
+            {% for link in string_official_links %}
+              <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn btn-primary">{{ link.label }}</a>
+            {% endfor %}
+            {% for link in string_image_links %}
+              <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn">公式画像を確認</a>
+            {% endfor %}
+          </div>
+        {% elif estimate_request.string_source == string_source_bring_in %}
+          <div class="muted">ガット持ち込みの申込です。</div>
+        {% else %}
+          <div class="muted">ガット不要の申込です。</div>
+        {% endif %}
       </div>
 
-      <div class="spacer-16"></div>
-
-      <h3 style="margin:0 0 10px;">確認ポイント</h3>
-      <ul class="clean" style="line-height:1.9;">
-        <li>商品名と品番が公式ページと一致しているか</li>
-        <li>税込定価が公式ページ記載と一致しているか</li>
-        <li>ガット張り有無とテンション指定が正しいか</li>
-        <li>受け渡しや希望事項が備考に入っているか</li>
-      </ul>
+      <div style="padding:14px 16px; border:1px solid #e5e7eb; background:#fff; border-radius:12px;">
+        <div style="font-weight:800; margin-bottom:8px;">次の操作</div>
+        <ul class="clean" style="line-height:1.9; margin:0;">
+          <li>この内容をもう一度使う場合は「この内容で再見積もり」</li>
+          <li>別商品を調べる場合は「物販見積もりへ戻る」</li>
+          <li>公式サイトリンクから商品画像・価格を再確認できます</li>
+        </ul>
+      </div>
     </div>
   </div>
 {% endblock %}
