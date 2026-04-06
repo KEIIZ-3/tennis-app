@@ -89,6 +89,13 @@
         </div>
       </div>
 
+      <div id="pre-submit-check" class="card" style="padding:16px; margin-bottom:16px; border:1px solid #e5e7eb; background:#fff;">
+        <div style="font-weight:800; margin-bottom:10px;">申込前チェック</div>
+        <ul class="clean" id="pre-submit-check-list" style="line-height:1.9; margin:0;">
+          <li class="muted">入力状況に応じて、ここに確認ポイントを表示します。</li>
+        </ul>
+      </div>
+
       <form method="post">
         {% csrf_token %}
 
@@ -400,6 +407,7 @@
       const quickPicksMain = document.getElementById("quick-picks-main");
       const quickPicksString = document.getElementById("quick-picks-string");
       const quickPicksStringWrap = document.getElementById("quick-picks-string-wrap");
+      const preSubmitCheckList = document.getElementById("pre-submit-check-list");
 
       const categoryGuides = {
         racket: "ラケットは、シリーズ名 + フェイスサイズやモデル年で検索すると見つけやすいです。例: EZONE 100 / PURE DRIVE 2025",
@@ -425,38 +433,14 @@
       };
 
       const quickExamples = {
-        yonex: {
-          main: ["EZONE 100", "VCORE 100", "PERCEPT 100"],
-          string: ["POLYTOUR PRO 125", "POLYTOUR REV 125", "REXIS SPEED 125"]
-        },
-        wilson: {
-          main: ["SHIFT 99", "BLADE 98", "CLASH 100"],
-          string: ["NXT 16", "REV 125", "ALU POWER"]
-        },
-        babolat: {
-          main: ["PURE DRIVE", "PURE AERO", "PURE STRIKE 100"],
-          string: ["RPM BLAST 125", "ADDIXION 125", "XALT 125"]
-        },
-        head: {
-          main: ["SPEED MP", "BOOM MP", "EXTREME MP"],
-          string: ["LYNX TOUR 125", "HAWK TOUCH 125", "VELOCITY MLT 125"]
-        },
-        prince: {
-          main: ["PHANTOM 100", "BEAST 100", "TOUR 98"],
-          string: ["TOUR XT 125", "LIGHTNING XX", "PHANTOM PRO 125"]
-        },
-        dunlop: {
-          main: ["SX 300", "CX 200", "FX 500"],
-          string: ["EXPLOSIVE SPIN 125", "ICONIC ALL", "EXPLOSIVE TOUR"]
-        },
-        tecnifibre: {
-          main: ["TFIGHT 300", "TFIGHT 305", "TEMPO 298"],
-          string: ["RAZOR CODE 125", "X-ONE BIPHASE 124", "ICE CODE 125"]
-        },
-        other: {
-          main: ["商品名を入力", "ブランド名 + 商品名", "シリーズ名 + 型番"],
-          string: ["商品名 + ゲージ", "ブランド名 + 商品名", "型番 + 125"]
-        }
+        yonex: { main: ["EZONE 100", "VCORE 100", "PERCEPT 100"], string: ["POLYTOUR PRO 125", "POLYTOUR REV 125", "REXIS SPEED 125"] },
+        wilson: { main: ["SHIFT 99", "BLADE 98", "CLASH 100"], string: ["NXT 16", "REV 125", "ALU POWER"] },
+        babolat: { main: ["PURE DRIVE", "PURE AERO", "PURE STRIKE 100"], string: ["RPM BLAST 125", "ADDIXION 125", "XALT 125"] },
+        head: { main: ["SPEED MP", "BOOM MP", "EXTREME MP"], string: ["LYNX TOUR 125", "HAWK TOUCH 125", "VELOCITY MLT 125"] },
+        prince: { main: ["PHANTOM 100", "BEAST 100", "TOUR 98"], string: ["TOUR XT 125", "LIGHTNING XX", "PHANTOM PRO 125"] },
+        dunlop: { main: ["SX 300", "CX 200", "FX 500"], string: ["EXPLOSIVE SPIN 125", "ICONIC ALL", "EXPLOSIVE TOUR"] },
+        tecnifibre: { main: ["TFIGHT 300", "TFIGHT 305", "TEMPO 298"], string: ["RAZOR CODE 125", "X-ONE BIPHASE 124", "ICE CODE 125"] },
+        other: { main: ["商品名を入力", "ブランド名 + 商品名", "シリーズ名 + 型番"], string: ["商品名 + ゲージ", "ブランド名 + 商品名", "型番 + 125"] }
       };
 
       function yen(value) {
@@ -518,6 +502,7 @@
           btn.addEventListener("click", function () {
             if (mainKeyword) mainKeyword.value = this.dataset.value || "";
             if (mainProductName && !mainProductName.value) mainProductName.value = this.dataset.value || "";
+            updatePreSubmitCheck();
           });
         });
 
@@ -525,6 +510,7 @@
           btn.addEventListener("click", function () {
             if (stringKeyword) stringKeyword.value = this.dataset.value || "";
             if (stringProductName && !stringProductName.value) stringProductName.value = this.dataset.value || "";
+            updatePreSubmitCheck();
           });
         });
       }
@@ -562,12 +548,68 @@
         }
       }
 
-      if (category) category.addEventListener("change", updateCategoryGuide);
+      function updatePreSubmitCheck() {
+        if (!preSubmitCheckList) return;
+
+        const items = [];
+        const mainNameFilled = !!((mainProductName && mainProductName.value.trim()) || (mainKeyword && mainKeyword.value.trim()));
+        const mainPriceFilled = !!(mainOfficialPrice && String(mainOfficialPrice.value).trim());
+        const stringMode = stringSource ? stringSource.value : "none";
+        const wantsStringing = requestStringing && requestStringing.value === "1";
+        const tensionFilled = !wantsStringing || !!(document.getElementById("id_tension_lbs") && document.getElementById("id_tension_lbs").value);
+
+        items.push({
+          ok: mainNameFilled,
+          text: mainNameFilled ? "メイン商品名または検索キーワードが入っています。" : "メイン商品名または検索キーワードを入れてください。"
+        });
+
+        items.push({
+          ok: mainPriceFilled,
+          text: mainPriceFilled ? "メイン商品の定価が入っています。" : "メイン商品の定価を入れてください。"
+        });
+
+        if (stringMode === "official") {
+          const stringNameFilled = !!((stringProductName && stringProductName.value.trim()) || (stringKeyword && stringKeyword.value.trim()));
+          const stringPriceFilled = !!(stringOfficialPrice && String(stringOfficialPrice.value).trim());
+          items.push({
+            ok: stringNameFilled,
+            text: stringNameFilled ? "ガット商品名または検索キーワードが入っています。" : "ガット商品名または検索キーワードを入れてください。"
+          });
+          items.push({
+            ok: stringPriceFilled,
+            text: stringPriceFilled ? "ガット定価が入っています。" : "ガット定価を入れてください。"
+          });
+        }
+
+        if (wantsStringing) {
+          items.push({
+            ok: tensionFilled,
+            text: tensionFilled ? "張り上げテンションが選択されています。" : "張り上げテンションを選択してください。"
+          });
+        }
+
+        items.push({
+          ok: true,
+          text: "購入前に公式サイトで商品名・定価・画像を再確認してください。"
+        });
+
+        preSubmitCheckList.innerHTML = items.map(item => {
+          const color = item.ok ? "#166534" : "#b91c1c";
+          const icon = item.ok ? "✔" : "●";
+          return `<li style="color:${color};">${icon} ${item.text}</li>`;
+        }).join("");
+      }
+
+      if (category) category.addEventListener("change", function () {
+        updateCategoryGuide();
+        updatePreSubmitCheck();
+      });
       if (brand) {
         brand.addEventListener("change", function () {
           updateBrandGuide();
           updateStringPlaceholders();
           renderQuickPicks();
+          updatePreSubmitCheck();
         });
       }
       if (stringSource) {
@@ -575,16 +617,30 @@
           toggleStringFields();
           updateLiveEstimate();
           renderQuickPicks();
+          updatePreSubmitCheck();
         });
       }
       if (requestStringing) {
         requestStringing.addEventListener("change", function () {
           toggleTensionField();
           updateLiveEstimate();
+          updatePreSubmitCheck();
         });
       }
-      if (mainOfficialPrice) mainOfficialPrice.addEventListener("input", updateLiveEstimate);
-      if (stringOfficialPrice) stringOfficialPrice.addEventListener("input", updateLiveEstimate);
+      if (mainOfficialPrice) mainOfficialPrice.addEventListener("input", function () {
+        updateLiveEstimate();
+        updatePreSubmitCheck();
+      });
+      if (stringOfficialPrice) stringOfficialPrice.addEventListener("input", function () {
+        updateLiveEstimate();
+        updatePreSubmitCheck();
+      });
+      if (mainKeyword) mainKeyword.addEventListener("input", updatePreSubmitCheck);
+      if (mainProductName) mainProductName.addEventListener("input", updatePreSubmitCheck);
+      if (stringKeyword) stringKeyword.addEventListener("input", updatePreSubmitCheck);
+      if (stringProductName) stringProductName.addEventListener("input", updatePreSubmitCheck);
+      const tension = document.getElementById("id_tension_lbs");
+      if (tension) tension.addEventListener("change", updatePreSubmitCheck);
 
       updateCategoryGuide();
       updateBrandGuide();
@@ -593,6 +649,7 @@
       toggleStringFields();
       toggleTensionField();
       updateLiveEstimate();
+      updatePreSubmitCheck();
     })();
   </script>
 {% endblock %}
