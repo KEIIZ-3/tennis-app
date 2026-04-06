@@ -79,6 +79,16 @@
         </div>
       </div>
 
+      <div class="card" style="padding:16px; margin-bottom:16px; border:1px solid #e5e7eb; background:#fff;">
+        <div style="font-weight:800; margin-bottom:10px;">よく使う検索例</div>
+        <div class="muted" style="font-size:12px; margin-bottom:10px;">クリックすると入力欄に自動反映されます。</div>
+        <div id="quick-picks-main" class="actions"></div>
+        <div id="quick-picks-string-wrap" style="margin-top:12px; display:none;">
+          <div class="muted" style="font-size:12px; margin-bottom:8px;">ガット候補</div>
+          <div id="quick-picks-string" class="actions"></div>
+        </div>
+      </div>
+
       <form method="post">
         {% csrf_token %}
 
@@ -387,6 +397,9 @@
       const liveStringSale = document.getElementById("live-string-sale");
       const liveTotal = document.getElementById("live-total");
       const liveBreakdown = document.getElementById("live-breakdown");
+      const quickPicksMain = document.getElementById("quick-picks-main");
+      const quickPicksString = document.getElementById("quick-picks-string");
+      const quickPicksStringWrap = document.getElementById("quick-picks-string-wrap");
 
       const categoryGuides = {
         racket: "ラケットは、シリーズ名 + フェイスサイズやモデル年で検索すると見つけやすいです。例: EZONE 100 / PURE DRIVE 2025",
@@ -411,15 +424,48 @@
         accessory: { keyword: "例: グリップテープ / 振動止め / ラケットバッグ", name: "例: ウェットスーパーグリップ 3本入" }
       };
 
+      const quickExamples = {
+        yonex: {
+          main: ["EZONE 100", "VCORE 100", "PERCEPT 100"],
+          string: ["POLYTOUR PRO 125", "POLYTOUR REV 125", "REXIS SPEED 125"]
+        },
+        wilson: {
+          main: ["SHIFT 99", "BLADE 98", "CLASH 100"],
+          string: ["NXT 16", "REV 125", "ALU POWER"]
+        },
+        babolat: {
+          main: ["PURE DRIVE", "PURE AERO", "PURE STRIKE 100"],
+          string: ["RPM BLAST 125", "ADDIXION 125", "XALT 125"]
+        },
+        head: {
+          main: ["SPEED MP", "BOOM MP", "EXTREME MP"],
+          string: ["LYNX TOUR 125", "HAWK TOUCH 125", "VELOCITY MLT 125"]
+        },
+        prince: {
+          main: ["PHANTOM 100", "BEAST 100", "TOUR 98"],
+          string: ["TOUR XT 125", "LIGHTNING XX", "PHANTOM PRO 125"]
+        },
+        dunlop: {
+          main: ["SX 300", "CX 200", "FX 500"],
+          string: ["EXPLOSIVE SPIN 125", "ICONIC ALL", "EXPLOSIVE TOUR"]
+        },
+        tecnifibre: {
+          main: ["TFIGHT 300", "TFIGHT 305", "TEMPO 298"],
+          string: ["RAZOR CODE 125", "X-ONE BIPHASE 124", "ICE CODE 125"]
+        },
+        other: {
+          main: ["商品名を入力", "ブランド名 + 商品名", "シリーズ名 + 型番"],
+          string: ["商品名 + ゲージ", "ブランド名 + 商品名", "型番 + 125"]
+        }
+      };
+
       function yen(value) {
         return `${value}円`;
       }
 
       function salePrice(value) {
         const n = parseInt(String(value || "0").replace(/,/g, ""), 10);
-        if (!Number.isFinite(n) || n <= 0) {
-          return 0;
-        }
+        if (!Number.isFinite(n) || n <= 0) return 0;
         return Math.floor(n * 0.8);
       }
 
@@ -451,10 +497,43 @@
         if (stringProductName) stringProductName.placeholder = brandStringExamples[key]?.name || brandStringExamples.other.name;
       }
 
+      function renderQuickPicks() {
+        const key = brand ? brand.value : "yonex";
+        const examples = quickExamples[key] || quickExamples.other;
+        if (quickPicksMain) {
+          quickPicksMain.innerHTML = examples.main.map(item =>
+            `<button type="button" class="btn quick-main" data-value="${item}">${item}</button>`
+          ).join("");
+        }
+        if (quickPicksString) {
+          quickPicksString.innerHTML = examples.string.map(item =>
+            `<button type="button" class="btn quick-string" data-value="${item}">${item}</button>`
+          ).join("");
+        }
+        if (quickPicksStringWrap) {
+          quickPicksStringWrap.style.display = (stringSource && stringSource.value === "official") ? "block" : "none";
+        }
+
+        document.querySelectorAll(".quick-main").forEach(btn => {
+          btn.addEventListener("click", function () {
+            if (mainKeyword) mainKeyword.value = this.dataset.value || "";
+            if (mainProductName && !mainProductName.value) mainProductName.value = this.dataset.value || "";
+          });
+        });
+
+        document.querySelectorAll(".quick-string").forEach(btn => {
+          btn.addEventListener("click", function () {
+            if (stringKeyword) stringKeyword.value = this.dataset.value || "";
+            if (stringProductName && !stringProductName.value) stringProductName.value = this.dataset.value || "";
+          });
+        });
+      }
+
       function toggleStringFields() {
         const mode = stringSource ? stringSource.value : "none";
         if (stringPurchaseFields) stringPurchaseFields.style.display = mode === "official" ? "block" : "none";
         if (stringBringinNote) stringBringinNote.style.display = mode === "bring_in" ? "block" : "none";
+        if (quickPicksStringWrap) quickPicksStringWrap.style.display = mode === "official" ? "block" : "none";
       }
 
       function toggleTensionField() {
@@ -475,13 +554,9 @@
 
         if (liveBreakdown) {
           const parts = [`メイン ${yen(mainSale)}`];
-          if (stringMode === "official") {
-            parts.push(`ガット ${yen(stringSale)}`);
-          } else if (stringMode === "bring_in") {
-            parts.push("ガット 持ち込み");
-          } else {
-            parts.push("ガット 不要");
-          }
+          if (stringMode === "official") parts.push(`ガット ${yen(stringSale)}`);
+          else if (stringMode === "bring_in") parts.push("ガット 持ち込み");
+          else parts.push("ガット 不要");
           parts.push(stringingFee > 0 ? `張り ${yen(stringingFee)}` : "張り なし");
           liveBreakdown.textContent = parts.join(" / ");
         }
@@ -492,12 +567,14 @@
         brand.addEventListener("change", function () {
           updateBrandGuide();
           updateStringPlaceholders();
+          renderQuickPicks();
         });
       }
       if (stringSource) {
         stringSource.addEventListener("change", function () {
           toggleStringFields();
           updateLiveEstimate();
+          renderQuickPicks();
         });
       }
       if (requestStringing) {
@@ -512,6 +589,7 @@
       updateCategoryGuide();
       updateBrandGuide();
       updateStringPlaceholders();
+      renderQuickPicks();
       toggleStringFields();
       toggleTensionField();
       updateLiveEstimate();
