@@ -1663,6 +1663,85 @@ class LineAccountLink(models.Model):
         return f"{self.user.username} <-> {self.line_user_id}"
 
 
+
+
+class ShopProductMaster(models.Model):
+    PRODUCT_TYPE_MAIN = "main"
+    PRODUCT_TYPE_STRING = "string"
+
+    PRODUCT_TYPE_CHOICES = (
+        (PRODUCT_TYPE_MAIN, "メイン商品"),
+        (PRODUCT_TYPE_STRING, "ガット"),
+    )
+
+    CATEGORY_RACKET = ShopEstimateRequest.CATEGORY_RACKET
+    CATEGORY_STRING = ShopEstimateRequest.CATEGORY_STRING
+    CATEGORY_ACCESSORY = ShopEstimateRequest.CATEGORY_ACCESSORY
+
+    CATEGORY_CHOICES = ShopEstimateRequest.CATEGORY_CHOICES
+    BRAND_CHOICES = ShopEstimateRequest.BRAND_CHOICES
+
+    product_type = models.CharField(
+        max_length=20,
+        choices=PRODUCT_TYPE_CHOICES,
+        default=PRODUCT_TYPE_MAIN,
+    )
+    category = models.CharField(
+        max_length=20,
+        choices=CATEGORY_CHOICES,
+        default=CATEGORY_RACKET,
+    )
+    brand = models.CharField(
+        max_length=30,
+        choices=BRAND_CHOICES,
+        default=ShopEstimateRequest.BRAND_YONEX,
+    )
+    product_name = models.CharField(max_length=255)
+    display_name = models.CharField(max_length=255, blank=True, default="")
+    product_code = models.CharField(max_length=100, blank=True, default="")
+    official_price = models.PositiveIntegerField(default=0)
+    image_url = models.URLField(blank=True, default="")
+    product_url = models.URLField(blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["brand", "category", "product_type", "sort_order", "product_name", "id"]
+        verbose_name = "Shop商品マスタ"
+        verbose_name_plural = "Shop商品マスタ"
+
+    def __str__(self):
+        label = self.display_name or self.product_name
+        return f"{self.get_brand_display()} / {self.get_category_display()} / {label}"
+
+    @property
+    def sale_price(self):
+        return ShopEstimateRequest.sale_price_from_list_price(self.official_price)
+
+    def clean(self):
+        self.product_name = (self.product_name or "").strip()
+        self.display_name = (self.display_name or "").strip()
+        self.product_code = (self.product_code or "").strip()
+        self.image_url = (self.image_url or "").strip()
+        self.product_url = (self.product_url or "").strip()
+        self.description = (self.description or "").strip()
+
+        if not self.product_name:
+            raise ValidationError("商品名は必須です。")
+
+        if self.official_price < 0:
+            raise ValidationError("定価は0円以上にしてください。")
+
+        if self.product_type == self.PRODUCT_TYPE_STRING:
+            self.category = self.CATEGORY_STRING
+
+    def display_label(self):
+        return self.display_name or self.product_name
+
+
 class ShopEstimateRequest(models.Model):
     CATEGORY_RACKET = "racket"
     CATEGORY_STRING = "string"
