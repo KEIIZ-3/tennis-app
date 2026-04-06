@@ -23,18 +23,21 @@
       <div style="padding:16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
         <div class="muted" style="font-size:12px;">メイン商品</div>
         <div style="font-size:24px; font-weight:800; margin-top:6px;">定価の80％</div>
+        <div class="muted" style="font-size:12px; margin-top:6px;">ラケット・ガット・アクセサリ共通</div>
       </div>
       <div style="padding:16px; border:1px solid #fed7aa; background:#fff7ed; border-radius:12px;">
         <div class="muted" style="font-size:12px;">ガット購入時</div>
         <div style="font-size:24px; font-weight:800; margin-top:6px;">定価の80％</div>
+        <div class="muted" style="font-size:12px; margin-top:6px;">持ち込みなら0円</div>
       </div>
       <div style="padding:16px; border:1px solid #c7d2fe; background:#eef2ff; border-radius:12px;">
         <div class="muted" style="font-size:12px;">ガット張り</div>
         <div style="font-size:24px; font-weight:800; margin-top:6px;">一律1200円</div>
+        <div class="muted" style="font-size:12px; margin-top:6px;">依頼時のみ加算</div>
       </div>
     </div>
     <ul class="clean" style="margin-top:14px; line-height:1.8;">
-      <li>ラケット・ガット・アクセサリは、ブランド公式サイトの定価を見ながら入力してください。</li>
+      <li>ブランド公式サイトの商品ページや一覧ページで、商品名と定価を確認して入力してください。</li>
       <li>ガット持ち込みを選んだ場合、ガット代は見積もりに含まれません。</li>
       <li>ガット張りを依頼する場合のみ、張り上げテンションを 30〜60 lbs で選択してください。</li>
     </ul>
@@ -43,7 +46,7 @@
   <div class="grid-2">
     <div class="card">
       <h2 class="card-title">見積もり入力</h2>
-      <p class="card-subtitle">公式サイトの商品価格を見ながら入力してください。見積もりだけ出すことも、購入申込まで進むこともできます。</p>
+      <p class="card-subtitle">見積もりだけ出すことも、購入申込まで進むこともできます。</p>
 
       <form method="post">
         {% csrf_token %}
@@ -303,6 +306,21 @@
             </div>
             <div class="muted" style="margin-top:6px;">
               {{ row.get_product_category_display }} / {{ row.get_brand_display }}
+            </div>
+            <div style="margin-top:10px;">
+              <span style="display:inline-block; padding:4px 10px; border-radius:999px; background:#eef2ff; font-size:12px; font-weight:700;">
+                メイン {{ row.main_sale_price }}円
+              </span>
+              {% if row.string_sale_price > 0 %}
+                <span style="display:inline-block; padding:4px 10px; border-radius:999px; background:#fff7ed; font-size:12px; font-weight:700; margin-left:6px;">
+                  ガット {{ row.string_sale_price }}円
+                </span>
+              {% endif %}
+              {% if row.stringing_fee > 0 %}
+                <span style="display:inline-block; padding:4px 10px; border-radius:999px; background:#eff6ff; font-size:12px; font-weight:700; margin-left:6px;">
+                  張り {{ row.stringing_fee }}円
+                </span>
+              {% endif %}
             </div>
             <div style="margin-top:10px; font-size:20px; font-weight:800;">{{ row.estimated_total }}円</div>
             <div class="actions" style="margin-top:12px;">
