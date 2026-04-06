@@ -269,6 +269,7 @@
               <a href="{% url 'club:stringing_order_create' %}">ガット張り依頼</a>
               <a href="{% url 'club:stringing_order_list' %}">ガット張り一覧</a>
               <a href="{% url 'club:shop_estimate' %}">物販見積もり</a>
+              <a href="{% url 'club:shop_estimate_history' %}">物販申込履歴</a>
             {% elif user.role == "coach" or user.is_staff or user.is_superuser %}
               <a href="{% url 'club:reservation_create' %}">予約作成</a>
               <a href="{% url 'club:reservation_list' %}">予約一覧</a>
@@ -319,7 +320,7 @@
           <a href="{% url 'club:schedule_survey_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'schedule_survey_summary' %}active{% endif %}">
             アンケート集計
           </a>
-          <a href="{% url 'club:shop_estimate' %}" class="coach-tab {% if request.resolver_match.url_name == 'shop_estimate' %}active{% endif %}">
+          <a href="{% url 'club:shop_estimate' %}" class="coach-tab {% if request.resolver_match.url_name == 'shop_estimate' or request.resolver_match.url_name == 'shop_estimate_history' %}active{% endif %}">
             物販見積もり
           </a>
         </div>
