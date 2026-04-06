@@ -24,6 +24,39 @@
     </div>
   </div>
 
+  <div class="card" style="margin-bottom:16px;">
+    <h2 class="card-title">価格サマリー</h2>
+    <div class="grid-3" style="margin-top:12px;">
+      <div style="padding:16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
+        <div class="muted" style="font-size:12px;">メイン商品</div>
+        <div style="font-size:22px; font-weight:800; margin-top:6px;">{{ estimate_request.main_sale_price }}円</div>
+        <div class="muted" style="font-size:12px; margin-top:6px;">定価 {{ estimate_request.main_official_price }}円 の 80％</div>
+      </div>
+
+      <div style="padding:16px; border:1px solid #fed7aa; background:#fff7ed; border-radius:12px;">
+        <div class="muted" style="font-size:12px;">ガット</div>
+        <div style="font-size:22px; font-weight:800; margin-top:6px;">{{ estimate_request.string_sale_price }}円</div>
+        {% if estimate_request.string_source == string_source_official %}
+          <div class="muted" style="font-size:12px; margin-top:6px;">定価 {{ estimate_request.string_official_price }}円 の 80％</div>
+        {% elif estimate_request.string_source == string_source_bring_in %}
+          <div class="muted" style="font-size:12px; margin-top:6px;">持ち込みのため 0円</div>
+        {% else %}
+          <div class="muted" style="font-size:12px; margin-top:6px;">不要のため 0円</div>
+        {% endif %}
+      </div>
+
+      <div style="padding:16px; border:1px solid #c7d2fe; background:#eef2ff; border-radius:12px;">
+        <div class="muted" style="font-size:12px;">ガット張り</div>
+        <div style="font-size:22px; font-weight:800; margin-top:6px;">{{ estimate_request.stringing_fee }}円</div>
+        {% if estimate_request.request_stringing %}
+          <div class="muted" style="font-size:12px; margin-top:6px;">{{ estimate_request.tension_lbs }} lbs / 一律 1200円</div>
+        {% else %}
+          <div class="muted" style="font-size:12px; margin-top:6px;">依頼なし</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   <div class="grid-2">
     <div class="card">
       <h2 class="card-title">申込内容</h2>
@@ -104,7 +137,12 @@
 
       <div style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px; margin-top:16px;">
         <div style="font-weight:800; margin-bottom:6px;">この申込の計算ルール</div>
-        <div class="muted">メイン商品80%価格{% if estimate_request.string_source != string_source_none %} + ガット{% endif %}{% if estimate_request.request_stringing %} + ガット張り料金{% endif %} の合計です。</div>
+        <div class="muted">
+          メイン商品80%価格
+          {% if estimate_request.string_source != string_source_none %} + ガット{% endif %}
+          {% if estimate_request.request_stringing %} + ガット張り料金{% endif %}
+          の合計です。
+        </div>
       </div>
 
       <div class="actions" style="margin-top:16px;">
