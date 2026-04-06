@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Shop見積もり{% endblock %}
+{% block title %}物販見積もり{% endblock %}
 
 {% block content %}
   <div class="page-head">
-    <h1 class="page-title">Shop見積もり</h1>
+    <h1 class="page-title">物販見積もり</h1>
     <p class="page-subtitle">
       ブランド公式サイトを確認しながら、ラケット・ガット・アクセサリの見積もりを作成できます。販売価格は定価の80％で計算します。
     </p>
@@ -42,6 +42,24 @@
       <li>ガット張りを依頼する場合のみ、張り上げテンションを 30〜60 lbs で選択してください。</li>
     </ul>
   </div>
+
+  <style>
+    .shop-sticky-panel{
+      position:sticky;
+      top:150px;
+      align-self:start;
+      max-height:calc(100vh - 170px);
+      overflow:auto;
+    }
+    @media (max-width: 900px){
+      .shop-sticky-panel{
+        position:static;
+        top:auto;
+        max-height:none;
+        overflow:visible;
+      }
+    }
+  </style>
 
   <div class="grid-2">
     <div class="card">
@@ -220,9 +238,9 @@
       </form>
     </div>
 
-    <div class="card">
+    <div class="card shop-sticky-panel">
       <h2 class="card-title">公式サイト検索リンク</h2>
-      <p class="card-subtitle">ブランド公式サイトの一覧ページや検索ページを開いて、商品名・定価・画像を確認してください。</p>
+      <p class="card-subtitle">ブランド公式サイトの一覧ページや検索ページを開いて、商品名・定価・画像を確認してください。スクロール中も右側に表示されます。</p>
 
       <div class="spacer-12"></div>
 
@@ -357,7 +375,7 @@
 
       {% if saved_request %}
         <div class="message success" style="margin-top:16px;">
-          Shop申込を保存しました。
+          購入申込を保存しました。
           <a href="{% url 'club:shop_estimate_complete' saved_request.id %}" class="btn" style="margin-left:8px;">申込内容を確認する</a>
         </div>
       {% endif %}
@@ -365,7 +383,7 @@
   </div>
 
   <div class="card">
-    <h2 class="card-title">最近のShop申込</h2>
+    <h2 class="card-title">最近の物販申込</h2>
     {% if recent_requests %}
       <div class="grid-2" style="margin-top:12px;">
         {% for row in recent_requests %}
