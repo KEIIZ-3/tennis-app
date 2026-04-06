@@ -593,19 +593,16 @@ class ScheduleSurveyResponseAdmin(admin.ModelAdmin):
 class ShopEstimateRequestAdmin(admin.ModelAdmin):
     list_display = (
         "id",
+        "created_at",
         "user_display",
         "product_category",
         "brand",
-        "main_product_name",
-        "main_official_price",
+        "main_product_display",
         "main_sale_price_display",
         "string_source",
         "string_sale_price_display",
         "stringing_fee_display",
         "estimated_total_display",
-        "request_stringing",
-        "tension_lbs",
-        "created_at",
     )
     list_filter = ("product_category", "brand", "string_source", "request_stringing", "created_at")
     search_fields = (
@@ -627,6 +624,7 @@ class ShopEstimateRequestAdmin(admin.ModelAdmin):
     )
     list_select_related = ("user",)
     list_per_page = 50
+    date_hierarchy = "created_at"
 
     fieldsets = (
         ("基本情報", {
@@ -680,6 +678,10 @@ class ShopEstimateRequestAdmin(admin.ModelAdmin):
             return obj.user.display_name()
         except Exception:
             return str(obj.user)
+
+    @admin.display(description="商品")
+    def main_product_display(self, obj):
+        return obj.main_product_name or obj.main_keyword or "-"
 
     @admin.display(description="メイン販売価格")
     def main_sale_price_display(self, obj):
