@@ -593,12 +593,16 @@ class ScheduleSurveyResponseAdmin(admin.ModelAdmin):
 class ShopEstimateRequestAdmin(admin.ModelAdmin):
     list_display = (
         "id",
-        "user",
+        "user_display",
         "product_category",
         "brand",
         "main_product_name",
         "main_official_price",
+        "main_sale_price_display",
         "string_source",
+        "string_sale_price_display",
+        "stringing_fee_display",
+        "estimated_total_display",
         "request_stringing",
         "tension_lbs",
         "created_at",
@@ -613,4 +617,82 @@ class ShopEstimateRequestAdmin(admin.ModelAdmin):
         "string_product_name",
         "note",
     )
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+        "main_sale_price_display",
+        "string_sale_price_display",
+        "stringing_fee_display",
+        "estimated_total_display",
+    )
+    list_select_related = ("user",)
+    list_per_page = 50
+
+    fieldsets = (
+        ("基本情報", {
+            "fields": (
+                "user",
+                "product_category",
+                "brand",
+                "note",
+            )
+        }),
+        ("メイン商品", {
+            "fields": (
+                "main_keyword",
+                "main_product_name",
+                "main_official_price",
+                "main_sale_price_display",
+            )
+        }),
+        ("ガット", {
+            "fields": (
+                "string_source",
+                "string_keyword",
+                "string_product_name",
+                "string_official_price",
+                "string_sale_price_display",
+            )
+        }),
+        ("ガット張り", {
+            "fields": (
+                "request_stringing",
+                "tension_lbs",
+                "stringing_fee_display",
+            )
+        }),
+        ("見積もり", {
+            "fields": (
+                "estimated_total_display",
+            )
+        }),
+        ("日時", {
+            "fields": (
+                "created_at",
+                "updated_at",
+            )
+        }),
+    )
+
+    @admin.display(description="会員")
+    def user_display(self, obj):
+        try:
+            return obj.user.display_name()
+        except Exception:
+            return str(obj.user)
+
+    @admin.display(description="メイン販売価格")
+    def main_sale_price_display(self, obj):
+        return f"{obj.main_sale_price}円"
+
+    @admin.display(description="ガット販売価格")
+    def string_sale_price_display(self, obj):
+        return f"{obj.string_sale_price}円"
+
+    @admin.display(description="張り料金")
+    def stringing_fee_display(self, obj):
+        return f"{obj.stringing_fee}円"
+
+    @admin.display(description="見積合計")
+    def estimated_total_display(self, obj):
+        return f"{obj.estimated_total}円"
