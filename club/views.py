@@ -3334,6 +3334,59 @@ def shop_estimate_view(request):
     )
 
 
+
+@login_required
+@require_GET
+def shop_estimate_history_view(request):
+    profile_redirect = _require_profile_completed_for_booking(request)
+    if profile_redirect:
+        return profile_redirect
+
+    survey_redirect = _require_schedule_survey(request)
+    if survey_redirect:
+        return survey_redirect
+
+    estimate_requests = (
+        ShopEstimateRequest.objects.filter(user=request.user)
+        .order_by("-created_at", "-id")
+    )
+
+    history_rows = []
+    for estimate_request in estimate_requests:
+        main_sale_price = ShopEstimateRequest.sale_price_from_list_price(
+            int(estimate_request.main_official_price or 0)
+        )
+        string_sale_price = 0
+        if estimate_request.string_source == ShopEstimateRequest.STRING_SOURCE_OFFICIAL:
+            string_sale_price = ShopEstimateRequest.sale_price_from_list_price(
+                int(estimate_request.string_official_price or 0)
+            )
+        stringing_fee = 1200 if estimate_request.request_stringing else 0
+        estimated_total = main_sale_price + string_sale_price + stringing_fee
+
+        history_rows.append(
+            {
+                "estimate_request": estimate_request,
+                "main_sale_price": main_sale_price,
+                "string_sale_price": string_sale_price,
+                "stringing_fee": stringing_fee,
+                "estimated_total": estimated_total,
+            }
+        )
+
+    return render(
+        request,
+        "shop/history.html",
+        {
+            "history_rows": history_rows,
+            "stringing_fee": 1200,
+            "string_source_official": ShopEstimateRequest.STRING_SOURCE_OFFICIAL,
+            "string_source_bring_in": ShopEstimateRequest.STRING_SOURCE_BRING_IN,
+            "string_source_none": ShopEstimateRequest.STRING_SOURCE_NONE,
+        },
+    )
+
+
 @login_required
 @require_GET
 def shop_estimate_complete_view(request, pk):
@@ -3400,5 +3453,4 @@ def shop_estimate_complete_view(request, pk):
             "string_source_none": ShopEstimateRequest.STRING_SOURCE_NONE,
         },
     )
-
 
