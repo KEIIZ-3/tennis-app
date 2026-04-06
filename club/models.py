@@ -1,4 +1,3 @@
-
 from datetime import datetime, time, timedelta
 
 from django.conf import settings
@@ -1705,6 +1704,20 @@ class ShopEstimateRequest(models.Model):
         (BRAND_OTHER, "その他"),
     )
 
+    HANDLING_STATUS_NEW = "new"
+    HANDLING_STATUS_CHECKED = "checked"
+    HANDLING_STATUS_ORDERED = "ordered"
+    HANDLING_STATUS_COMPLETED = "completed"
+    HANDLING_STATUS_CANCELED = "canceled"
+
+    HANDLING_STATUS_CHOICES = (
+        (HANDLING_STATUS_NEW, "未対応"),
+        (HANDLING_STATUS_CHECKED, "確認済み"),
+        (HANDLING_STATUS_ORDERED, "発注済み"),
+        (HANDLING_STATUS_COMPLETED, "対応完了"),
+        (HANDLING_STATUS_CANCELED, "キャンセル"),
+    )
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -1712,6 +1725,12 @@ class ShopEstimateRequest(models.Model):
     )
     product_category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default=CATEGORY_RACKET)
     brand = models.CharField(max_length=30, choices=BRAND_CHOICES, default=BRAND_YONEX)
+    handling_status = models.CharField(
+        max_length=20,
+        choices=HANDLING_STATUS_CHOICES,
+        default=HANDLING_STATUS_NEW,
+    )
+    admin_note = models.TextField(blank=True, default="")
     main_keyword = models.CharField(max_length=255, blank=True, default="")
     main_product_name = models.CharField(max_length=255, blank=True, default="")
     main_official_price = models.PositiveIntegerField(default=0)
@@ -1739,6 +1758,7 @@ class ShopEstimateRequest(models.Model):
         self.string_keyword = (self.string_keyword or "").strip()
         self.string_product_name = (self.string_product_name or "").strip()
         self.note = (self.note or "").strip()
+        self.admin_note = (self.admin_note or "").strip()
 
         if self.main_official_price < 0:
             raise ValidationError("商品定価は0円以上にしてください。")
@@ -1781,4 +1801,3 @@ class ShopEstimateRequest(models.Model):
     @property
     def estimated_total(self):
         return int(self.main_sale_price) + int(self.string_sale_price) + int(self.stringing_fee)
-
