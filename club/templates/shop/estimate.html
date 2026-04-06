@@ -1,17 +1,12 @@
 {% extends "base.html" %}
-{% block title %}物販見積もり{% endblock %}
+{% block title %}Shop見積もり{% endblock %}
 
 {% block content %}
-  <div class="page-head" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
-    <div>
-      <h1 class="page-title">物販見積もり</h1>
-      <p class="page-subtitle">
-        ブランド公式サイトを確認しながら、ラケット・ガット・アクセサリの見積もりを作成できます。販売価格は定価の80％で計算します。
-      </p>
-    </div>
-    <div class="actions">
-      <a href="{% url 'club:shop_estimate_history' %}" class="btn">物販申込履歴を見る</a>
-    </div>
+  <div class="page-head">
+    <h1 class="page-title">Shop見積もり</h1>
+    <p class="page-subtitle">
+      ブランド公式サイトを確認しながら、ラケット・ガット・アクセサリの見積もりを作成できます。販売価格は定価の80％で計算します。
+    </p>
   </div>
 
   {% if page_error %}
@@ -362,7 +357,7 @@
 
       {% if saved_request %}
         <div class="message success" style="margin-top:16px;">
-          購入申込を保存しました。
+          Shop申込を保存しました。
           <a href="{% url 'club:shop_estimate_complete' saved_request.id %}" class="btn" style="margin-left:8px;">申込内容を確認する</a>
         </div>
       {% endif %}
@@ -370,10 +365,7 @@
   </div>
 
   <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-      <h2 class="card-title" style="margin:0;">最近の物販申込</h2>
-      <a href="{% url 'club:shop_estimate_history' %}" class="btn">履歴一覧へ</a>
-    </div>
+    <h2 class="card-title">最近のShop申込</h2>
     {% if recent_requests %}
       <div class="grid-2" style="margin-top:12px;">
         {% for row in recent_requests %}
