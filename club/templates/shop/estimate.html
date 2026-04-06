@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}物販見積もり{% endblock %}
+{% block title %}Shop{% endblock %}
 
 {% block content %}
   <div class="page-head">
-    <h1 class="page-title">物販見積もり</h1>
+    <h1 class="page-title">Shop</h1>
     <p class="page-subtitle">
       ブランド公式サイトを確認しながら、ラケット・ガット・アクセサリの見積もりを作成できます。販売価格は定価の80％で計算します。
     </p>
@@ -51,6 +51,86 @@
       max-height:calc(100vh - 260px);
       overflow:auto;
     }
+    .shop-auto-note{
+      margin-top:8px;
+      padding:12px 14px;
+      border:1px solid #bfdbfe;
+      background:#eff6ff;
+      border-radius:12px;
+      color:#1d4ed8;
+      font-size:13px;
+      line-height:1.7;
+    }
+    .shop-auto-grid{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:12px;
+    }
+    .shop-auto-card{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      padding:14px;
+      border:1px solid #dbeafe;
+      background:#fff;
+      border-radius:14px;
+      cursor:pointer;
+      transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+    }
+    .shop-auto-card:hover{
+      transform:translateY(-1px);
+      box-shadow:0 10px 20px rgba(15,23,42,0.08);
+      border-color:#93c5fd;
+    }
+    .shop-auto-card img{
+      width:100%;
+      aspect-ratio:4 / 3;
+      object-fit:cover;
+      border-radius:12px;
+      border:1px solid #e5e7eb;
+      background:#f8fafc;
+    }
+    .shop-auto-card-title{
+      font-size:16px;
+      font-weight:800;
+      line-height:1.4;
+    }
+    .shop-auto-card-meta{
+      color:#64748b;
+      font-size:12px;
+      line-height:1.6;
+    }
+    .shop-auto-card-price{
+      font-size:20px;
+      font-weight:800;
+      color:#0f172a;
+    }
+    .shop-selected-preview{
+      padding:14px;
+      border:1px solid #dbeafe;
+      background:#f8fbff;
+      border-radius:14px;
+      margin-bottom:16px;
+    }
+    .shop-selected-preview img{
+      width:100%;
+      aspect-ratio:4 / 3;
+      object-fit:cover;
+      border-radius:12px;
+      border:1px solid #dbeafe;
+      background:#fff;
+    }
+    .shop-selected-preview-title{
+      font-size:18px;
+      font-weight:800;
+      margin-top:10px;
+    }
+    .shop-selected-preview-sub{
+      color:#64748b;
+      font-size:13px;
+      margin-top:6px;
+      line-height:1.7;
+    }
     @media (max-width: 900px){
       .shop-sticky-panel{
         position:static;
@@ -58,13 +138,35 @@
         max-height:none;
         overflow:visible;
       }
+      .shop-auto-grid{
+        grid-template-columns:1fr;
+      }
     }
   </style>
 
   <div class="grid-2">
     <div class="card">
-      <h2 class="card-title">見積もり入力</h2>
-      <p class="card-subtitle">見積もりだけ出すことも、購入申込まで進むこともできます。</p>
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+        <div>
+          <h2 class="card-title" style="margin:0;">見積もり入力</h2>
+          <p class="card-subtitle" style="margin-top:6px;">見積もりだけ出すことも、購入申込まで進むこともできます。</p>
+        </div>
+        <div class="actions">
+          <a href="{% url 'club:shop_estimate_history' %}" class="btn">Shop申込履歴</a>
+        </div>
+      </div>
+
+      <div id="shop-selected-main-preview" class="shop-selected-preview" style="display:none;">
+        <img id="shop-selected-main-image" src="" alt="選択商品プレビュー">
+        <div id="shop-selected-main-title" class="shop-selected-preview-title"></div>
+        <div id="shop-selected-main-sub" class="shop-selected-preview-sub"></div>
+      </div>
+
+      <div class="shop-auto-note">
+        {{ shop_candidate_support_message }}
+        <br>
+        まず候補カードをクリックすると、商品名・定価・画像プレビューが自動反映されます。
+      </div>
 
       <div id="category-guide" style="padding:12px 14px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:12px; margin-bottom:16px;">
         <div style="font-weight:800; margin-bottom:6px;">入力のコツ</div>
@@ -159,18 +261,18 @@
 
         <p>
           <label for="id_main_keyword">商品検索キーワード</label>
-          <input type="text" name="main_keyword" id="id_main_keyword" value="{{ form_data.main_keyword }}" placeholder="例: EZONE 100 / PURE DRIVE / SHIFT 99">
+          <input type="text" name="main_keyword" id="id_main_keyword" value="{{ form_data.main_keyword }}" placeholder="例: EZONE 100 / PURE DRIVE / SHIFT 99" readonly>
           <div class="muted" style="font-size:13px; margin-top:6px;">右側にブランド公式サイトへの検索リンクを表示します。</div>
         </p>
 
         <p>
           <label for="id_main_product_name">商品名</label>
-          <input type="text" name="main_product_name" id="id_main_product_name" value="{{ form_data.main_product_name }}" placeholder="例: EZONE 100 2025">
+          <input type="text" name="main_product_name" id="id_main_product_name" value="{{ form_data.main_product_name }}" placeholder="例: EZONE 100 2025" readonly>
         </p>
 
         <p>
           <label for="id_main_official_price">商品定価（税込）</label>
-          <input type="number" name="main_official_price" id="id_main_official_price" value="{{ form_data.main_official_price }}" min="0" step="1" placeholder="例: 39600">
+          <input type="number" name="main_official_price" id="id_main_official_price" value="{{ form_data.main_official_price }}" min="0" step="1" placeholder="候補クリックで自動入力" readonly>
         </p>
 
         <hr style="border:none; border-top:1px solid #e5e7eb; margin:20px 0;">
@@ -191,17 +293,17 @@
         <div id="string-purchase-fields">
           <p>
             <label for="id_string_keyword">ガット検索キーワード</label>
-            <input type="text" name="string_keyword" id="id_string_keyword" value="{{ form_data.string_keyword }}" placeholder="例: ポリツアープロ 125 / RPM BLAST / ALU POWER">
+            <input type="text" name="string_keyword" id="id_string_keyword" value="{{ form_data.string_keyword }}" placeholder="例: ポリツアープロ 125 / RPM BLAST / ALU POWER" readonly>
           </p>
 
           <p>
             <label for="id_string_product_name">ガット商品名</label>
-            <input type="text" name="string_product_name" id="id_string_product_name" value="{{ form_data.string_product_name }}" placeholder="例: POLYTOUR PRO 125">
+            <input type="text" name="string_product_name" id="id_string_product_name" value="{{ form_data.string_product_name }}" placeholder="例: POLYTOUR PRO 125" readonly>
           </p>
 
           <p>
             <label for="id_string_official_price">ガット定価（税込）</label>
-            <input type="number" name="string_official_price" id="id_string_official_price" value="{{ form_data.string_official_price }}" min="0" step="1" placeholder="例: 2860">
+            <input type="number" name="string_official_price" id="id_string_official_price" value="{{ form_data.string_official_price }}" min="0" step="1" placeholder="候補クリックで自動入力" readonly>
           </p>
         </div>
 
@@ -383,7 +485,7 @@
   </div>
 
   <div class="card">
-    <h2 class="card-title">最近の物販申込</h2>
+    <h2 class="card-title">最近のShop申込</h2>
     {% if recent_requests %}
       <div class="grid-2" style="margin-top:12px;">
         {% for row in recent_requests %}
@@ -419,7 +521,7 @@
         {% endfor %}
       </div>
     {% else %}
-      <div class="muted">まだ物販申込はありません。</div>
+      <div class="muted">まだShop申込はありません。</div>
     {% endif %}
   </div>
 
@@ -453,55 +555,63 @@
       const summaryLines = document.getElementById("summary-lines");
       const recommendedActionsList = document.getElementById("recommended-actions-list");
       const finalReviewContent = document.getElementById("final-review-content");
+      const shopMainCandidates = document.getElementById("shop-main-candidates");
+      const shopStringCandidates = document.getElementById("shop-string-candidates");
+      const shopSelectedMainPreview = document.getElementById("shop-selected-main-preview");
+      const shopSelectedMainImage = document.getElementById("shop-selected-main-image");
+      const shopSelectedMainTitle = document.getElementById("shop-selected-main-title");
+      const shopSelectedMainSub = document.getElementById("shop-selected-main-sub");
+
+      const candidateApiUrl = "{{ shop_candidate_api_url|escapejs }}";
 
       const categoryGuides = {
-        racket: "ラケットは、シリーズ名 + フェイスサイズやモデル年で検索すると見つけやすいです。例: EZONE 100 / PURE DRIVE 2025",
-        string: "ガットは、商品名 + ゲージで検索すると見つけやすいです。例: POLYTOUR PRO 125 / RPM BLAST 130",
-        accessory: "アクセサリは、商品名そのものを短く入れると探しやすいです。例: グリップテープ / 振動止め / ラケットバッグ"
+        racket: "この画面では、ブランド候補カードをクリックして商品名と定価を自動反映します。まずは右側の候補から選んでください。",
+        string: "ストリング単体カテゴリでも、右側の候補カードをクリックして定価を自動反映できます。",
+        accessory: "アクセサリは現時点では自動候補対象外です。候補追加は次段階で対応します。"
       };
 
       const brandGuides = {
-        yonex: "YONEX なら、EZONE / VCORE / PERCEPT / POLYTOUR 系で探すと見つけやすいです。",
-        wilson: "Wilson なら、SHIFT / BLADE / CLASH / PRO STAFF / NXT 系で探すと見つけやすいです。",
-        babolat: "Babolat なら、PURE DRIVE / PURE AERO / PURE STRIKE / RPM BLAST 系で探すと見つけやすいです。",
-        head: "HEAD なら、SPEED / BOOM / EXTREME / RADICAL / LYNX 系で探すと見つけやすいです。",
-        prince: "Prince なら、PHANTOM / BEAST / TOUR / EMBLEM 系で探すと見つけやすいです。",
-        dunlop: "DUNLOP なら、SX / CX / FX 系で探すと見つけやすいです。",
-        tecnifibre: "Tecnifibre なら、TFIGHT / TEMPO / RAZOR CODE / X-ONE BIPHASE 系で探すと見つけやすいです。",
-        other: "その他ブランドは、ブランド名 + 商品名で短く検索すると見つけやすいです。"
+        yonex: "現在は YONEX の候補カード表示に対応しています。今後、他ブランドも順次追加可能です。",
+        wilson: "現在このブランドの自動候補は未対応です。次段階で追加できます。",
+        babolat: "現在このブランドの自動候補は未対応です。次段階で追加できます。",
+        head: "現在このブランドの自動候補は未対応です。次段階で追加できます。",
+        prince: "現在このブランドの自動候補は未対応です。次段階で追加できます。",
+        dunlop: "現在このブランドの自動候補は未対応です。次段階で追加できます。",
+        tecnifibre: "現在このブランドの自動候補は未対応です。次段階で追加できます。",
+        other: "現在このブランドの自動候補は未対応です。"
       };
 
-      const placeholders = {
-        racket: { keyword: "例: EZONE 100 / PURE DRIVE / SHIFT 99", name: "例: EZONE 100 2025" },
-        string: { keyword: "例: POLYTOUR PRO 125 / RPM BLAST / ALU POWER", name: "例: POLYTOUR PRO 125" },
-        accessory: { keyword: "例: グリップテープ / 振動止め / ラケットバッグ", name: "例: ウェットスーパーグリップ 3本入" }
-      };
+      function yen(value) {
+        return `${Number(value || 0).toLocaleString("ja-JP")}円`;
+      }
 
-      const quickExamples = {
-        yonex: { main: ["EZONE 100", "VCORE 100", "PERCEPT 100"], string: ["POLYTOUR PRO 125", "POLYTOUR REV 125", "REXIS SPEED 125"] },
-        wilson: { main: ["SHIFT 99", "BLADE 98", "CLASH 100"], string: ["NXT 16", "REV 125", "ALU POWER"] },
-        babolat: { main: ["PURE DRIVE", "PURE AERO", "PURE STRIKE 100"], string: ["RPM BLAST 125", "ADDIXION 125", "XALT 125"] },
-        head: { main: ["SPEED MP", "BOOM MP", "EXTREME MP"], string: ["LYNX TOUR 125", "HAWK TOUCH 125", "VELOCITY MLT 125"] },
-        prince: { main: ["PHANTOM 100", "BEAST 100", "TOUR 98"], string: ["TOUR XT 125", "LIGHTNING XX", "PHANTOM PRO 125"] },
-        dunlop: { main: ["SX 300", "CX 200", "FX 500"], string: ["EXPLOSIVE SPIN 125", "ICONIC ALL", "EXPLOSIVE TOUR"] },
-        tecnifibre: { main: ["TFIGHT 300", "TFIGHT 305", "TEMPO 298"], string: ["RAZOR CODE 125", "X-ONE BIPHASE 124", "ICE CODE 125"] },
-        other: { main: ["商品名を入力", "ブランド名 + 商品名", "シリーズ名 + 型番"], string: ["商品名 + ゲージ", "ブランド名 + 商品名", "型番 + 125"] }
-      };
-
-      function yen(value) { return `${value}円`; }
       function salePrice(value) {
         const n = parseInt(String(value || "0").replace(/,/g, ""), 10);
         if (!Number.isFinite(n) || n <= 0) return 0;
         return Math.floor(n * 0.8);
       }
 
-      function getCategoryText() { return category ? category.options[category.selectedIndex]?.text || "-" : "-"; }
-      function getBrandText() { return brand ? brand.options[brand.selectedIndex]?.text || "-" : "-"; }
-      function getMainText() { return (mainProductName && mainProductName.value.trim()) || (mainKeyword && mainKeyword.value.trim()) || "未入力"; }
-      function getStringMode() { return stringSource ? stringSource.value : "none"; }
+      function getCategoryText() {
+        return category ? category.options[category.selectedIndex]?.text || "-" : "-";
+      }
+
+      function getBrandText() {
+        return brand ? brand.options[brand.selectedIndex]?.text || "-" : "-";
+      }
+
+      function getMainText() {
+        return (mainProductName && mainProductName.value.trim()) || (mainKeyword && mainKeyword.value.trim()) || "未選択";
+      }
+
+      function getStringMode() {
+        return stringSource ? stringSource.value : "none";
+      }
+
       function getStringText() {
         const mode = getStringMode();
-        if (mode === "official") return (stringProductName && stringProductName.value.trim()) || (stringKeyword && stringKeyword.value.trim()) || "未入力";
+        if (mode === "official") {
+          return (stringProductName && stringProductName.value.trim()) || (stringKeyword && stringKeyword.value.trim()) || "未選択";
+        }
         if (mode === "bring_in") return "持ち込み";
         return "不要";
       }
@@ -509,49 +619,11 @@
       function updateCategoryGuide() {
         const key = category ? category.value : "racket";
         if (categoryGuideText) categoryGuideText.textContent = categoryGuides[key] || categoryGuides.racket;
-        if (mainKeyword) mainKeyword.placeholder = placeholders[key]?.keyword || placeholders.racket.keyword;
-        if (mainProductName) mainProductName.placeholder = placeholders[key]?.name || placeholders.racket.name;
       }
 
       function updateBrandGuide() {
         const key = brand ? brand.value : "yonex";
         if (brandGuideText) brandGuideText.textContent = brandGuides[key] || brandGuides.other;
-      }
-
-      function updateStringPlaceholders() {
-        const key = brand ? brand.value : "yonex";
-        const brandStringExamples = {
-          yonex: { keyword: "例: ポリツアープロ 125 / レクシススピード 125", name: "例: POLYTOUR PRO 125" },
-          wilson: { keyword: "例: NXT 16 / REV 125 / ALU POWER", name: "例: NXT 16" },
-          babolat: { keyword: "例: RPM BLAST 125 / ADDIXION 125", name: "例: RPM BLAST 125" },
-          head: { keyword: "例: LYNX TOUR 125 / HAWK TOUCH 125", name: "例: LYNX TOUR 125" },
-          prince: { keyword: "例: TOUR XT 125 / LIGHTNING XX", name: "例: TOUR XT 125" },
-          dunlop: { keyword: "例: EXPLOSIVE SPIN 125 / ICONIC ALL", name: "例: EXPLOSIVE SPIN 125" },
-          tecnifibre: { keyword: "例: RAZOR CODE 125 / X-ONE BIPHASE 124", name: "例: RAZOR CODE 125" },
-          other: { keyword: "例: 商品名 + ゲージ", name: "例: 商品名 125" }
-        };
-        if (stringKeyword) stringKeyword.placeholder = brandStringExamples[key]?.keyword || brandStringExamples.other.keyword;
-        if (stringProductName) stringProductName.placeholder = brandStringExamples[key]?.name || brandStringExamples.other.name;
-      }
-
-      function renderQuickPicks() {
-        const key = brand ? brand.value : "yonex";
-        const examples = quickExamples[key] || quickExamples.other;
-        if (quickPicksMain) quickPicksMain.innerHTML = examples.main.map(item => `<button type="button" class="btn quick-main" data-value="${item}">${item}</button>`).join("");
-        if (quickPicksString) quickPicksString.innerHTML = examples.string.map(item => `<button type="button" class="btn quick-string" data-value="${item}">${item}</button>`).join("");
-        if (quickPicksStringWrap) quickPicksStringWrap.style.display = (stringSource && stringSource.value === "official") ? "block" : "none";
-
-        document.querySelectorAll(".quick-main").forEach(btn => btn.addEventListener("click", function () {
-          if (mainKeyword) mainKeyword.value = this.dataset.value || "";
-          if (mainProductName && !mainProductName.value) mainProductName.value = this.dataset.value || "";
-          refreshAll();
-        }));
-
-        document.querySelectorAll(".quick-string").forEach(btn => btn.addEventListener("click", function () {
-          if (stringKeyword) stringKeyword.value = this.dataset.value || "";
-          if (stringProductName && !stringProductName.value) stringProductName.value = this.dataset.value || "";
-          refreshAll();
-        }));
       }
 
       function toggleStringFields() {
@@ -590,27 +662,27 @@
       function updatePreSubmitCheck() {
         if (!preSubmitCheckList) return;
         const items = [];
-        const mainNameFilled = !!getMainText() && getMainText() !== "未入力";
+        const mainNameFilled = !!getMainText() && getMainText() !== "未選択";
         const mainPriceFilled = !!(mainOfficialPrice && String(mainOfficialPrice.value).trim());
         const stringMode = getStringMode();
         const wantsStringing = requestStringing && requestStringing.value === "1";
         const tensionFilled = !wantsStringing || !!(tension && tension.value);
 
-        items.push({ ok: mainNameFilled, text: mainNameFilled ? "メイン商品名または検索キーワードが入っています。" : "メイン商品名または検索キーワードを入れてください。" });
-        items.push({ ok: mainPriceFilled, text: mainPriceFilled ? "メイン商品の定価が入っています。" : "メイン商品の定価を入れてください。" });
+        items.push({ ok: mainNameFilled, text: mainNameFilled ? "メイン商品が選択されています。" : "右側のメイン商品候補カードをクリックしてください。" });
+        items.push({ ok: mainPriceFilled, text: mainPriceFilled ? "メイン商品の定価が自動入力されています。" : "メイン商品の定価が未入力です。" });
 
         if (stringMode === "official") {
-          const stringNameFilled = !!getStringText() && getStringText() !== "未入力";
+          const stringNameFilled = !!getStringText() && getStringText() !== "未選択";
           const stringPriceFilled = !!(stringOfficialPrice && String(stringOfficialPrice.value).trim());
-          items.push({ ok: stringNameFilled, text: stringNameFilled ? "ガット商品名または検索キーワードが入っています。" : "ガット商品名または検索キーワードを入れてください。" });
-          items.push({ ok: stringPriceFilled, text: stringPriceFilled ? "ガット定価が入っています。" : "ガット定価を入れてください。" });
+          items.push({ ok: stringNameFilled, text: stringNameFilled ? "ガット候補が選択されています。" : "ガットを購入する場合は右側のガット候補カードをクリックしてください。" });
+          items.push({ ok: stringPriceFilled, text: stringPriceFilled ? "ガット定価が自動入力されています。" : "ガット定価が未入力です。" });
         }
 
         if (wantsStringing) {
           items.push({ ok: tensionFilled, text: tensionFilled ? "張り上げテンションが選択されています。" : "張り上げテンションを選択してください。" });
         }
 
-        items.push({ ok: true, text: "購入前に公式サイトで商品名・定価・画像を再確認してください。" });
+        items.push({ ok: true, text: "候補価格は公式オンラインショップ掲載価格を元に自動入力しています。" });
 
         preSubmitCheckList.innerHTML = items.map(item => {
           const color = item.ok ? "#166534" : "#b91c1c";
@@ -622,8 +694,8 @@
       function updateSummaryCard() {
         if (!summaryLines) return;
         const stringMode = getStringMode();
-        const mainPriceText = mainOfficialPrice && mainOfficialPrice.value ? `${mainOfficialPrice.value}円` : "未入力";
-        const stringPriceText = (stringMode === "official" && stringOfficialPrice && stringOfficialPrice.value) ? `${stringOfficialPrice.value}円` : (stringMode === "official" ? "未入力" : "-");
+        const mainPriceText = mainOfficialPrice && mainOfficialPrice.value ? `${Number(mainOfficialPrice.value).toLocaleString("ja-JP")}円` : "未入力";
+        const stringPriceText = (stringMode === "official" && stringOfficialPrice && stringOfficialPrice.value) ? `${Number(stringOfficialPrice.value).toLocaleString("ja-JP")}円` : (stringMode === "official" ? "未入力" : "-");
         const stringingText = requestStringing && requestStringing.value === "1" ? `依頼する / ${tension && tension.value ? `${tension.value} lbs` : "テンション未選択"}` : "依頼しない";
         const noteText = note && note.value.trim() ? note.value.trim() : "なし";
 
@@ -639,32 +711,21 @@
 
       function updateRecommendedActions() {
         if (!recommendedActionsList) return;
-
         const actions = [];
         const stringMode = getStringMode();
-        const mainNameFilled = getMainText() !== "未入力";
-        const mainPriceFilled = !!(mainOfficialPrice && String(mainOfficialPrice.value).trim());
+        const mainSelected = getMainText() !== "未選択";
 
-        if (!mainNameFilled) actions.push("まずはメイン商品の候補ボタンを押すか、商品名を入力してください。");
-        if (mainNameFilled && !mainPriceFilled) actions.push("次に公式サイトで定価を確認して、メイン商品の定価を入力してください。");
-        if (stringMode === "official" && !(stringOfficialPrice && String(stringOfficialPrice.value).trim())) {
-          actions.push("ガットも購入する場合は、公式サイトでガット定価を確認して入力してください。");
-        }
-        if (stringMode === "bring_in") actions.push("ガット持ち込みなので、必要ならそのままガット張りの有無だけ決めてください。");
-        if (requestStringing && requestStringing.value === "1" && !(tension && tension.value)) {
-          actions.push("ガット張りを依頼するので、張り上げテンションを選択してください。");
-        }
-        if (mainNameFilled && mainPriceFilled) {
-          actions.push("入力が進んでいます。公式サイトの画像・価格を最後に確認したら見積もりまたは購入申込へ進めます。");
-        }
-        if (!actions.length) actions.push("必要項目の入力が進んでいます。見積もりを出すか、購入申込を送信してください。");
+        if (!mainSelected) actions.push("右側のメイン商品候補から、希望商品をクリックしてください。");
+        if (mainSelected && stringMode === "none") actions.push("ガットも購入する場合は、ガット欄を「公式購入あり」にして候補カードをクリックしてください。");
+        if (stringMode === "official" && getStringText() === "未選択") actions.push("ガット候補から商品をクリックしてください。");
+        if (requestStringing && requestStringing.value === "1") actions.push("張り上げテンションを確認してください。");
+        if (mainSelected) actions.push("内容が揃ったら「見積もりを出す」または「購入申込を送信する」へ進めます。");
 
         recommendedActionsList.innerHTML = actions.map(text => `<li>・${text}</li>`).join("");
       }
 
       function updateFinalReview() {
         if (!finalReviewContent) return;
-
         const stringMode = getStringMode();
         const mainSale = salePrice(mainOfficialPrice ? mainOfficialPrice.value : 0);
         const stringSale = stringMode === "official" ? salePrice(stringOfficialPrice ? stringOfficialPrice.value : 0) : 0;
@@ -686,10 +747,103 @@
         finalReviewContent.innerHTML = items.join("<br>");
       }
 
+      function renderSelectedMainPreview(candidate) {
+        if (!shopSelectedMainPreview || !shopSelectedMainImage || !shopSelectedMainTitle || !shopSelectedMainSub) return;
+        if (!candidate) {
+          shopSelectedMainPreview.style.display = "none";
+          return;
+        }
+        shopSelectedMainPreview.style.display = "block";
+        shopSelectedMainImage.src = candidate.image_url || "";
+        shopSelectedMainImage.alt = candidate.product_name || "選択商品";
+        shopSelectedMainTitle.textContent = candidate.product_name || "";
+        shopSelectedMainSub.innerHTML = `定価：<strong>${yen(candidate.official_price || 0)}</strong><br>候補クリックで自動反映済み`;
+      }
+
+      function attachMainCandidateEvents() {
+        document.querySelectorAll(".shop-main-candidate").forEach((button) => {
+          button.addEventListener("click", function () {
+            const candidate = {
+              product_name: this.dataset.productName || "",
+              keyword: this.dataset.keyword || "",
+              official_price: this.dataset.price || "",
+              image_url: this.dataset.imageUrl || "",
+              product_url: this.dataset.productUrl || "",
+              note: this.dataset.note || ""
+            };
+            if (mainKeyword) mainKeyword.value = candidate.keyword;
+            if (mainProductName) mainProductName.value = candidate.product_name;
+            if (mainOfficialPrice) mainOfficialPrice.value = candidate.official_price;
+            renderSelectedMainPreview(candidate);
+            refreshAll();
+          });
+        });
+      }
+
+      function attachStringCandidateEvents() {
+        document.querySelectorAll(".shop-string-candidate").forEach((button) => {
+          button.addEventListener("click", function () {
+            const candidate = {
+              product_name: this.dataset.productName || "",
+              keyword: this.dataset.keyword || "",
+              official_price: this.dataset.price || "",
+            };
+            if (stringSource) stringSource.value = "official";
+            if (stringKeyword) stringKeyword.value = candidate.keyword;
+            if (stringProductName) stringProductName.value = candidate.product_name;
+            if (stringOfficialPrice) stringOfficialPrice.value = candidate.official_price;
+            toggleStringFields();
+            refreshAll();
+          });
+        });
+      }
+
+      function renderCandidateCards(container, items, className) {
+        if (!container) return;
+        if (!items || !items.length) {
+          container.innerHTML = '<div class="section-note">現在この条件の候補はありません。</div>';
+          return;
+        }
+        container.innerHTML = items.map(item => `
+          <button type="button" class="shop-auto-card ${className}"
+                  data-product-name="${(item.product_name || "").replace(/"/g, "&quot;")}"
+                  data-keyword="${(item.keyword || "").replace(/"/g, "&quot;")}"
+                  data-price="${item.official_price || 0}"
+                  data-image-url="${(item.image_url || "").replace(/"/g, "&quot;")}"
+                  data-product-url="${(item.product_url || "").replace(/"/g, "&quot;")}"
+                  data-note="${(item.note || "").replace(/"/g, "&quot;")}">
+            <img src="${item.image_url || ""}" alt="${item.product_name || ""}">
+            <div class="shop-auto-card-title">${item.product_name || ""}</div>
+            <div class="shop-auto-card-price">¥${Number(item.official_price || 0).toLocaleString("ja-JP")}</div>
+            <div class="shop-auto-card-meta">${item.note || ""}</div>
+          </button>
+        `).join("");
+      }
+
+      async function reloadAutoCandidates() {
+        if (!candidateApiUrl || !brand || !category) return;
+        try {
+          const params = new URLSearchParams({
+            brand: brand.value || "",
+            product_category: category.value || ""
+          });
+          const response = await fetch(`${candidateApiUrl}?${params.toString()}`, {
+            headers: { "X-Requested-With": "XMLHttpRequest" }
+          });
+          if (!response.ok) return;
+          const data = await response.json();
+          renderCandidateCards(shopMainCandidates, data.main_candidates || [], "shop-main-candidate");
+          renderCandidateCards(shopStringCandidates, data.string_candidates || [], "shop-string-candidate");
+          attachMainCandidateEvents();
+          attachStringCandidateEvents();
+        } catch (error) {
+          // 候補取得に失敗しても既存入力は継続
+        }
+      }
+
       function refreshAll() {
         updateCategoryGuide();
         updateBrandGuide();
-        updateStringPlaceholders();
         toggleStringFields();
         toggleTensionField();
         updateLiveEstimate();
@@ -699,20 +853,32 @@
         updateFinalReview();
       }
 
-      if (category) category.addEventListener("change", refreshAll);
-      if (brand) brand.addEventListener("change", function () { renderQuickPicks(); refreshAll(); });
-      if (stringSource) stringSource.addEventListener("change", function () { renderQuickPicks(); refreshAll(); });
+      if (category) category.addEventListener("change", async function () {
+        await reloadAutoCandidates();
+        refreshAll();
+      });
+
+      if (brand) brand.addEventListener("change", async function () {
+        await reloadAutoCandidates();
+        refreshAll();
+      });
+
+      if (stringSource) stringSource.addEventListener("change", refreshAll);
       if (requestStringing) requestStringing.addEventListener("change", refreshAll);
-      if (mainOfficialPrice) mainOfficialPrice.addEventListener("input", refreshAll);
-      if (stringOfficialPrice) stringOfficialPrice.addEventListener("input", refreshAll);
-      if (mainKeyword) mainKeyword.addEventListener("input", refreshAll);
-      if (mainProductName) mainProductName.addEventListener("input", refreshAll);
-      if (stringKeyword) stringKeyword.addEventListener("input", refreshAll);
-      if (stringProductName) stringProductName.addEventListener("input", refreshAll);
       if (note) note.addEventListener("input", refreshAll);
       if (tension) tension.addEventListener("change", refreshAll);
 
-      renderQuickPicks();
+      attachMainCandidateEvents();
+      attachStringCandidateEvents();
+
+      if (mainProductName && mainProductName.value && mainOfficialPrice && mainOfficialPrice.value) {
+        renderSelectedMainPreview({
+          product_name: mainProductName.value,
+          official_price: mainOfficialPrice.value,
+          image_url: ""
+        });
+      }
+
       refreshAll();
     })();
   </script>
