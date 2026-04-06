@@ -103,6 +103,13 @@
         </div>
       </div>
 
+      <div id="recommended-actions-card" class="card" style="padding:16px; margin-bottom:16px; border:1px solid #e5e7eb; background:#fff;">
+        <div style="font-weight:800; margin-bottom:10px;">おすすめアクション</div>
+        <ul class="clean" id="recommended-actions-list" style="line-height:1.9; margin:0;">
+          <li class="muted">入力内容に応じて、次にやるとよい操作をここに表示します。</li>
+        </ul>
+      </div>
+
       <form method="post">
         {% csrf_token %}
 
@@ -418,6 +425,7 @@
       const quickPicksStringWrap = document.getElementById("quick-picks-string-wrap");
       const preSubmitCheckList = document.getElementById("pre-submit-check-list");
       const summaryLines = document.getElementById("summary-lines");
+      const recommendedActionsList = document.getElementById("recommended-actions-list");
 
       const categoryGuides = {
         racket: "ラケットは、シリーズ名 + フェイスサイズやモデル年で検索すると見つけやすいです。例: EZONE 100 / PURE DRIVE 2025",
@@ -453,10 +461,7 @@
         other: { main: ["商品名を入力", "ブランド名 + 商品名", "シリーズ名 + 型番"], string: ["商品名 + ゲージ", "ブランド名 + 商品名", "型番 + 125"] }
       };
 
-      function yen(value) {
-        return `${value}円`;
-      }
-
+      function yen(value) { return `${value}円`; }
       function salePrice(value) {
         const n = parseInt(String(value || "0").replace(/,/g, ""), 10);
         if (!Number.isFinite(n) || n <= 0) return 0;
@@ -495,14 +500,10 @@
         const key = brand ? brand.value : "yonex";
         const examples = quickExamples[key] || quickExamples.other;
         if (quickPicksMain) {
-          quickPicksMain.innerHTML = examples.main.map(item =>
-            `<button type="button" class="btn quick-main" data-value="${item}">${item}</button>`
-          ).join("");
+          quickPicksMain.innerHTML = examples.main.map(item => `<button type="button" class="btn quick-main" data-value="${item}">${item}</button>`).join("");
         }
         if (quickPicksString) {
-          quickPicksString.innerHTML = examples.string.map(item =>
-            `<button type="button" class="btn quick-string" data-value="${item}">${item}</button>`
-          ).join("");
+          quickPicksString.innerHTML = examples.string.map(item => `<button type="button" class="btn quick-string" data-value="${item}">${item}</button>`).join("");
         }
         if (quickPicksStringWrap) {
           quickPicksStringWrap.style.display = (stringSource && stringSource.value === "official") ? "block" : "none";
@@ -512,8 +513,7 @@
           btn.addEventListener("click", function () {
             if (mainKeyword) mainKeyword.value = this.dataset.value || "";
             if (mainProductName && !mainProductName.value) mainProductName.value = this.dataset.value || "";
-            updatePreSubmitCheck();
-            updateSummaryCard();
+            updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions();
           });
         });
 
@@ -521,8 +521,7 @@
           btn.addEventListener("click", function () {
             if (stringKeyword) stringKeyword.value = this.dataset.value || "";
             if (stringProductName && !stringProductName.value) stringProductName.value = this.dataset.value || "";
-            updatePreSubmitCheck();
-            updateSummaryCard();
+            updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions();
           });
         });
       }
@@ -562,7 +561,6 @@
 
       function updatePreSubmitCheck() {
         if (!preSubmitCheckList) return;
-
         const items = [];
         const mainNameFilled = !!((mainProductName && mainProductName.value.trim()) || (mainKeyword && mainKeyword.value.trim()));
         const mainPriceFilled = !!(mainOfficialPrice && String(mainOfficialPrice.value).trim());
@@ -570,40 +568,21 @@
         const wantsStringing = requestStringing && requestStringing.value === "1";
         const tensionFilled = !wantsStringing || !!(tension && tension.value);
 
-        items.push({
-          ok: mainNameFilled,
-          text: mainNameFilled ? "メイン商品名または検索キーワードが入っています。" : "メイン商品名または検索キーワードを入れてください。"
-        });
-
-        items.push({
-          ok: mainPriceFilled,
-          text: mainPriceFilled ? "メイン商品の定価が入っています。" : "メイン商品の定価を入れてください。"
-        });
+        items.push({ ok: mainNameFilled, text: mainNameFilled ? "メイン商品名または検索キーワードが入っています。" : "メイン商品名または検索キーワードを入れてください。" });
+        items.push({ ok: mainPriceFilled, text: mainPriceFilled ? "メイン商品の定価が入っています。" : "メイン商品の定価を入れてください。" });
 
         if (stringMode === "official") {
           const stringNameFilled = !!((stringProductName && stringProductName.value.trim()) || (stringKeyword && stringKeyword.value.trim()));
           const stringPriceFilled = !!(stringOfficialPrice && String(stringOfficialPrice.value).trim());
-          items.push({
-            ok: stringNameFilled,
-            text: stringNameFilled ? "ガット商品名または検索キーワードが入っています。" : "ガット商品名または検索キーワードを入れてください。"
-          });
-          items.push({
-            ok: stringPriceFilled,
-            text: stringPriceFilled ? "ガット定価が入っています。" : "ガット定価を入れてください。"
-          });
+          items.push({ ok: stringNameFilled, text: stringNameFilled ? "ガット商品名または検索キーワードが入っています。" : "ガット商品名または検索キーワードを入れてください。" });
+          items.push({ ok: stringPriceFilled, text: stringPriceFilled ? "ガット定価が入っています。" : "ガット定価を入れてください。" });
         }
 
         if (wantsStringing) {
-          items.push({
-            ok: tensionFilled,
-            text: tensionFilled ? "張り上げテンションが選択されています。" : "張り上げテンションを選択してください。"
-          });
+          items.push({ ok: tensionFilled, text: tensionFilled ? "張り上げテンションが選択されています。" : "張り上げテンションを選択してください。" });
         }
 
-        items.push({
-          ok: true,
-          text: "購入前に公式サイトで商品名・定価・画像を再確認してください。"
-        });
+        items.push({ ok: true, text: "購入前に公式サイトで商品名・定価・画像を再確認してください。" });
 
         preSubmitCheckList.innerHTML = items.map(item => {
           const color = item.ok ? "#166534" : "#b91c1c";
@@ -614,28 +593,16 @@
 
       function updateSummaryCard() {
         if (!summaryLines) return;
-
         const categoryText = category ? category.options[category.selectedIndex]?.text || "-" : "-";
         const brandText = brand ? brand.options[brand.selectedIndex]?.text || "-" : "-";
         const mainText = (mainProductName && mainProductName.value.trim()) || (mainKeyword && mainKeyword.value.trim()) || "未入力";
         const mainPriceText = mainOfficialPrice && mainOfficialPrice.value ? `${mainOfficialPrice.value}円` : "未入力";
         const stringMode = stringSource ? stringSource.value : "none";
-
         let stringText = "不要";
-        if (stringMode === "official") {
-          stringText = (stringProductName && stringProductName.value.trim()) || (stringKeyword && stringKeyword.value.trim()) || "未入力";
-        } else if (stringMode === "bring_in") {
-          stringText = "持ち込み";
-        }
-
-        const stringPriceText = (stringMode === "official" && stringOfficialPrice && stringOfficialPrice.value)
-          ? `${stringOfficialPrice.value}円`
-          : (stringMode === "official" ? "未入力" : "-");
-
-        const stringingText = requestStringing && requestStringing.value === "1"
-          ? `依頼する / ${tension && tension.value ? `${tension.value} lbs` : "テンション未選択"}`
-          : "依頼しない";
-
+        if (stringMode === "official") stringText = (stringProductName && stringProductName.value.trim()) || (stringKeyword && stringKeyword.value.trim()) || "未入力";
+        else if (stringMode === "bring_in") stringText = "持ち込み";
+        const stringPriceText = (stringMode === "official" && stringOfficialPrice && stringOfficialPrice.value) ? `${stringOfficialPrice.value}円` : (stringMode === "official" ? "未入力" : "-");
+        const stringingText = requestStringing && requestStringing.value === "1" ? `依頼する / ${tension && tension.value ? `${tension.value} lbs` : "テンション未選択"}` : "依頼しない";
         const noteText = note && note.value.trim() ? note.value.trim() : "なし";
 
         summaryLines.innerHTML = [
@@ -648,53 +615,47 @@
         ].join("<br>");
       }
 
-      if (category) category.addEventListener("change", function () {
-        updateCategoryGuide();
-        updatePreSubmitCheck();
-        updateSummaryCard();
-      });
-      if (brand) {
-        brand.addEventListener("change", function () {
-          updateBrandGuide();
-          updateStringPlaceholders();
-          renderQuickPicks();
-          updatePreSubmitCheck();
-          updateSummaryCard();
-        });
+      function updateRecommendedActions() {
+        if (!recommendedActionsList) return;
+
+        const actions = [];
+        const stringMode = stringSource ? stringSource.value : "none";
+        const mainNameFilled = !!((mainProductName && mainProductName.value.trim()) || (mainKeyword && mainKeyword.value.trim()));
+        const mainPriceFilled = !!(mainOfficialPrice && String(mainOfficialPrice.value).trim());
+
+        if (!mainNameFilled) actions.push("まずはメイン商品の候補ボタンを押すか、商品名を入力してください。");
+        if (mainNameFilled && !mainPriceFilled) actions.push("次に公式サイトで定価を確認して、メイン商品の定価を入力してください。");
+        if (stringMode === "official" && !(stringOfficialPrice && String(stringOfficialPrice.value).trim())) {
+          actions.push("ガットも購入する場合は、公式サイトでガット定価を確認して入力してください。");
+        }
+        if (stringMode === "bring_in") {
+          actions.push("ガット持ち込みなので、必要ならそのままガット張りの有無だけ決めてください。");
+        }
+        if (requestStringing && requestStringing.value === "1" && !(tension && tension.value)) {
+          actions.push("ガット張りを依頼するので、張り上げテンションを選択してください。");
+        }
+        if (mainNameFilled && mainPriceFilled) {
+          actions.push("入力が進んでいます。公式サイトの画像・価格を最後に確認したら見積もりまたは購入申込へ進めます。");
+        }
+        if (!actions.length) {
+          actions.push("必要項目の入力が進んでいます。見積もりを出すか、購入申込を送信してください。");
+        }
+
+        recommendedActionsList.innerHTML = actions.map(text => `<li>・${text}</li>`).join("");
       }
-      if (stringSource) {
-        stringSource.addEventListener("change", function () {
-          toggleStringFields();
-          updateLiveEstimate();
-          renderQuickPicks();
-          updatePreSubmitCheck();
-          updateSummaryCard();
-        });
-      }
-      if (requestStringing) {
-        requestStringing.addEventListener("change", function () {
-          toggleTensionField();
-          updateLiveEstimate();
-          updatePreSubmitCheck();
-          updateSummaryCard();
-        });
-      }
-      if (mainOfficialPrice) mainOfficialPrice.addEventListener("input", function () {
-        updateLiveEstimate();
-        updatePreSubmitCheck();
-        updateSummaryCard();
-      });
-      if (stringOfficialPrice) stringOfficialPrice.addEventListener("input", function () {
-        updateLiveEstimate();
-        updatePreSubmitCheck();
-        updateSummaryCard();
-      });
-      if (mainKeyword) mainKeyword.addEventListener("input", function () { updatePreSubmitCheck(); updateSummaryCard(); });
-      if (mainProductName) mainProductName.addEventListener("input", function () { updatePreSubmitCheck(); updateSummaryCard(); });
-      if (stringKeyword) stringKeyword.addEventListener("input", function () { updatePreSubmitCheck(); updateSummaryCard(); });
-      if (stringProductName) stringProductName.addEventListener("input", function () { updatePreSubmitCheck(); updateSummaryCard(); });
+
+      if (category) category.addEventListener("change", function () { updateCategoryGuide(); updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
+      if (brand) brand.addEventListener("change", function () { updateBrandGuide(); updateStringPlaceholders(); renderQuickPicks(); updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
+      if (stringSource) stringSource.addEventListener("change", function () { toggleStringFields(); updateLiveEstimate(); renderQuickPicks(); updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
+      if (requestStringing) requestStringing.addEventListener("change", function () { toggleTensionField(); updateLiveEstimate(); updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
+      if (mainOfficialPrice) mainOfficialPrice.addEventListener("input", function () { updateLiveEstimate(); updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
+      if (stringOfficialPrice) stringOfficialPrice.addEventListener("input", function () { updateLiveEstimate(); updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
+      if (mainKeyword) mainKeyword.addEventListener("input", function () { updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
+      if (mainProductName) mainProductName.addEventListener("input", function () { updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
+      if (stringKeyword) stringKeyword.addEventListener("input", function () { updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
+      if (stringProductName) stringProductName.addEventListener("input", function () { updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
       if (note) note.addEventListener("input", updateSummaryCard);
-      if (tension) tension.addEventListener("change", function () { updatePreSubmitCheck(); updateSummaryCard(); });
+      if (tension) tension.addEventListener("change", function () { updatePreSubmitCheck(); updateSummaryCard(); updateRecommendedActions(); });
 
       updateCategoryGuide();
       updateBrandGuide();
@@ -705,6 +666,7 @@
       updateLiveEstimate();
       updatePreSubmitCheck();
       updateSummaryCard();
+      updateRecommendedActions();
     })();
   </script>
 {% endblock %}
