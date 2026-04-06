@@ -1717,7 +1717,7 @@ class ShopProductMaster(models.Model):
     brand = models.CharField(
         max_length=30,
         choices=BRAND_CHOICES,
-        default=ShopEstimateRequest.BRAND_YONEX,
+        default=BRAND_YONEX,
     )
     product_name = models.CharField(max_length=255)
     display_name = models.CharField(max_length=255, blank=True, default="")
