@@ -48,6 +48,13 @@
       <h2 class="card-title">見積もり入力</h2>
       <p class="card-subtitle">見積もりだけ出すことも、購入申込まで進むこともできます。</p>
 
+      <div id="category-guide" style="padding:12px 14px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:12px; margin-bottom:16px;">
+        <div style="font-weight:800; margin-bottom:6px;">入力のコツ</div>
+        <div id="category-guide-text" class="muted">
+          商品カテゴリに応じて、検索キーワードや商品名の入れ方の目安をここに表示します。
+        </div>
+      </div>
+
       <form method="post">
         {% csrf_token %}
 
@@ -337,11 +344,26 @@
 
   <script>
     (function () {
+      const category = document.getElementById("id_product_category");
+      const categoryGuideText = document.getElementById("category-guide-text");
       const stringSource = document.getElementById("id_string_source");
       const stringPurchaseFields = document.getElementById("string-purchase-fields");
       const stringBringinNote = document.getElementById("string-bringin-note");
       const requestStringing = document.getElementById("id_request_stringing");
       const tensionField = document.getElementById("tension-field");
+
+      const categoryGuides = {
+        racket: "ラケットは、シリーズ名 + フェイスサイズやモデル年で検索すると見つけやすいです。例: EZONE 100 / PURE DRIVE 2025",
+        string: "ガットは、商品名 + ゲージで検索すると見つけやすいです。例: POLYTOUR PRO 125 / RPM BLAST 130",
+        accessory: "アクセサリは、商品名そのものを短く入れると探しやすいです。例: グリップテープ / 振動止め / ラケットバッグ"
+      };
+
+      function updateCategoryGuide() {
+        const key = category ? category.value : "racket";
+        if (categoryGuideText) {
+          categoryGuideText.textContent = categoryGuides[key] || categoryGuides.racket;
+        }
+      }
 
       function toggleStringFields() {
         const mode = stringSource ? stringSource.value : "none";
@@ -360,6 +382,9 @@
         }
       }
 
+      if (category) {
+        category.addEventListener("change", updateCategoryGuide);
+      }
       if (stringSource) {
         stringSource.addEventListener("change", toggleStringFields);
       }
@@ -367,6 +392,7 @@
         requestStringing.addEventListener("change", toggleTensionField);
       }
 
+      updateCategoryGuide();
       toggleStringFields();
       toggleTensionField();
     })();
