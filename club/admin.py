@@ -634,6 +634,12 @@ class ShopEstimateRequestAdmin(admin.ModelAdmin):
     list_select_related = ("user",)
     list_per_page = 50
     date_hierarchy = "created_at"
+    actions = (
+        "mark_as_checked",
+        "mark_as_ordered",
+        "mark_as_completed",
+        "mark_as_canceled",
+    )
 
     fieldsets = (
         ("基本情報", {
@@ -709,3 +715,31 @@ class ShopEstimateRequestAdmin(admin.ModelAdmin):
     @admin.display(description="見積合計")
     def estimated_total_display(self, obj):
         return f"{obj.estimated_total}円"
+
+    @admin.action(description="選択した物販申込を『確認済み』にする")
+    def mark_as_checked(self, request, queryset):
+        updated = queryset.exclude(
+            handling_status=ShopEstimateRequest.HANDLING_STATUS_CHECKED
+        ).update(handling_status=ShopEstimateRequest.HANDLING_STATUS_CHECKED)
+        self.message_user(request, f"{updated}件を確認済みに更新しました。", level=messages.SUCCESS)
+
+    @admin.action(description="選択した物販申込を『発注済み』にする")
+    def mark_as_ordered(self, request, queryset):
+        updated = queryset.exclude(
+            handling_status=ShopEstimateRequest.HANDLING_STATUS_ORDERED
+        ).update(handling_status=ShopEstimateRequest.HANDLING_STATUS_ORDERED)
+        self.message_user(request, f"{updated}件を発注済みに更新しました。", level=messages.SUCCESS)
+
+    @admin.action(description="選択した物販申込を『対応完了』にする")
+    def mark_as_completed(self, request, queryset):
+        updated = queryset.exclude(
+            handling_status=ShopEstimateRequest.HANDLING_STATUS_COMPLETED
+        ).update(handling_status=ShopEstimateRequest.HANDLING_STATUS_COMPLETED)
+        self.message_user(request, f"{updated}件を対応完了に更新しました。", level=messages.SUCCESS)
+
+    @admin.action(description="選択した物販申込を『キャンセル』にする")
+    def mark_as_canceled(self, request, queryset):
+        updated = queryset.exclude(
+            handling_status=ShopEstimateRequest.HANDLING_STATUS_CANCELED
+        ).update(handling_status=ShopEstimateRequest.HANDLING_STATUS_CANCELED)
+        self.message_user(request, f"{updated}件をキャンセルに更新しました。", level=messages.SUCCESS)
