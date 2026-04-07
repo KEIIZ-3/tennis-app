@@ -3393,7 +3393,7 @@ def shop_estimate_view(request):
             "shop_candidate_support_message": "商品マスタから候補を表示しています。候補カードをクリックすると、商品名・定価・画像プレビューが自動反映されます。",
             "shop_main_candidates": master_candidate_context.get("main_candidates", []),
             "shop_string_candidates": master_candidate_context.get("string_candidates", []),
-            "shop_all_product_masters_json": json.dumps(master_candidate_context.get("all_candidates", []), ensure_ascii=False),
+            "shop_all_product_masters_json": master_candidate_context.get("all_candidates", []),
         },
     )
 
