@@ -806,7 +806,7 @@ class ShopProductMasterAdmin(admin.ModelAdmin):
 
         if suffix == ".xlsx":
             workbook = load_workbook(upload_file, data_only=True)
-            sheet = workbook.active
+            sheet = self._pick_product_master_sheet(workbook)
             values = list(sheet.values)
             if not values:
                 return []
@@ -822,6 +822,55 @@ class ShopProductMasterAdmin(admin.ModelAdmin):
             return rows
 
         raise ValidationError("取込できるのは .csv または .xlsx ファイルのみです。")
+
+    def _pick_product_master_sheet(self, workbook):
+        preferred_names = [
+            "商品マスタ_全件",
+            "商品マスタ",
+            "products",
+            "product_master",
+        ]
+        expected_headers = {
+            "product_type",
+            "category",
+            "brand",
+            "product_name",
+            "display_name",
+            "product_code",
+            "official_price",
+        }
+
+        for sheet_name in preferred_names:
+            if sheet_name in workbook.sheetnames:
+                sheet = workbook[sheet_name]
+                headers = self._sheet_header_set(sheet)
+                if expected_headers.intersection(headers):
+                    return sheet
+
+        best_sheet = None
+        best_score = -1
+        for sheet in workbook.worksheets:
+            headers = self._sheet_header_set(sheet)
+            score = len(expected_headers.intersection(headers))
+            if score > best_score:
+                best_score = score
+                best_sheet = sheet
+
+        if best_sheet is None or best_score <= 0:
+            raise ValidationError(
+                "Excel内に商品マスタの明細シートが見つかりません。"
+                " 『商品マスタ_全件』シート、または product_name / brand / category などの列を含むシートを使ってください。"
+            )
+
+        return best_sheet
+
+    def _sheet_header_set(self, sheet):
+        header_values = []
+        for cell_value in next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), []):
+            if cell_value is None:
+                continue
+            header_values.append(str(cell_value).strip())
+        return set(header_values)
 
     def _normalize_import_rows(self, rows, *, default_is_active):
         brand_map = {
