@@ -1726,6 +1726,14 @@ class ShopProductMaster(models.Model):
     image_url = models.URLField(blank=True, default="")
     product_url = models.URLField(blank=True, default="")
     description = models.TextField(blank=True, default="")
+    spec_weight_unstrung = models.CharField(max_length=120, blank=True, default="")
+    spec_string_pattern = models.CharField(max_length=120, blank=True, default="")
+    spec_head_size = models.CharField(max_length=120, blank=True, default="")
+    spec_balance = models.CharField(max_length=120, blank=True, default="")
+    spec_length = models.CharField(max_length=120, blank=True, default="")
+    spec_beam = models.CharField(max_length=120, blank=True, default="")
+    spec_gauge = models.CharField(max_length=120, blank=True, default="")
+    spec_set_length = models.CharField(max_length=120, blank=True, default="")
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -1751,6 +1759,14 @@ class ShopProductMaster(models.Model):
         self.image_url = (self.image_url or "").strip()
         self.product_url = (self.product_url or "").strip()
         self.description = (self.description or "").strip()
+        self.spec_weight_unstrung = (self.spec_weight_unstrung or "").strip()
+        self.spec_string_pattern = (self.spec_string_pattern or "").strip()
+        self.spec_head_size = (self.spec_head_size or "").strip()
+        self.spec_balance = (self.spec_balance or "").strip()
+        self.spec_length = (self.spec_length or "").strip()
+        self.spec_beam = (self.spec_beam or "").strip()
+        self.spec_gauge = (self.spec_gauge or "").strip()
+        self.spec_set_length = (self.spec_set_length or "").strip()
 
         if not self.product_name:
             raise ValidationError("商品名は必須です。")
@@ -1763,6 +1779,40 @@ class ShopProductMaster(models.Model):
 
     def display_label(self):
         return self.display_name or self.product_name
+
+    def racket_spec_lines(self):
+        lines = []
+        if self.spec_weight_unstrung:
+            lines.append(f"重量: {self.spec_weight_unstrung}")
+        if self.spec_string_pattern:
+            lines.append(f"ストリングパターン: {self.spec_string_pattern}")
+        if self.spec_head_size:
+            lines.append(f"ヘッドサイズ: {self.spec_head_size}")
+        if self.spec_balance:
+            lines.append(f"バランス: {self.spec_balance}")
+        if self.spec_length:
+            lines.append(f"長さ: {self.spec_length}")
+        if self.spec_beam:
+            lines.append(f"ビーム: {self.spec_beam}")
+        return lines
+
+    def string_spec_lines(self):
+        lines = []
+        if self.spec_gauge:
+            lines.append(f"ゲージ: {self.spec_gauge}")
+        if self.spec_set_length:
+            lines.append(f"長さ: {self.spec_set_length}")
+        return lines
+
+    def spec_lines(self):
+        if self.product_type == self.PRODUCT_TYPE_STRING:
+            return self.string_spec_lines()
+        if self.category == self.CATEGORY_RACKET:
+            return self.racket_spec_lines()
+        return []
+
+    def spec_text(self):
+        return "\n".join(self.spec_lines())
 
 
 class ShopEstimateRequest(models.Model):
