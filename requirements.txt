@@ -3,6 +3,7 @@ gunicorn
 whitenoise
 dj-database-url
 psycopg[binary]
+openpyxl
 
 # background jobs / notifications
 celery
