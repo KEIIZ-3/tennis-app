@@ -17,6 +17,184 @@
     <div class="message info">申込ID {{ reused_request.id }} の内容をフォームへ再読み込みしています。</div>
   {% endif %}
 
+  <style>
+    .shop-layout{
+      display:grid;
+      grid-template-columns:minmax(0, 1.05fr) minmax(360px, 0.95fr);
+      gap:18px;
+      align-items:start;
+    }
+    .shop-sticky-panel{
+      position:sticky;
+      top:180px;
+      align-self:start;
+      max-height:calc(100vh - 200px);
+      overflow:auto;
+    }
+    .shop-note{
+      margin-top:8px;
+      padding:12px 14px;
+      border:1px solid #bfdbfe;
+      background:#eff6ff;
+      border-radius:12px;
+      color:#1d4ed8;
+      font-size:13px;
+      line-height:1.7;
+    }
+    .shop-section-window{
+      padding:14px 16px;
+      border:1px solid #dbeafe;
+      background:#f8fbff;
+      border-radius:14px;
+      margin-bottom:14px;
+    }
+    .shop-section-window.string{
+      border-color:#e5e7eb;
+      background:#f8fafc;
+    }
+    .shop-window-title{
+      font-size:18px;
+      font-weight:800;
+      margin-bottom:10px;
+    }
+    .shop-candidate-list{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .shop-candidate-empty{
+      padding:12px 14px;
+      border:1px dashed #cbd5e1;
+      border-radius:12px;
+      background:#fff;
+      color:#64748b;
+      font-size:13px;
+    }
+    .shop-candidate-card{
+      width:100%;
+      text-align:left;
+      padding:14px;
+      border:1px solid #dbeafe;
+      background:#fff;
+      border-radius:14px;
+      cursor:pointer;
+      transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+    }
+    .shop-candidate-card:hover{
+      transform:translateY(-1px);
+      box-shadow:0 10px 20px rgba(15,23,42,0.08);
+      border-color:#93c5fd;
+    }
+    .shop-candidate-top{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+      margin-bottom:8px;
+    }
+    .shop-candidate-name{
+      font-size:16px;
+      font-weight:800;
+      line-height:1.5;
+      margin:0;
+    }
+    .shop-candidate-name a{
+      color:#0f172a;
+      text-decoration:underline;
+      text-underline-offset:2px;
+    }
+    .shop-candidate-name a:hover{
+      color:#1d4ed8;
+    }
+    .shop-candidate-price{
+      font-size:18px;
+      font-weight:800;
+      white-space:nowrap;
+      color:#0f172a;
+    }
+    .shop-candidate-meta{
+      color:#64748b;
+      font-size:12px;
+      line-height:1.7;
+      margin-top:2px;
+    }
+    .shop-spec-box{
+      margin-top:10px;
+      padding:12px;
+      border:1px solid #e2e8f0;
+      border-radius:12px;
+      background:#f8fafc;
+    }
+    .shop-spec-title{
+      font-size:12px;
+      font-weight:800;
+      color:#334155;
+      margin-bottom:8px;
+    }
+    .shop-spec-grid{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:8px 12px;
+    }
+    .shop-spec-row{
+      display:flex;
+      flex-direction:column;
+      gap:2px;
+    }
+    .shop-spec-label{
+      font-size:11px;
+      color:#64748b;
+    }
+    .shop-spec-value{
+      font-size:13px;
+      color:#0f172a;
+      font-weight:700;
+      line-height:1.5;
+      word-break:break-word;
+    }
+    .shop-selected-preview{
+      padding:14px;
+      border:1px solid #dbeafe;
+      background:#f8fbff;
+      border-radius:14px;
+      margin-bottom:16px;
+    }
+    .shop-selected-preview-title{
+      font-size:18px;
+      font-weight:800;
+      margin:0;
+      line-height:1.5;
+    }
+    .shop-selected-preview-title a{
+      color:#0f172a;
+      text-decoration:underline;
+      text-underline-offset:2px;
+    }
+    .shop-selected-preview-title a:hover{
+      color:#1d4ed8;
+    }
+    .shop-selected-preview-sub{
+      color:#64748b;
+      font-size:13px;
+      margin-top:8px;
+      line-height:1.8;
+    }
+    @media (max-width: 900px){
+      .shop-layout{
+        grid-template-columns:1fr;
+      }
+      .shop-sticky-panel{
+        position:static;
+        top:auto;
+        max-height:none;
+        overflow:visible;
+      }
+      .shop-spec-grid{
+        grid-template-columns:1fr;
+      }
+    }
+  </style>
+
   <div class="card" style="margin-bottom:16px;">
     <h2 class="card-title">見積もりルール</h2>
     <div class="grid-3" style="margin-top:12px;">
@@ -36,132 +214,9 @@
         <div class="muted" style="font-size:12px; margin-top:6px;">依頼時のみ加算</div>
       </div>
     </div>
-    <ul class="clean" style="margin-top:14px; line-height:1.8;">
-      <li>ブランド公式サイトの商品ページや一覧ページで、商品名と定価を確認してください。</li>
-      <li>ガット持ち込みを選んだ場合、ガット代は見積もりに含まれません。</li>
-      <li>ガット張りを依頼する場合のみ、張り上げテンションを 30〜60 lbs で選択してください。</li>
-    </ul>
   </div>
 
-  <style>
-    .shop-sticky-panel{
-      position:sticky;
-      top:240px;
-      align-self:start;
-      max-height:calc(100vh - 260px);
-      overflow:auto;
-    }
-    .shop-auto-note{
-      margin-top:8px;
-      padding:12px 14px;
-      border:1px solid #bfdbfe;
-      background:#eff6ff;
-      border-radius:12px;
-      color:#1d4ed8;
-      font-size:13px;
-      line-height:1.7;
-    }
-    .shop-candidate-window{
-      padding:14px 16px;
-      border-radius:12px;
-      margin-bottom:14px;
-    }
-    .shop-candidate-window-main{
-      border:1px solid #dbeafe;
-      background:#eff6ff;
-    }
-    .shop-candidate-window-string{
-      border:1px solid #e5e7eb;
-      background:#f8fafc;
-    }
-    .shop-auto-grid{
-      display:grid;
-      grid-template-columns:repeat(2, minmax(0, 1fr));
-      gap:12px;
-    }
-    .shop-auto-card{
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-      padding:14px;
-      border:1px solid #dbeafe;
-      background:#fff;
-      border-radius:14px;
-      cursor:pointer;
-      transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
-      text-align:left;
-      width:100%;
-    }
-    .shop-auto-card:hover{
-      transform:translateY(-1px);
-      box-shadow:0 10px 20px rgba(15,23,42,0.08);
-      border-color:#93c5fd;
-    }
-    .shop-auto-card-title{
-      font-size:16px;
-      font-weight:800;
-      line-height:1.5;
-      color:#0f172a;
-      text-decoration:none;
-    }
-    .shop-auto-card-title:hover{
-      text-decoration:underline;
-    }
-    .shop-auto-card-price{
-      font-size:20px;
-      font-weight:800;
-      color:#0f172a;
-    }
-    .shop-auto-card-spec{
-      color:#334155;
-      font-size:12px;
-      line-height:1.8;
-      white-space:pre-line;
-    }
-    .shop-auto-card-sub{
-      color:#64748b;
-      font-size:12px;
-      line-height:1.7;
-    }
-    .shop-selected-preview{
-      padding:14px;
-      border:1px solid #dbeafe;
-      background:#f8fbff;
-      border-radius:14px;
-      margin-bottom:16px;
-    }
-    .shop-selected-preview-title{
-      font-size:18px;
-      font-weight:800;
-      margin-top:0;
-    }
-    .shop-selected-preview-sub{
-      color:#475569;
-      font-size:13px;
-      margin-top:6px;
-      line-height:1.8;
-      white-space:pre-line;
-    }
-    .shop-selected-preview-link{
-      margin-top:10px;
-      display:inline-block;
-      font-size:13px;
-      font-weight:700;
-    }
-    @media (max-width: 900px){
-      .shop-sticky-panel{
-        position:static;
-        top:auto;
-        max-height:none;
-        overflow:visible;
-      }
-      .shop-auto-grid{
-        grid-template-columns:1fr;
-      }
-    }
-  </style>
-
-  <div class="grid-2">
+  <div class="shop-layout">
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
         <div>
@@ -176,86 +231,15 @@
       <div id="shop-selected-main-preview" class="shop-selected-preview" style="display:none;">
         <div id="shop-selected-main-title" class="shop-selected-preview-title"></div>
         <div id="shop-selected-main-sub" class="shop-selected-preview-sub"></div>
-        <a id="shop-selected-main-link" href="#" target="_blank" rel="noopener" class="shop-selected-preview-link" style="display:none;">公式商品ページを開く</a>
       </div>
 
-      <div class="shop-auto-note">
+      <div class="shop-note">
         {{ shop_candidate_support_message }}
         <br>
         ブランドとカテゴリを変えると、商品マスタに登録された候補へ自動で切り替わります。
       </div>
 
-      <div id="category-guide" style="padding:12px 14px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:12px; margin-bottom:16px;">
-        <div style="font-weight:800; margin-bottom:6px;">入力のコツ</div>
-        <div id="category-guide-text" class="muted" style="margin-bottom:8px;">
-          商品カテゴリに応じて、検索キーワードや商品名の入れ方の目安をここに表示します。
-        </div>
-        <div id="brand-guide-text" class="muted" style="font-size:12px;">
-          ブランドごとの検索例もここに表示します。
-        </div>
-      </div>
-
-      <div class="card" style="padding:16px; margin-bottom:16px; border:1px solid #dbeafe; background:#f8fbff;">
-        <div style="font-weight:800; margin-bottom:10px;">入力中の見積もりプレビュー</div>
-        <div class="grid-3">
-          <div>
-            <div class="muted" style="font-size:12px;">メイン販売価格</div>
-            <div id="live-main-sale" style="font-size:22px; font-weight:800; margin-top:6px;">0円</div>
-          </div>
-          <div>
-            <div class="muted" style="font-size:12px;">ガット販売価格</div>
-            <div id="live-string-sale" style="font-size:22px; font-weight:800; margin-top:6px;">0円</div>
-          </div>
-          <div>
-            <div class="muted" style="font-size:12px;">見積もり合計</div>
-            <div id="live-total" style="font-size:22px; font-weight:800; margin-top:6px;">0円</div>
-          </div>
-        </div>
-        <div id="live-breakdown" class="muted" style="font-size:12px; margin-top:10px;">
-          定価を入力すると、ここに概算内訳を表示します。
-        </div>
-      </div>
-
-      <div class="card" style="padding:16px; margin-bottom:16px; border:1px solid #e5e7eb; background:#fff;">
-        <div style="font-weight:800; margin-bottom:10px;">よく使う検索例</div>
-        <div class="muted" style="font-size:12px; margin-bottom:10px;">クリックすると入力欄に自動反映されます。</div>
-        <div id="quick-picks-main" class="actions"></div>
-        <div id="quick-picks-string-wrap" style="margin-top:12px; display:none;">
-          <div class="muted" style="font-size:12px; margin-bottom:8px;">ガット候補</div>
-          <div id="quick-picks-string" class="actions"></div>
-        </div>
-      </div>
-
-      <div id="pre-submit-check" class="card" style="padding:16px; margin-bottom:16px; border:1px solid #e5e7eb; background:#fff;">
-        <div style="font-weight:800; margin-bottom:10px;">申込前チェック</div>
-        <ul class="clean" id="pre-submit-check-list" style="line-height:1.9; margin:0;">
-          <li class="muted">入力状況に応じて、ここに確認ポイントを表示します。</li>
-        </ul>
-      </div>
-
-      <div id="summary-card" class="card" style="padding:16px; margin-bottom:16px; border:1px solid #e5e7eb; background:#fff;">
-        <div style="font-weight:800; margin-bottom:10px;">入力内容の要約</div>
-        <div id="summary-lines" class="muted" style="line-height:1.9;">
-          ここに現在の入力内容の要約を表示します。
-        </div>
-      </div>
-
-      <div id="recommended-actions-card" class="card" style="padding:16px; margin-bottom:16px; border:1px solid #e5e7eb; background:#fff;">
-        <div style="font-weight:800; margin-bottom:10px;">おすすめアクション</div>
-        <ul class="clean" id="recommended-actions-list" style="line-height:1.9; margin:0;">
-          <li class="muted">入力内容に応じて、次にやるとよい操作をここに表示します。</li>
-        </ul>
-      </div>
-
-      <div id="final-review-card" class="card" style="padding:16px; margin-bottom:16px; border:2px solid #c7d2fe; background:#f8faff;">
-        <div style="font-weight:800; margin-bottom:10px;">送信前の最終確認</div>
-        <div class="muted" style="font-size:12px; margin-bottom:10px;">購入申込を押す前に、この内容を確認してください。</div>
-        <div id="final-review-content" style="line-height:1.9;">
-          ここに送信前の確認内容を表示します。
-        </div>
-      </div>
-
-      <form method="post">
+      <form method="post" style="margin-top:16px;">
         {% csrf_token %}
 
         <p>
@@ -279,12 +263,11 @@
         <p>
           <label for="id_main_keyword">商品検索キーワード</label>
           <input type="text" name="main_keyword" id="id_main_keyword" value="{{ form_data.main_keyword }}" placeholder="例: EZONE 100 / PURE DRIVE / SHIFT 99" readonly>
-          <div class="muted" style="font-size:13px; margin-top:6px;">右側にブランド公式サイトへの検索リンクを表示します。</div>
         </p>
 
         <p>
           <label for="id_main_product_name">商品名</label>
-          <input type="text" name="main_product_name" id="id_main_product_name" value="{{ form_data.main_product_name }}" placeholder="例: EZONE 100 2025" readonly>
+          <input type="text" name="main_product_name" id="id_main_product_name" value="{{ form_data.main_product_name }}" placeholder="候補クリックで自動入力" readonly>
         </p>
 
         <p>
@@ -303,19 +286,15 @@
           </select>
         </p>
 
-        <div id="string-bringin-note" style="display:none; padding:12px 14px; border:1px solid #fde68a; background:#fffbeb; border-radius:10px; margin-bottom:14px;">
-          ガット持ち込みが選択されています。ガット代は見積もりに含まれず、ガット張り料金のみ加算されます。
-        </div>
-
         <div id="string-purchase-fields">
           <p>
             <label for="id_string_keyword">ガット検索キーワード</label>
-            <input type="text" name="string_keyword" id="id_string_keyword" value="{{ form_data.string_keyword }}" placeholder="例: ポリツアープロ 125 / RPM BLAST / ALU POWER" readonly>
+            <input type="text" name="string_keyword" id="id_string_keyword" value="{{ form_data.string_keyword }}" placeholder="候補クリックで自動入力" readonly>
           </p>
 
           <p>
             <label for="id_string_product_name">ガット商品名</label>
-            <input type="text" name="string_product_name" id="id_string_product_name" value="{{ form_data.string_product_name }}" placeholder="例: POLYTOUR PRO 125" readonly>
+            <input type="text" name="string_product_name" id="id_string_product_name" value="{{ form_data.string_product_name }}" placeholder="候補クリックで自動入力" readonly>
           </p>
 
           <p>
@@ -359,31 +338,21 @@
 
     <div class="card shop-sticky-panel">
       <h2 class="card-title">商品マスタ候補</h2>
-      <p class="card-subtitle">ブランドとカテゴリに応じて、候補を表示します。商品名は公式商品ページへのリンクです。カードをクリックすると、商品名と定価が自動反映されます。</p>
+      <p class="card-subtitle">商品名は公式商品ページリンクです。カード本体を押すと左側へ商品名・定価が反映されます。</p>
 
-      <div id="shop-main-window" class="shop-candidate-window shop-candidate-window-main">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px; flex-wrap:wrap;">
-          <div style="font-weight:800;">ラケット候補</div>
-          <div class="muted" style="font-size:12px;">商品名クリックで公式ページを開きます</div>
-        </div>
-        <div id="shop-main-candidates" class="shop-auto-grid"></div>
+      <div class="shop-section-window">
+        <div class="shop-window-title">ラケット候補</div>
+        <div id="shop-main-candidates" class="shop-candidate-list"></div>
       </div>
 
-      <div id="shop-string-window" class="shop-candidate-window shop-candidate-window-string">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px; flex-wrap:wrap;">
-          <div style="font-weight:800;">ガット候補</div>
-          <div class="muted" style="font-size:12px;">ガット購入時のみ選択してください</div>
-        </div>
-        <div id="shop-string-candidates" class="shop-auto-grid"></div>
+      <div class="shop-section-window string">
+        <div class="shop-window-title">ガット候補</div>
+        <div id="shop-string-candidates" class="shop-candidate-list"></div>
       </div>
 
       <div class="spacer-16"></div>
 
       <h2 class="card-title">公式サイト検索リンク</h2>
-      <p class="card-subtitle">ブランド公式サイトの一覧ページや検索ページを開いて、商品名・定価を確認してください。スクロール中も右側に表示されます。</p>
-
-      <div class="spacer-12"></div>
-
       <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px; margin-bottom:14px;">
         <div style="font-weight:800; margin-bottom:8px;">メイン商品</div>
         {% if main_catalog_links or main_official_links %}
@@ -421,140 +390,7 @@
           <div class="muted">ガット不要が選択されています。</div>
         {% endif %}
       </div>
-
-      <div class="spacer-16"></div>
-
-      <h2 class="card-title">見積もり結果</h2>
-      {% if estimate_result %}
-        <div class="grid-3" style="margin-top:12px;">
-          <div style="padding:16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
-            <div class="muted" style="font-size:12px;">メイン商品販売価格</div>
-            <div style="font-size:28px; font-weight:800; margin-top:6px;">{{ estimate_result.main_sale_price }}円</div>
-          </div>
-          <div style="padding:16px; border:1px solid #fed7aa; background:#fff7ed; border-radius:12px;">
-            <div class="muted" style="font-size:12px;">ガット販売価格</div>
-            <div style="font-size:28px; font-weight:800; margin-top:6px;">{{ estimate_result.string_sale_price }}円</div>
-          </div>
-          <div style="padding:16px; border:1px solid #c7d2fe; background:#eef2ff; border-radius:12px;">
-            <div class="muted" style="font-size:12px;">見積もり合計</div>
-            <div style="font-size:28px; font-weight:800; margin-top:6px;">{{ estimate_result.estimated_total }}円</div>
-          </div>
-        </div>
-
-        <table style="margin-top:16px;">
-          <tbody>
-            <tr>
-              <th>ブランド</th>
-              <td>{{ estimate_result.brand_label }}</td>
-            </tr>
-            <tr>
-              <th>カテゴリ</th>
-              <td>{{ estimate_result.category_label }}</td>
-            </tr>
-            <tr>
-              <th>メイン商品</th>
-              <td>{{ estimate_result.main_product_name|default:estimate_result.main_keyword|default:"-" }}</td>
-            </tr>
-            <tr>
-              <th>メイン商品定価</th>
-              <td>{{ estimate_result.main_official_price }}円</td>
-            </tr>
-            <tr>
-              <th>メイン商品販売価格</th>
-              <td>{{ estimate_result.main_sale_price }}円</td>
-            </tr>
-            <tr>
-              <th>ガット</th>
-              <td>{{ estimate_result.string_source_label }}</td>
-            </tr>
-            {% if estimate_result.string_source == string_source_official %}
-              <tr>
-                <th>ガット商品</th>
-                <td>{{ estimate_result.string_product_name|default:estimate_result.string_keyword|default:"-" }}</td>
-              </tr>
-              <tr>
-                <th>ガット定価</th>
-                <td>{{ estimate_result.string_official_price }}円</td>
-              </tr>
-              <tr>
-                <th>ガット販売価格</th>
-                <td>{{ estimate_result.string_sale_price }}円</td>
-              </tr>
-            {% endif %}
-            <tr>
-              <th>ガット張り</th>
-              <td>{% if estimate_result.request_stringing %}依頼する{% else %}依頼しない{% endif %}</td>
-            </tr>
-            {% if estimate_result.request_stringing %}
-              <tr>
-                <th>張り上げテンション</th>
-                <td>{{ estimate_result.tension_lbs }} lbs</td>
-              </tr>
-              <tr>
-                <th>ガット張り料金</th>
-                <td>{{ estimate_result.stringing_fee }}円</td>
-              </tr>
-            {% endif %}
-            <tr>
-              <th>見積もり合計</th>
-              <td><strong>{{ estimate_result.estimated_total }}円</strong></td>
-            </tr>
-          </tbody>
-        </table>
-      {% else %}
-        <div class="section-note" style="margin-top:12px;">
-          入力後に「見積もりを出す」を押すと、ここに販売価格と合計が表示されます。
-        </div>
-      {% endif %}
-
-      {% if saved_request %}
-        <div class="message success" style="margin-top:16px;">
-          購入申込を保存しました。
-          <a href="{% url 'club:shop_estimate_complete' saved_request.id %}" class="btn" style="margin-left:8px;">申込内容を確認する</a>
-        </div>
-      {% endif %}
     </div>
-  </div>
-
-  <div class="card">
-    <h2 class="card-title">最近のShop申込</h2>
-    {% if recent_requests %}
-      <div class="grid-2" style="margin-top:12px;">
-        {% for row in recent_requests %}
-          <div style="border:1px solid #e5e7eb; border-radius:12px; padding:16px; background:#fff;">
-            <div class="muted" style="font-size:12px;">申込ID {{ row.id }} / {{ row.created_at|date:"Y-m-d H:i" }}</div>
-            <div style="font-size:18px; font-weight:800; margin-top:6px;">
-              {{ row.main_product_name|default:row.main_keyword|default:"-" }}
-            </div>
-            <div class="muted" style="margin-top:6px;">
-              {{ row.get_product_category_display }} / {{ row.get_brand_display }}
-            </div>
-            <div style="margin-top:10px;">
-              <span style="display:inline-block; padding:4px 10px; border-radius:999px; background:#eef2ff; font-size:12px; font-weight:700;">
-                メイン {{ row.main_sale_price }}円
-              </span>
-              {% if row.string_sale_price > 0 %}
-                <span style="display:inline-block; padding:4px 10px; border-radius:999px; background:#fff7ed; font-size:12px; font-weight:700; margin-left:6px;">
-                  ガット {{ row.string_sale_price }}円
-                </span>
-              {% endif %}
-              {% if row.stringing_fee > 0 %}
-                <span style="display:inline-block; padding:4px 10px; border-radius:999px; background:#eff6ff; font-size:12px; font-weight:700; margin-left:6px;">
-                  張り {{ row.stringing_fee }}円
-                </span>
-              {% endif %}
-            </div>
-            <div style="margin-top:10px; font-size:20px; font-weight:800;">{{ row.estimated_total }}円</div>
-            <div class="actions" style="margin-top:12px;">
-              <a href="{% url 'club:shop_estimate' %}?reuse={{ row.id }}" class="btn">再利用</a>
-              <a href="{% url 'club:shop_estimate_complete' row.id %}" class="btn btn-primary">申込確認</a>
-            </div>
-          </div>
-        {% endfor %}
-      </div>
-    {% else %}
-      <div class="muted">まだShop申込はありません。</div>
-    {% endif %}
   </div>
 
   {{ shop_all_product_masters_json|json_script:"shop-product-master-data" }}
@@ -569,295 +405,20 @@
       const stringKeyword = document.getElementById("id_string_keyword");
       const stringProductName = document.getElementById("id_string_product_name");
       const stringOfficialPrice = document.getElementById("id_string_official_price");
-      const note = document.getElementById("id_note");
-      const categoryGuideText = document.getElementById("category-guide-text");
-      const brandGuideText = document.getElementById("brand-guide-text");
       const stringSource = document.getElementById("id_string_source");
-      const stringPurchaseFields = document.getElementById("string-purchase-fields");
-      const stringBringinNote = document.getElementById("string-bringin-note");
       const requestStringing = document.getElementById("id_request_stringing");
       const tensionField = document.getElementById("tension-field");
-      const tension = document.getElementById("id_tension_lbs");
-      const liveMainSale = document.getElementById("live-main-sale");
-      const liveStringSale = document.getElementById("live-string-sale");
-      const liveTotal = document.getElementById("live-total");
-      const liveBreakdown = document.getElementById("live-breakdown");
-      const quickPicksMain = document.getElementById("quick-picks-main");
-      const quickPicksString = document.getElementById("quick-picks-string");
-      const quickPicksStringWrap = document.getElementById("quick-picks-string-wrap");
-      const preSubmitCheckList = document.getElementById("pre-submit-check-list");
-      const summaryLines = document.getElementById("summary-lines");
-      const recommendedActionsList = document.getElementById("recommended-actions-list");
-      const finalReviewContent = document.getElementById("final-review-content");
       const shopMainCandidates = document.getElementById("shop-main-candidates");
       const shopStringCandidates = document.getElementById("shop-string-candidates");
       const shopSelectedMainPreview = document.getElementById("shop-selected-main-preview");
       const shopSelectedMainTitle = document.getElementById("shop-selected-main-title");
       const shopSelectedMainSub = document.getElementById("shop-selected-main-sub");
-      const shopSelectedMainLink = document.getElementById("shop-selected-main-link");
       const productMasterDataElement = document.getElementById("shop-product-master-data");
 
       const allProductMasters = productMasterDataElement ? JSON.parse(productMasterDataElement.textContent || "[]") : [];
 
-      const categoryGuides = {
-        racket: "この画面では、ラケット候補カードをクリックして商品名と定価を自動反映します。右側のラケット候補から選んでください。",
-        string: "ストリング単体カテゴリでも、ガット候補カードをクリックして定価を自動反映できます。",
-        accessory: "アクセサリは現時点では自動候補対象外です。候補追加は次段階で対応します。"
-      };
-
-      const brandGuides = {
-        yonex: "現在のブランド候補は、管理画面の Shop商品マスタから編集できます。",
-        wilson: "現在のブランド候補は、管理画面の Shop商品マスタから編集できます。",
-        babolat: "現在のブランド候補は、管理画面の Shop商品マスタから編集できます。",
-        head: "現在のブランド候補は、管理画面の Shop商品マスタから編集できます。",
-        prince: "現在のブランド候補は、管理画面の Shop商品マスタから編集できます。",
-        dunlop: "現在のブランド候補は、管理画面の Shop商品マスタから編集できます。",
-        tecnifibre: "現在のブランド候補は、管理画面の Shop商品マスタから編集できます。",
-        other: "現在のブランド候補は、管理画面の Shop商品マスタから編集できます。"
-      };
-
       function yen(value) {
         return `${Number(value || 0).toLocaleString("ja-JP")}円`;
-      }
-
-      function salePrice(value) {
-        const n = parseInt(String(value || "0").replace(/,/g, ""), 10);
-        if (!Number.isFinite(n) || n <= 0) return 0;
-        return Math.floor(n * 0.8);
-      }
-
-      function getCategoryText() {
-        return category ? category.options[category.selectedIndex]?.text || "-" : "-";
-      }
-
-      function getBrandText() {
-        return brand ? brand.options[brand.selectedIndex]?.text || "-" : "-";
-      }
-
-      function getMainText() {
-        return (mainProductName && mainProductName.value.trim()) || (mainKeyword && mainKeyword.value.trim()) || "未選択";
-      }
-
-      function getStringMode() {
-        return stringSource ? stringSource.value : "none";
-      }
-
-      function getStringText() {
-        const mode = getStringMode();
-        if (mode === "official") {
-          return (stringProductName && stringProductName.value.trim()) || (stringKeyword && stringKeyword.value.trim()) || "未選択";
-        }
-        if (mode === "bring_in") return "持ち込み";
-        return "不要";
-      }
-
-      function buildRacketSpec(item) {
-        const lines = [];
-        if (item.product_code) lines.push(`品番: ${item.product_code}`);
-        if (item.keyword && item.keyword !== item.product_name) lines.push(`検索用: ${item.keyword}`);
-        if (!lines.length) lines.push("スペック情報は今後追加予定です。");
-        return lines.join("\n");
-      }
-
-      function buildStringSpec(item) {
-        const lines = [];
-        if (item.product_code) lines.push(`品番: ${item.product_code}`);
-        if (item.keyword && item.keyword !== item.product_name) lines.push(`検索用: ${item.keyword}`);
-        if (!lines.length) lines.push("ガット情報は公式商品ページでご確認ください。");
-        return lines.join("\n");
-      }
-
-      function updateCategoryGuide() {
-        const key = category ? category.value : "racket";
-        if (categoryGuideText) categoryGuideText.textContent = categoryGuides[key] || categoryGuides.racket;
-      }
-
-      function updateBrandGuide() {
-        const key = brand ? brand.value : "yonex";
-        if (brandGuideText) brandGuideText.textContent = brandGuides[key] || brandGuides.other;
-      }
-
-      function toggleStringFields() {
-        const mode = getStringMode();
-        if (stringPurchaseFields) stringPurchaseFields.style.display = mode === "official" ? "block" : "none";
-        if (stringBringinNote) stringBringinNote.style.display = mode === "bring_in" ? "block" : "none";
-        if (quickPicksStringWrap) quickPicksStringWrap.style.display = mode === "official" ? "block" : "none";
-      }
-
-      function toggleTensionField() {
-        const enabled = requestStringing && requestStringing.value === "1";
-        if (tensionField) tensionField.style.display = enabled ? "block" : "none";
-      }
-
-      function updateLiveEstimate() {
-        const mainSale = salePrice(mainOfficialPrice ? mainOfficialPrice.value : 0);
-        const stringMode = getStringMode();
-        const stringSale = stringMode === "official" ? salePrice(stringOfficialPrice ? stringOfficialPrice.value : 0) : 0;
-        const stringingFee = requestStringing && requestStringing.value === "1" ? 1200 : 0;
-        const total = mainSale + stringSale + stringingFee;
-
-        if (liveMainSale) liveMainSale.textContent = yen(mainSale);
-        if (liveStringSale) liveStringSale.textContent = yen(stringSale);
-        if (liveTotal) liveTotal.textContent = yen(total);
-
-        if (liveBreakdown) {
-          const parts = [`メイン ${yen(mainSale)}`];
-          if (stringMode === "official") parts.push(`ガット ${yen(stringSale)}`);
-          else if (stringMode === "bring_in") parts.push("ガット 持ち込み");
-          else parts.push("ガット 不要");
-          parts.push(stringingFee > 0 ? `張り ${yen(stringingFee)}` : "張り なし");
-          liveBreakdown.textContent = parts.join(" / ");
-        }
-      }
-
-      function updatePreSubmitCheck() {
-        if (!preSubmitCheckList) return;
-        const items = [];
-        const mainNameFilled = !!getMainText() && getMainText() !== "未選択";
-        const mainPriceFilled = !!(mainOfficialPrice && String(mainOfficialPrice.value).trim());
-        const stringMode = getStringMode();
-        const wantsStringing = requestStringing && requestStringing.value === "1";
-        const tensionFilled = !wantsStringing || !!(tension && tension.value);
-
-        items.push({ ok: mainNameFilled, text: mainNameFilled ? "ラケット候補が選択されています。" : "右側のラケット候補カードをクリックしてください。" });
-        items.push({ ok: mainPriceFilled, text: mainPriceFilled ? "メイン商品の定価が自動入力されています。" : "メイン商品の定価が未入力です。" });
-
-        if (stringMode === "official") {
-          const stringNameFilled = !!getStringText() && getStringText() !== "未選択";
-          const stringPriceFilled = !!(stringOfficialPrice && String(stringOfficialPrice.value).trim());
-          items.push({ ok: stringNameFilled, text: stringNameFilled ? "ガット候補が選択されています。" : "ガットを購入する場合は右側のガット候補カードをクリックしてください。" });
-          items.push({ ok: stringPriceFilled, text: stringPriceFilled ? "ガット定価が自動入力されています。" : "ガット定価が未入力です。" });
-        }
-
-        if (wantsStringing) {
-          items.push({ ok: tensionFilled, text: tensionFilled ? "張り上げテンションが選択されています。" : "張り上げテンションを選択してください。" });
-        }
-
-        items.push({ ok: true, text: "候補価格は商品マスタに登録された定価を元に自動入力しています。" });
-
-        preSubmitCheckList.innerHTML = items.map(item => {
-          const color = item.ok ? "#166534" : "#b91c1c";
-          const icon = item.ok ? "✔" : "●";
-          return `<li style="color:${color};">${icon} ${item.text}</li>`;
-        }).join("");
-      }
-
-      function updateSummaryCard() {
-        if (!summaryLines) return;
-        const stringMode = getStringMode();
-        const mainPriceText = mainOfficialPrice && mainOfficialPrice.value ? `${Number(mainOfficialPrice.value).toLocaleString("ja-JP")}円` : "未入力";
-        const stringPriceText = (stringMode === "official" && stringOfficialPrice && stringOfficialPrice.value) ? `${Number(stringOfficialPrice.value).toLocaleString("ja-JP")}円` : (stringMode === "official" ? "未入力" : "-");
-        const stringingText = requestStringing && requestStringing.value === "1" ? `依頼する / ${tension && tension.value ? `${tension.value} lbs` : "テンション未選択"}` : "依頼しない";
-        const noteText = note && note.value.trim() ? note.value.trim() : "なし";
-
-        summaryLines.innerHTML = [
-          `カテゴリ：<strong>${getCategoryText()}</strong>`,
-          `ブランド：<strong>${getBrandText()}</strong>`,
-          `メイン商品：<strong>${getMainText()}</strong> / 定価 <strong>${mainPriceText}</strong>`,
-          `ガット：<strong>${getStringText()}</strong> ${stringMode === "official" ? `/ 定価 <strong>${stringPriceText}</strong>` : ""}`,
-          `ガット張り：<strong>${stringingText}</strong>`,
-          `備考：<strong>${noteText}</strong>`
-        ].join("<br>");
-      }
-
-      function updateRecommendedActions() {
-        if (!recommendedActionsList) return;
-        const actions = [];
-        const stringMode = getStringMode();
-        const mainSelected = getMainText() !== "未選択";
-
-        if (!mainSelected) actions.push("右側のラケット候補から、希望商品をクリックしてください。");
-        if (mainSelected && stringMode === "none") actions.push("ガットも購入する場合は、ガット欄を「公式購入あり」にして候補カードをクリックしてください。");
-        if (stringMode === "official" && getStringText() === "未選択") actions.push("ガット候補から商品をクリックしてください。");
-        if (requestStringing && requestStringing.value === "1") actions.push("張り上げテンションを確認してください。");
-        if (mainSelected) actions.push("内容が揃ったら「見積もりを出す」または「購入申込を送信する」へ進めます。");
-
-        recommendedActionsList.innerHTML = actions.map(text => `<li>・${text}</li>`).join("");
-      }
-
-      function updateFinalReview() {
-        if (!finalReviewContent) return;
-        const stringMode = getStringMode();
-        const mainSale = salePrice(mainOfficialPrice ? mainOfficialPrice.value : 0);
-        const stringSale = stringMode === "official" ? salePrice(stringOfficialPrice ? stringOfficialPrice.value : 0) : 0;
-        const stringingFee = requestStringing && requestStringing.value === "1" ? 1200 : 0;
-        const total = mainSale + stringSale + stringingFee;
-
-        const items = [
-          `カテゴリ：<strong>${getCategoryText()}</strong>`,
-          `ブランド：<strong>${getBrandText()}</strong>`,
-          `メイン商品：<strong>${getMainText()}</strong>`,
-          `メイン販売価格：<strong>${yen(mainSale)}</strong>`,
-          `ガット：<strong>${getStringText()}</strong>`,
-          `ガット販売価格：<strong>${yen(stringSale)}</strong>`,
-          `ガット張り：<strong>${requestStringing && requestStringing.value === "1" ? `依頼する / ${tension && tension.value ? `${tension.value} lbs` : "テンション未選択"}` : "依頼しない"}</strong>`,
-          `張り料金：<strong>${yen(stringingFee)}</strong>`,
-          `見積もり合計：<strong>${yen(total)}</strong>`
-        ];
-
-        finalReviewContent.innerHTML = items.join("<br>");
-      }
-
-      function renderSelectedMainPreview(candidate) {
-        if (!shopSelectedMainPreview || !shopSelectedMainTitle || !shopSelectedMainSub || !shopSelectedMainLink) return;
-        if (!candidate) {
-          shopSelectedMainPreview.style.display = "none";
-          shopSelectedMainLink.style.display = "none";
-          return;
-        }
-        shopSelectedMainPreview.style.display = "block";
-        shopSelectedMainTitle.textContent = candidate.product_name || "";
-        shopSelectedMainSub.innerHTML = `定価：<strong>${yen(candidate.official_price || 0)}</strong><br>${buildRacketSpec(candidate)}`;
-        if (candidate.product_url) {
-          shopSelectedMainLink.href = candidate.product_url;
-          shopSelectedMainLink.style.display = "inline-block";
-        } else {
-          shopSelectedMainLink.removeAttribute("href");
-          shopSelectedMainLink.style.display = "none";
-        }
-      }
-
-      function attachMainCandidateEvents() {
-        document.querySelectorAll(".shop-main-candidate").forEach((button) => {
-          button.addEventListener("click", function (event) {
-            if (event.target.closest(".shop-auto-card-title-link")) {
-              return;
-            }
-            const candidate = {
-              product_name: this.dataset.productName || "",
-              keyword: this.dataset.keyword || "",
-              official_price: this.dataset.price || "",
-              product_url: this.dataset.productUrl || "",
-              product_code: this.dataset.productCode || ""
-            };
-            if (mainKeyword) mainKeyword.value = candidate.keyword;
-            if (mainProductName) mainProductName.value = candidate.product_name;
-            if (mainOfficialPrice) mainOfficialPrice.value = candidate.official_price;
-            renderSelectedMainPreview(candidate);
-            refreshAll();
-          });
-        });
-      }
-
-      function attachStringCandidateEvents() {
-        document.querySelectorAll(".shop-string-candidate").forEach((button) => {
-          button.addEventListener("click", function (event) {
-            if (event.target.closest(".shop-auto-card-title-link")) {
-              return;
-            }
-            const candidate = {
-              product_name: this.dataset.productName || "",
-              keyword: this.dataset.keyword || "",
-              official_price: this.dataset.price || "",
-            };
-            if (stringSource) stringSource.value = "official";
-            if (stringKeyword) stringKeyword.value = candidate.keyword;
-            if (stringProductName) stringProductName.value = candidate.product_name;
-            if (stringOfficialPrice) stringOfficialPrice.value = candidate.official_price;
-            toggleStringFields();
-            refreshAll();
-          });
-        });
       }
 
       function escapeHtml(value) {
@@ -869,31 +430,122 @@
           .replace(/'/g, "&#39;");
       }
 
-      function renderCandidateCards(container, items, className, typeName) {
+      function toggleTensionField() {
+        const enabled = requestStringing && requestStringing.value === "1";
+        if (tensionField) tensionField.style.display = enabled ? "block" : "none";
+      }
+
+      function buildRacketSpecRows(item) {
+        const rows = [
+          ["重量（ガット無し）", item.spec_weight_unstrung],
+          ["ストリングパターン", item.spec_string_pattern],
+          ["ヘッドサイズ", item.spec_head_size],
+          ["バランス", item.spec_balance],
+          ["長さ", item.spec_length],
+          ["ビーム", item.spec_beam]
+        ].filter((row) => row[1]);
+        return rows;
+      }
+
+      function buildStringSpecRows(item) {
+        const rows = [
+          ["ゲージ", item.spec_gauge],
+          ["長さ", item.spec_set_length || item.spec_length]
+        ].filter((row) => row[1]);
+        return rows;
+      }
+
+      function renderSpecGrid(rows) {
+        if (!rows.length) {
+          return `<div class="shop-spec-box"><div class="shop-spec-title">スペック</div><div class="shop-candidate-meta">スペック未登録</div></div>`;
+        }
+        return `
+          <div class="shop-spec-box">
+            <div class="shop-spec-title">スペック</div>
+            <div class="shop-spec-grid">
+              ${rows.map((row) => `
+                <div class="shop-spec-row">
+                  <div class="shop-spec-label">${escapeHtml(row[0])}</div>
+                  <div class="shop-spec-value">${escapeHtml(row[1])}</div>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      function renderSelectedMainPreview(item) {
+        if (!shopSelectedMainPreview || !shopSelectedMainTitle || !shopSelectedMainSub) return;
+        if (!item) {
+          shopSelectedMainPreview.style.display = "none";
+          return;
+        }
+        shopSelectedMainPreview.style.display = "block";
+        const titleText = escapeHtml(item.product_name || "");
+        const productUrl = item.product_url ? escapeHtml(item.product_url) : "";
+        const priceText = yen(item.official_price || 0);
+        const specRows = buildRacketSpecRows(item);
+        shopSelectedMainTitle.innerHTML = productUrl
+          ? `<a href="${productUrl}" target="_blank" rel="noopener">${titleText}</a>`
+          : titleText;
+        shopSelectedMainSub.innerHTML = [
+          `定価：<strong>${priceText}</strong>`,
+          specRows.map((row) => `${escapeHtml(row[0])}：<strong>${escapeHtml(row[1])}</strong>`).join("<br>")
+        ].filter(Boolean).join("<br>");
+      }
+
+      function applyMainCandidate(item) {
+        if (mainKeyword) mainKeyword.value = item.keyword || item.product_name || "";
+        if (mainProductName) mainProductName.value = item.product_name || "";
+        if (mainOfficialPrice) mainOfficialPrice.value = item.official_price || "";
+        renderSelectedMainPreview(item);
+      }
+
+      function applyStringCandidate(item) {
+        if (stringSource) stringSource.value = "official";
+        if (stringKeyword) stringKeyword.value = item.keyword || item.product_name || "";
+        if (stringProductName) stringProductName.value = item.product_name || "";
+        if (stringOfficialPrice) stringOfficialPrice.value = item.official_price || "";
+      }
+
+      function attachCandidateEvents() {
+        document.querySelectorAll(".shop-main-candidate").forEach((button) => {
+          button.addEventListener("click", function (event) {
+            if (event.target.closest("a")) return;
+            applyMainCandidate(JSON.parse(this.dataset.item || "{}"));
+          });
+        });
+
+        document.querySelectorAll(".shop-string-candidate").forEach((button) => {
+          button.addEventListener("click", function (event) {
+            if (event.target.closest("a")) return;
+            applyStringCandidate(JSON.parse(this.dataset.item || "{}"));
+          });
+        });
+      }
+
+      function renderCandidateCards(container, items, type) {
         if (!container) return;
         if (!items || !items.length) {
-          container.innerHTML = '<div class="section-note">現在この条件の候補はありません。</div>';
+          container.innerHTML = '<div class="shop-candidate-empty">現在この条件の候補はありません。</div>';
           return;
         }
 
-        container.innerHTML = items.map(item => {
-          const titleHtml = item.product_url
-            ? `<a href="${escapeHtml(item.product_url)}" target="_blank" rel="noopener" class="shop-auto-card-title shop-auto-card-title-link">${escapeHtml(item.product_name || "")}</a>`
-            : `<div class="shop-auto-card-title">${escapeHtml(item.product_name || "")}</div>`;
-
-          const specText = typeName === "main" ? buildRacketSpec(item) : buildStringSpec(item);
-
+        container.innerHTML = items.map((item) => {
+          const specRows = type === "main" ? buildRacketSpecRows(item) : buildStringSpecRows(item);
+          const nameHtml = item.product_url
+            ? `<a href="${escapeHtml(item.product_url)}" target="_blank" rel="noopener">${escapeHtml(item.product_name || "")}</a>`
+            : escapeHtml(item.product_name || "");
           return `
-            <button type="button" class="shop-auto-card ${className}"
-                    data-product-name="${escapeHtml(item.product_name || "")}"
-                    data-keyword="${escapeHtml(item.keyword || "")}"
-                    data-price="${item.official_price || 0}"
-                    data-product-url="${escapeHtml(item.product_url || "")}"
-                    data-product-code="${escapeHtml(item.product_code || "")}">
-              ${titleHtml}
-              <div class="shop-auto-card-price">¥${Number(item.official_price || 0).toLocaleString("ja-JP")}</div>
-              <div class="shop-auto-card-spec">${escapeHtml(specText)}</div>
-              <div class="shop-auto-card-sub">カード本体クリックで左側へ自動入力</div>
+            <button type="button" class="shop-candidate-card shop-${type}-candidate" data-item='${escapeHtml(JSON.stringify(item))}'>
+              <div class="shop-candidate-top">
+                <div>
+                  <div class="shop-candidate-name">${nameHtml}</div>
+                  <div class="shop-candidate-meta">${escapeHtml(item.product_code || "")}${item.product_code && item.keyword ? " / " : ""}${escapeHtml(item.keyword || "")}</div>
+                </div>
+                <div class="shop-candidate-price">${yen(item.official_price || 0)}</div>
+              </div>
+              ${renderSpecGrid(specRows)}
             </button>
           `;
         }).join("");
@@ -916,51 +568,23 @@
       }
 
       function renderCandidatesBySelection() {
-        renderCandidateCards(shopMainCandidates, getFilteredMainCandidates(), "shop-main-candidate", "main");
-        renderCandidateCards(shopStringCandidates, getFilteredStringCandidates(), "shop-string-candidate", "string");
-        attachMainCandidateEvents();
-        attachStringCandidateEvents();
+        renderCandidateCards(shopMainCandidates, getFilteredMainCandidates(), "main");
+        renderCandidateCards(shopStringCandidates, getFilteredStringCandidates(), "string");
+        attachCandidateEvents();
       }
 
-      function refreshAll() {
-        updateCategoryGuide();
-        updateBrandGuide();
-        toggleStringFields();
-        toggleTensionField();
-        updateLiveEstimate();
-        updatePreSubmitCheck();
-        updateSummaryCard();
-        updateRecommendedActions();
-        updateFinalReview();
+      if (category) {
+        category.addEventListener("change", renderCandidatesBySelection);
       }
-
-      if (category) category.addEventListener("change", function () {
-        renderCandidatesBySelection();
-        refreshAll();
-      });
-
-      if (brand) brand.addEventListener("change", function () {
-        renderCandidatesBySelection();
-        refreshAll();
-      });
-
-      if (stringSource) stringSource.addEventListener("change", refreshAll);
-      if (requestStringing) requestStringing.addEventListener("change", refreshAll);
-      if (note) note.addEventListener("input", refreshAll);
-      if (tension) tension.addEventListener("change", refreshAll);
+      if (brand) {
+        brand.addEventListener("change", renderCandidatesBySelection);
+      }
+      if (requestStringing) {
+        requestStringing.addEventListener("change", toggleTensionField);
+      }
 
       renderCandidatesBySelection();
-
-      if (mainProductName && mainProductName.value && mainOfficialPrice && mainOfficialPrice.value) {
-        renderSelectedMainPreview({
-          product_name: mainProductName.value,
-          official_price: mainOfficialPrice.value,
-          product_url: "",
-          product_code: ""
-        });
-      }
-
-      refreshAll();
+      toggleTensionField();
     })();
   </script>
 {% endblock %}
