@@ -1,0 +1,44 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <div id="content-main">
+    <h1>Shop商品マスタ一括取込</h1>
+
+    <div class="module aligned">
+      <p>
+        CSV または XLSX ファイルをアップロードして、Shop商品マスタを一括登録できます。
+      </p>
+      <p>
+        取込可能な主な列名:
+        商品名 / product_name,
+        ブランド / brand,
+        カテゴリ / category,
+        商品種別 / product_type,
+        定価 / official_price,
+        品番 / product_code,
+        表示名 / display_name,
+        画像URL / image_url,
+        商品URL / product_url,
+        説明 / description,
+        並び順 / sort_order,
+        公開 / is_active
+      </p>
+      <p>
+        照合順は、まず品番(product_code)、空欄なら
+        ブランド + カテゴリ + 商品種別 + 商品名 です。
+      </p>
+    </div>
+
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <fieldset class="module aligned">
+        {{ form.as_p }}
+      </fieldset>
+
+      <div class="submit-row">
+        <input type="submit" value="取込する" class="default">
+        <a href="{% url 'admin:club_shopproductmaster_changelist' %}" class="button cancel-link">一覧へ戻る</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}
