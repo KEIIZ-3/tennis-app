@@ -1,7 +1,15 @@
+\
+import csv
+import io
+from pathlib import Path
+
+from openpyxl import load_workbook
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
+from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.http import HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import path, reverse
@@ -36,6 +44,28 @@ DATETIME_INPUT_FORMATS = [
 class AdminHourDateTimeInput(forms.DateTimeInput):
     input_type = "datetime-local"
     format = "%Y-%m-%dT%H:%M"
+
+
+class ShopProductMasterImportForm(forms.Form):
+    IMPORT_MODE_UPDATE = "update"
+    IMPORT_MODE_REPLACE = "replace"
+
+    IMPORT_MODE_CHOICES = (
+        (IMPORT_MODE_UPDATE, "既存を残して更新 / 追加"),
+        (IMPORT_MODE_REPLACE, "既存を全削除して入れ替え"),
+    )
+
+    upload_file = forms.FileField(label="取込ファイル")
+    import_mode = forms.ChoiceField(
+        label="取込方法",
+        choices=IMPORT_MODE_CHOICES,
+        initial=IMPORT_MODE_UPDATE,
+    )
+    default_is_active = forms.BooleanField(
+        label="is_active が空欄の行は有効にする",
+        required=False,
+        initial=True,
+    )
 
 
 class CoachAvailabilityAdminForm(forms.ModelForm):
@@ -592,6 +622,8 @@ class ScheduleSurveyResponseAdmin(admin.ModelAdmin):
 
 @admin.register(ShopProductMaster)
 class ShopProductMasterAdmin(admin.ModelAdmin):
+    change_list_template = "admin/club/shopproductmaster/change_list.html"
+
     list_display = (
         "id",
         "product_type",
@@ -656,6 +688,245 @@ class ShopProductMasterAdmin(admin.ModelAdmin):
     @admin.display(description="販売価格")
     def sale_price_display(self, obj):
         return f"{int(obj.sale_price or 0)}円"
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "import-products/",
+                self.admin_site.admin_view(self.import_products_view),
+                name="club_shopproductmaster_import_products",
+            ),
+        ]
+        return custom_urls + urls
+
+    def import_products_view(self, request):
+        if request.method == "POST":
+            form = ShopProductMasterImportForm(request.POST, request.FILES)
+            if form.is_valid():
+                upload_file = form.cleaned_data["upload_file"]
+                import_mode = form.cleaned_data["import_mode"]
+                default_is_active = form.cleaned_data["default_is_active"]
+                try:
+                    result = self._import_uploaded_products(
+                        upload_file=upload_file,
+                        import_mode=import_mode,
+                        default_is_active=default_is_active,
+                    )
+                    self.message_user(
+                        request,
+                        (
+                            f"商品マスタ取込が完了しました。"
+                            f" 追加: {result['created']}件 / 更新: {result['updated']}件 / "
+                            f"スキップ: {result['skipped']}件"
+                        ),
+                        level=messages.SUCCESS,
+                    )
+                    if result["errors"]:
+                        for error in result["errors"][:20]:
+                            self.message_user(request, error, level=messages.WARNING)
+                    return redirect("admin:club_shopproductmaster_changelist")
+                except ValidationError as e:
+                    for message_text in e.messages:
+                        self.message_user(request, message_text, level=messages.ERROR)
+                except Exception as e:
+                    self.message_user(request, f"取込に失敗しました: {e}", level=messages.ERROR)
+        else:
+            form = ShopProductMasterImportForm()
+
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": "Shop商品マスタ一括取込",
+            "form": form,
+        }
+        return render(request, "admin/club/shopproductmaster/import_products.html", context)
+
+    def _import_uploaded_products(self, *, upload_file, import_mode, default_is_active):
+        rows = self._read_uploaded_rows(upload_file)
+        normalized_rows = self._normalize_import_rows(rows, default_is_active=default_is_active)
+
+        created_count = 0
+        updated_count = 0
+        skipped_count = 0
+        errors = []
+
+        with transaction.atomic():
+            if import_mode == ShopProductMasterImportForm.IMPORT_MODE_REPLACE:
+                ShopProductMaster.objects.all().delete()
+
+            for index, row in enumerate(normalized_rows, start=2):
+                try:
+                    instance = self._find_existing_product(row)
+                    if instance is None:
+                        instance = ShopProductMaster()
+
+                    instance.product_type = row["product_type"]
+                    instance.category = row["category"]
+                    instance.brand = row["brand"]
+                    instance.product_name = row["product_name"]
+                    instance.display_name = row["display_name"]
+                    instance.product_code = row["product_code"]
+                    instance.official_price = row["official_price"]
+                    instance.image_url = row["image_url"]
+                    instance.product_url = row["product_url"]
+                    instance.description = row["description"]
+                    instance.sort_order = row["sort_order"]
+                    instance.is_active = row["is_active"]
+                    instance.full_clean()
+                    is_update = bool(instance.pk)
+                    instance.save()
+
+                    if is_update:
+                        updated_count += 1
+                    else:
+                        created_count += 1
+                except ValidationError as e:
+                    skipped_count += 1
+                    joined = " / ".join(e.messages)
+                    errors.append(f"{index}行目をスキップしました: {joined}")
+                except Exception as e:
+                    skipped_count += 1
+                    errors.append(f"{index}行目をスキップしました: {e}")
+
+        return {
+            "created": created_count,
+            "updated": updated_count,
+            "skipped": skipped_count,
+            "errors": errors,
+        }
+
+    def _read_uploaded_rows(self, upload_file):
+        suffix = Path(upload_file.name).suffix.lower()
+
+        if suffix == ".csv":
+            decoded = upload_file.read().decode("utf-8-sig")
+            reader = csv.DictReader(io.StringIO(decoded))
+            return list(reader)
+
+        if suffix == ".xlsx":
+            workbook = load_workbook(upload_file, data_only=True)
+            sheet = workbook.active
+            values = list(sheet.values)
+            if not values:
+                return []
+            headers = [str(value).strip() if value is not None else "" for value in values[0]]
+            rows = []
+            for row_values in values[1:]:
+                row_dict = {}
+                for idx, header in enumerate(headers):
+                    if not header:
+                        continue
+                    row_dict[header] = row_values[idx] if idx < len(row_values) else None
+                rows.append(row_dict)
+            return rows
+
+        raise ValidationError("取込できるのは .csv または .xlsx ファイルのみです。")
+
+    def _normalize_import_rows(self, rows, *, default_is_active):
+        brand_map = {
+            "yonex": ShopProductMaster.BRAND_YONEX,
+            "YONEX": ShopProductMaster.BRAND_YONEX,
+            "wilson": ShopProductMaster.BRAND_WILSON,
+            "Wilson": ShopProductMaster.BRAND_WILSON,
+            "babolat": ShopProductMaster.BRAND_BABOLAT,
+            "Babolat": ShopProductMaster.BRAND_BABOLAT,
+            "head": ShopProductMaster.BRAND_HEAD,
+            "HEAD": ShopProductMaster.BRAND_HEAD,
+            "prince": ShopProductMaster.BRAND_PRINCE,
+            "Prince": ShopProductMaster.BRAND_PRINCE,
+            "dunlop": ShopProductMaster.BRAND_DUNLOP,
+            "DUNLOP": ShopProductMaster.BRAND_DUNLOP,
+            "tecnifibre": ShopProductMaster.BRAND_TECHNIFIBRE,
+            "Tecnifibre": ShopProductMaster.BRAND_TECHNIFIBRE,
+            "other": ShopProductMaster.BRAND_OTHER,
+            "その他": ShopProductMaster.BRAND_OTHER,
+        }
+        category_map = {
+            "racket": ShopProductMaster.CATEGORY_RACKET,
+            "ラケット": ShopProductMaster.CATEGORY_RACKET,
+            "string": ShopProductMaster.CATEGORY_STRING,
+            "ガット": ShopProductMaster.CATEGORY_STRING,
+            "アクセサリ": ShopProductMaster.CATEGORY_ACCESSORY,
+            "accessory": ShopProductMaster.CATEGORY_ACCESSORY,
+        }
+        product_type_map = {
+            "main": ShopProductMaster.PRODUCT_TYPE_MAIN,
+            "メイン商品": ShopProductMaster.PRODUCT_TYPE_MAIN,
+            "string": ShopProductMaster.PRODUCT_TYPE_STRING,
+            "ガット": ShopProductMaster.PRODUCT_TYPE_STRING,
+        }
+
+        def pick(row, *keys):
+            for key in keys:
+                if key in row and row[key] not in (None, ""):
+                    return row[key]
+            return ""
+
+        def clean_text(value):
+            return str(value or "").strip()
+
+        def clean_int(value, default=0):
+            if value in (None, ""):
+                return default
+            text = str(value).replace(",", "").strip()
+            return int(text or default)
+
+        def clean_bool(value, default=True):
+            if value in (None, ""):
+                return default
+            text = str(value).strip().lower()
+            if text in ("1", "true", "yes", "y", "on", "有効"):
+                return True
+            if text in ("0", "false", "no", "n", "off", "無効"):
+                return False
+            return default
+
+        normalized = []
+        for row in rows:
+            product_name = clean_text(
+                pick(row, "product_name", "商品名", "name", "品名", "モデル名")
+            )
+            if not product_name:
+                continue
+
+            brand_raw = clean_text(pick(row, "brand", "ブランド"))
+            category_raw = clean_text(pick(row, "category", "カテゴリ", "category_name"))
+            product_type_raw = clean_text(pick(row, "product_type", "商品種別", "type"))
+
+            product_type = product_type_map.get(product_type_raw, ShopProductMaster.PRODUCT_TYPE_MAIN)
+            category = category_map.get(category_raw, ShopProductMaster.CATEGORY_RACKET)
+            brand = brand_map.get(brand_raw, ShopProductMaster.BRAND_OTHER)
+
+            normalized.append(
+                {
+                    "product_type": product_type,
+                    "category": ShopProductMaster.CATEGORY_STRING if product_type == ShopProductMaster.PRODUCT_TYPE_STRING else category,
+                    "brand": brand,
+                    "product_name": product_name,
+                    "display_name": clean_text(pick(row, "display_name", "表示名")),
+                    "product_code": clean_text(pick(row, "product_code", "品番", "商品コード", "code")),
+                    "official_price": clean_int(pick(row, "official_price", "定価", "list_price", "price"), 0),
+                    "image_url": clean_text(pick(row, "image_url", "画像URL")),
+                    "product_url": clean_text(pick(row, "product_url", "商品URL", "url")),
+                    "description": clean_text(pick(row, "description", "説明", "備考")),
+                    "sort_order": clean_int(pick(row, "sort_order", "並び順"), 0),
+                    "is_active": clean_bool(pick(row, "is_active", "公開", "active"), default_is_active),
+                }
+            )
+        return normalized
+
+    def _find_existing_product(self, row):
+        product_code = (row.get("product_code") or "").strip()
+        if product_code:
+            return ShopProductMaster.objects.filter(product_code=product_code).first()
+
+        return ShopProductMaster.objects.filter(
+            brand=row["brand"],
+            category=row["category"],
+            product_type=row["product_type"],
+            product_name=row["product_name"],
+        ).first()
 
 
 @admin.register(ShopEstimateRequest)
