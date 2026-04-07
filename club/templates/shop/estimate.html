@@ -168,7 +168,7 @@
       <div class="shop-auto-note">
         {{ shop_candidate_support_message }}
         <br>
-        ブランドとカテゴリを変えると、商品マスタに登録された候補へ自動で切り替わります。
+        ラケット候補とガット候補は別ウィンドウで表示します。商品名クリックで公式商品ページを開けます。
       </div>
 
       <div id="category-guide" style="padding:12px 14px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:12px; margin-bottom:16px;">
@@ -646,11 +646,21 @@
       }
 
       function candidateSpecText(item) {
-        const parts = [];
-        if (item && item.keyword) parts.push(`品番・検索キー: ${item.keyword}`);
-        if (item && item.note) parts.push(item.note);
-        if (parts.length === 0) return "商品マスタ登録済み候補です。";
-        return parts.join(" / ");
+        if (!item) return "スペック未登録";
+
+        if (item.product_type === "main" && item.category === "racket") {
+          const parts = [];
+          if (item.keyword) parts.push(`品番: ${item.keyword}`);
+          return parts.length ? parts.join("\n") : "スペック未登録";
+        }
+
+        if (item.product_type === "string") {
+          const parts = [];
+          if (item.keyword) parts.push(`品番: ${item.keyword}`);
+          return parts.length ? parts.join("\n") : "ガット情報は未登録です。";
+        }
+
+        return item.keyword ? `品番: ${item.keyword}` : "商品マスタ登録済み候補です。";
       }
 
       function candidateOfficialLinkHtml(item, fallbackLabel) {
@@ -799,7 +809,7 @@
         }
         shopSelectedMainPreview.style.display = "block";
         shopSelectedMainTitle.innerHTML = candidateOfficialLinkHtml(candidate, candidate.product_name || "選択商品");
-        shopSelectedMainSub.innerHTML = `定価：<strong>${yen(candidate.official_price || 0)}</strong><br>${escapeHtml(candidateSpecText(candidate))}`;
+        shopSelectedMainSub.innerHTML = `定価：<strong>${yen(candidate.official_price || 0)}</strong><br>スペック：${escapeHtml(candidateSpecText(candidate))}`;
       }
 
       function attachMainCandidateEvents() {
@@ -870,7 +880,7 @@
                   data-note="${note}">
             <div class="shop-auto-card-title">${officialLinkHtml}</div>
             <div class="shop-auto-card-price">¥${Number(item.official_price || 0).toLocaleString("ja-JP")}</div>
-            <div class="shop-auto-card-spec">${specText}</div>
+            <div class="shop-auto-card-spec">${item.product_type === "main" && item.category === "racket" ? "スペック" : "補足"}<br>${specText}</div>
             <div class="shop-auto-card-meta">${item.product_url ? '商品名クリックで公式ページへ' : '公式商品ページURL未登録'}</div>
           </button>
         `;}).join("");
