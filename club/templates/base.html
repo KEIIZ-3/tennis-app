@@ -39,7 +39,6 @@
 
       --shadow:0 8px 24px rgba(15, 23, 42, 0.06);
       --radius:16px;
-      --radius-sm:10px;
     }
 
     *{ box-sizing:border-box; }
@@ -79,25 +78,75 @@
       flex-wrap:wrap;
     }
 
-    .brand{ display:flex; align-items:center; gap:12px; min-width:0; }
-    .brand-mark{
-      width:40px; height:40px; border-radius:12px;
-      background:linear-gradient(135deg, #0f172a 0%, #334155 100%);
-      color:#fff; display:flex; align-items:center; justify-content:center;
-      font-size:18px; font-weight:700; flex:0 0 auto; box-shadow:var(--shadow);
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      min-width:0;
     }
-    .brand-text{ min-width:0; }
-    .brand-title{ font-size:20px; font-weight:800; letter-spacing:0.01em; line-height:1.2; }
-    .brand-sub{ margin-top:2px; color:var(--muted); font-size:12px; line-height:1.3; }
 
-    .top-meta{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-    .top-badge{
-      display:inline-flex; align-items:center; gap:6px; min-height:36px;
-      padding:8px 12px; border-radius:999px; border:1px solid var(--line);
-      background:#fff; color:var(--text); font-size:13px; white-space:nowrap;
+    .brand-mark{
+      width:40px;
+      height:40px;
+      border-radius:12px;
+      background:linear-gradient(135deg, #0f172a 0%, #334155 100%);
+      color:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:18px;
+      font-weight:700;
+      flex:0 0 auto;
+      box-shadow:var(--shadow);
     }
-    .top-badge.ticket{ background:var(--ticket-bg); border-color:var(--ticket-border); font-weight:700; }
-    .top-badge.coach{ background:var(--coach-tab-bg); border-color:var(--coach-tab-border); font-weight:700; color:#312e81; }
+
+    .brand-text{ min-width:0; }
+    .brand-title{
+      font-size:20px;
+      font-weight:800;
+      letter-spacing:0.01em;
+      line-height:1.2;
+    }
+    .brand-sub{
+      margin-top:2px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.3;
+    }
+
+    .top-meta{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+
+    .top-badge{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      min-height:36px;
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid var(--line);
+      background:#fff;
+      color:var(--text);
+      font-size:13px;
+      white-space:nowrap;
+    }
+
+    .top-badge.ticket{
+      background:var(--ticket-bg);
+      border-color:var(--ticket-border);
+      font-weight:700;
+    }
+
+    .top-badge.coach{
+      background:var(--coach-tab-bg);
+      border-color:var(--coach-tab-border);
+      font-weight:700;
+      color:#312e81;
+    }
 
     .member-menu,
     .coach-menu{
@@ -107,6 +156,7 @@
       padding-top:4px;
       border-top:1px solid var(--line);
     }
+
     .member-menu-head,
     .coach-menu-head{
       display:flex;
@@ -115,12 +165,14 @@
       gap:10px;
       flex-wrap:wrap;
     }
+
     .member-menu-title,
     .coach-menu-title{
       font-size:13px;
       font-weight:800;
       color:#4b5563;
     }
+
     .member-menu-toggle,
     .coach-menu-toggle{
       display:none;
@@ -143,6 +195,7 @@
       gap:8px;
       flex-wrap:wrap;
     }
+
     .nav a{
       display:inline-flex;
       align-items:center;
@@ -158,16 +211,36 @@
       background:#fff;
       white-space:nowrap;
     }
-    .nav a:hover{ background:#f8fafc; border-color:var(--line); }
-    .nav a.nav-primary{ background:var(--primary); color:#fff; border-color:var(--primary); }
-    .nav a.line-login-link{ background:var(--line-green); color:#fff; border-color:var(--line-green); font-weight:700; }
-    .nav a.line-login-link:hover{ background:var(--line-green-dark); border-color:var(--line-green-dark); }
+
+    .nav a:hover{
+      background:#f8fafc;
+      border-color:var(--line);
+    }
+
+    .nav a.nav-primary{
+      background:var(--primary);
+      color:#fff;
+      border-color:var(--primary);
+    }
+
+    .nav a.line-login-link{
+      background:var(--line-green);
+      color:#fff;
+      border-color:var(--line-green);
+      font-weight:700;
+    }
+
+    .nav a.line-login-link:hover{
+      background:var(--line-green-dark);
+      border-color:var(--line-green-dark);
+    }
 
     .coach-tabs{
       display:flex;
       gap:8px;
       flex-wrap:wrap;
     }
+
     .coach-tab{
       display:inline-flex;
       align-items:center;
@@ -183,14 +256,22 @@
       transition:all .15s ease;
       white-space:nowrap;
     }
-    .coach-tab:hover{ filter:brightness(0.98); }
+
+    .coach-tab:hover{
+      filter:brightness(0.98);
+    }
+
     .coach-tab.active{
       background:var(--coach-tab-active);
       color:var(--coach-tab-active-text);
       border-color:var(--coach-tab-active);
     }
 
-    .logout-form{ display:inline; margin:0; }
+    .logout-form{
+      display:inline;
+      margin:0;
+    }
+
     .logout-button{
       appearance:none;
       border:1px solid var(--line-strong);
@@ -206,86 +287,162 @@
       transition:all .15s ease;
       width:auto;
     }
-    .logout-button:hover{ background:#f8fafc; }
 
-    .main{ padding:24px 0 40px; }
+    .logout-button:hover{
+      background:#f8fafc;
+    }
+
+    .main{
+      padding:24px 0 40px;
+    }
+
     .page-head{ margin-bottom:16px; }
-    .page-title{ margin:0 0 6px; font-size:28px; line-height:1.2; font-weight:800; letter-spacing:-0.01em; }
-    .page-subtitle{ margin:0; color:var(--muted); font-size:14px; }
+    .page-title{
+      margin:0 0 6px;
+      font-size:28px;
+      line-height:1.2;
+      font-weight:800;
+      letter-spacing:-0.01em;
+    }
+
+    .page-subtitle{
+      margin:0;
+      color:var(--muted);
+      font-size:14px;
+    }
 
     .card{
-      background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
-      padding:22px; box-shadow:var(--shadow); margin-bottom:16px;
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      padding:22px;
+      box-shadow:var(--shadow);
+      margin-bottom:16px;
     }
-    .card-title{ margin:0 0 8px; font-size:20px; font-weight:800; line-height:1.3; }
-    .card-subtitle{ margin:0; color:var(--muted); font-size:14px; }
+
+    .card-title{
+      margin:0 0 8px;
+      font-size:20px;
+      font-weight:800;
+      line-height:1.3;
+    }
+
+    .card-subtitle{
+      margin:0;
+      color:var(--muted);
+      font-size:14px;
+    }
 
     .messages{ margin-bottom:16px; }
+
     .message{
-      padding:13px 15px; border-radius:12px; margin-bottom:10px; border:1px solid transparent; font-size:14px;
+      padding:13px 15px;
+      border-radius:12px;
+      margin-bottom:10px;
+      border:1px solid transparent;
+      font-size:14px;
     }
+
     .message.success{ background:var(--success-bg); border-color:var(--success-border); }
     .message.error{ background:var(--error-bg); border-color:var(--error-border); }
     .message.warning{ background:var(--warning-bg); border-color:var(--warning-border); }
     .message.info{ background:var(--info-bg); border-color:var(--info-border); }
 
     .muted{ color:var(--muted); }
-    .section-note{
-      padding:14px 16px; border-radius:12px; border:1px solid var(--info-border); background:var(--info-bg); color:#1e3a8a;
-    }
 
     form{ margin:0; }
     form p{ margin:0 0 14px; }
 
-    label{ display:block; margin-bottom:8px; font-size:14px; font-weight:700; color:var(--text); }
+    label{
+      display:block;
+      margin-bottom:8px;
+      font-size:14px;
+      font-weight:700;
+      color:var(--text);
+    }
 
     input[type="text"], input[type="email"], input[type="password"], input[type="datetime-local"],
     input[type="date"], input[type="time"], input[type="number"], select, textarea{
-      width:100%; min-height:46px; padding:11px 13px; border:1px solid var(--line-strong);
-      border-radius:12px; background:#fff; color:var(--text); font:inherit;
+      width:100%;
+      min-height:46px;
+      padding:11px 13px;
+      border:1px solid var(--line-strong);
+      border-radius:12px;
+      background:#fff;
+      color:var(--text);
+      font:inherit;
       transition:border-color .15s ease, box-shadow .15s ease;
     }
+
     input:focus, select:focus, textarea:focus{
-      outline:none; border-color:#93c5fd; box-shadow:0 0 0 4px rgba(59,130,246,0.12);
+      outline:none;
+      border-color:#93c5fd;
+      box-shadow:0 0 0 4px rgba(59,130,246,0.12);
     }
-    textarea{ min-height:120px; resize:vertical; }
+
+    textarea{
+      min-height:120px;
+      resize:vertical;
+    }
 
     button, input[type="submit"]{
-      appearance:none; border:none; background:var(--primary); color:#fff; min-height:44px;
-      padding:11px 16px; border-radius:12px; cursor:pointer; font:inherit; font-weight:700;
+      appearance:none;
+      border:none;
+      background:var(--primary);
+      color:#fff;
+      min-height:44px;
+      padding:11px 16px;
+      border-radius:12px;
+      cursor:pointer;
+      font:inherit;
+      font-weight:700;
       transition:transform .12s ease, opacity .12s ease;
     }
-    button:hover, input[type="submit"]:hover{ opacity:0.95; }
 
-    .btn{
-      display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:44px; padding:11px 16px;
-      border-radius:12px; border:1px solid var(--line-strong); background:#fff; color:var(--text);
-      text-decoration:none; font-size:14px; font-weight:700; cursor:pointer; transition:all .15s ease;
+    button:hover, input[type="submit"]:hover{
+      opacity:0.95;
     }
-    .btn:hover{ background:#f8fafc; }
-    .btn-primary{ background:var(--primary); color:#fff; border-color:var(--primary); }
-    .btn-primary:hover{ background:#0b1220; }
-    .btn-danger{ background:#b91c1c; color:#fff; border-color:#b91c1c; }
-    .btn-danger:hover{ background:#991b1b; }
-    .btn-line{ background:var(--line-green); color:#fff; border-color:var(--line-green); }
-    .btn-line:hover{ background:var(--line-green-dark); border-color:var(--line-green-dark); }
 
-    .actions{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-    .grid-2{ display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; }
-    .grid-3{ display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:16px; }
+    .actions{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+
+    .grid-2{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:16px;
+    }
+
+    .grid-3{
+      display:grid;
+      grid-template-columns:repeat(3, minmax(0, 1fr));
+      gap:16px;
+    }
 
     table{
-      width:100%; border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden;
+      width:100%;
+      border-collapse:collapse;
+      background:#fff;
+      border-radius:12px;
+      overflow:hidden;
     }
-    th, td{
-      border-bottom:1px solid var(--line); padding:12px 10px; text-align:left; vertical-align:top; font-size:14px;
-    }
-    th{ background:#f8fafc; font-weight:800; color:#334155; }
 
-    ul.clean{ margin:0; padding-left:18px; }
-    .spacer-8{ height:8px; }
-    .spacer-12{ height:12px; }
-    .spacer-16{ height:16px; }
+    th, td{
+      border-bottom:1px solid var(--line);
+      padding:12px 10px;
+      text-align:left;
+      vertical-align:top;
+      font-size:14px;
+    }
+
+    th{
+      background:#f8fafc;
+      font-weight:800;
+      color:#334155;
+    }
 
     @media (max-width: 900px){
       .grid-3{ grid-template-columns:1fr; }
@@ -294,9 +451,20 @@
 
     @media (max-width: 768px){
       .wrap{ padding:0 12px; }
-      .topbar .wrap{ padding-top:12px; padding-bottom:12px; }
+      .topbar .wrap{
+        padding-top:12px;
+        padding-bottom:12px;
+      }
+
       .topbar-row{ align-items:flex-start; }
-      .brand-mark{ width:36px; height:36px; border-radius:10px; font-size:16px; }
+
+      .brand-mark{
+        width:36px;
+        height:36px;
+        border-radius:10px;
+        font-size:16px;
+      }
+
       .brand-title{ font-size:18px; }
       .brand-sub{ font-size:11px; }
       .top-meta{ width:100%; }
@@ -305,10 +473,12 @@
       .coach-menu{
         gap:8px;
       }
+
       .member-menu-head,
       .coach-menu-head{
         align-items:center;
       }
+
       .member-menu-toggle,
       .coach-menu-toggle{
         display:inline-flex;
@@ -325,6 +495,7 @@
         grid-template-columns:repeat(2, minmax(0, 1fr));
         gap:7px;
       }
+
       .member-menu.is-open .nav{
         display:grid;
       }
@@ -338,6 +509,7 @@
         border-radius:12px;
         justify-content:center;
       }
+
       .member-menu .logout-form{
         display:block;
         width:100%;
@@ -350,9 +522,11 @@
         grid-template-columns:repeat(2, minmax(0, 1fr));
         gap:8px;
       }
+
       .coach-menu.is-open .coach-tabs{
         display:grid;
       }
+
       .coach-tab{
         width:100%;
         min-height:44px;
@@ -366,8 +540,16 @@
 
       .main{ padding:16px 0 28px; }
       .page-title{ font-size:24px; }
-      .card{ padding:16px; border-radius:14px; }
-      th, td{ font-size:13px; padding:10px 8px; }
+
+      .card{
+        padding:16px;
+        border-radius:14px;
+      }
+
+      th, td{
+        font-size:13px;
+        padding:10px 8px;
+      }
     }
 
     @media (max-width: 480px){
@@ -376,15 +558,18 @@
         padding:7px 10px;
         font-size:12px;
       }
+
       .member-menu-title,
       .coach-menu-title{
         font-size:12px;
       }
+
       .member-menu .nav,
       .coach-tabs{
         grid-template-columns:repeat(2, minmax(0, 1fr));
         gap:7px;
       }
+
       .member-menu .nav a,
       .member-menu .logout-button,
       .coach-tab{
@@ -394,6 +579,7 @@
         font-size:11px;
         font-weight:700;
       }
+
       .coach-tab{
         border-radius:12px;
         min-height:40px;
@@ -419,49 +605,51 @@
             {% if user.role == "member" %}
               <span class="top-badge">レベル: {{ user.get_member_level_display }}</span>
               <span class="top-badge ticket">チケット残数: {{ user.ticket_balance }}枚</span>
-            {% elif user.role == "coach" or user.is_staff or user.is_superuser %}
-              <span class="top-badge coach">コーチ専用メニュー表示中</span>
+            {% else %}
+              {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+                <span class="top-badge coach">コーチ専用メニュー表示中</span>
+              {% endif %}
             {% endif %}
           </div>
         {% endif %}
       </div>
 
-      {% if user.is_authenticated and user.role == "member" %}
-        <div class="member-menu" id="member-menu">
-          <div class="member-menu-head">
-            <div class="member-menu-title">メニュー</div>
-            <button type="button" class="member-menu-toggle" id="member-menu-toggle" aria-expanded="false" aria-controls="member-nav">
-              メニューを開く
-            </button>
+      {% if user.is_authenticated %}
+        {% if user.role == "member" %}
+          <div class="member-menu" id="member-menu">
+            <div class="member-menu-head">
+              <div class="member-menu-title">メニュー</div>
+              <button type="button" class="member-menu-toggle" id="member-menu-toggle" aria-expanded="false" aria-controls="member-nav">
+                メニューを開く
+              </button>
+            </div>
+
+            <nav class="nav" id="member-nav">
+              <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
+              <a href="{% url 'club:help' %}">使い方</a>
+              <a href="{% url 'club:terms' %}">利用規約</a>
+              <a href="{% url 'club:reservation_create' %}">予約作成</a>
+              <a href="{% url 'club:reservation_list' %}">予約一覧</a>
+              <a href="{% url 'club:tickets' %}">チケット</a>
+              <a href="{% url 'club:schedule_survey' %}">アンケート</a>
+              <a href="{% url 'club:stringing_order_create' %}">ガット張り依頼</a>
+              <a href="{% url 'club:stringing_order_list' %}">ガット張り一覧</a>
+              <a href="{% url 'club:shop_estimate' %}">Shop</a>
+              <a href="{% url 'club:line_connect' %}">LINE連携</a>
+
+              <form method="post" action="{% url 'club:logout' %}" class="logout-form">
+                {% csrf_token %}
+                <button type="submit" class="logout-button">ログアウト</button>
+              </form>
+            </nav>
           </div>
+        {% else %}
+          <div class="topbar-row">
+            <nav class="nav">
+              <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
+              <a href="{% url 'club:help' %}">使い方</a>
+              <a href="{% url 'club:terms' %}">利用規約</a>
 
-          <nav class="nav" id="member-nav">
-            <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
-            <a href="{% url 'club:help' %}">使い方</a>
-            <a href="{% url 'club:terms' %}">利用規約</a>
-            <a href="{% url 'club:reservation_create' %}">予約作成</a>
-            <a href="{% url 'club:reservation_list' %}">予約一覧</a>
-            <a href="{% url 'club:tickets' %}">チケット</a>
-            <a href="{% url 'club:schedule_survey' %}">アンケート</a>
-            <a href="{% url 'club:stringing_order_create' %}">ガット張り依頼</a>
-            <a href="{% url 'club:stringing_order_list' %}">ガット張り一覧</a>
-            <a href="{% url 'club:shop_estimate' %}">Shop</a>
-            <a href="{% url 'club:line_connect' %}">LINE連携</a>
-
-            <form method="post" action="{% url 'club:logout' %}" class="logout-form">
-              {% csrf_token %}
-              <button type="submit" class="logout-button">ログアウト</button>
-            </form>
-          </nav>
-        </div>
-      {% else %}
-        <div class="topbar-row">
-          <nav class="nav">
-            <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
-            <a href="{% url 'club:help' %}">使い方</a>
-            <a href="{% url 'club:terms' %}">利用規約</a>
-
-            {% if user.is_authenticated %}
               {% if user.role == "coach" or user.is_staff or user.is_superuser %}
                 <a href="{% url 'club:line_connect' %}">LINE連携</a>
 
@@ -470,63 +658,72 @@
                   <button type="submit" class="logout-button">ログアウト</button>
                 </form>
               {% endif %}
-            {% else %}
-              <a href="{% url 'club:line_login_start' %}" class="line-login-link">LINEでログイン</a>
-              <a href="{% url 'club:login' %}">通常ログイン</a>
-              <a href="{% url 'club:register' %}">新規登録</a>
-            {% endif %}
+            </nav>
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="topbar-row">
+          <nav class="nav">
+            <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
+            <a href="{% url 'club:help' %}">使い方</a>
+            <a href="{% url 'club:terms' %}">利用規約</a>
+            <a href="{% url 'club:line_login_start' %}" class="line-login-link">LINEでログイン</a>
+            <a href="{% url 'club:login' %}">通常ログイン</a>
+            <a href="{% url 'club:register' %}">新規登録</a>
           </nav>
         </div>
       {% endif %}
 
-      {% if user.is_authenticated and (user.role == "coach" or user.is_staff or user.is_superuser) %}
-        <div class="coach-menu" id="coach-menu">
-          <div class="coach-menu-head">
-            <div class="coach-menu-title">コーチ専用メニュー</div>
-            <button type="button" class="coach-menu-toggle" id="coach-menu-toggle" aria-expanded="false" aria-controls="coach-tabs">
-              メニューを開く
-            </button>
-          </div>
+      {% if user.is_authenticated %}
+        {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+          <div class="coach-menu" id="coach-menu">
+            <div class="coach-menu-head">
+              <div class="coach-menu-title">コーチ専用メニュー</div>
+              <button type="button" class="coach-menu-toggle" id="coach-menu-toggle" aria-expanded="false" aria-controls="coach-tabs">
+                メニューを開く
+              </button>
+            </div>
 
-          <div class="coach-tabs" id="coach-tabs">
-            <a href="{% url 'club:home' %}" class="coach-tab {% if request.resolver_match.url_name == 'home' %}active{% endif %}">
-              コーチホーム
-            </a>
-            <a href="{% url 'club:reservation_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_list' %}active{% endif %}">
-              予約一覧
-            </a>
-            <a href="{% url 'club:coach_availability_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_availability_list' or request.resolver_match.url_name == 'coach_availability_create' or request.resolver_match.url_name == 'coach_availability_edit' %}active{% endif %}">
-              スケジュール管理
-            </a>
-            <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}active{% endif %}">
-              固定レッスン
-            </a>
-            <a href="{% url 'club:coach_ticket_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_ticket_summary' %}active{% endif %}">
-              チケット集計
-            </a>
-            <a href="{% url 'club:coach_payroll_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_payroll_summary' %}active{% endif %}">
-              給与計算
-            </a>
-            <a href="{% url 'club:coach_expense_manage' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_expense_manage' %}active{% endif %}">
-              経費登録
-            </a>
-            <a href="{% url 'club:schedule_survey_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'schedule_survey_summary' %}active{% endif %}">
-              アンケート集計
-            </a>
-            <a href="{% url 'club:stringing_order_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'stringing_order_list' %}active{% endif %}">
-              ガット張り一覧
-            </a>
-            <a href="{% url 'club:shop_estimate' %}" class="coach-tab {% if request.resolver_match.url_name == 'shop_estimate' %}active{% endif %}">
-              Shop
-            </a>
-            <a href="{% url 'club:reservation_create' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_create' %}active{% endif %}">
-              予約作成
-            </a>
-            <a href="{% url 'club:line_connect' %}" class="coach-tab {% if request.resolver_match.url_name == 'line_connect' %}active{% endif %}">
-              LINE連携
-            </a>
+            <div class="coach-tabs" id="coach-tabs">
+              <a href="{% url 'club:home' %}" class="coach-tab {% if request.resolver_match.url_name == 'home' %}active{% endif %}">
+                コーチホーム
+              </a>
+              <a href="{% url 'club:reservation_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_list' %}active{% endif %}">
+                予約一覧
+              </a>
+              <a href="{% url 'club:coach_availability_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_availability_list' or request.resolver_match.url_name == 'coach_availability_create' or request.resolver_match.url_name == 'coach_availability_edit' %}active{% endif %}">
+                スケジュール管理
+              </a>
+              <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}active{% endif %}">
+                固定レッスン
+              </a>
+              <a href="{% url 'club:coach_ticket_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_ticket_summary' %}active{% endif %}">
+                チケット集計
+              </a>
+              <a href="{% url 'club:coach_payroll_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_payroll_summary' %}active{% endif %}">
+                給与計算
+              </a>
+              <a href="{% url 'club:coach_expense_manage' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_expense_manage' %}active{% endif %}">
+                経費登録
+              </a>
+              <a href="{% url 'club:schedule_survey_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'schedule_survey_summary' %}active{% endif %}">
+                アンケート集計
+              </a>
+              <a href="{% url 'club:stringing_order_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'stringing_order_list' %}active{% endif %}">
+                ガット張り一覧
+              </a>
+              <a href="{% url 'club:shop_estimate' %}" class="coach-tab {% if request.resolver_match.url_name == 'shop_estimate' %}active{% endif %}">
+                Shop
+              </a>
+              <a href="{% url 'club:reservation_create' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_create' %}active{% endif %}">
+                予約作成
+              </a>
+              <a href="{% url 'club:line_connect' %}" class="coach-tab {% if request.resolver_match.url_name == 'line_connect' %}active{% endif %}">
+                LINE連携
+              </a>
+            </div>
           </div>
-        </div>
+        {% endif %}
       {% endif %}
     </div>
   </header>
