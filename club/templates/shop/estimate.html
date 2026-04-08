@@ -257,6 +257,9 @@
             {% for value, label in brand_choices %}
               <option value="{{ value }}" {% if form_data.brand == value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
+            {% if 'solinco' not in brand_choices|join:' ' %}
+              <option value="solinco" {% if form_data.brand == 'solinco' %}selected{% endif %}>Solinco</option>
+            {% endif %}
           </select>
         </p>
 
@@ -430,6 +433,19 @@
           .replace(/'/g, "&#39;");
       }
 
+      function ensureSolincoBrandOption() {
+        if (!brand) {
+          return;
+        }
+        const hasSolinco = Array.from(brand.options).some((option) => option.value === "solinco");
+        if (!hasSolinco) {
+          const option = document.createElement("option");
+          option.value = "solinco";
+          option.textContent = "Solinco";
+          brand.appendChild(option);
+        }
+      }
+
       function toggleTensionField() {
         const enabled = requestStringing && requestStringing.value === "1";
         if (tensionField) tensionField.style.display = enabled ? "block" : "none";
@@ -583,6 +599,7 @@
         requestStringing.addEventListener("change", toggleTensionField);
       }
 
+      ensureSolincoBrandOption();
       renderCandidatesBySelection();
       toggleTensionField();
     })();
