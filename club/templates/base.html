@@ -110,8 +110,43 @@
     .nav a.line-login-link{ background:var(--line-green); color:#fff; border-color:var(--line-green); font-weight:700; }
     .nav a.line-login-link:hover{ background:var(--line-green-dark); border-color:var(--line-green-dark); }
 
+    .coach-menu{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      padding-top:4px;
+      border-top:1px solid var(--line);
+    }
+    .coach-menu-head{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .coach-menu-title{
+      font-size:13px;
+      font-weight:800;
+      color:#4b5563;
+    }
+    .coach-menu-toggle{
+      display:none;
+      appearance:none;
+      border:1px solid var(--coach-tab-border);
+      background:var(--coach-tab-bg);
+      color:#3730a3;
+      min-height:38px;
+      padding:8px 12px;
+      border-radius:999px;
+      cursor:pointer;
+      font:inherit;
+      font-size:13px;
+      font-weight:700;
+    }
     .coach-tabs{
-      display:flex; gap:8px; flex-wrap:wrap; padding-top:4px; border-top:1px solid var(--line);
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
     }
     .coach-tab{
       display:inline-flex; align-items:center; justify-content:center; min-height:40px;
@@ -226,6 +261,23 @@
       .page-title{ font-size:24px; }
       .card{ padding:16px; border-radius:14px; }
       th, td{ font-size:13px; padding:10px 8px; }
+
+      .coach-menu-toggle{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+      }
+      .coach-tabs{
+        display:none;
+        width:100%;
+        flex-direction:column;
+      }
+      .coach-menu.is-open .coach-tabs{
+        display:flex;
+      }
+      .coach-tab{
+        width:100%;
+      }
     }
   </style>
 </head>
@@ -270,21 +322,22 @@
               <a href="{% url 'club:stringing_order_list' %}">ガット張り一覧</a>
               <a href="{% url 'club:shop_estimate' %}">Shop</a>
             {% elif user.role == "coach" or user.is_staff or user.is_superuser %}
-              <a href="{% url 'club:reservation_create' %}">予約作成</a>
-              <a href="{% url 'club:reservation_list' %}">予約一覧</a>
-              <a href="{% url 'club:coach_availability_list' %}">スケジュール管理</a>
-              <a href="{% url 'club:coach_ticket_summary' %}">チケット集計</a>
-              <a href="{% url 'club:coach_payroll_summary' %}">給与計算</a>
-              <a href="{% url 'club:stringing_order_list' %}">ガット張り一覧</a>
-              <a href="{% url 'club:shop_estimate' %}">Shop</a>
+              <a href="{% url 'club:line_connect' %}">LINE連携</a>
+
+              <form method="post" action="{% url 'club:logout' %}" class="logout-form">
+                {% csrf_token %}
+                <button type="submit" class="logout-button">ログアウト</button>
+              </form>
             {% endif %}
 
-            <a href="{% url 'club:line_connect' %}">LINE連携</a>
+            {% if user.role == "member" %}
+              <a href="{% url 'club:line_connect' %}">LINE連携</a>
 
-            <form method="post" action="{% url 'club:logout' %}" class="logout-form">
-              {% csrf_token %}
-              <button type="submit" class="logout-button">ログアウト</button>
-            </form>
+              <form method="post" action="{% url 'club:logout' %}" class="logout-form">
+                {% csrf_token %}
+                <button type="submit" class="logout-button">ログアウト</button>
+              </form>
+            {% endif %}
           {% else %}
             <a href="{% url 'club:line_login_start' %}" class="line-login-link">LINEでログイン</a>
             <a href="{% url 'club:login' %}">通常ログイン</a>
@@ -294,34 +347,52 @@
       </div>
 
       {% if user.is_authenticated and user.role == "coach" %}
-        <div class="coach-tabs">
-          <a href="{% url 'club:home' %}" class="coach-tab {% if request.resolver_match.url_name == 'home' %}active{% endif %}">
-            コーチホーム
-          </a>
-          <a href="{% url 'club:reservation_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_list' %}active{% endif %}">
-            予約一覧
-          </a>
-          <a href="{% url 'club:coach_availability_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_availability_list' or request.resolver_match.url_name == 'coach_availability_create' or request.resolver_match.url_name == 'coach_availability_edit' %}active{% endif %}">
-            スケジュール管理
-          </a>
-          <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}active{% endif %}">
-            固定レッスン
-          </a>
-          <a href="{% url 'club:coach_ticket_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_ticket_summary' %}active{% endif %}">
-            チケット集計
-          </a>
-          <a href="{% url 'club:coach_payroll_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_payroll_summary' %}active{% endif %}">
-            給与計算
-          </a>
-          <a href="{% url 'club:coach_expense_manage' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_expense_manage' %}active{% endif %}">
-            経費登録
-          </a>
-          <a href="{% url 'club:schedule_survey_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'schedule_survey_summary' %}active{% endif %}">
-            アンケート集計
-          </a>
-          <a href="{% url 'club:shop_estimate' %}" class="coach-tab {% if request.resolver_match.url_name == 'shop_estimate' %}active{% endif %}">
-            Shop
-          </a>
+        <div class="coach-menu" id="coach-menu">
+          <div class="coach-menu-head">
+            <div class="coach-menu-title">コーチ専用メニュー</div>
+            <button type="button" class="coach-menu-toggle" id="coach-menu-toggle" aria-expanded="false" aria-controls="coach-tabs">
+              メニューを開く
+            </button>
+          </div>
+
+          <div class="coach-tabs" id="coach-tabs">
+            <a href="{% url 'club:home' %}" class="coach-tab {% if request.resolver_match.url_name == 'home' %}active{% endif %}">
+              コーチホーム
+            </a>
+            <a href="{% url 'club:reservation_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_list' %}active{% endif %}">
+              予約一覧
+            </a>
+            <a href="{% url 'club:coach_availability_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_availability_list' or request.resolver_match.url_name == 'coach_availability_create' or request.resolver_match.url_name == 'coach_availability_edit' %}active{% endif %}">
+              スケジュール管理
+            </a>
+            <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}active{% endif %}">
+              固定レッスン
+            </a>
+            <a href="{% url 'club:coach_ticket_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_ticket_summary' %}active{% endif %}">
+              チケット集計
+            </a>
+            <a href="{% url 'club:coach_payroll_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_payroll_summary' %}active{% endif %}">
+              給与計算
+            </a>
+            <a href="{% url 'club:coach_expense_manage' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_expense_manage' %}active{% endif %}">
+              経費登録
+            </a>
+            <a href="{% url 'club:schedule_survey_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'schedule_survey_summary' %}active{% endif %}">
+              アンケート集計
+            </a>
+            <a href="{% url 'club:stringing_order_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'stringing_order_list' %}active{% endif %}">
+              ガット張り一覧
+            </a>
+            <a href="{% url 'club:shop_estimate' %}" class="coach-tab {% if request.resolver_match.url_name == 'shop_estimate' %}active{% endif %}">
+              Shop
+            </a>
+            <a href="{% url 'club:reservation_create' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_create' %}active{% endif %}">
+              予約作成
+            </a>
+            <a href="{% url 'club:line_connect' %}" class="coach-tab {% if request.resolver_match.url_name == 'line_connect' %}active{% endif %}">
+              LINE連携
+            </a>
+          </div>
         </div>
       {% endif %}
     </div>
@@ -342,5 +413,40 @@
       {% block content %}{% endblock %}
     </div>
   </main>
+
+  {% if user.is_authenticated and user.role == "coach" %}
+    <script>
+      (function () {
+        const coachMenu = document.getElementById("coach-menu");
+        const toggleButton = document.getElementById("coach-menu-toggle");
+
+        if (!coachMenu || !toggleButton) {
+          return;
+        }
+
+        function syncCoachMenuState() {
+          if (window.innerWidth > 768) {
+            coachMenu.classList.add("is-open");
+            toggleButton.setAttribute("aria-expanded", "true");
+            toggleButton.textContent = "メニュー表示中";
+          } else if (!coachMenu.dataset.mobileReady) {
+            coachMenu.classList.remove("is-open");
+            toggleButton.setAttribute("aria-expanded", "false");
+            toggleButton.textContent = "メニューを開く";
+            coachMenu.dataset.mobileReady = "1";
+          }
+        }
+
+        toggleButton.addEventListener("click", function () {
+          const isOpen = coachMenu.classList.toggle("is-open");
+          toggleButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
+          toggleButton.textContent = isOpen ? "メニューを閉じる" : "メニューを開く";
+        });
+
+        window.addEventListener("resize", syncCoachMenuState);
+        syncCoachMenuState();
+      })();
+    </script>
+  {% endif %}
 </body>
 </html>
