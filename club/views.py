@@ -2944,13 +2944,14 @@ def line_webhook(request):
 
 
 def _shop_brand_label_map():
-    return dict(ShopEstimateRequest.BRAND_CHOICES)
-
+    brand_map = dict(ShopEstimateRequest.BRAND_CHOICES)
+    brand_map.setdefault("solinco", "Solinco")
+    brand_map.setdefault("luxilon", "Luxilon")
+    return brand_map
 
 
 def _shop_category_label_map():
     return dict(ShopEstimateRequest.CATEGORY_CHOICES)
-
 
 
 def _shop_brand_catalog_links(brand_value, category_value):
@@ -3053,6 +3054,23 @@ def _shop_brand_catalog_links(brand_value, category_value):
                 {"label": "Tecnifibre Tennis TOP", "url": "https://www.tecnifibre.com/en/tennis/"},
             ],
         },
+        "solinco": {
+            ShopEstimateRequest.CATEGORY_RACKET: [],
+            ShopEstimateRequest.CATEGORY_STRING: [
+                {"label": "Solinco ガット資料", "url": "https://www.kimony.com/file/solinco2026-15.pdf"},
+                {"label": "Solinco MACH-10 資料", "url": "https://www.kimony.com/file/MACH-10.pdf"},
+                {"label": "Solinco ガット資料2", "url": "https://www.kimony.com/file/solinco2026-16.pdf"},
+            ],
+            ShopEstimateRequest.CATEGORY_ACCESSORY: [],
+        },
+        "luxilon": {
+            ShopEstimateRequest.CATEGORY_RACKET: [],
+            ShopEstimateRequest.CATEGORY_STRING: [
+                {"label": "Luxilon ストリング一覧", "url": "https://jp.wilson.com/collections/tennis-luxilon-strings"},
+                {"label": "Wilson Tennis TOP", "url": "https://jp.wilson.com/collections/tennis"},
+            ],
+            ShopEstimateRequest.CATEGORY_ACCESSORY: [],
+        },
         ShopEstimateRequest.BRAND_OTHER: {
             ShopEstimateRequest.CATEGORY_RACKET: [],
             ShopEstimateRequest.CATEGORY_STRING: [],
@@ -3060,7 +3078,6 @@ def _shop_brand_catalog_links(brand_value, category_value):
         },
     }
     return category_links.get(brand_value, {}).get(category_value, [])
-
 
 
 def _shop_brand_search_links(brand_value, keyword, item_label="商品"):
@@ -3112,10 +3129,25 @@ def _shop_brand_search_links(brand_value, keyword, item_label="商品"):
                 "url": f"https://www.tecnifibre.com/en/search?text={encoded}",
             }
         ],
+        "solinco": [
+            {
+                "label": f"Solinco 参照資料で{item_label}確認",
+                "url": "https://www.kimony.com/file/solinco2026-15.pdf",
+            },
+            {
+                "label": "Solinco MACH-10 資料",
+                "url": "https://www.kimony.com/file/MACH-10.pdf",
+            },
+        ],
+        "luxilon": [
+            {
+                "label": f"Luxilon 公式で{item_label}検索",
+                "url": f"https://jp.wilson.com/search?q={encoded}",
+            }
+        ],
         ShopEstimateRequest.BRAND_OTHER: [],
     }
     return links.get(brand_value, [])
-
 
 
 def _safe_int(value, default=0):
@@ -3158,8 +3190,6 @@ def _shop_image_search_links(brand_value, keyword, item_label="商品画像"):
     ]
 
 
-
-
 def _shop_product_master_queryset():
     return (
         ShopProductMaster.objects.filter(is_active=True)
@@ -3167,14 +3197,54 @@ def _shop_product_master_queryset():
     )
 
 
+def _shop_normalize_brand_value(raw_brand, text=""):
+    brand = (raw_brand or "").strip().lower()
+    source_text = (text or "").strip().lower()
+
+    if brand == "solinco":
+        return "solinco"
+    if brand == "luxilon":
+        return "luxilon"
+
+    if brand in (
+        ShopEstimateRequest.BRAND_YONEX,
+        ShopEstimateRequest.BRAND_WILSON,
+        ShopEstimateRequest.BRAND_BABOLAT,
+        ShopEstimateRequest.BRAND_HEAD,
+        ShopEstimateRequest.BRAND_PRINCE,
+        ShopEstimateRequest.BRAND_DUNLOP,
+        ShopEstimateRequest.BRAND_TECHNIFIBRE,
+        ShopEstimateRequest.BRAND_OTHER,
+    ):
+        normalized = brand
+    else:
+        normalized = ShopEstimateRequest.BRAND_OTHER
+
+    if normalized == ShopEstimateRequest.BRAND_OTHER:
+        if "solinco" in source_text:
+            return "solinco"
+        if "luxilon" in source_text:
+            return "luxilon"
+
+    return normalized
+
+
 def _shop_product_master_to_candidate_dict(obj):
     display_label = obj.display_name or obj.product_name
     keyword = obj.product_code or display_label
+    source_text = " ".join(
+        [
+            str(display_label or ""),
+            str(obj.product_name or ""),
+            str(obj.product_code or ""),
+            str(obj.description or ""),
+        ]
+    )
     return {
         "id": obj.pk,
         "product_type": obj.product_type,
         "category": obj.category,
-        "brand": obj.brand,
+        "brand": _shop_normalize_brand_value(obj.brand, source_text),
         "product_name": display_label,
         "keyword": keyword,
         "official_price": int(obj.official_price or 0),
@@ -3196,6 +3266,8 @@ def _shop_product_master_to_candidate_dict(obj):
 
 
 def _shop_master_candidate_lists(form_data):
+    normalized_selected_brand = _shop_normalize_brand_value(form_data.get("brand", ""))
+
     all_candidates = [
         _shop_product_master_to_candidate_dict(obj)
         for obj in _shop_product_master_queryset()
@@ -3205,7 +3277,7 @@ def _shop_master_candidate_lists(form_data):
         item
         for item in all_candidates
         if item["product_type"] == ShopProductMaster.PRODUCT_TYPE_MAIN
-        and item["brand"] == form_data["brand"]
+        and item["brand"] == normalized_selected_brand
         and item["category"] == form_data["product_category"]
     ]
 
@@ -3213,7 +3285,7 @@ def _shop_master_candidate_lists(form_data):
         item
         for item in all_candidates
         if item["product_type"] == ShopProductMaster.PRODUCT_TYPE_STRING
-        and item["brand"] == form_data["brand"]
+        and item["brand"] == normalized_selected_brand
         and item["category"] == ShopProductMaster.CATEGORY_STRING
     ]
 
@@ -3237,6 +3309,10 @@ def shop_estimate_view(request):
         return survey_redirect
 
     brand_choices = list(ShopEstimateRequest.BRAND_CHOICES)
+    if ("solinco", "Solinco") not in brand_choices:
+        brand_choices.append(("solinco", "Solinco"))
+    if ("luxilon", "Luxilon") not in brand_choices:
+        brand_choices.append(("luxilon", "Luxilon"))
     category_choices = list(ShopEstimateRequest.CATEGORY_CHOICES)
     string_source_choices = list(ShopEstimateRequest.STRING_SOURCE_CHOICES)
     tension_choices = [(value, f"{value} lbs") for value in range(30, 61)]
@@ -3279,21 +3355,30 @@ def shop_estimate_view(request):
             reused_request = ShopEstimateRequest.objects.filter(user=request.user, pk=int(reuse_id)).first()
             if reused_request:
                 form_data = _shop_build_form_data_from_request_obj(reused_request)
+                form_data["brand"] = _shop_normalize_brand_value(
+                    form_data["brand"],
+                    " ".join([
+                        form_data.get("main_product_name", ""),
+                        form_data.get("main_keyword", ""),
+                        form_data.get("string_product_name", ""),
+                        form_data.get("string_keyword", ""),
+                    ]),
+                )
                 messages.info(request, f"申込ID {reused_request.id} の内容をフォームへ再読み込みしました。")
                 master_candidate_context = _shop_master_candidate_lists(form_data)
 
-        main_catalog_links = _shop_brand_catalog_links(form_data["brand"], form_data["product_category"])
         main_official_links = _shop_brand_search_links(form_data["brand"], form_data["main_keyword"], item_label="商品")
+        main_catalog_links = _shop_brand_catalog_links(form_data["brand"], form_data["product_category"])
         main_image_links = _shop_image_search_links(form_data["brand"], form_data["main_keyword"], item_label="商品画像")
         if form_data["string_source"] == ShopEstimateRequest.STRING_SOURCE_OFFICIAL:
-            string_catalog_links = _shop_brand_catalog_links(form_data["brand"], ShopEstimateRequest.CATEGORY_STRING)
             string_official_links = _shop_brand_search_links(form_data["brand"], form_data["string_keyword"], item_label="ガット")
+            string_catalog_links = _shop_brand_catalog_links(form_data["brand"], ShopEstimateRequest.CATEGORY_STRING)
             string_image_links = _shop_image_search_links(form_data["brand"], form_data["string_keyword"], item_label="ガット画像")
 
     if request.method == "POST":
         form_data = {
             "product_category": (request.POST.get("product_category") or ShopEstimateRequest.CATEGORY_RACKET).strip(),
-            "brand": (request.POST.get("brand") or ShopEstimateRequest.BRAND_YONEX).strip(),
+            "brand": _shop_normalize_brand_value((request.POST.get("brand") or ShopEstimateRequest.BRAND_YONEX).strip()),
             "main_keyword": (request.POST.get("main_keyword") or "").strip(),
             "main_product_name": (request.POST.get("main_product_name") or "").strip(),
             "main_official_price": (request.POST.get("main_official_price") or "").strip(),
@@ -3334,6 +3419,7 @@ def shop_estimate_view(request):
                 else 0
             )
             stringing_fee = 1200 if request_stringing else 0
+
             estimate_result = {
                 "brand_label": brand_label_map.get(form_data["brand"], form_data["brand"]),
                 "category_label": category_label_map.get(form_data["product_category"], form_data["product_category"]),
@@ -3394,7 +3480,6 @@ def shop_estimate_view(request):
             "string_image_links": string_image_links,
             "page_error": page_error,
             "saved_request": saved_request,
-            "stringing_fee": 1200,
             "recent_requests": recent_requests,
             "reused_request": reused_request,
             "string_source_none": ShopEstimateRequest.STRING_SOURCE_NONE,
@@ -3406,7 +3491,6 @@ def shop_estimate_view(request):
             "shop_all_product_masters_json": master_candidate_context.get("all_candidates", []),
         },
     )
-
 
 
 @login_required
