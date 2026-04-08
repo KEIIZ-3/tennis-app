@@ -143,18 +143,33 @@
       font-size:13px;
       font-weight:700;
     }
+
     .coach-tabs{
       display:flex;
       gap:8px;
       flex-wrap:wrap;
     }
     .coach-tab{
-      display:inline-flex; align-items:center; justify-content:center; min-height:40px;
-      padding:9px 14px; border-radius:999px; border:1px solid var(--coach-tab-border);
-      background:var(--coach-tab-bg); color:#3730a3; font-size:14px; font-weight:700; transition:all .15s ease;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-height:40px;
+      padding:9px 14px;
+      border-radius:999px;
+      border:1px solid var(--coach-tab-border);
+      background:var(--coach-tab-bg);
+      color:#3730a3;
+      font-size:14px;
+      font-weight:700;
+      transition:all .15s ease;
+      white-space:nowrap;
     }
     .coach-tab:hover{ filter:brightness(0.98); }
-    .coach-tab.active{ background:var(--coach-tab-active); color:var(--coach-tab-active-text); border-color:var(--coach-tab-active); }
+    .coach-tab.active{
+      background:var(--coach-tab-active);
+      color:var(--coach-tab-active-text);
+      border-color:var(--coach-tab-active);
+    }
 
     .logout-form{ display:inline; margin:0; }
     .logout-button{
@@ -247,6 +262,7 @@
       .grid-3{ grid-template-columns:1fr; }
       .grid-2{ grid-template-columns:1fr; }
     }
+
     @media (max-width: 768px){
       .wrap{ padding:0 12px; }
       .topbar .wrap{ padding-top:12px; padding-bottom:12px; }
@@ -255,28 +271,75 @@
       .brand-title{ font-size:18px; }
       .brand-sub{ font-size:11px; }
       .top-meta{ width:100%; }
-      .nav{ width:100%; }
-      .nav a, .logout-button, .coach-tab{ min-height:42px; font-size:13px; }
+      .nav{ width:100%; gap:10px 8px; }
+      .nav a, .logout-button{ min-height:40px; font-size:13px; }
       .main{ padding:16px 0 28px; }
       .page-title{ font-size:24px; }
       .card{ padding:16px; border-radius:14px; }
       th, td{ font-size:13px; padding:10px 8px; }
 
+      .coach-menu{
+        gap:8px;
+      }
+      .coach-menu-head{
+        align-items:center;
+      }
       .coach-menu-toggle{
         display:inline-flex;
         align-items:center;
         justify-content:center;
+        min-height:36px;
+        padding:7px 12px;
+        font-size:12px;
       }
       .coach-tabs{
         display:none;
         width:100%;
-        flex-direction:column;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:8px;
       }
       .coach-menu.is-open .coach-tabs{
-        display:flex;
+        display:grid;
       }
       .coach-tab{
         width:100%;
+        min-height:44px;
+        padding:8px 10px;
+        border-radius:14px;
+        font-size:12px;
+        line-height:1.35;
+        white-space:normal;
+        text-align:center;
+      }
+    }
+
+    @media (max-width: 480px){
+      .nav{
+        gap:8px 6px;
+      }
+      .nav a, .logout-button{
+        min-height:38px;
+        padding:8px 12px;
+        font-size:12px;
+      }
+      .top-badge{
+        min-height:34px;
+        padding:7px 10px;
+        font-size:12px;
+      }
+      .coach-menu-title{
+        font-size:12px;
+      }
+      .coach-tabs{
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:7px;
+      }
+      .coach-tab{
+        min-height:40px;
+        padding:7px 8px;
+        border-radius:12px;
+        font-size:11px;
+        font-weight:700;
       }
     }
   </style>
@@ -299,7 +362,7 @@
             {% if user.role == "member" %}
               <span class="top-badge">レベル: {{ user.get_member_level_display }}</span>
               <span class="top-badge ticket">チケット残数: {{ user.ticket_balance }}枚</span>
-            {% elif user.role == "coach" %}
+            {% elif user.role == "coach" or user.is_staff or user.is_superuser %}
               <span class="top-badge coach">コーチ専用メニュー表示中</span>
             {% endif %}
           </div>
@@ -321,16 +384,13 @@
               <a href="{% url 'club:stringing_order_create' %}">ガット張り依頼</a>
               <a href="{% url 'club:stringing_order_list' %}">ガット張り一覧</a>
               <a href="{% url 'club:shop_estimate' %}">Shop</a>
-            {% elif user.role == "coach" or user.is_staff or user.is_superuser %}
               <a href="{% url 'club:line_connect' %}">LINE連携</a>
 
               <form method="post" action="{% url 'club:logout' %}" class="logout-form">
                 {% csrf_token %}
                 <button type="submit" class="logout-button">ログアウト</button>
               </form>
-            {% endif %}
-
-            {% if user.role == "member" %}
+            {% elif user.role == "coach" or user.is_staff or user.is_superuser %}
               <a href="{% url 'club:line_connect' %}">LINE連携</a>
 
               <form method="post" action="{% url 'club:logout' %}" class="logout-form">
@@ -346,7 +406,7 @@
         </nav>
       </div>
 
-      {% if user.is_authenticated and user.role == "coach" %}
+      {% if user.is_authenticated and user.role == "coach" or user.is_staff or user.is_superuser %}
         <div class="coach-menu" id="coach-menu">
           <div class="coach-menu-head">
             <div class="coach-menu-title">コーチ専用メニュー</div>
@@ -414,7 +474,7 @@
     </div>
   </main>
 
-  {% if user.is_authenticated and user.role == "coach" %}
+  {% if user.is_authenticated and user.role == "coach" or user.is_staff or user.is_superuser %}
     <script>
       (function () {
         const coachMenu = document.getElementById("coach-menu");
