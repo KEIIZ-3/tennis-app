@@ -782,10 +782,26 @@ def _lesson_calendar_title(fixed_lesson):
 
 
 @require_GET
+def _fixed_lesson_coach_names(fixed_lesson):
+    try:
+        return fixed_lesson.coach_display_names()
+    except Exception:
+        return _display_name(getattr(fixed_lesson, "coach", None))
+
+
+def _fixed_lesson_includes_coach(fixed_lesson, coach):
+    if not fixed_lesson or not coach:
+        return False
+    try:
+        return fixed_lesson.includes_coach(coach)
+    except Exception:
+        return getattr(fixed_lesson, "coach_id", None) == getattr(coach, "pk", None)
+
+
 def lesson_calendar_view(request):
     fixed_lessons = list(
         FixedLesson.objects.filter(is_active=True)
-        .select_related("coach", "court")
+        .select_related("coach", "coach_2", "coach_3", "court")
         .prefetch_related("members")
         .order_by("weekday", "start_hour", "id")
     )
@@ -808,8 +824,8 @@ def lesson_calendar_view(request):
                     "lesson": lesson,
                     "title": _lesson_calendar_title(lesson),
                     "time_label": f"{start_hour:02d}:00〜{end_hour:02d}:00",
-                    "coach_name": _display_name(lesson.coach),
-                    "court_name": str(lesson.court),
+                    "coach_name": _fixed_lesson_coach_names(lesson),
+                    "court_name": lesson.court_display() if hasattr(lesson, "court_display") else str(lesson.court),
                     "lesson_type_label": lesson.get_lesson_type_display(),
                     "target_level_label": lesson.get_target_level_display(),
                     "capacity": lesson.effective_capacity(),
@@ -1288,13 +1304,13 @@ def coach_fixed_lesson_weekly(request):
     fixed_lessons = []
     fixed_queryset = (
         FixedLesson.objects.filter(is_active=True)
-        .select_related("coach", "court")
+        .select_related("coach", "coach_2", "coach_3", "court")
         .prefetch_related("members")
         .order_by("weekday", "start_hour", "id")
     )
 
     if selected_coach is not None:
-        fixed_queryset = fixed_queryset.filter(coach=selected_coach)
+        fixed_queryset = [fixed for fixed in fixed_queryset if _fixed_lesson_includes_coach(fixed, selected_coach)]
 
     weekday_labels = dict(FixedLesson.WEEKDAY_CHOICES)
 
@@ -1305,7 +1321,7 @@ def coach_fixed_lesson_weekly(request):
 
         slot_availability = (
             CoachAvailability.objects.filter(
-                coach=fixed.coach,
+                coach=fixed.primary_coach() if hasattr(fixed, "primary_coach") else fixed.coach,
                 court=fixed.court,
                 lesson_type=fixed.lesson_type,
                 start_at=start_at,
@@ -1327,7 +1343,7 @@ def coach_fixed_lesson_weekly(request):
 
         member_names = [member.display_name() for member in members]
         reservation_names = [reservation.user.display_name() for reservation in week_reservations]
-        assigned_coach = slot_availability.substitute_coach if slot_availability and slot_availability.substitute_coach else fixed.coach
+        assigned_coach = slot_availability.substitute_coach if slot_availability and slot_availability.substitute_coach else (fixed.primary_coach() if hasattr(fixed, "primary_coach") else fixed.coach)
 
         fixed_lessons.append(
             {
@@ -1337,7 +1353,7 @@ def coach_fixed_lesson_weekly(request):
                 "start_at": start_at,
                 "end_at": end_at,
                 "assigned_coach_name": _display_name(assigned_coach),
-                "normal_coach_name": _display_name(fixed.coach),
+                "normal_coach_name": _fixed_lesson_coach_names(fixed),
                 "substitute_coach_name": _display_name(slot_availability.substitute_coach)
                 if slot_availability and slot_availability.substitute_coach
                 else "",
