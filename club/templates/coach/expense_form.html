@@ -5,7 +5,7 @@
   <div class="page-head">
     <h1 class="page-title">経費登録</h1>
     <p class="page-subtitle">
-      コーチ用の経費を登録できます。給与計算にはここで登録した経費が反映されます。
+      コーチ用の経費申請を登録できます。領収書原本は運営LINEノートで管理し、この画面では領収書あり/なしと確認状況を管理します。
     </p>
   </div>
 
@@ -14,10 +14,20 @@
       <h2 class="card-title">新規登録</h2>
       <form method="post">
         {% csrf_token %}
+        <input type="hidden" name="action" value="create">
 
         <p>
           <label for="id_expense_date">経費日付</label>
           <input type="date" id="id_expense_date" name="expense_date" value="{{ today_value }}" required>
+        </p>
+
+        <p>
+          <label for="id_expense_type">経費種別</label>
+          <select id="id_expense_type" name="expense_type" required>
+            {% for value, label in expense_type_choices %}
+              <option value="{{ value }}" {% if value == "personal" %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
         </p>
 
         <p>
@@ -34,9 +44,42 @@
           <input type="number" id="id_amount" name="amount" min="0" step="1" placeholder="例: 1200" required>
         </p>
 
+        <div class="grid-2">
+          <p>
+            <label for="id_receipt_status">領収書</label>
+            <select id="id_receipt_status" name="receipt_status" required>
+              {% for value, label in expense_receipt_choices %}
+                <option value="{{ value }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </p>
+
+          {% if is_admin_mode %}
+            <p>
+              <label for="id_receipt_check_status">領収書確認</label>
+              <select id="id_receipt_check_status" name="receipt_check_status" required>
+                {% for value, label in expense_receipt_check_choices %}
+                  <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+            </p>
+          {% endif %}
+        </div>
+
+        {% if is_admin_mode %}
+          <p>
+            <label for="id_approval_status">承認状態</label>
+            <select id="id_approval_status" name="approval_status" required>
+              {% for value, label in expense_approval_choices %}
+                <option value="{{ value }}" {% if value == "approved" %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </p>
+        {% endif %}
+
         <p>
           <label for="id_note">メモ</label>
-          <textarea id="id_note" name="note" rows="4" placeholder="例: ボール購入 / コート代 / 駐車場代"></textarea>
+          <textarea id="id_note" name="note" rows="4" placeholder="例: ボール購入 / 交通費 / LINEノート 4/9 投稿分"></textarea>
         </p>
 
         <div class="actions">
@@ -59,16 +102,16 @@
 
       <div class="spacer-16"></div>
 
-      {% if category_rows %}
+      {% if expense_type_rows %}
         <table>
           <thead>
             <tr>
-              <th>カテゴリ</th>
+              <th>経費種別</th>
               <th>金額</th>
             </tr>
           </thead>
           <tbody>
-            {% for row in category_rows %}
+            {% for row in expense_type_rows %}
               <tr>
                 <td>{{ row.label }}</td>
                 <td>{{ row.amount }}円</td>
@@ -76,42 +119,130 @@
             {% endfor %}
           </tbody>
         </table>
-      {% else %}
-        <p class="muted" style="margin:0;">今月の経費はまだ登録されていません。</p>
+      {% endif %}
+
+      <div class="spacer-16"></div>
+
+      {% if approval_rows %}
+        <table>
+          <thead>
+            <tr>
+              <th>承認状態</th>
+              <th>件数</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in approval_rows %}
+              <tr>
+                <td>{{ row.label }}</td>
+                <td>{{ row.count }}件</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       {% endif %}
     </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">カテゴリ別集計</h2>
+
+    {% if category_rows %}
+      <table>
+        <thead>
+          <tr>
+            <th>カテゴリ</th>
+            <th>金額</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in category_rows %}
+            <tr>
+              <td>{{ row.label }}</td>
+              <td>{{ row.amount }}円</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted" style="margin:0;">今月の経費はまだ登録されていません。</p>
+    {% endif %}
   </div>
 
   <div class="card">
     <h2 class="card-title">最近の登録</h2>
 
     {% if recent_expenses %}
-      <table>
-        <thead>
-          <tr>
-            <th>日付</th>
-            <th>カテゴリ</th>
-            <th>金額</th>
-            <th>メモ</th>
-            {% if is_admin_mode %}
-              <th>登録者</th>
-            {% endif %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for expense in recent_expenses %}
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
             <tr>
-              <td>{{ expense.expense_date|date:"Y-m-d" }}</td>
-              <td>{{ expense.get_category_display }}</td>
-              <td>{{ expense.amount }}円</td>
-              <td>{{ expense.note|default:"-" }}</td>
+              <th>日付</th>
+              <th>経費種別</th>
+              <th>カテゴリ</th>
+              <th>金額</th>
+              <th>領収書</th>
+              <th>領収書確認</th>
+              <th>承認状態</th>
+              <th>メモ</th>
               {% if is_admin_mode %}
-                <td>{% if expense.created_by %}{{ expense.created_by.display_name }}{% else %}-{% endif %}</td>
+                <th>登録者</th>
+                <th>更新</th>
               {% endif %}
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for row in recent_expenses %}
+              <tr>
+                <td>{{ row.expense.expense_date|date:"Y-m-d" }}</td>
+                <td>{{ row.expense_type_label }}</td>
+                <td>{{ row.expense.get_category_display }}</td>
+                <td>{{ row.expense.amount }}円</td>
+                <td>{{ row.receipt_status_label }}</td>
+                <td>{{ row.receipt_check_status_label }}</td>
+                <td>{{ row.approval_status_label }}</td>
+                <td>{{ row.plain_note|default:"-" }}</td>
+                {% if is_admin_mode %}
+                  <td>{% if row.expense.created_by %}{{ row.expense.created_by.display_name }}{% else %}-{% endif %}</td>
+                  <td>
+                    <form method="post" style="display:flex; flex-direction:column; gap:8px; min-width:180px;">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="update_meta">
+                      <input type="hidden" name="expense_id" value="{{ row.expense.id }}">
+
+                      <select name="expense_type">
+                        {% for value, label in expense_type_choices %}
+                          <option value="{{ value }}" {% if row.expense_type == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                      </select>
+
+                      <select name="receipt_status">
+                        {% for value, label in expense_receipt_choices %}
+                          <option value="{{ value }}" {% if row.receipt_status == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                      </select>
+
+                      <select name="receipt_check_status">
+                        {% for value, label in expense_receipt_check_choices %}
+                          <option value="{{ value }}" {% if row.receipt_check_status == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                      </select>
+
+                      <select name="approval_status">
+                        {% for value, label in expense_approval_choices %}
+                          <option value="{{ value }}" {% if row.approval_status == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                      </select>
+
+                      <button type="submit">更新</button>
+                    </form>
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     {% else %}
       <p class="muted" style="margin:0;">まだ経費登録はありません。</p>
     {% endif %}
