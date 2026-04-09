@@ -1532,8 +1532,7 @@ def _expense_build_note(raw_note, *, expense_type, receipt_status, receipt_check
         "approval_status": approval_status,
     }
     clean_note = (raw_note or "").strip()
-    return f"{EXPENSE_NOTE_META_PREFIX}{json.dumps(payload, ensure_ascii=False)}
-{clean_note}"
+    return f"{EXPENSE_NOTE_META_PREFIX}{json.dumps(payload, ensure_ascii=False)}\\n{clean_note}"
 
 
 def _expense_parse_note(stored_note):
