@@ -768,6 +768,73 @@ def _active_reservations_for_availability(availability):
     )
 
 
+
+def _lesson_calendar_duration_hours(fixed_lesson):
+    if fixed_lesson.lesson_type == FixedLesson.LESSON_GENERAL:
+        return 2
+    return 1
+
+
+def _lesson_calendar_title(fixed_lesson):
+    if getattr(fixed_lesson, "title", ""):
+        return fixed_lesson.title
+    return fixed_lesson.get_lesson_type_display()
+
+
+@require_GET
+def lesson_calendar_view(request):
+    fixed_lessons = list(
+        FixedLesson.objects.filter(is_active=True)
+        .select_related("coach", "court")
+        .prefetch_related("members")
+        .order_by("weekday", "start_hour", "id")
+    )
+
+    weekday_choices = list(FixedLesson.WEEKDAY_CHOICES)
+    day_columns = []
+
+    for weekday_value, weekday_label in weekday_choices:
+        items = []
+        day_lessons = [lesson for lesson in fixed_lessons if int(lesson.weekday) == int(weekday_value)]
+
+        for lesson in day_lessons:
+            duration_hours = _lesson_calendar_duration_hours(lesson)
+            start_hour = int(lesson.start_hour or 0)
+            end_hour = start_hour + duration_hours
+            member_names = [member.display_name() for member in lesson.members.all()]
+
+            items.append(
+                {
+                    "lesson": lesson,
+                    "title": _lesson_calendar_title(lesson),
+                    "time_label": f"{start_hour:02d}:00〜{end_hour:02d}:00",
+                    "coach_name": _display_name(lesson.coach),
+                    "court_name": str(lesson.court),
+                    "lesson_type_label": lesson.get_lesson_type_display(),
+                    "target_level_label": lesson.get_target_level_display(),
+                    "capacity": lesson.effective_capacity(),
+                    "member_names": member_names,
+                    "member_count": len(member_names),
+                }
+            )
+
+        day_columns.append(
+            {
+                "weekday_value": weekday_value,
+                "weekday_label": weekday_label,
+                "items": items,
+            }
+        )
+
+    return render(
+        request,
+        "lesson_calendar.html",
+        {
+            "day_columns": day_columns,
+        },
+    )
+
+
 def home(request):
     if request.user.is_authenticated:
         if _needs_profile_completion(request.user):
