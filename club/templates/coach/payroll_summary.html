@@ -13,6 +13,7 @@
 
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
       <a href="{% url 'club:coach_ticket_summary' %}" class="btn">チケット集計へ</a>
+      <a href="{% url 'club:coach_expense_manage' %}" class="btn">経費登録へ</a>
       <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
     </div>
   </div>
@@ -65,13 +66,13 @@
   </div>
 
   <div class="card">
-    <div class="muted" style="font-size:13px;">レッスン換算 + 担当ガット張り売上</div>
-    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ total_amount }}円</div>
+    <div class="muted" style="font-size:13px;">支給見込額</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ estimated_salary }}円</div>
   </div>
 
   <div class="card">
-    <div class="muted" style="font-size:13px;">概算給与</div>
-    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ estimated_salary }}円</div>
+    <div class="muted" style="font-size:13px;">支給前合計</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ salary_before_common }}円</div>
   </div>
 </div>
 
@@ -87,15 +88,15 @@
   </div>
 
   <div class="card">
-    <div class="muted" style="font-size:13px;">月全体のガット張り売上</div>
-    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ total_stringing_amount }}円</div>
+    <div class="muted" style="font-size:13px;">本人立替返金</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ personal_reimbursement_amount }}円</div>
   </div>
 </div>
 
 <div class="grid-3">
   <div class="card">
-    <div class="muted" style="font-size:13px;">総経費</div>
-    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ total_expense_amount }}円</div>
+    <div class="muted" style="font-size:13px;">承認済み共通経費合計</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ approved_common_expense_total }}円</div>
   </div>
 
   <div class="card">
@@ -104,8 +105,8 @@
   </div>
 
   <div class="card">
-    <div class="muted" style="font-size:13px;">1人あたり按分経費</div>
-    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ per_coach_expense }}円</div>
+    <div class="muted" style="font-size:13px;">1人あたり共通経費負担</div>
+    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ per_coach_common_expense }}円</div>
   </div>
 </div>
 
@@ -114,10 +115,10 @@
   <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
     <div style="font-weight:700; margin-bottom:6px;">現在の計算ルール</div>
     <div style="line-height:1.9;">
-      給与 ＝ <strong>レッスン換算額</strong> ＋ <strong>担当ガット張り売上</strong> − <strong>1人あたり按分経費</strong>
+      支給見込額 ＝ <strong>レッスン換算額</strong> ＋ <strong>担当ガット張り売上</strong> ＋ <strong>本人立替返金</strong> − <strong>1人あたり共通経費負担</strong>
     </div>
     <div class="muted" style="margin-top:8px;">
-      ガット張り売上は、実際に担当したコーチへ直接計上します。未担当の依頼は給与に加算されません。代行が設定されている予約は、代行コーチ側へ計上します。
+      領収書原本は運営LINEノート保管を前提にし、給与計算には承認済みの経費のみ反映します。本人立替は申請者本人に返金し、共通経費のみ人数按分します。
     </div>
   </div>
 </div>
@@ -180,6 +181,60 @@
   </div>
 </div>
 
+<div class="grid-2">
+  <div class="card">
+    <h2 style="margin-top:0;">本人立替返金のカテゴリ別内訳</h2>
+    {% if personal_category_rows %}
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>カテゴリ</th>
+              <th>金額</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in personal_category_rows %}
+              <tr>
+                <td>{{ row.label }}</td>
+                <td>{{ row.amount }}円</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted" style="margin:0;">この月の本人立替返金はまだありません。</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">承認済み共通経費のカテゴリ別内訳</h2>
+    {% if common_category_rows %}
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>カテゴリ</th>
+              <th>金額</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in common_category_rows %}
+              <tr>
+                <td>{{ row.label }}</td>
+                <td>{{ row.amount }}円</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted" style="margin:0;">この月の承認済み共通経費はまだありません。</p>
+    {% endif %}
+  </div>
+</div>
+
 <div class="card">
   <h2 style="margin-top:0;">担当ガット張り売上</h2>
 
@@ -235,7 +290,13 @@
                 {% endif %}
               </td>
               <td>{{ row.order.total_price }}円</td>
-              <td>{{ row.order.assigned_coach_display }}</td>
+              <td>
+                {% if row.order.assigned_coach %}
+                  {{ row.order.assigned_coach.display_name }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
               <td>{{ row.status_label }}</td>
             </tr>
             {% if row.order.note %}
@@ -251,6 +312,78 @@
     </div>
   {% else %}
     <p class="muted" style="margin:0;">この月の担当ガット張り売上はまだありません。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">承認済み本人立替経費</h2>
+
+  {% if approved_personal_expense_rows %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>日付</th>
+            <th>カテゴリ</th>
+            <th>金額</th>
+            <th>領収書</th>
+            <th>領収書確認</th>
+            <th>備考</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in approved_personal_expense_rows %}
+            <tr>
+              <td>{{ row.expense.expense_date|date:"Y-m-d" }}</td>
+              <td>{{ row.expense.get_category_display }}</td>
+              <td>{{ row.expense.amount }}円</td>
+              <td>{{ row.receipt_status_label }}</td>
+              <td>{{ row.receipt_check_status_label }}</td>
+              <td>{{ row.plain_note|default:"-" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="muted" style="margin:0;">この月の承認済み本人立替経費はまだありません。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">承認済み共通経費</h2>
+
+  {% if approved_common_expense_rows %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>日付</th>
+            <th>カテゴリ</th>
+            <th>金額</th>
+            <th>領収書</th>
+            <th>領収書確認</th>
+            <th>登録者</th>
+            <th>備考</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in approved_common_expense_rows %}
+            <tr>
+              <td>{{ row.expense.expense_date|date:"Y-m-d" }}</td>
+              <td>{{ row.expense.get_category_display }}</td>
+              <td>{{ row.expense.amount }}円</td>
+              <td>{{ row.receipt_status_label }}</td>
+              <td>{{ row.receipt_check_status_label }}</td>
+              <td>{% if row.expense.created_by %}{{ row.expense.created_by.display_name }}{% else %}-{% endif %}</td>
+              <td>{{ row.plain_note|default:"-" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="muted" style="margin:0;">この月の承認済み共通経費はまだありません。</p>
   {% endif %}
 </div>
 
@@ -280,64 +413,6 @@
     </div>
   {% else %}
     <p class="muted" style="margin:0;">この月の価格帯別データはまだありません。</p>
-  {% endif %}
-</div>
-
-<div class="card">
-  <h2 style="margin-top:0;">経費内訳</h2>
-
-  {% if category_rows %}
-    <div style="overflow-x:auto;">
-      <table>
-        <thead>
-          <tr>
-            <th>区分</th>
-            <th>金額</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in category_rows %}
-            <tr>
-              <td>{{ row.label }}</td>
-              <td>{{ row.amount }}円</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  {% else %}
-    <p class="muted" style="margin:0;">この月の経費はまだ登録されていません。</p>
-  {% endif %}
-</div>
-
-<div class="card">
-  <h2 style="margin-top:0;">経費明細</h2>
-
-  {% if expense_rows %}
-    <div style="overflow-x:auto;">
-      <table>
-        <thead>
-          <tr>
-            <th>日付</th>
-            <th>区分</th>
-            <th>金額</th>
-            <th>備考</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for expense in expense_rows %}
-            <tr>
-              <td>{{ expense.expense_date|date:"Y-m-d" }}</td>
-              <td>{{ expense.get_category_display }}</td>
-              <td>{{ expense.amount }}円</td>
-              <td>{{ expense.note|default:"-" }}</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  {% else %}
-    <p class="muted" style="margin:0;">この月の経費明細はまだありません。</p>
   {% endif %}
 </div>
 
