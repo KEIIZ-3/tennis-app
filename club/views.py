@@ -1471,6 +1471,143 @@ def coach_ticket_summary(request):
     )
 
 
+
+EXPENSE_TYPE_PERSONAL = "personal"
+EXPENSE_TYPE_COMMON = "common"
+
+EXPENSE_RECEIPT_NONE = "none"
+EXPENSE_RECEIPT_HAS = "has"
+
+EXPENSE_RECEIPT_CHECK_UNCHECKED = "unchecked"
+EXPENSE_RECEIPT_CHECK_CHECKED = "checked"
+
+EXPENSE_APPROVAL_DRAFT = "draft"
+EXPENSE_APPROVAL_SUBMITTED = "submitted"
+EXPENSE_APPROVAL_APPROVED = "approved"
+EXPENSE_APPROVAL_RETURNED = "returned"
+
+EXPENSE_TYPE_CHOICES = (
+    (EXPENSE_TYPE_PERSONAL, "本人立替"),
+    (EXPENSE_TYPE_COMMON, "共通経費"),
+)
+
+EXPENSE_RECEIPT_CHOICES = (
+    (EXPENSE_RECEIPT_NONE, "なし"),
+    (EXPENSE_RECEIPT_HAS, "あり"),
+)
+
+EXPENSE_RECEIPT_CHECK_CHOICES = (
+    (EXPENSE_RECEIPT_CHECK_UNCHECKED, "未確認"),
+    (EXPENSE_RECEIPT_CHECK_CHECKED, "確認済み"),
+)
+
+EXPENSE_APPROVAL_CHOICES = (
+    (EXPENSE_APPROVAL_DRAFT, "下書き"),
+    (EXPENSE_APPROVAL_SUBMITTED, "提出済み"),
+    (EXPENSE_APPROVAL_APPROVED, "承認"),
+    (EXPENSE_APPROVAL_RETURNED, "差戻し"),
+)
+
+EXPENSE_NOTE_META_PREFIX = "__EXPENSE_META__"
+
+
+def _choice_label(choice_list, value):
+    return dict(choice_list).get(value, value)
+
+
+def _expense_default_meta():
+    return {
+        "expense_type": EXPENSE_TYPE_COMMON,
+        "receipt_status": EXPENSE_RECEIPT_NONE,
+        "receipt_check_status": EXPENSE_RECEIPT_CHECK_UNCHECKED,
+        "approval_status": EXPENSE_APPROVAL_APPROVED,
+    }
+
+
+def _expense_build_note(raw_note, *, expense_type, receipt_status, receipt_check_status, approval_status):
+    payload = {
+        "expense_type": expense_type,
+        "receipt_status": receipt_status,
+        "receipt_check_status": receipt_check_status,
+        "approval_status": approval_status,
+    }
+    clean_note = (raw_note or "").strip()
+    return f"{EXPENSE_NOTE_META_PREFIX}{json.dumps(payload, ensure_ascii=False)}
+{clean_note}"
+
+
+def _expense_parse_note(stored_note):
+    default_meta = _expense_default_meta()
+    text = (stored_note or "")
+    if not text.startswith(EXPENSE_NOTE_META_PREFIX):
+        return {
+            **default_meta,
+            "plain_note": text.strip(),
+        }
+
+    try:
+        first_line, plain_note = text.split("
+", 1)
+    except ValueError:
+        first_line = text
+        plain_note = ""
+
+    meta_json = first_line[len(EXPENSE_NOTE_META_PREFIX):].strip()
+    try:
+        parsed = json.loads(meta_json or "{}")
+    except Exception:
+        parsed = {}
+
+    merged = {
+        **default_meta,
+        **parsed,
+        "plain_note": (plain_note or "").strip(),
+    }
+    return merged
+
+
+def _expense_meta_row(expense):
+    meta = _expense_parse_note(getattr(expense, "note", ""))
+    return {
+        "expense": expense,
+        "plain_note": meta["plain_note"],
+        "expense_type": meta["expense_type"],
+        "expense_type_label": _choice_label(EXPENSE_TYPE_CHOICES, meta["expense_type"]),
+        "receipt_status": meta["receipt_status"],
+        "receipt_status_label": _choice_label(EXPENSE_RECEIPT_CHOICES, meta["receipt_status"]),
+        "receipt_check_status": meta["receipt_check_status"],
+        "receipt_check_status_label": _choice_label(EXPENSE_RECEIPT_CHECK_CHOICES, meta["receipt_check_status"]),
+        "approval_status": meta["approval_status"],
+        "approval_status_label": _choice_label(EXPENSE_APPROVAL_CHOICES, meta["approval_status"]),
+    }
+
+
+def _stringing_status_label(order):
+    try:
+        return order.get_status_display()
+    except Exception:
+        return str(getattr(order, "status", "") or "-")
+
+
+def _stringing_delivery_label(order):
+    if bool(getattr(order, "delivery_requested", False)):
+        return "デリバリー"
+    return "デリバリー無し"
+
+
+def _stringing_status_key(order):
+    return str(getattr(order, "status", "") or "")
+
+
+def _safe_display_name_maybe(user):
+    if not user:
+        return "-"
+    try:
+        return user.display_name()
+    except Exception:
+        return str(user)
+
+
 @login_required
 @require_GET
 def coach_payroll_summary(request):
@@ -1505,13 +1642,13 @@ def coach_payroll_summary(request):
 
     month_start, next_month = _month_start_end(selected_year, selected_month)
 
-    expense_qs = CoachExpense.objects.filter(
-        expense_date__gte=month_start,
-        expense_date__lt=next_month,
-    ).order_by("expense_date", "id")
-
-    expense_rows = list(expense_qs)
-    total_expense_amount = sum([int(obj.amount or 0) for obj in expense_rows])
+    monthly_expenses = list(
+        CoachExpense.objects.filter(
+            expense_date__gte=month_start,
+            expense_date__lt=next_month,
+        ).select_related("created_by").order_by("expense_date", "id")
+    )
+    expense_meta_rows = [_expense_meta_row(expense) for expense in monthly_expenses]
 
     monthly_consumptions = (
         TicketConsumption.objects.filter(
@@ -1535,11 +1672,9 @@ def coach_payroll_summary(request):
         active_coach_ids = set(coach_queryset.values_list("pk", flat=True))
 
     active_coach_count = len(active_coach_ids)
-    per_coach_expense = int(total_expense_amount / active_coach_count) if active_coach_count > 0 else 0
 
     total_tickets = 0
     lesson_total_amount = 0
-    total_amount = 0
     breakdown_rows = []
     reservation_rows = []
 
@@ -1627,29 +1762,121 @@ def coach_payroll_summary(request):
     stringing_order_qs = StringingOrder.objects.filter(
         created_at__date__gte=month_start,
         created_at__date__lt=next_month,
-    ).order_by("-created_at", "-id")
+    ).select_related("user", "assigned_coach").order_by("-created_at", "-id")
 
-    stringing_rows = list(stringing_order_qs)
-    total_stringing_amount = sum([int(order.total_price()) for order in stringing_rows])
-    per_coach_stringing_amount = int(total_stringing_amount / active_coach_count) if active_coach_count > 0 else 0
+    assigned_stringing_rows = []
+    assigned_stringing_amount = 0
+    total_stringing_amount = 0
+    stringing_status_totals = {}
+    stringing_delivery_totals = {}
+    unassigned_stringing_count = 0
 
-    total_amount = lesson_total_amount + per_coach_stringing_amount
-    estimated_salary = total_amount - per_coach_expense
+    for order in stringing_order_qs:
+        order_total = int(order.total_price() or 0)
+        status_key = _stringing_status_key(order).lower()
 
-    category_totals = {}
-    for expense in expense_rows:
-        label = expense.get_category_display()
-        category_totals.setdefault(label, 0)
-        category_totals[label] += int(expense.amount or 0)
+        if "cancel" not in status_key:
+            total_stringing_amount += order_total
 
-    category_rows = []
-    for label, amount in sorted(category_totals.items(), key=lambda x: x[0]):
-        category_rows.append(
+        assigned_coach_id = getattr(order, "assigned_coach_id", None)
+        if not assigned_coach_id:
+            unassigned_stringing_count += 1
+
+        if not selected_coach or assigned_coach_id != selected_coach.pk:
+            continue
+
+        if "cancel" in status_key:
+            continue
+
+        assigned_stringing_amount += order_total
+
+        status_label = _stringing_status_label(order)
+        delivery_label = _stringing_delivery_label(order)
+
+        stringing_status_totals.setdefault(status_label, {"count": 0, "amount": 0})
+        stringing_status_totals[status_label]["count"] += 1
+        stringing_status_totals[status_label]["amount"] += order_total
+
+        stringing_delivery_totals.setdefault(delivery_label, {"count": 0, "amount": 0})
+        stringing_delivery_totals[delivery_label]["count"] += 1
+        stringing_delivery_totals[delivery_label]["amount"] += order_total
+
+        preferred_completion_date = getattr(order, "preferred_completion_date", None)
+        if preferred_completion_date:
+            try:
+                preferred_label = preferred_completion_date.strftime("%Y-%m-%d")
+            except Exception:
+                preferred_label = str(preferred_completion_date)
+        else:
+            preferred_label = "-"
+
+        assigned_stringing_rows.append(
             {
-                "label": label,
-                "amount": amount,
+                "order": order,
+                "status_label": status_label,
+                "delivery_label": delivery_label,
+                "preferred_label": preferred_label,
             }
         )
+
+    stringing_status_rows = [
+        {
+            "label": label,
+            "count": values["count"],
+            "amount": values["amount"],
+        }
+        for label, values in sorted(stringing_status_totals.items(), key=lambda x: x[0])
+    ]
+    stringing_delivery_rows = [
+        {
+            "label": label,
+            "count": values["count"],
+            "amount": values["amount"],
+        }
+        for label, values in sorted(stringing_delivery_totals.items(), key=lambda x: x[0])
+    ]
+
+    approved_common_expense_rows = []
+    approved_personal_expense_rows = []
+    for row in expense_meta_rows:
+        if row["approval_status"] != EXPENSE_APPROVAL_APPROVED:
+            continue
+        if row["expense_type"] == EXPENSE_TYPE_COMMON:
+            approved_common_expense_rows.append(row)
+        else:
+            if selected_coach and getattr(row["expense"].created_by, "pk", None) == selected_coach.pk:
+                approved_personal_expense_rows.append(row)
+
+    approved_common_expense_total = sum(int(row["expense"].amount or 0) for row in approved_common_expense_rows)
+    personal_reimbursement_amount = sum(int(row["expense"].amount or 0) for row in approved_personal_expense_rows)
+    per_coach_common_expense = int(approved_common_expense_total / active_coach_count) if active_coach_count > 0 else 0
+
+    salary_before_common = lesson_total_amount + assigned_stringing_amount + personal_reimbursement_amount
+    estimated_salary = salary_before_common - per_coach_common_expense
+    total_amount = salary_before_common
+    total_expense_amount = sum(int(row["expense"].amount or 0) for row in expense_meta_rows)
+
+    common_category_totals = {}
+    for row in approved_common_expense_rows:
+        label = row["expense"].get_category_display()
+        common_category_totals.setdefault(label, 0)
+        common_category_totals[label] += int(row["expense"].amount or 0)
+
+    common_category_rows = [
+        {"label": label, "amount": amount}
+        for label, amount in sorted(common_category_totals.items(), key=lambda x: x[0])
+    ]
+
+    personal_category_totals = {}
+    for row in approved_personal_expense_rows:
+        label = row["expense"].get_category_display()
+        personal_category_totals.setdefault(label, 0)
+        personal_category_totals[label] += int(row["expense"].amount or 0)
+
+    personal_category_rows = [
+        {"label": label, "amount": amount}
+        for label, amount in sorted(personal_category_totals.items(), key=lambda x: x[0])
+    ]
 
     prev_year = selected_year
     prev_month = selected_month - 1
@@ -1680,17 +1907,27 @@ def coach_payroll_summary(request):
             "is_staff_mode": _is_staff_like(request.user) and not _is_coach_user(request.user),
             "breakdown_rows": breakdown_rows,
             "reservation_rows": reservation_rows,
-            "expense_rows": expense_rows,
-            "category_rows": category_rows,
-            "stringing_rows": stringing_rows,
+            "expense_rows": [row["expense"] for row in expense_meta_rows],
+            "expense_meta_rows": expense_meta_rows,
+            "approved_common_expense_rows": approved_common_expense_rows,
+            "approved_personal_expense_rows": approved_personal_expense_rows,
+            "common_category_rows": common_category_rows,
+            "personal_category_rows": personal_category_rows,
+            "stringing_rows": assigned_stringing_rows,
+            "stringing_status_rows": stringing_status_rows,
+            "stringing_delivery_rows": stringing_delivery_rows,
+            "unassigned_stringing_count": unassigned_stringing_count,
             "total_tickets": total_tickets,
             "lesson_total_amount": lesson_total_amount,
+            "assigned_stringing_amount": assigned_stringing_amount,
             "total_stringing_amount": total_stringing_amount,
-            "per_coach_stringing_amount": per_coach_stringing_amount,
+            "personal_reimbursement_amount": personal_reimbursement_amount,
+            "salary_before_common": salary_before_common,
             "total_amount": total_amount,
             "total_expense_amount": total_expense_amount,
+            "approved_common_expense_total": approved_common_expense_total,
+            "per_coach_common_expense": per_coach_common_expense,
             "active_coach_count": active_coach_count,
-            "per_coach_expense": per_coach_expense,
             "estimated_salary": estimated_salary,
         },
     )
@@ -1703,17 +1940,79 @@ def coach_expense_manage(request):
         return HttpResponse("Forbidden", status=403)
 
     is_admin_mode = bool(getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False))
-    visible_queryset = CoachExpense.objects.all().order_by("-expense_date", "-id")
+    visible_queryset = CoachExpense.objects.select_related("created_by").all().order_by("-expense_date", "-id")
     if not is_admin_mode:
         visible_queryset = visible_queryset.filter(created_by=request.user)
 
     if request.method == "POST":
+        action = (request.POST.get("action") or "create").strip()
+
+        if action == "update_meta":
+            if not is_admin_mode:
+                messages.error(request, "更新権限がありません。")
+                return redirect("club:coach_expense_manage")
+
+            expense_id = (request.POST.get("expense_id") or "").strip()
+            expense = CoachExpense.objects.filter(pk=expense_id).first()
+            if not expense:
+                messages.error(request, "対象の経費が見つかりません。")
+                return redirect("club:coach_expense_manage")
+
+            current_meta = _expense_parse_note(expense.note)
+            expense_type = (request.POST.get("expense_type") or current_meta["expense_type"]).strip()
+            receipt_status = (request.POST.get("receipt_status") or current_meta["receipt_status"]).strip()
+            receipt_check_status = (request.POST.get("receipt_check_status") or current_meta["receipt_check_status"]).strip()
+            approval_status = (request.POST.get("approval_status") or current_meta["approval_status"]).strip()
+            plain_note = current_meta["plain_note"]
+
+            valid_expense_types = {value for value, _label in EXPENSE_TYPE_CHOICES}
+            valid_receipt_status = {value for value, _label in EXPENSE_RECEIPT_CHOICES}
+            valid_receipt_check = {value for value, _label in EXPENSE_RECEIPT_CHECK_CHOICES}
+            valid_approval_status = {value for value, _label in EXPENSE_APPROVAL_CHOICES}
+
+            if expense_type not in valid_expense_types:
+                messages.error(request, "経費種別が不正です。")
+                return redirect("club:coach_expense_manage")
+            if receipt_status not in valid_receipt_status:
+                messages.error(request, "領収書有無が不正です。")
+                return redirect("club:coach_expense_manage")
+            if receipt_check_status not in valid_receipt_check:
+                messages.error(request, "領収書確認状況が不正です。")
+                return redirect("club:coach_expense_manage")
+            if approval_status not in valid_approval_status:
+                messages.error(request, "承認状態が不正です。")
+                return redirect("club:coach_expense_manage")
+
+            expense.note = _expense_build_note(
+                plain_note,
+                expense_type=expense_type,
+                receipt_status=receipt_status,
+                receipt_check_status=receipt_check_status,
+                approval_status=approval_status,
+            )
+            expense.save(update_fields=["note"])
+            messages.success(request, "経費ステータスを更新しました。")
+            return redirect("club:coach_expense_manage")
+
         raw_expense_date = (request.POST.get("expense_date") or "").strip()
         raw_category = (request.POST.get("category") or "").strip()
         raw_amount = (request.POST.get("amount") or "").strip()
         raw_note = (request.POST.get("note") or "").strip()
+        raw_expense_type = (request.POST.get("expense_type") or EXPENSE_TYPE_PERSONAL).strip()
+        raw_receipt_status = (request.POST.get("receipt_status") or EXPENSE_RECEIPT_NONE).strip()
+
+        if is_admin_mode:
+            raw_receipt_check_status = (request.POST.get("receipt_check_status") or EXPENSE_RECEIPT_CHECK_UNCHECKED).strip()
+            raw_approval_status = (request.POST.get("approval_status") or EXPENSE_APPROVAL_APPROVED).strip()
+        else:
+            raw_receipt_check_status = EXPENSE_RECEIPT_CHECK_UNCHECKED
+            raw_approval_status = EXPENSE_APPROVAL_SUBMITTED
 
         valid_categories = {value for value, _label in CoachExpense.CATEGORY_CHOICES}
+        valid_expense_types = {value for value, _label in EXPENSE_TYPE_CHOICES}
+        valid_receipt_status = {value for value, _label in EXPENSE_RECEIPT_CHOICES}
+        valid_receipt_check = {value for value, _label in EXPENSE_RECEIPT_CHECK_CHOICES}
+        valid_approval_status = {value for value, _label in EXPENSE_APPROVAL_CHOICES}
 
         try:
             expense_date_value = date.fromisoformat(raw_expense_date) if raw_expense_date else timezone.localdate()
@@ -1731,6 +2030,22 @@ def coach_expense_manage(request):
             messages.error(request, "経費カテゴリが不正です。")
             return redirect("club:coach_expense_manage")
 
+        if raw_expense_type not in valid_expense_types:
+            messages.error(request, "経費種別が不正です。")
+            return redirect("club:coach_expense_manage")
+
+        if raw_receipt_status not in valid_receipt_status:
+            messages.error(request, "領収書有無が不正です。")
+            return redirect("club:coach_expense_manage")
+
+        if raw_receipt_check_status not in valid_receipt_check:
+            messages.error(request, "領収書確認状況が不正です。")
+            return redirect("club:coach_expense_manage")
+
+        if raw_approval_status not in valid_approval_status:
+            messages.error(request, "承認状態が不正です。")
+            return redirect("club:coach_expense_manage")
+
         if amount_value < 0:
             messages.error(request, "金額は0円以上で入力してください。")
             return redirect("club:coach_expense_manage")
@@ -1740,7 +2055,13 @@ def coach_expense_manage(request):
                 expense_date=expense_date_value,
                 category=raw_category,
                 amount=amount_value,
-                note=raw_note,
+                note=_expense_build_note(
+                    raw_note,
+                    expense_type=raw_expense_type,
+                    receipt_status=raw_receipt_status,
+                    receipt_check_status=raw_receipt_check_status,
+                    approval_status=raw_approval_status,
+                ),
                 created_by=request.user,
             )
             expense.full_clean()
@@ -1764,24 +2085,40 @@ def coach_expense_manage(request):
     else:
         next_month = date(today.year, today.month + 1, 1)
 
-    current_month_queryset = visible_queryset.filter(expense_date__gte=month_start, expense_date__lt=next_month)
-    current_month_total = sum(int(obj.amount or 0) for obj in current_month_queryset)
+    current_month_queryset = list(
+        visible_queryset.filter(expense_date__gte=month_start, expense_date__lt=next_month)
+    )
+    current_month_meta_rows = [_expense_meta_row(expense) for expense in current_month_queryset]
+    current_month_total = sum(int(row["expense"].amount or 0) for row in current_month_meta_rows)
 
     category_totals = {}
-    for expense in current_month_queryset:
-        label = expense.get_category_display()
-        category_totals.setdefault(label, 0)
-        category_totals[label] += int(expense.amount or 0)
+    expense_type_totals = {}
+    approval_totals = {}
+    for row in current_month_meta_rows:
+        category_label = row["expense"].get_category_display()
+        category_totals.setdefault(category_label, 0)
+        category_totals[category_label] += int(row["expense"].amount or 0)
+
+        expense_type_totals.setdefault(row["expense_type_label"], 0)
+        expense_type_totals[row["expense_type_label"]] += int(row["expense"].amount or 0)
+
+        approval_totals.setdefault(row["approval_status_label"], 0)
+        approval_totals[row["approval_status_label"]] += 1
 
     category_rows = [
-        {
-            "label": label,
-            "amount": amount,
-        }
+        {"label": label, "amount": amount}
         for label, amount in sorted(category_totals.items(), key=lambda x: x[0])
     ]
+    expense_type_rows = [
+        {"label": label, "amount": amount}
+        for label, amount in sorted(expense_type_totals.items(), key=lambda x: x[0])
+    ]
+    approval_rows = [
+        {"label": label, "count": count}
+        for label, count in sorted(approval_totals.items(), key=lambda x: x[0])
+    ]
 
-    recent_expenses = list(visible_queryset[:30])
+    recent_expenses = [_expense_meta_row(expense) for expense in list(visible_queryset[:30])]
 
     return render(
         request,
@@ -1789,8 +2126,14 @@ def coach_expense_manage(request):
         {
             "recent_expenses": recent_expenses,
             "expense_category_choices": CoachExpense.CATEGORY_CHOICES,
+            "expense_type_choices": EXPENSE_TYPE_CHOICES,
+            "expense_receipt_choices": EXPENSE_RECEIPT_CHOICES,
+            "expense_receipt_check_choices": EXPENSE_RECEIPT_CHECK_CHOICES,
+            "expense_approval_choices": EXPENSE_APPROVAL_CHOICES,
             "current_month_total": current_month_total,
             "category_rows": category_rows,
+            "expense_type_rows": expense_type_rows,
+            "approval_rows": approval_rows,
             "today_value": today.isoformat(),
             "is_admin_mode": is_admin_mode,
         },
