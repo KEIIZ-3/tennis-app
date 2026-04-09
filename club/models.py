@@ -338,7 +338,9 @@ class FixedLesson(models.Model, LessonTypeMixin):
     )
     court = models.ForeignKey(
         Court,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="fixed_lessons",
     )
     members = models.ManyToManyField(
@@ -373,6 +375,11 @@ class FixedLesson(models.Model, LessonTypeMixin):
     def __str__(self):
         base = self.title or f"{self.get_weekday_display()} {self.start_hour:02d}:00"
         return f"{base} / {self.coach}"
+
+    def court_display(self):
+        if self.court:
+            return str(self.court)
+        return "未定"
 
     def effective_capacity(self):
         if self.lesson_type == self.LESSON_GENERAL:
@@ -424,6 +431,9 @@ class FixedLesson(models.Model, LessonTypeMixin):
 
     def sync_future_reservations(self, created_by=None):
         if not self.is_active:
+            return 0
+
+        if not self.court_id:
             return 0
 
         created_count = 0
