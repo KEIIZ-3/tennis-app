@@ -781,7 +781,6 @@ def _lesson_calendar_title(fixed_lesson):
     return fixed_lesson.get_lesson_type_display()
 
 
-@require_GET
 def _fixed_lesson_coach_names(fixed_lesson):
     try:
         return fixed_lesson.coach_display_names()
