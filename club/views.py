@@ -1545,8 +1545,7 @@ def _expense_parse_note(stored_note):
         }
 
     try:
-        first_line, plain_note = text.split("
-", 1)
+        first_line, plain_note = text.split("\\n", 1)
     except ValueError:
         first_line = text
         plain_note = ""
