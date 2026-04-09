@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}レッスンカレンダー{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <h1 class="page-title">レッスンカレンダー</h1>
+    <p class="page-subtitle">
+      1週間の固定レッスンスケジュールを一覧で確認できます。
+    </p>
+  </div>
+
+  <style>
+    .lesson-calendar-card{
+      background:#fff;
+      border:1px solid #e5e7eb;
+      border-radius:16px;
+      padding:18px;
+      box-shadow:0 8px 24px rgba(15, 23, 42, 0.06);
+    }
+    .lesson-calendar-grid{
+      display:grid;
+      grid-template-columns:repeat(7, minmax(0, 1fr));
+      gap:12px;
+      align-items:start;
+    }
+    .lesson-day-col{
+      background:#f8fafc;
+      border:1px solid #e5e7eb;
+      border-radius:14px;
+      min-height:100%;
+      overflow:hidden;
+    }
+    .lesson-day-head{
+      padding:12px 10px;
+      text-align:center;
+      font-weight:800;
+      font-size:15px;
+      background:#eff6ff;
+      border-bottom:1px solid #dbeafe;
+    }
+    .lesson-day-head.weekend{
+      background:#fff7ed;
+      border-bottom:1px solid #fed7aa;
+    }
+    .lesson-day-body{
+      padding:10px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .lesson-item{
+      background:#ffffff;
+      border:1px solid #dbeafe;
+      border-radius:12px;
+      padding:12px;
+    }
+    .lesson-item-title{
+      margin:0 0 6px;
+      font-size:14px;
+      font-weight:800;
+      line-height:1.5;
+      color:#0f172a;
+    }
+    .lesson-item-time{
+      display:inline-block;
+      margin-bottom:8px;
+      padding:4px 8px;
+      border-radius:999px;
+      background:#eef2ff;
+      color:#3730a3;
+      font-size:12px;
+      font-weight:700;
+    }
+    .lesson-item-meta{
+      display:grid;
+      gap:4px;
+      color:#475569;
+      font-size:12px;
+      line-height:1.6;
+    }
+    .lesson-empty{
+      padding:16px 12px;
+      text-align:center;
+      color:#94a3b8;
+      font-size:13px;
+    }
+
+    @media (max-width: 1024px){
+      .lesson-calendar-grid{
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 640px){
+      .lesson-calendar-card{
+        padding:14px;
+      }
+      .lesson-calendar-grid{
+        grid-template-columns:1fr;
+      }
+    }
+  </style>
+
+  <div class="lesson-calendar-card">
+    <div class="lesson-calendar-grid">
+      {% for day in day_columns %}
+        <div class="lesson-day-col">
+          <div class="lesson-day-head {% if day.weekday_value == 5 or day.weekday_value == 6 %}weekend{% endif %}">
+            {{ day.weekday_label }}
+          </div>
+
+          <div class="lesson-day-body">
+            {% if day.items %}
+              {% for item in day.items %}
+                <div class="lesson-item">
+                  <h2 class="lesson-item-title">{{ item.title }}</h2>
+                  <div class="lesson-item-time">{{ item.time_label }}</div>
+                  <div class="lesson-item-meta">
+                    <div>担当: {{ item.coach_name }}</div>
+                    <div>種別: {{ item.lesson_type_label }}</div>
+                    <div>対象: {{ item.target_level_label }}</div>
+                    <div>コート: {{ item.court_name }}</div>
+                    <div>定員: {{ item.capacity }}名</div>
+                  </div>
+                </div>
+              {% endfor %}
+            {% else %}
+              <div class="lesson-empty">レッスンはありません</div>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endblock %}
