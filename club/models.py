@@ -336,6 +336,22 @@ class FixedLesson(models.Model, LessonTypeMixin):
         related_name="fixed_lessons_as_coach",
         limit_choices_to={"role": "coach"},
     )
+    coach_2 = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="fixed_lessons_as_coach_2",
+        limit_choices_to={"role": "coach"},
+    )
+    coach_3 = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="fixed_lessons_as_coach_3",
+        limit_choices_to={"role": "coach"},
+    )
     court = models.ForeignKey(
         Court,
         on_delete=models.SET_NULL,
@@ -372,9 +388,32 @@ class FixedLesson(models.Model, LessonTypeMixin):
     class Meta:
         ordering = ["weekday", "start_hour", "id"]
 
+    def all_coaches(self):
+        seen = set()
+        coaches = []
+        for coach in [self.coach, self.coach_2, self.coach_3]:
+            if coach and coach.pk not in seen:
+                coaches.append(coach)
+                seen.add(coach.pk)
+        return coaches
+
+    def coach_display_names(self):
+        coaches = self.all_coaches()
+        if not coaches:
+            return "-"
+        return " / ".join(coach.display_name() for coach in coaches)
+
+    def includes_coach(self, user):
+        if not user or not getattr(user, "pk", None):
+            return False
+        return any(coach.pk == user.pk for coach in self.all_coaches())
+
+    def primary_coach(self):
+        return self.coach
+
     def __str__(self):
         base = self.title or f"{self.get_weekday_display()} {self.start_hour:02d}:00"
-        return f"{base} / {self.coach}"
+        return f"{base} / {self.coach_display_names()}"
 
     def court_display(self):
         if self.court:
@@ -394,26 +433,32 @@ class FixedLesson(models.Model, LessonTypeMixin):
         if self.start_hour + minimum_hours > BUSINESS_END_HOUR:
             raise ValidationError("固定レッスンの終了時刻が営業時間を超えています。")
 
-        if self.lesson_type == self.LESSON_GENERAL:
-            if int(self.coach_count or 0) < 1:
-                raise ValidationError("一般レッスンのコーチ人数は1以上にしてください。")
-            self.court_count = int(self.coach_count or 1)
-            self.capacity = self.effective_capacity()
+        coach_ids = [coach.pk for coach in self.all_coaches()]
+        if len(coach_ids) != len(set(coach_ids)):
+            raise ValidationError("同じコーチを重複して指定することはできません。")
 
+        selected_coach_count = max(len(self.all_coaches()), 1)
+
+        if self.lesson_type == self.LESSON_GENERAL:
+            self.coach_count = selected_coach_count
+            self.court_count = selected_coach_count
+            self.capacity = self.effective_capacity()
         elif self.lesson_type == self.LESSON_PRIVATE:
+            self.coach_2 = None
+            self.coach_3 = None
             self.coach_count = 1
             self.court_count = 1
             self.capacity = 1
-
         elif self.lesson_type == self.LESSON_GROUP:
+            self.coach_2 = None
+            self.coach_3 = None
             self.coach_count = 1
             self.court_count = 1
             if self.capacity < 2:
                 raise ValidationError("グループレッスンの定員は2名以上にしてください。")
-
         elif self.lesson_type == self.LESSON_EVENT:
-            self.coach_count = 1
-            self.court_count = 1
+            self.coach_count = selected_coach_count
+            self.court_count = max(selected_coach_count, 1)
             if self.capacity < 1:
                 raise ValidationError("イベントの定員は1以上にしてください。")
 
@@ -432,7 +477,6 @@ class FixedLesson(models.Model, LessonTypeMixin):
     def sync_future_reservations(self, created_by=None):
         if not self.is_active:
             return 0
-
         if not self.court_id:
             return 0
 
@@ -441,13 +485,14 @@ class FixedLesson(models.Model, LessonTypeMixin):
         initial_offset = (self.weekday - today.weekday()) % 7
         members = list(self.members.all())
         required_capacity = max(self.effective_capacity(), len(members), 1)
+        primary_coach = self.primary_coach()
 
         for week_index in range(self.weeks_ahead):
             target_date = today + timedelta(days=initial_offset + (7 * week_index))
             start_at, end_at = self._build_datetimes_for_date(target_date)
 
             availability, _ = CoachAvailability.objects.get_or_create(
-                coach=self.coach,
+                coach=primary_coach,
                 court=self.court,
                 lesson_type=self.lesson_type,
                 start_at=start_at,
@@ -483,7 +528,7 @@ class FixedLesson(models.Model, LessonTypeMixin):
             for member in members:
                 existing = Reservation.objects.filter(
                     user=member,
-                    coach=self.coach,
+                    coach=primary_coach,
                     court=self.court,
                     start_at=start_at,
                     end_at=end_at,
@@ -494,7 +539,7 @@ class FixedLesson(models.Model, LessonTypeMixin):
 
                 reservation = Reservation(
                     user=member,
-                    coach=self.coach,
+                    coach=primary_coach,
                     substitute_coach=availability.substitute_coach,
                     court=self.court,
                     availability=availability,
