@@ -24,6 +24,12 @@
       gap:18px;
       align-items:start;
     }
+    .shop-form-panel{
+      min-width:0;
+    }
+    .shop-candidate-panel{
+      min-width:0;
+    }
     .shop-sticky-panel{
       position:sticky;
       top:180px;
@@ -40,6 +46,42 @@
       color:#1d4ed8;
       font-size:13px;
       line-height:1.7;
+    }
+    .shop-mobile-summary{
+      display:none;
+      margin-top:14px;
+      padding:12px 14px;
+      border:1px solid #dbeafe;
+      background:#f8fbff;
+      border-radius:14px;
+    }
+    .shop-mobile-summary-line{
+      font-size:13px;
+      line-height:1.7;
+      color:#334155;
+    }
+    .shop-mobile-summary strong{
+      color:#0f172a;
+    }
+    .shop-candidate-toolbar{
+      display:none;
+      gap:8px;
+      margin-top:12px;
+      margin-bottom:12px;
+      flex-wrap:wrap;
+    }
+    .shop-toggle-button{
+      appearance:none;
+      border:1px solid #c7d2fe;
+      background:#eef2ff;
+      color:#3730a3;
+      min-height:38px;
+      padding:8px 12px;
+      border-radius:999px;
+      cursor:pointer;
+      font:inherit;
+      font-size:13px;
+      font-weight:700;
     }
     .shop-section-window{
       padding:14px 16px;
@@ -179,9 +221,25 @@
       margin-top:8px;
       line-height:1.8;
     }
+    .shop-inline-actions{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:4px;
+    }
+    .shop-mobile-bottom-bar{
+      display:none;
+    }
+
     @media (max-width: 900px){
       .shop-layout{
         grid-template-columns:1fr;
+      }
+      .shop-form-panel{
+        order:2;
+      }
+      .shop-candidate-panel{
+        order:1;
       }
       .shop-sticky-panel{
         position:static;
@@ -191,6 +249,117 @@
       }
       .shop-spec-grid{
         grid-template-columns:1fr;
+      }
+      .shop-mobile-summary{
+        display:block;
+      }
+      .shop-candidate-toolbar{
+        display:flex;
+      }
+      .shop-inline-actions{
+        display:none;
+      }
+      .shop-mobile-bottom-bar{
+        display:flex;
+        position:sticky;
+        bottom:0;
+        z-index:40;
+        gap:8px;
+        padding:10px;
+        margin:18px -16px -16px;
+        background:rgba(255,255,255,0.96);
+        backdrop-filter:blur(8px);
+        border-top:1px solid #e5e7eb;
+      }
+      .shop-mobile-bottom-bar button{
+        flex:1 1 0;
+        min-height:44px;
+        padding:10px 8px;
+        font-size:13px;
+      }
+    }
+
+    @media (max-width: 640px){
+      .shop-section-window{
+        padding:12px;
+      }
+      .shop-window-title{
+        font-size:16px;
+        margin-bottom:8px;
+      }
+      .shop-candidate-card{
+        padding:12px;
+        border-radius:12px;
+      }
+      .shop-candidate-top{
+        gap:10px;
+        margin-bottom:6px;
+      }
+      .shop-candidate-name{
+        font-size:14px;
+        line-height:1.45;
+      }
+      .shop-candidate-price{
+        font-size:16px;
+      }
+      .shop-candidate-meta{
+        font-size:11px;
+        line-height:1.5;
+      }
+      .shop-spec-box{
+        margin-top:8px;
+        padding:10px;
+      }
+      .shop-spec-title{
+        font-size:11px;
+        margin-bottom:6px;
+      }
+      .shop-spec-grid{
+        gap:6px 8px;
+      }
+      .shop-spec-label{
+        font-size:10px;
+      }
+      .shop-spec-value{
+        font-size:12px;
+      }
+      .shop-selected-preview{
+        padding:12px;
+        border-radius:12px;
+      }
+      .shop-selected-preview-title{
+        font-size:16px;
+      }
+      .shop-selected-preview-sub{
+        font-size:12px;
+        line-height:1.7;
+      }
+      .shop-mobile-summary-line{
+        font-size:12px;
+      }
+      .shop-toggle-button{
+        min-height:36px;
+        padding:7px 11px;
+        font-size:12px;
+      }
+      .shop-mobile-collapsed{
+        display:none;
+      }
+      .shop-candidate-panel.is-main-open #shop-main-window{
+        display:block;
+      }
+      .shop-candidate-panel.is-main-open #shop-string-window{
+        display:none;
+      }
+      .shop-candidate-panel.is-string-open #shop-main-window{
+        display:none;
+      }
+      .shop-candidate-panel.is-string-open #shop-string-window{
+        display:block;
+      }
+      .shop-candidate-panel.is-both-open #shop-main-window,
+      .shop-candidate-panel.is-both-open #shop-string-window{
+        display:block;
       }
     }
   </style>
@@ -217,7 +386,7 @@
   </div>
 
   <div class="shop-layout">
-    <div class="card">
+    <div class="card shop-form-panel">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
         <div>
           <h2 class="card-title" style="margin:0;">見積もり入力</h2>
@@ -228,6 +397,11 @@
         </div>
       </div>
 
+      <div class="shop-mobile-summary" id="shop-mobile-summary">
+        <div class="shop-mobile-summary-line">選択中の商品: <strong id="shop-mobile-main-name">未選択</strong></div>
+        <div class="shop-mobile-summary-line">選択中のガット: <strong id="shop-mobile-string-name">未選択</strong></div>
+      </div>
+
       <div id="shop-selected-main-preview" class="shop-selected-preview" style="display:none;">
         <div id="shop-selected-main-title" class="shop-selected-preview-title"></div>
         <div id="shop-selected-main-sub" class="shop-selected-preview-sub"></div>
@@ -236,10 +410,10 @@
       <div class="shop-note">
         {{ shop_candidate_support_message }}
         <br>
-        ブランドとカテゴリを変えると、商品マスタに登録された候補へ自動で切り替わります。
+        スマートフォンでは、先に候補を選んでから下の入力内容を確認すると見やすいです。
       </div>
 
-      <form method="post" style="margin-top:16px;">
+      <form method="post" id="shop-estimate-form" style="margin-top:16px;">
         {% csrf_token %}
 
         <p>
@@ -262,7 +436,7 @@
 
         <p>
           <label for="id_main_keyword">商品検索キーワード</label>
-          <input type="text" name="main_keyword" id="id_main_keyword" value="{{ form_data.main_keyword }}" placeholder="例: EZONE 100 / PURE DRIVE / SHIFT 99" readonly>
+          <input type="text" name="main_keyword" id="id_main_keyword" value="{{ form_data.main_keyword }}" placeholder="候補クリックで自動入力" readonly>
         </p>
 
         <p>
@@ -329,23 +503,34 @@
           <textarea name="note" id="id_note" rows="4" placeholder="希望カラー、グリップサイズ、受け渡しメモなど">{{ form_data.note }}</textarea>
         </p>
 
-        <div class="actions">
+        <div class="shop-inline-actions">
           <button type="submit" name="action" value="estimate">見積もりを出す</button>
           <button type="submit" name="action" value="purchase" class="btn btn-primary">購入申込を送信する</button>
+        </div>
+
+        <div class="shop-mobile-bottom-bar">
+          <button type="submit" name="action" value="estimate">見積もり</button>
+          <button type="submit" name="action" value="purchase" class="btn btn-primary">購入申込</button>
         </div>
       </form>
     </div>
 
-    <div class="card shop-sticky-panel">
+    <div class="card shop-candidate-panel shop-sticky-panel is-both-open" id="shop-candidate-panel">
       <h2 class="card-title">商品マスタ候補</h2>
-      <p class="card-subtitle">商品名は公式商品ページリンクです。カード本体を押すと左側へ商品名・定価が反映されます。</p>
+      <p class="card-subtitle">商品名リンクで商品ページを開けます。カード本体を押すと左側へ反映されます。</p>
 
-      <div class="shop-section-window">
+      <div class="shop-candidate-toolbar">
+        <button type="button" class="shop-toggle-button" id="show-main-candidates">ラケット候補</button>
+        <button type="button" class="shop-toggle-button" id="show-string-candidates">ガット候補</button>
+        <button type="button" class="shop-toggle-button" id="show-both-candidates">両方表示</button>
+      </div>
+
+      <div class="shop-section-window" id="shop-main-window">
         <div class="shop-window-title">ラケット候補</div>
         <div id="shop-main-candidates" class="shop-candidate-list"></div>
       </div>
 
-      <div class="shop-section-window string">
+      <div class="shop-section-window string" id="shop-string-window">
         <div class="shop-window-title">ガット候補</div>
         <div id="shop-string-candidates" class="shop-candidate-list"></div>
       </div>
@@ -373,6 +558,12 @@
       const shopSelectedMainTitle = document.getElementById("shop-selected-main-title");
       const shopSelectedMainSub = document.getElementById("shop-selected-main-sub");
       const productMasterDataElement = document.getElementById("shop-product-master-data");
+      const shopMobileMainName = document.getElementById("shop-mobile-main-name");
+      const shopMobileStringName = document.getElementById("shop-mobile-string-name");
+      const candidatePanel = document.getElementById("shop-candidate-panel");
+      const showMainCandidatesButton = document.getElementById("show-main-candidates");
+      const showStringCandidatesButton = document.getElementById("show-string-candidates");
+      const showBothCandidatesButton = document.getElementById("show-both-candidates");
 
       const allProductMasters = productMasterDataElement ? JSON.parse(productMasterDataElement.textContent || "[]") : [];
 
@@ -394,14 +585,28 @@
         if (tensionField) tensionField.style.display = enabled ? "block" : "none";
       }
 
+      function updateMobileSummary() {
+        if (shopMobileMainName) {
+          shopMobileMainName.textContent = (mainProductName && mainProductName.value) ? mainProductName.value : "未選択";
+        }
+        if (shopMobileStringName) {
+          const currentName = (stringProductName && stringProductName.value) ? stringProductName.value : "";
+          if (stringSource && stringSource.value === "none") {
+            shopMobileStringName.textContent = "不要";
+          } else if (stringSource && stringSource.value === "bring") {
+            shopMobileStringName.textContent = "持ち込み";
+          } else {
+            shopMobileStringName.textContent = currentName || "未選択";
+          }
+        }
+      }
+
       function buildRacketSpecRows(item) {
         const rows = [
-          ["重量（ガット無し）", item.spec_weight_unstrung],
-          ["ストリングパターン", item.spec_string_pattern],
-          ["ヘッドサイズ", item.spec_head_size],
-          ["バランス", item.spec_balance],
-          ["長さ", item.spec_length],
-          ["ビーム", item.spec_beam]
+          ["重量", item.spec_weight_unstrung],
+          ["パターン", item.spec_string_pattern],
+          ["ヘッド", item.spec_head_size],
+          ["バランス", item.spec_balance]
         ].filter((row) => row[1]);
         return rows;
       }
@@ -437,6 +642,7 @@
         if (!shopSelectedMainPreview || !shopSelectedMainTitle || !shopSelectedMainSub) return;
         if (!item) {
           shopSelectedMainPreview.style.display = "none";
+          updateMobileSummary();
           return;
         }
         shopSelectedMainPreview.style.display = "block";
@@ -451,6 +657,7 @@
           `定価：<strong>${priceText}</strong>`,
           specRows.map((row) => `${escapeHtml(row[0])}：<strong>${escapeHtml(row[1])}</strong>`).join("<br>")
         ].filter(Boolean).join("<br>");
+        updateMobileSummary();
       }
 
       function applyMainCandidate(item) {
@@ -465,6 +672,19 @@
         if (stringKeyword) stringKeyword.value = item.keyword || item.product_name || "";
         if (stringProductName) stringProductName.value = item.product_name || "";
         if (stringOfficialPrice) stringOfficialPrice.value = item.official_price || "";
+        updateMobileSummary();
+      }
+
+      function setCandidateMode(mode) {
+        if (!candidatePanel) return;
+        candidatePanel.classList.remove("is-main-open", "is-string-open", "is-both-open");
+        if (mode === "main") {
+          candidatePanel.classList.add("is-main-open");
+        } else if (mode === "string") {
+          candidatePanel.classList.add("is-string-open");
+        } else {
+          candidatePanel.classList.add("is-both-open");
+        }
       }
 
       function attachCandidateEvents() {
@@ -472,6 +692,10 @@
           button.addEventListener("click", function (event) {
             if (event.target.closest("a")) return;
             applyMainCandidate(JSON.parse(this.dataset.item || "{}"));
+            if (window.innerWidth <= 640) {
+              setCandidateMode("string");
+              mainProductName && mainProductName.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
           });
         });
 
@@ -479,6 +703,9 @@
           button.addEventListener("click", function (event) {
             if (event.target.closest("a")) return;
             applyStringCandidate(JSON.parse(this.dataset.item || "{}"));
+            if (window.innerWidth <= 640) {
+              stringProductName && stringProductName.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
           });
         });
       }
@@ -541,9 +768,37 @@
       if (requestStringing) {
         requestStringing.addEventListener("change", toggleTensionField);
       }
+      if (stringSource) {
+        stringSource.addEventListener("change", updateMobileSummary);
+      }
+      if (showMainCandidatesButton) {
+        showMainCandidatesButton.addEventListener("click", function () {
+          setCandidateMode("main");
+        });
+      }
+      if (showStringCandidatesButton) {
+        showStringCandidatesButton.addEventListener("click", function () {
+          setCandidateMode("string");
+        });
+      }
+      if (showBothCandidatesButton) {
+        showBothCandidatesButton.addEventListener("click", function () {
+          setCandidateMode("both");
+        });
+      }
 
       renderCandidatesBySelection();
       toggleTensionField();
+      updateMobileSummary();
+      renderSelectedMainPreview(mainProductName && mainProductName.value ? {
+        product_name: mainProductName.value,
+        product_url: "",
+        official_price: mainOfficialPrice ? mainOfficialPrice.value : "",
+        spec_weight_unstrung: "",
+        spec_string_pattern: "",
+        spec_head_size: "",
+        spec_balance: ""
+      } : null);
     })();
   </script>
 {% endblock %}
