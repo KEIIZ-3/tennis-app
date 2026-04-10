@@ -257,9 +257,6 @@
             {% for value, label in brand_choices %}
               <option value="{{ value }}" {% if form_data.brand == value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
-            {% if 'solinco' not in brand_choices|join:' ' %}
-              <option value="solinco" {% if form_data.brand == 'solinco' %}selected{% endif %}>Solinco</option>
-            {% endif %}
           </select>
         </p>
 
@@ -352,47 +349,6 @@
         <div class="shop-window-title">ガット候補</div>
         <div id="shop-string-candidates" class="shop-candidate-list"></div>
       </div>
-
-      <div class="spacer-16"></div>
-
-      <h2 class="card-title">公式サイト検索リンク</h2>
-      <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px; margin-bottom:14px;">
-        <div style="font-weight:800; margin-bottom:8px;">メイン商品</div>
-        {% if main_catalog_links or main_official_links %}
-          <div class="actions">
-            {% for link in main_catalog_links %}
-              <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn">{{ link.label }}</a>
-            {% endfor %}
-            {% for link in main_official_links %}
-              <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn btn-primary">{{ link.label }}</a>
-            {% endfor %}
-          </div>
-        {% else %}
-          <div class="muted">ブランド・カテゴリ・商品キーワードを入れると、ここにリンクが出ます。</div>
-        {% endif %}
-      </div>
-
-      <div style="padding:14px 16px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:12px;">
-        <div style="font-weight:800; margin-bottom:8px;">ガット</div>
-        {% if form_data.string_source == string_source_official %}
-          {% if string_catalog_links or string_official_links %}
-            <div class="actions">
-              {% for link in string_catalog_links %}
-                <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn">{{ link.label }}</a>
-              {% endfor %}
-              {% for link in string_official_links %}
-                <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn btn-primary">{{ link.label }}</a>
-              {% endfor %}
-            </div>
-          {% else %}
-            <div class="muted">ガット検索キーワードを入れると、ここに公式リンクが出ます。</div>
-          {% endif %}
-        {% elif form_data.string_source == string_source_bring_in %}
-          <div class="muted">ガット持ち込みが選択されています。ガット購入分の計算は入りません。</div>
-        {% else %}
-          <div class="muted">ガット不要が選択されています。</div>
-        {% endif %}
-      </div>
     </div>
   </div>
 
@@ -431,19 +387,6 @@
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#39;");
-      }
-
-      function ensureSolincoBrandOption() {
-        if (!brand) {
-          return;
-        }
-        const hasSolinco = Array.from(brand.options).some((option) => option.value === "solinco");
-        if (!hasSolinco) {
-          const option = document.createElement("option");
-          option.value = "solinco";
-          option.textContent = "Solinco";
-          brand.appendChild(option);
-        }
       }
 
       function toggleTensionField() {
@@ -599,7 +542,6 @@
         requestStringing.addEventListener("change", toggleTensionField);
       }
 
-      ensureSolincoBrandOption();
       renderCandidatesBySelection();
       toggleTensionField();
     })();
