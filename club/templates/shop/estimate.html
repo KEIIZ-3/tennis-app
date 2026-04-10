@@ -42,6 +42,87 @@
       font-size:13px;
       line-height:1.7;
     }
+    .shop-step-grid{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:12px;
+      margin-top:14px;
+      margin-bottom:14px;
+    }
+    .shop-step-card{
+      padding:12px 14px;
+      border:1px solid #dbeafe;
+      background:#f8fbff;
+      border-radius:14px;
+    }
+    .shop-step-number{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:24px;
+      height:24px;
+      border-radius:999px;
+      background:#0f172a;
+      color:#fff;
+      font-size:12px;
+      font-weight:800;
+      margin-bottom:8px;
+    }
+    .shop-step-title{
+      font-size:15px;
+      font-weight:800;
+      margin-bottom:4px;
+      color:#0f172a;
+    }
+    .shop-step-text{
+      font-size:12px;
+      color:#64748b;
+      line-height:1.7;
+    }
+    .shop-selected-summary{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:12px;
+      margin-top:14px;
+      margin-bottom:14px;
+    }
+    .shop-selected-box{
+      padding:14px;
+      border:1px solid #dbeafe;
+      background:#f8fbff;
+      border-radius:14px;
+    }
+    .shop-selected-label{
+      font-size:12px;
+      color:#64748b;
+      margin-bottom:6px;
+    }
+    .shop-selected-name{
+      font-size:15px;
+      font-weight:800;
+      color:#0f172a;
+      line-height:1.5;
+      word-break:break-word;
+    }
+    .shop-selected-sub{
+      font-size:12px;
+      color:#64748b;
+      margin-top:6px;
+      line-height:1.7;
+    }
+    .shop-status-chip{
+      display:inline-flex;
+      align-items:center;
+      min-height:26px;
+      padding:4px 10px;
+      border-radius:999px;
+      border:1px solid #c7d2fe;
+      background:#eef2ff;
+      color:#3730a3;
+      font-size:11px;
+      font-weight:800;
+      margin-bottom:8px;
+    }
     .shop-mobile-summary{
       display:none;
       margin-top:14px;
@@ -56,6 +137,25 @@
       color:#334155;
     }
     .shop-mobile-summary strong{color:#0f172a;}
+    .shop-inline-picker{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      margin-top:8px;
+    }
+    .shop-picker-button{
+      appearance:none;
+      border:1px solid #c7d2fe;
+      background:#eef2ff;
+      color:#3730a3;
+      min-height:38px;
+      padding:8px 12px;
+      border-radius:999px;
+      cursor:pointer;
+      font:inherit;
+      font-size:13px;
+      font-weight:700;
+    }
     .shop-candidate-toolbar{
       display:none;
       gap:8px;
@@ -121,7 +221,6 @@
       border:1px solid #dbeafe;
       background:#fff;
       border-radius:14px;
-      cursor:pointer;
       transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
     }
     .shop-candidate-card:hover{
@@ -159,6 +258,24 @@
       font-size:12px;
       line-height:1.7;
       margin-top:2px;
+    }
+    .shop-candidate-actions{
+      display:flex;
+      justify-content:flex-end;
+      margin-top:10px;
+    }
+    .shop-candidate-select{
+      appearance:none;
+      border:none;
+      background:#0f172a;
+      color:#fff;
+      min-height:38px;
+      padding:8px 12px;
+      border-radius:10px;
+      cursor:pointer;
+      font:inherit;
+      font-size:13px;
+      font-weight:700;
     }
     .shop-spec-box{
       margin-top:10px;
@@ -265,6 +382,10 @@
     }
 
     @media (max-width: 640px){
+      .shop-step-grid,
+      .shop-selected-summary{
+        grid-template-columns:1fr;
+      }
       .shop-section-window{padding:12px;}
       .shop-window-title{
         font-size:16px;
@@ -308,7 +429,8 @@
         line-height:1.7;
       }
       .shop-mobile-summary-line{font-size:12px;}
-      .shop-toggle-button{
+      .shop-toggle-button,
+      .shop-picker-button{
         min-height:36px;
         padding:7px 11px;
         font-size:12px;
@@ -355,9 +477,43 @@
         </div>
       </div>
 
+      <div class="shop-step-grid">
+        <div class="shop-step-card">
+          <div class="shop-step-number">1</div>
+          <div class="shop-step-title">カテゴリとブランドを選ぶ</div>
+          <div class="shop-step-text">上の条件を選ぶと、下の候補欄にラケット候補とガット候補が表示されます。</div>
+        </div>
+        <div class="shop-step-card">
+          <div class="shop-step-number">2</div>
+          <div class="shop-step-title">候補から選ぶ</div>
+          <div class="shop-step-text">「ラケット候補を見る」「ガット候補を見る」から選ぶと、入力欄へ自動反映されます。</div>
+        </div>
+      </div>
+
       <div class="shop-mobile-summary" id="shop-mobile-summary">
         <div class="shop-mobile-summary-line">選択中の商品: <strong id="shop-mobile-main-name">未選択</strong></div>
         <div class="shop-mobile-summary-line">選択中のガット: <strong id="shop-mobile-string-name">未選択</strong></div>
+      </div>
+
+      <div class="shop-selected-summary">
+        <div class="shop-selected-box">
+          <div class="shop-status-chip" id="main-selected-chip">メイン商品 未選択</div>
+          <div class="shop-selected-label">選択中のメイン商品</div>
+          <div class="shop-selected-name" id="shop-main-selected-name">まだ選択されていません</div>
+          <div class="shop-selected-sub" id="shop-main-selected-sub">カテゴリとブランドを選んでから、候補一覧で商品を選んでください。</div>
+          <div class="shop-inline-picker">
+            <button type="button" class="shop-picker-button" id="jump-main-candidates">ラケット候補を見る</button>
+          </div>
+        </div>
+        <div class="shop-selected-box">
+          <div class="shop-status-chip" id="string-selected-chip">ガット 未選択</div>
+          <div class="shop-selected-label">選択中のガット</div>
+          <div class="shop-selected-name" id="shop-string-selected-name">まだ選択されていません</div>
+          <div class="shop-selected-sub" id="shop-string-selected-sub">ガット不要・持ち込み・候補から選択のいずれかを選べます。</div>
+          <div class="shop-inline-picker">
+            <button type="button" class="shop-picker-button" id="jump-string-candidates">ガット候補を見る</button>
+          </div>
+        </div>
       </div>
 
       <div id="shop-selected-main-preview" class="shop-selected-preview" style="display:none;">
@@ -368,7 +524,7 @@
       <div class="shop-note">
         商品カテゴリとブランドを選ぶと、下に候補が表示されます。
         <br>
-        先に候補を見せないようにしているので、「これしかない」と誤解しにくい表示です。
+        初期状態では候補を出さないので、「これしかない」と誤解しにくい表示です。
       </div>
 
       <form method="post" id="shop-estimate-form" style="margin-top:16px;">
@@ -529,6 +685,14 @@
       const showMainCandidatesButton = document.getElementById("show-main-candidates");
       const showStringCandidatesButton = document.getElementById("show-string-candidates");
       const showBothCandidatesButton = document.getElementById("show-both-candidates");
+      const jumpMainCandidatesButton = document.getElementById("jump-main-candidates");
+      const jumpStringCandidatesButton = document.getElementById("jump-string-candidates");
+      const shopMainSelectedName = document.getElementById("shop-main-selected-name");
+      const shopMainSelectedSub = document.getElementById("shop-main-selected-sub");
+      const shopStringSelectedName = document.getElementById("shop-string-selected-name");
+      const shopStringSelectedSub = document.getElementById("shop-string-selected-sub");
+      const mainSelectedChip = document.getElementById("main-selected-chip");
+      const stringSelectedChip = document.getElementById("string-selected-chip");
 
       const allProductMasters = productMasterDataElement ? JSON.parse(productMasterDataElement.textContent || "[]") : [];
 
@@ -550,10 +714,22 @@
         if (tensionField) tensionField.style.display = enabled ? "block" : "none";
       }
 
-      function updateMobileSummary() {
+      function updateSelectedBoxes() {
         if (shopMobileMainName) {
           shopMobileMainName.textContent = (mainProductName && mainProductName.value) ? mainProductName.value : "未選択";
         }
+        if (shopMainSelectedName) {
+          shopMainSelectedName.textContent = (mainProductName && mainProductName.value) ? mainProductName.value : "まだ選択されていません";
+        }
+        if (shopMainSelectedSub) {
+          shopMainSelectedSub.textContent = (mainOfficialPrice && mainOfficialPrice.value)
+            ? `定価 ${yen(mainOfficialPrice.value)}`
+            : "カテゴリとブランドを選んでから、候補一覧で商品を選んでください。";
+        }
+        if (mainSelectedChip) {
+          mainSelectedChip.textContent = (mainProductName && mainProductName.value) ? "メイン商品 選択済み" : "メイン商品 未選択";
+        }
+
         if (shopMobileStringName) {
           const currentName = (stringProductName && stringProductName.value) ? stringProductName.value : "";
           if (stringSource && stringSource.value === "none") {
@@ -562,6 +738,40 @@
             shopMobileStringName.textContent = "持ち込み";
           } else {
             shopMobileStringName.textContent = currentName || "未選択";
+          }
+        }
+
+        if (shopStringSelectedName) {
+          if (stringSource && stringSource.value === "none") {
+            shopStringSelectedName.textContent = "ガット不要";
+          } else if (stringSource && stringSource.value === "bring") {
+            shopStringSelectedName.textContent = "ガット持ち込み";
+          } else {
+            shopStringSelectedName.textContent = (stringProductName && stringProductName.value) ? stringProductName.value : "まだ選択されていません";
+          }
+        }
+
+        if (shopStringSelectedSub) {
+          if (stringSource && stringSource.value === "none") {
+            shopStringSelectedSub.textContent = "ガット代は加算されません。";
+          } else if (stringSource && stringSource.value === "bring") {
+            shopStringSelectedSub.textContent = "持ち込みのため、ガット代は加算されません。";
+          } else if (stringOfficialPrice && stringOfficialPrice.value) {
+            shopStringSelectedSub.textContent = `定価 ${yen(stringOfficialPrice.value)}`;
+          } else {
+            shopStringSelectedSub.textContent = "ガット不要・持ち込み・候補から選択のいずれかを選べます。";
+          }
+        }
+
+        if (stringSelectedChip) {
+          if (stringSource && stringSource.value === "none") {
+            stringSelectedChip.textContent = "ガット 不要";
+          } else if (stringSource && stringSource.value === "bring") {
+            stringSelectedChip.textContent = "ガット 持ち込み";
+          } else if (stringProductName && stringProductName.value) {
+            stringSelectedChip.textContent = "ガット 選択済み";
+          } else {
+            stringSelectedChip.textContent = "ガット 未選択";
           }
         }
       }
@@ -605,7 +815,7 @@
         if (!shopSelectedMainPreview || !shopSelectedMainTitle || !shopSelectedMainSub) return;
         if (!item) {
           shopSelectedMainPreview.style.display = "none";
-          updateMobileSummary();
+          updateSelectedBoxes();
           return;
         }
         shopSelectedMainPreview.style.display = "block";
@@ -620,7 +830,7 @@
           `定価：<strong>${priceText}</strong>`,
           specRows.map((row) => `${escapeHtml(row[0])}：<strong>${escapeHtml(row[1])}</strong>`).join("<br>")
         ].filter(Boolean).join("<br>");
-        updateMobileSummary();
+        updateSelectedBoxes();
       }
 
       function applyMainCandidate(item) {
@@ -635,7 +845,7 @@
         if (stringKeyword) stringKeyword.value = item.keyword || item.product_name || "";
         if (stringProductName) stringProductName.value = item.product_name || "";
         if (stringOfficialPrice) stringOfficialPrice.value = item.official_price || "";
-        updateMobileSummary();
+        updateSelectedBoxes();
       }
 
       function setCandidateMode(mode) {
@@ -663,21 +873,34 @@
         }
       }
 
+      function scrollToCandidates(mode) {
+        if (!hasReadyFilters()) {
+          if (brand) {
+            brand.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+          return;
+        }
+        setCandidateMode(mode);
+        if (candidatePanel) {
+          candidatePanel.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }
+
       function attachCandidateEvents() {
-        document.querySelectorAll(".shop-main-candidate").forEach((button) => {
-          button.addEventListener("click", function (event) {
-            if (event.target.closest("a")) return;
+        document.querySelectorAll(".shop-main-candidate-select").forEach((button) => {
+          button.addEventListener("click", function () {
             applyMainCandidate(JSON.parse(this.dataset.item || "{}"));
             if (window.innerWidth <= 640) {
               setCandidateMode("string");
-              mainProductName && mainProductName.scrollIntoView({ behavior: "smooth", block: "center" });
+              if (candidatePanel) {
+                candidatePanel.scrollIntoView({ behavior: "smooth", block: "start" });
+              }
             }
           });
         });
 
-        document.querySelectorAll(".shop-string-candidate").forEach((button) => {
-          button.addEventListener("click", function (event) {
-            if (event.target.closest("a")) return;
+        document.querySelectorAll(".shop-string-candidate-select").forEach((button) => {
+          button.addEventListener("click", function () {
             applyStringCandidate(JSON.parse(this.dataset.item || "{}"));
             if (window.innerWidth <= 640) {
               stringProductName && stringProductName.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -697,8 +920,9 @@
           const nameHtml = item.product_url
             ? `<a href="${escapeHtml(item.product_url)}" target="_blank" rel="noopener">${escapeHtml(item.product_name || "")}</a>`
             : escapeHtml(item.product_name || "");
+          const buttonClass = type === "main" ? "shop-main-candidate-select" : "shop-string-candidate-select";
           return `
-            <button type="button" class="shop-candidate-card shop-${type}-candidate" data-item='${escapeHtml(JSON.stringify(item))}'>
+            <div class="shop-candidate-card">
               <div class="shop-candidate-top">
                 <div>
                   <div class="shop-candidate-name">${nameHtml}</div>
@@ -707,7 +931,10 @@
                 <div class="shop-candidate-price">${yen(item.official_price || 0)}</div>
               </div>
               ${renderSpecGrid(specRows)}
-            </button>
+              <div class="shop-candidate-actions">
+                <button type="button" class="shop-candidate-select ${buttonClass}" data-item='${escapeHtml(JSON.stringify(item))}'>この商品を選ぶ</button>
+              </div>
+            </div>
           `;
         }).join("");
       }
@@ -737,37 +964,19 @@
         attachCandidateEvents();
       }
 
-      if (category) {
-        category.addEventListener("change", renderCandidatesBySelection);
-      }
-      if (brand) {
-        brand.addEventListener("change", renderCandidatesBySelection);
-      }
-      if (requestStringing) {
-        requestStringing.addEventListener("change", toggleTensionField);
-      }
-      if (stringSource) {
-        stringSource.addEventListener("change", updateMobileSummary);
-      }
-      if (showMainCandidatesButton) {
-        showMainCandidatesButton.addEventListener("click", function () {
-          setCandidateMode("main");
-        });
-      }
-      if (showStringCandidatesButton) {
-        showStringCandidatesButton.addEventListener("click", function () {
-          setCandidateMode("string");
-        });
-      }
-      if (showBothCandidatesButton) {
-        showBothCandidatesButton.addEventListener("click", function () {
-          setCandidateMode("both");
-        });
-      }
+      if (category) category.addEventListener("change", renderCandidatesBySelection);
+      if (brand) brand.addEventListener("change", renderCandidatesBySelection);
+      if (requestStringing) requestStringing.addEventListener("change", toggleTensionField);
+      if (stringSource) stringSource.addEventListener("change", updateSelectedBoxes);
+      if (showMainCandidatesButton) showMainCandidatesButton.addEventListener("click", function () { setCandidateMode("main"); });
+      if (showStringCandidatesButton) showStringCandidatesButton.addEventListener("click", function () { setCandidateMode("string"); });
+      if (showBothCandidatesButton) showBothCandidatesButton.addEventListener("click", function () { setCandidateMode("both"); });
+      if (jumpMainCandidatesButton) jumpMainCandidatesButton.addEventListener("click", function () { scrollToCandidates("main"); });
+      if (jumpStringCandidatesButton) jumpStringCandidatesButton.addEventListener("click", function () { scrollToCandidates("string"); });
 
       renderCandidatesBySelection();
       toggleTensionField();
-      updateMobileSummary();
+      updateSelectedBoxes();
 
       if (mainProductName && mainProductName.value) {
         renderSelectedMainPreview({
