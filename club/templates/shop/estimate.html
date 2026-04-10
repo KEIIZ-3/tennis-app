@@ -127,7 +127,7 @@
     }
     .shop-estimate-summary{
       display:grid;
-      grid-template-columns:repeat(4, minmax(0, 1fr));
+      grid-template-columns:repeat(5, minmax(0, 1fr));
       gap:10px;
       margin-top:12px;
       margin-bottom:14px;
@@ -648,7 +648,7 @@
       <div style="padding:16px; border:1px solid #c7d2fe; background:#eef2ff; border-radius:12px;">
         <div class="muted" style="font-size:12px;">ガット張り</div>
         <div style="font-size:24px; font-weight:800; margin-top:6px;">一律1200円</div>
-        <div class="muted" style="font-size:12px; margin-top:6px;">依頼時のみ加算</div>
+        <div class="muted" style="font-size:12px; margin-top:6px;">デリバリーなら +500円</div>
       </div>
     </div>
   </div>
@@ -714,6 +714,11 @@
               <div class="shop-estimate-box-sub">張り依頼時のみ加算</div>
             </div>
             <div class="shop-estimate-box">
+              <div class="shop-estimate-box-label">デリバリー代</div>
+              <div class="shop-estimate-box-value">{{ estimate_result.delivery_fee|default:"0" }}円</div>
+              <div class="shop-estimate-box-sub">デリバリー希望時のみ加算</div>
+            </div>
+            <div class="shop-estimate-box">
               <div class="shop-estimate-box-label">見積合計</div>
               <div class="shop-estimate-box-value">{{ estimate_result.estimated_total }}円</div>
               <div class="shop-estimate-box-sub">参考価格としてご確認ください</div>
@@ -726,6 +731,7 @@
               <div class="shop-estimate-line">カテゴリ: {{ estimate_result.category_label }}</div>
               <div class="shop-estimate-line">ブランド: {{ estimate_result.brand_label }}</div>
               <div class="shop-estimate-line">商品名: {{ estimate_result.main_product_name|default:"-" }}</div>
+              <div class="shop-estimate-line">グリップサイズ: {{ estimate_result.grip_size|default:"-" }}</div>
               <div class="shop-estimate-line">定価: {{ estimate_result.main_official_price }}円</div>
               <div class="shop-estimate-line">販売価格: {{ estimate_result.main_sale_price }}円</div>
               <div class="shop-sale-saving">参考: 定価より {{ estimate_result.main_official_price|add:"-"|add:estimate_result.main_sale_price|default:"0" }}円お得</div>
@@ -738,6 +744,7 @@
               <div class="shop-estimate-line">ガット定価: {{ estimate_result.string_official_price }}円</div>
               <div class="shop-estimate-line">ガット販売価格: {{ estimate_result.string_sale_price }}円</div>
               <div class="shop-estimate-line">ガット張り: {% if estimate_result.request_stringing %}依頼する{% else %}依頼しない{% endif %}</div>
+              <div class="shop-estimate-line">デリバリー: {% if estimate_result.request_delivery %}希望する{% else %}希望しない{% endif %}</div>
               <div class="shop-estimate-line">テンション: {% if estimate_result.request_stringing %}{{ estimate_result.tension_lbs }} lbs{% else %}-{% endif %}</div>
               <div class="shop-sale-saving">参考: 定価より {{ estimate_result.string_official_price|add:"-"|add:estimate_result.string_sale_price|default:"0" }}円お得</div>
             </div>
@@ -808,6 +815,16 @@
         </p>
 
         <p>
+          <label for="id_grip_size">グリップサイズ</label>
+          <select name="grip_size" id="id_grip_size">
+            <option value="" {% if not form_data.grip_size %}selected{% endif %}>選択してください</option>
+            <option value="1" {% if form_data.grip_size == '1' %}selected{% endif %}>1</option>
+            <option value="2" {% if form_data.grip_size == '2' %}selected{% endif %}>2</option>
+            <option value="3" {% if form_data.grip_size == '3' %}selected{% endif %}>3</option>
+          </select>
+        </p>
+
+        <p>
           <label for="id_string_source">ガット</label>
           <select name="string_source" id="id_string_source">
             {% for value, label in string_source_choices %}
@@ -841,6 +858,16 @@
             <option value="1" {% if form_data.request_stringing == '1' %}selected{% endif %}>依頼する</option>
           </select>
         </p>
+
+        <div id="delivery-field">
+          <p>
+            <label for="id_request_delivery">デリバリー</label>
+            <select name="request_delivery" id="id_request_delivery">
+              <option value="0" {% if form_data.request_delivery != '1' %}selected{% endif %}>希望しない</option>
+              <option value="1" {% if form_data.request_delivery == '1' %}selected{% endif %}>希望する（+500円）</option>
+            </select>
+          </p>
+        </div>
 
         <div id="tension-field">
           <p>
@@ -921,6 +948,7 @@
     (function () {
       const category = document.getElementById("id_product_category");
       const brand = document.getElementById("id_brand");
+      const gripSize = document.getElementById("id_grip_size");
       const stringBrand = document.getElementById("id_string_brand");
       const mainKeyword = document.getElementById("id_main_keyword");
       const mainProductName = document.getElementById("id_main_product_name");
@@ -930,7 +958,9 @@
       const stringOfficialPrice = document.getElementById("id_string_official_price");
       const stringSource = document.getElementById("id_string_source");
       const requestStringing = document.getElementById("id_request_stringing");
+      const requestDelivery = document.getElementById("id_request_delivery");
       const tensionField = document.getElementById("tension-field");
+      const deliveryField = document.getElementById("delivery-field");
       const stringPurchaseFields = document.getElementById("string-purchase-fields");
       const shopMainCandidates = document.getElementById("shop-main-candidates");
       const shopStringCandidates = document.getElementById("shop-string-candidates");
@@ -1002,6 +1032,14 @@
         if (tensionField) tensionField.style.display = enabled ? "block" : "none";
       }
 
+      function toggleDeliveryField() {
+        const enabled = requestStringing && requestStringing.value === "1";
+        if (deliveryField) deliveryField.style.display = enabled ? "block" : "none";
+        if (!enabled && requestDelivery) {
+          requestDelivery.value = "0";
+        }
+      }
+
       function toggleStringPurchaseFields() {
         const isOfficial = stringSource && stringSource.value === "{{ string_source_official }}";
         if (stringPurchaseFields) {
@@ -1045,8 +1083,9 @@
         if (progressEstimate) progressEstimate.classList.toggle("is-done", mainDone && stringDone);
 
         if (progressMainText) {
+          const gripText = gripSize && gripSize.value ? ` / G${gripSize.value}` : "";
           progressMainText.textContent = mainDone
-            ? `選択済み: ${mainProductName.value}`
+            ? `選択済み: ${mainProductName.value}${gripText}`
             : "メイン商品を選択してください";
         }
 
@@ -1056,7 +1095,8 @@
           } else if (stringSource && stringSource.value === "{{ string_source_bring_in }}") {
             progressStringText.textContent = "ガット持ち込みを選択済みです";
           } else if (stringDone && stringProductName && stringProductName.value) {
-            progressStringText.textContent = `選択済み: ${stringProductName.value}`;
+            const deliveryText = requestDelivery && requestDelivery.value === "1" ? " / デリバリーあり" : "";
+            progressStringText.textContent = `選択済み: ${stringProductName.value}${deliveryText}`;
           } else {
             progressStringText.textContent = "ガット条件を選択してください";
           }
@@ -1071,10 +1111,12 @@
 
       function updateSelectedBoxes() {
         if (shopMobileMainName) {
-          shopMobileMainName.textContent = (mainProductName && mainProductName.value) ? mainProductName.value : "未選択";
+          const gripText = gripSize && gripSize.value ? ` / G${gripSize.value}` : "";
+          shopMobileMainName.textContent = (mainProductName && mainProductName.value) ? `${mainProductName.value}${gripText}` : "未選択";
         }
         if (shopMainSelectedName) {
-          shopMainSelectedName.textContent = (mainProductName && mainProductName.value) ? mainProductName.value : "まだ選択されていません";
+          const gripText = gripSize && gripSize.value ? ` / グリップ ${gripSize.value}` : "";
+          shopMainSelectedName.textContent = (mainProductName && mainProductName.value) ? `${mainProductName.value}${gripText}` : "まだ選択されていません";
         }
         if (shopMainSelectedSub) {
           if (mainOfficialPrice && mainOfficialPrice.value) {
@@ -1089,22 +1131,24 @@
 
         if (shopMobileStringName) {
           const currentName = (stringProductName && stringProductName.value) ? stringProductName.value : "";
+          const deliveryText = requestDelivery && requestDelivery.value === "1" ? " / デリバリー" : "";
           if (stringSource && stringSource.value === "{{ string_source_none }}") {
             shopMobileStringName.textContent = "不要";
           } else if (stringSource && stringSource.value === "{{ string_source_bring_in }}") {
             shopMobileStringName.textContent = "持ち込み";
           } else {
-            shopMobileStringName.textContent = currentName || "未選択";
+            shopMobileStringName.textContent = currentName ? `${currentName}${deliveryText}` : "未選択";
           }
         }
 
         if (shopStringSelectedName) {
+          const deliveryText = requestDelivery && requestDelivery.value === "1" ? " / デリバリー希望" : "";
           if (stringSource && stringSource.value === "{{ string_source_none }}") {
             shopStringSelectedName.textContent = "ガット不要";
           } else if (stringSource && stringSource.value === "{{ string_source_bring_in }}") {
             shopStringSelectedName.textContent = "ガット持ち込み";
           } else {
-            shopStringSelectedName.textContent = (stringProductName && stringProductName.value) ? stringProductName.value : "まだ選択されていません";
+            shopStringSelectedName.textContent = (stringProductName && stringProductName.value) ? `${stringProductName.value}${deliveryText}` : "まだ選択されていません";
           }
         }
 
@@ -1114,7 +1158,8 @@
           } else if (stringSource && stringSource.value === "{{ string_source_bring_in }}") {
             shopStringSelectedSub.textContent = "持ち込みのため、ガット代は加算されません。";
           } else if (stringOfficialPrice && stringOfficialPrice.value) {
-            shopStringSelectedSub.innerHTML = `定価 ${yen(stringOfficialPrice.value)}<br>参考: 定価より ${savingYen(calcSavingPrice(stringOfficialPrice.value))}`;
+            const deliveryLine = requestDelivery && requestDelivery.value === "1" ? "<br>デリバリー代 500円" : "";
+            shopStringSelectedSub.innerHTML = `定価 ${yen(stringOfficialPrice.value)}<br>参考: 定価より ${savingYen(calcSavingPrice(stringOfficialPrice.value))}${deliveryLine}`;
           } else if (stringBrand && stringBrand.value) {
             shopStringSelectedSub.textContent = `${getSelectedText(stringBrand)} の候補から選べます。`;
           } else {
@@ -1128,7 +1173,7 @@
           } else if (stringSource && stringSource.value === "{{ string_source_bring_in }}") {
             stringSelectedChip.textContent = "ガット 持ち込み";
           } else if (stringProductName && stringProductName.value) {
-            stringSelectedChip.textContent = "ガット 選択済み";
+            stringSelectedChip.textContent = requestDelivery && requestDelivery.value === "1" ? "ガット 選択済み / デリバリー" : "ガット 選択済み";
           } else {
             stringSelectedChip.textContent = "ガット 未選択";
           }
@@ -1184,6 +1229,7 @@
         const productUrl = item.product_url ? escapeHtml(item.product_url) : "";
         const priceText = yen(item.official_price || 0);
         const savingText = savingYen(calcSavingPrice(item.official_price || 0));
+        const gripText = gripSize && gripSize.value ? `グリップ：<strong>${escapeHtml(gripSize.value)}</strong>` : "";
         const specRows = buildRacketSpecRows(item);
         shopSelectedMainTitle.innerHTML = productUrl
           ? `<a href="${productUrl}" target="_blank" rel="noopener">${titleText}</a>`
@@ -1191,6 +1237,7 @@
         shopSelectedMainSub.innerHTML = [
           `定価：<strong>${priceText}</strong>`,
           `参考: <strong>${savingText}</strong>`,
+          gripText,
           specRows.map((row) => `${escapeHtml(row[0])}：<strong>${escapeHtml(row[1])}</strong>`).join("<br>")
         ].filter(Boolean).join("<br>");
         updateSelectedBoxes();
@@ -1259,7 +1306,8 @@
 
         if (shopMainWindowMeta) {
           if (hasReadyMainFilters()) {
-            shopMainWindowMeta.textContent = `${getSelectedText(category)} / ${getSelectedText(brand)} の候補を表示しています。`;
+            const gripText = gripSize && gripSize.value ? ` / グリップ ${gripSize.value}` : "";
+            shopMainWindowMeta.textContent = `${getSelectedText(category)} / ${getSelectedText(brand)}${gripText} の候補を表示しています。`;
           } else {
             shopMainWindowMeta.textContent = "カテゴリとブランドを選ぶと候補が表示されます。";
           }
@@ -1271,7 +1319,8 @@
           } else if (stringSource && stringSource.value === "{{ string_source_bring_in }}") {
             shopStringWindowMeta.textContent = "ガット持ち込みが選択されています。";
           } else if (hasReadyStringFilters()) {
-            shopStringWindowMeta.textContent = `${getSelectedText(stringBrand)} の候補を表示しています。`;
+            const deliveryText = requestDelivery && requestDelivery.value === "1" ? " / デリバリーあり" : "";
+            shopStringWindowMeta.textContent = `${getSelectedText(stringBrand)} の候補を表示しています。${deliveryText}`;
           } else {
             shopStringWindowMeta.textContent = "ガット購入とブランド選択で候補が表示されます。";
           }
@@ -1399,6 +1448,23 @@
         renderCandidatesBySelection();
       });
 
+      if (gripSize) gripSize.addEventListener("change", function () {
+        if (mainProductName && mainProductName.value) {
+          renderSelectedMainPreview({
+            product_name: mainProductName.value,
+            product_url: "",
+            official_price: mainOfficialPrice ? mainOfficialPrice.value : "",
+            spec_weight_unstrung: "",
+            spec_string_pattern: "",
+            spec_head_size: "",
+            spec_balance: ""
+          });
+        } else {
+          updateSelectedBoxes();
+        }
+        renderCandidatesBySelection();
+      });
+
       if (stringBrand) stringBrand.addEventListener("change", function () {
         if (stringKeyword) stringKeyword.value = "";
         if (stringProductName) stringProductName.value = "";
@@ -1407,7 +1473,15 @@
         renderCandidatesBySelection();
       });
 
-      if (requestStringing) requestStringing.addEventListener("change", toggleTensionField);
+      if (requestStringing) requestStringing.addEventListener("change", function () {
+        toggleTensionField();
+        toggleDeliveryField();
+        updateSelectedBoxes();
+      });
+
+      if (requestDelivery) requestDelivery.addEventListener("change", function () {
+        updateSelectedBoxes();
+      });
 
       if (stringSource) stringSource.addEventListener("change", function () {
         toggleStringPurchaseFields();
@@ -1429,8 +1503,9 @@
       if (clearStringSelectionButton) clearStringSelectionButton.addEventListener("click", clearStringSelection);
 
       toggleStringPurchaseFields();
-      renderCandidatesBySelection();
       toggleTensionField();
+      toggleDeliveryField();
+      renderCandidatesBySelection();
       updateSelectedBoxes();
 
       if (mainProductName && mainProductName.value) {
