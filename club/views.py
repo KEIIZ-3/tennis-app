@@ -3504,73 +3504,9 @@ def _shop_brand_catalog_links(brand_value, category_value):
 
 
 def _shop_brand_search_links(brand_value, keyword, item_label="商品"):
-    keyword = (keyword or "").strip()
-    if not keyword:
-        return []
+    return []
 
-    encoded = urllib.parse.quote(keyword)
-    links = {
-        ShopEstimateRequest.BRAND_YONEX: [
-            {
-                "label": f"YONEX 公式で{item_label}検索",
-                "url": f"https://www.yonex.co.jp/search/?keyword={encoded}",
-            }
-        ],
-        ShopEstimateRequest.BRAND_WILSON: [
-            {
-                "label": f"Wilson 公式で{item_label}検索",
-                "url": f"https://jp.wilson.com/search?q={encoded}",
-            }
-        ],
-        ShopEstimateRequest.BRAND_BABOLAT: [
-            {
-                "label": f"Babolat 公式で{item_label}検索",
-                "url": f"https://www.babolat.com/jp/search?cgid=root&prefn1=country&prefv1=JP&q={encoded}",
-            }
-        ],
-        ShopEstimateRequest.BRAND_HEAD: [
-            {
-                "label": f"HEAD 公式で{item_label}検索",
-                "url": f"https://www.head.com/ja_JP/search/{encoded}",
-            }
-        ],
-        ShopEstimateRequest.BRAND_PRINCE: [
-            {
-                "label": f"Prince 公式で{item_label}検索",
-                "url": f"https://prince.co.jp/tennis/search/?q={encoded}",
-            }
-        ],
-        ShopEstimateRequest.BRAND_DUNLOP: [
-            {
-                "label": f"DUNLOP 公式で{item_label}検索",
-                "url": f"https://sports.dunlop.co.jp/tennis/search/?keyword={encoded}",
-            }
-        ],
-        ShopEstimateRequest.BRAND_TECHNIFIBRE: [
-            {
-                "label": f"Tecnifibre 公式で{item_label}検索",
-                "url": f"https://www.tecnifibre.com/en/search?text={encoded}",
-            }
-        ],
-        "solinco": [
-            {
-                "label": f"Solinco 参照資料で{item_label}確認",
-                "url": "https://www.kimony.com/file/solinco2026-15.pdf",
-            },
-            {
-                "label": "Solinco MACH-10 資料",
-                "url": "https://www.kimony.com/file/MACH-10.pdf",
-            },
-        ],
-        "luxilon": [
-            {
-                "label": f"Luxilon 公式で{item_label}検索",
-                "url": f"https://jp.wilson.com/search?q={encoded}",
-            }
-        ],
-        ShopEstimateRequest.BRAND_OTHER: [],
-    }
-    return links.get(brand_value, [])
+
 
 
 def _safe_int(value, default=0):
@@ -3790,11 +3726,11 @@ def shop_estimate_view(request):
                 messages.info(request, f"申込ID {reused_request.id} の内容をフォームへ再読み込みしました。")
                 master_candidate_context = _shop_master_candidate_lists(form_data)
 
-        main_official_links = _shop_brand_search_links(form_data["brand"], form_data["main_keyword"], item_label="商品")
+        main_official_links = []
         main_catalog_links = _shop_brand_catalog_links(form_data["brand"], form_data["product_category"])
         main_image_links = _shop_image_search_links(form_data["brand"], form_data["main_keyword"], item_label="商品画像")
         if form_data["string_source"] == ShopEstimateRequest.STRING_SOURCE_OFFICIAL:
-            string_official_links = _shop_brand_search_links(form_data["brand"], form_data["string_keyword"], item_label="ガット")
+            string_official_links = []
             string_catalog_links = _shop_brand_catalog_links(form_data["brand"], ShopEstimateRequest.CATEGORY_STRING)
             string_image_links = _shop_image_search_links(form_data["brand"], form_data["string_keyword"], item_label="ガット画像")
 
@@ -3820,11 +3756,11 @@ def shop_estimate_view(request):
         request_stringing = form_data["request_stringing"] == "1"
         tension_lbs = _safe_int(form_data["tension_lbs"], 50) if request_stringing else None
 
-        main_official_links = _shop_brand_search_links(form_data["brand"], form_data["main_keyword"], item_label="商品")
+        main_official_links = []
         main_catalog_links = _shop_brand_catalog_links(form_data["brand"], form_data["product_category"])
         main_image_links = _shop_image_search_links(form_data["brand"], form_data["main_keyword"], item_label="商品画像")
         if form_data["string_source"] == ShopEstimateRequest.STRING_SOURCE_OFFICIAL:
-            string_official_links = _shop_brand_search_links(form_data["brand"], form_data["string_keyword"], item_label="ガット")
+            string_official_links = []
             string_catalog_links = _shop_brand_catalog_links(form_data["brand"], ShopEstimateRequest.CATEGORY_STRING)
             string_image_links = _shop_image_search_links(form_data["brand"], form_data["string_keyword"], item_label="ガット画像")
 
@@ -4007,11 +3943,7 @@ def shop_estimate_complete_view(request, pk):
             estimate_request.brand,
             ShopEstimateRequest.CATEGORY_STRING,
         )
-        string_official_links = _shop_brand_search_links(
-            estimate_request.brand,
-            estimate_request.string_keyword or estimate_request.string_product_name,
-            item_label="ガット",
-        )
+        string_official_links = []
         string_image_links = _shop_image_search_links(
             estimate_request.brand,
             estimate_request.string_keyword or estimate_request.string_product_name,
