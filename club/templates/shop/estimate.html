@@ -409,8 +409,10 @@
     }
     .shop-mobile-bottom-bar{display:none;}
     .shop-candidate-results{display:none;}
-    .shop-candidate-panel.has-ready-filters .shop-candidate-results{display:block;}
-    .shop-candidate-panel.has-ready-filters .shop-guide-box{display:none;}
+    .shop-candidate-panel.has-ready-main .shop-candidate-results,
+    .shop-candidate-panel.has-ready-string .shop-candidate-results{display:block;}
+    .shop-candidate-panel.has-ready-main .shop-guide-box,
+    .shop-candidate-panel.has-ready-string .shop-guide-box{display:none;}
 
     @media (max-width: 900px){
       .shop-layout{grid-template-columns:1fr;}
@@ -552,13 +554,13 @@
       <div class="shop-step-grid">
         <div class="shop-step-card">
           <div class="shop-step-number">1</div>
-          <div class="shop-step-title">カテゴリとブランドを選ぶ</div>
-          <div class="shop-step-text">上の条件を選ぶと、下の候補欄にラケット候補とガット候補が表示されます。</div>
+          <div class="shop-step-title">メイン商品の条件を選ぶ</div>
+          <div class="shop-step-text">商品カテゴリとブランドを選ぶと、ラケット候補が表示されます。</div>
         </div>
         <div class="shop-step-card">
           <div class="shop-step-number">2</div>
-          <div class="shop-step-title">候補から選ぶ</div>
-          <div class="shop-step-text">「ラケット候補を見る」「ガット候補を見る」から選ぶと、入力欄へ自動反映されます。</div>
+          <div class="shop-step-title">ガットブランドを選ぶ</div>
+          <div class="shop-step-text">ガット購入の場合だけ、ガットブランドを選ぶとガット候補が表示されます。</div>
         </div>
       </div>
 
@@ -640,13 +642,15 @@
       </div>
 
       <div class="shop-note">
-        商品カテゴリとブランドを選ぶと、下に候補が表示されます。
-        <br>
-        初期状態では候補を出さないので、「これしかない」と誤解しにくい表示です。
+        商品カテゴリ・メイン商品のブランド・ガットブランドを選ぶと、それぞれの候補が表示されます。
       </div>
 
       <form method="post" id="shop-estimate-form" style="margin-top:16px;">
         {% csrf_token %}
+
+        <input type="hidden" name="main_keyword" id="id_main_keyword" value="{{ form_data.main_keyword }}">
+        <input type="hidden" name="main_product_name" id="id_main_product_name" value="{{ form_data.main_product_name }}">
+        <input type="hidden" name="main_official_price" id="id_main_official_price" value="{{ form_data.main_official_price }}">
 
         <p>
           <label for="id_product_category">商品カテゴリ</label>
@@ -658,30 +662,13 @@
         </p>
 
         <p>
-          <label for="id_brand">ブランド</label>
+          <label for="id_brand">メイン商品ブランド</label>
           <select name="brand" id="id_brand">
             {% for value, label in brand_choices %}
               <option value="{{ value }}" {% if form_data.brand == value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </p>
-
-        <p>
-          <label for="id_main_keyword">商品検索キーワード</label>
-          <input type="text" name="main_keyword" id="id_main_keyword" value="{{ form_data.main_keyword }}" placeholder="候補クリックで自動入力" readonly>
-        </p>
-
-        <p>
-          <label for="id_main_product_name">商品名</label>
-          <input type="text" name="main_product_name" id="id_main_product_name" value="{{ form_data.main_product_name }}" placeholder="候補クリックで自動入力" readonly>
-        </p>
-
-        <p>
-          <label for="id_main_official_price">商品定価（税込）</label>
-          <input type="number" name="main_official_price" id="id_main_official_price" value="{{ form_data.main_official_price }}" min="0" step="1" placeholder="候補クリックで自動入力" readonly>
-        </p>
-
-        <hr style="border:none; border-top:1px solid #e5e7eb; margin:20px 0;">
 
         <p>
           <label for="id_string_source">ガット</label>
@@ -694,19 +681,18 @@
 
         <div id="string-purchase-fields">
           <p>
-            <label for="id_string_keyword">ガット検索キーワード</label>
-            <input type="text" name="string_keyword" id="id_string_keyword" value="{{ form_data.string_keyword }}" placeholder="候補クリックで自動入力" readonly>
+            <label for="id_string_brand">ガットブランド</label>
+            <select id="id_string_brand">
+              <option value="">選択してください</option>
+              {% for value, label in brand_choices %}
+                <option value="{{ value }}">{{ label }}</option>
+              {% endfor %}
+            </select>
           </p>
 
-          <p>
-            <label for="id_string_product_name">ガット商品名</label>
-            <input type="text" name="string_product_name" id="id_string_product_name" value="{{ form_data.string_product_name }}" placeholder="候補クリックで自動入力" readonly>
-          </p>
-
-          <p>
-            <label for="id_string_official_price">ガット定価（税込）</label>
-            <input type="number" name="string_official_price" id="id_string_official_price" value="{{ form_data.string_official_price }}" min="0" step="1" placeholder="候補クリックで自動入力" readonly>
-          </p>
+          <input type="hidden" name="string_keyword" id="id_string_keyword" value="{{ form_data.string_keyword }}">
+          <input type="hidden" name="string_product_name" id="id_string_product_name" value="{{ form_data.string_product_name }}">
+          <input type="hidden" name="string_official_price" id="id_string_official_price" value="{{ form_data.string_official_price }}">
         </div>
 
         <hr style="border:none; border-top:1px solid #e5e7eb; margin:20px 0;">
@@ -749,11 +735,11 @@
 
     <div class="card shop-candidate-panel shop-sticky-panel is-both-open" id="shop-candidate-panel">
       <h2 class="card-title">商品マスタ候補</h2>
-      <p class="card-subtitle">商品カテゴリとブランドを選ぶと、ここに候補が表示されます。</p>
+      <p class="card-subtitle">選択した条件に応じて、ラケット候補とガット候補を表示します。</p>
 
       <div class="shop-guide-box" id="shop-guide-box">
         まだ候補は表示していません。<br>
-        上の「商品カテゴリ」と「ブランド」を選ぶと、ラケット候補とガット候補が表示されます。
+        メイン商品は「商品カテゴリ」と「メイン商品ブランド」、ガットは「ガットブランド」を選ぶと候補が表示されます。
       </div>
 
       <div class="shop-candidate-results" id="shop-candidate-results">
@@ -782,6 +768,7 @@
     (function () {
       const category = document.getElementById("id_product_category");
       const brand = document.getElementById("id_brand");
+      const stringBrand = document.getElementById("id_string_brand");
       const mainKeyword = document.getElementById("id_main_keyword");
       const mainProductName = document.getElementById("id_main_product_name");
       const mainOfficialPrice = document.getElementById("id_main_official_price");
@@ -791,6 +778,7 @@
       const stringSource = document.getElementById("id_string_source");
       const requestStringing = document.getElementById("id_request_stringing");
       const tensionField = document.getElementById("tension-field");
+      const stringPurchaseFields = document.getElementById("string-purchase-fields");
       const shopMainCandidates = document.getElementById("shop-main-candidates");
       const shopStringCandidates = document.getElementById("shop-string-candidates");
       const shopSelectedMainPreview = document.getElementById("shop-selected-main-preview");
@@ -830,6 +818,19 @@
       function toggleTensionField() {
         const enabled = requestStringing && requestStringing.value === "1";
         if (tensionField) tensionField.style.display = enabled ? "block" : "none";
+      }
+
+      function toggleStringPurchaseFields() {
+        const isOfficial = stringSource && stringSource.value === "{{ string_source_official }}";
+        if (stringPurchaseFields) {
+          stringPurchaseFields.style.display = isOfficial ? "block" : "none";
+        }
+        if (!isOfficial) {
+          if (stringBrand) stringBrand.value = "";
+          if (stringKeyword) stringKeyword.value = "";
+          if (stringProductName) stringProductName.value = "";
+          if (stringOfficialPrice) stringOfficialPrice.value = "";
+        }
       }
 
       function updateSelectedBoxes() {
@@ -876,6 +877,8 @@
             shopStringSelectedSub.textContent = "持ち込みのため、ガット代は加算されません。";
           } else if (stringOfficialPrice && stringOfficialPrice.value) {
             shopStringSelectedSub.textContent = `定価 ${yen(stringOfficialPrice.value)}`;
+          } else if (stringBrand && stringBrand.value) {
+            shopStringSelectedSub.textContent = `${stringBrand.options[stringBrand.selectedIndex].text} の候補から選べます。`;
           } else {
             shopStringSelectedSub.textContent = "ガット不要・持ち込み・候補から選択のいずれかを選べます。";
           }
@@ -978,24 +981,37 @@
         }
       }
 
-      function hasReadyFilters() {
+      function hasReadyMainFilters() {
         return !!(category && brand && category.value && brand.value);
+      }
+
+      function hasReadyStringFilters() {
+        return !!(
+          stringSource &&
+          stringSource.value === "{{ string_source_official }}" &&
+          stringBrand &&
+          stringBrand.value
+        );
       }
 
       function syncCandidateVisibility() {
         if (!candidatePanel) return;
-        if (hasReadyFilters()) {
-          candidatePanel.classList.add("has-ready-filters");
-        } else {
-          candidatePanel.classList.remove("has-ready-filters");
+        candidatePanel.classList.remove("has-ready-main", "has-ready-string");
+        if (hasReadyMainFilters()) {
+          candidatePanel.classList.add("has-ready-main");
+        }
+        if (hasReadyStringFilters()) {
+          candidatePanel.classList.add("has-ready-string");
         }
       }
 
       function scrollToCandidates(mode) {
-        if (!hasReadyFilters()) {
-          if (brand) {
-            brand.scrollIntoView({ behavior: "smooth", block: "center" });
-          }
+        if (mode === "main" && !hasReadyMainFilters()) {
+          if (brand) brand.scrollIntoView({ behavior: "smooth", block: "center" });
+          return;
+        }
+        if (mode === "string" && !hasReadyStringFilters()) {
+          if (stringBrand) stringBrand.scrollIntoView({ behavior: "smooth", block: "center" });
           return;
         }
         setCandidateMode(mode);
@@ -1021,7 +1037,7 @@
           button.addEventListener("click", function () {
             applyStringCandidate(JSON.parse(this.dataset.item || "{}"));
             if (window.innerWidth <= 640) {
-              stringProductName && stringProductName.scrollIntoView({ behavior: "smooth", block: "center" });
+              stringSource && stringSource.scrollIntoView({ behavior: "smooth", block: "center" });
             }
           });
         });
@@ -1058,7 +1074,7 @@
       }
 
       function getFilteredMainCandidates() {
-        if (!hasReadyFilters()) return [];
+        if (!hasReadyMainFilters()) return [];
         return allProductMasters.filter((item) => {
           return item.product_type === "main"
             && item.brand === brand.value
@@ -1067,10 +1083,10 @@
       }
 
       function getFilteredStringCandidates() {
-        if (!hasReadyFilters()) return [];
+        if (!hasReadyStringFilters()) return [];
         return allProductMasters.filter((item) => {
           return item.product_type === "string"
-            && item.brand === brand.value
+            && item.brand === stringBrand.value
             && item.category === "string";
         });
       }
@@ -1084,14 +1100,26 @@
 
       if (category) category.addEventListener("change", renderCandidatesBySelection);
       if (brand) brand.addEventListener("change", renderCandidatesBySelection);
+      if (stringBrand) stringBrand.addEventListener("change", function () {
+        if (stringKeyword) stringKeyword.value = "";
+        if (stringProductName) stringProductName.value = "";
+        if (stringOfficialPrice) stringOfficialPrice.value = "";
+        updateSelectedBoxes();
+        renderCandidatesBySelection();
+      });
       if (requestStringing) requestStringing.addEventListener("change", toggleTensionField);
-      if (stringSource) stringSource.addEventListener("change", updateSelectedBoxes);
+      if (stringSource) stringSource.addEventListener("change", function () {
+        toggleStringPurchaseFields();
+        updateSelectedBoxes();
+        renderCandidatesBySelection();
+      });
       if (showMainCandidatesButton) showMainCandidatesButton.addEventListener("click", function () { setCandidateMode("main"); });
       if (showStringCandidatesButton) showStringCandidatesButton.addEventListener("click", function () { setCandidateMode("string"); });
-      if (showBothCandidatesButton) showBothCandidatesButton.addEvaentListener("click", function () { setCandidateMode("both"); });
+      if (showBothCandidatesButton) showBothCandidatesButton.addEventListener("click", function () { setCandidateMode("both"); });
       if (jumpMainCandidatesButton) jumpMainCandidatesButton.addEventListener("click", function () { scrollToCandidates("main"); });
       if (jumpStringCandidatesButton) jumpStringCandidatesButton.addEventListener("click", function () { scrollToCandidates("string"); });
 
+      toggleStringPurchaseFields();
       renderCandidatesBySelection();
       toggleTensionField();
       updateSelectedBoxes();
