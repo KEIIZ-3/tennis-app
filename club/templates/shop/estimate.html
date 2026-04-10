@@ -1088,7 +1088,7 @@
       if (stringSource) stringSource.addEventListener("change", updateSelectedBoxes);
       if (showMainCandidatesButton) showMainCandidatesButton.addEventListener("click", function () { setCandidateMode("main"); });
       if (showStringCandidatesButton) showStringCandidatesButton.addEventListener("click", function () { setCandidateMode("string"); });
-      if (showBothCandidatesButton) showBothCandidatesButton.addEventListener("click", function () { setCandidateMode("both"); });
+      if (showBothCandidatesButton) showBothCandidatesButton.addEvaentListener("click", function () { setCandidateMode("both"); });
       if (jumpMainCandidatesButton) jumpMainCandidatesButton.addEventListener("click", function () { scrollToCandidates("main"); });
       if (jumpStringCandidatesButton) jumpStringCandidatesButton.addEventListener("click", function () { scrollToCandidates("string"); });
 
