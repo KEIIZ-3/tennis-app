@@ -2,178 +2,195 @@
 {% block title %}予約作成{% endblock %}
 
 {% block content %}
-<div class="card">
-  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
-    <div>
-      <h1 style="margin:0;">予約作成</h1>
-      <p class="muted" style="margin:8px 0 0;">
-        {{ user.display_name }} さんの予約申請を作成します。
-      </p>
-    </div>
-
-    {% if user.role == "member" %}
-      <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <div style="padding:12px 14px; border:1px solid #fed7aa; background:#fff7ed; border-radius:10px;">
-          <strong>現在のチケット残数:</strong> {{ user.ticket_balance }}枚
-        </div>
-        <div style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px;">
-          <strong>現在のレベル:</strong> {{ user.get_member_level_display }}
-        </div>
-      </div>
-    {% endif %}
-  </div>
-</div>
-
-<div class="card">
-  <div style="display:flex; gap:12px; flex-wrap:wrap;">
-    <div style="padding:12px 14px; border:1px solid #ede9fe; background:#f5f3ff; border-radius:10px;">
-      プライベート：1時間ごとにチケット2枚 / 申請制
-    </div>
-    <div style="padding:12px 14px; border:1px solid #dcfce7; background:#f0fdf4; border-radius:10px;">
-      グループ：1時間ごとに参加人数×1枚 / 申請制
-    </div>
-  </div>
-
-  <div style="margin-top:14px; padding:14px 16px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:10px;">
-    <div style="font-weight:700; margin-bottom:6px;">この画面の使い方</div>
-    <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
-      <li>コーチは「おまかせ」も選べます。</li>
-      <li>コート選択はありません。必要な情報は申請後に調整します。</li>
-      <li>下のカレンダーでドラッグすると、開始・終了に自動反映されます。</li>
-      <li>開始日と開始時間を先に入れると、終了は自動で1時間後が入ります。</li>
-    </ul>
-  </div>
-
-  <p style="margin-top:14px; color:#666;">
-    プライベートレッスン、グループレッスンは申請後にコーチ承認で成立します。
-  </p>
-</div>
-
-<div class="card">
-  <form method="post" id="reservationCreateForm">
-    {% csrf_token %}
-
-    {% if form.non_field_errors %}
-      <div class="message error">
-        {{ form.non_field_errors }}
-      </div>
-    {% endif %}
-
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px;">
-      <div>
-        <label for="{{ form.coach_choice.id_for_label }}">
-          {{ form.coach_choice.label }}
-        </label>
-        {{ form.coach_choice }}
-        {% if form.coach_choice.help_text %}
-          <div class="muted" style="margin-top:6px; font-size:13px;">
-            {{ form.coach_choice.help_text }}
-          </div>
-        {% endif %}
-        {% if form.coach_choice.errors %}
-          <div class="message error" style="margin-top:8px;">
-            {{ form.coach_choice.errors }}
-          </div>
-        {% endif %}
-      </div>
-
-      <div>
-        <label for="{{ form.lesson_type.id_for_label }}">
-          {{ form.lesson_type.label }}
-        </label>
-        {{ form.lesson_type }}
-        {% if form.lesson_type.help_text %}
-          <div class="muted" style="margin-top:6px; font-size:13px;">
-            {{ form.lesson_type.help_text }}
-          </div>
-        {% endif %}
-        {% if form.lesson_type.errors %}
-          <div class="message error" style="margin-top:8px;">
-            {{ form.lesson_type.errors }}
-          </div>
-        {% endif %}
-      </div>
-
-      <div>
-        <label for="{{ form.start_date.id_for_label }}">
-          {{ form.start_date.label }}
-        </label>
-        {{ form.start_date }}
-        {% if form.start_date.errors %}
-          <div class="message error" style="margin-top:8px;">
-            {{ form.start_date.errors }}
-          </div>
-        {% endif %}
-      </div>
-
-      <div>
-        <label for="{{ form.start_hour.id_for_label }}">
-          {{ form.start_hour.label }}
-        </label>
-        {{ form.start_hour }}
-        {% if form.start_hour.errors %}
-          <div class="message error" style="margin-top:8px;">
-            {{ form.start_hour.errors }}
-          </div>
-        {% endif %}
-      </div>
-
-      <div>
-        <label for="{{ form.end_date.id_for_label }}">
-          {{ form.end_date.label }}
-        </label>
-        {{ form.end_date }}
-        {% if form.end_date.errors %}
-          <div class="message error" style="margin-top:8px;">
-            {{ form.end_date.errors }}
-          </div>
-        {% endif %}
-      </div>
-
-      <div>
-        <label for="{{ form.end_hour.id_for_label }}">
-          {{ form.end_hour.label }}
-        </label>
-        {{ form.end_hour }}
-        {% if form.end_hour.errors %}
-          <div class="message error" style="margin-top:8px;">
-            {{ form.end_hour.errors }}
-          </div>
-        {% endif %}
-      </div>
-    </div>
-
-    <div style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap;">
-      <button type="submit" class="btn btn-primary">申請する</button>
-      <a href="{% url 'club:reservation_list' %}" class="btn">予約一覧へ</a>
-      <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
-    </div>
-  </form>
-</div>
-
-<div class="card">
-  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-    <div>
-      <h2 style="margin:0;">時間選択カレンダー</h2>
-      <p class="muted" style="margin:8px 0 0;">
-        週表示のカレンダー上でドラッグすると、開始・終了に自動反映されます。
-      </p>
-    </div>
-    <div class="muted" style="font-size:13px;">
-      緑 = 空き枠 / 赤・青 = 既存予約
-    </div>
-  </div>
-
-  <div style="margin-top:16px;">
-    <div id="requestCalendar"></div>
-  </div>
-</div>
-
-<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/locales-all.global.min.js"></script>
-
 <style>
+  .reservation-page{
+    display:grid;
+    grid-template-columns:minmax(0, 1.02fr) minmax(300px, 0.98fr);
+    gap:18px;
+    align-items:start;
+  }
+  .reservation-left,
+  .reservation-right{
+    min-width:0;
+  }
+  .reservation-sticky{
+    position:sticky;
+    top:120px;
+    align-self:start;
+  }
+  .reservation-summary-grid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:12px;
+    margin-top:14px;
+  }
+  .reservation-mini-box{
+    padding:12px 14px;
+    border:1px solid #dbeafe;
+    background:#f8fbff;
+    border-radius:12px;
+  }
+  .reservation-mini-label{
+    font-size:12px;
+    color:#64748b;
+    margin-bottom:6px;
+  }
+  .reservation-mini-value{
+    font-size:18px;
+    font-weight:800;
+    color:#0f172a;
+    line-height:1.45;
+  }
+  .reservation-guide-grid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:12px;
+    margin-top:14px;
+  }
+  .reservation-guide-card{
+    padding:14px;
+    border:1px solid #e5e7eb;
+    background:#fff;
+    border-radius:12px;
+  }
+  .reservation-guide-title{
+    font-size:15px;
+    font-weight:800;
+    margin:0 0 6px;
+    color:#0f172a;
+  }
+  .reservation-guide-text{
+    font-size:13px;
+    color:#475569;
+    line-height:1.75;
+  }
+  .reservation-alert{
+    padding:14px 16px;
+    border-radius:12px;
+    margin-top:14px;
+    line-height:1.8;
+    font-size:13px;
+  }
+  .reservation-alert.info{
+    border:1px solid #dbeafe;
+    background:#eff6ff;
+    color:#1d4ed8;
+  }
+  .reservation-alert.warn{
+    border:1px solid #fde68a;
+    background:#fffbeb;
+    color:#92400e;
+  }
+  .reservation-form-grid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:16px;
+  }
+  .reservation-field{
+    min-width:0;
+  }
+  .reservation-field.full{
+    grid-column:1 / -1;
+  }
+  .reservation-field label{
+    display:block;
+    font-size:13px;
+    font-weight:700;
+    color:#0f172a;
+    margin-bottom:6px;
+  }
+  .reservation-field .muted{
+    line-height:1.7;
+  }
+  .reservation-error-summary{
+    margin-bottom:16px;
+    padding:14px 16px;
+    border:1px solid #fecaca;
+    background:#fff5f5;
+    border-radius:12px;
+  }
+  .reservation-error-summary-title{
+    font-size:14px;
+    font-weight:800;
+    color:#991b1b;
+    margin-bottom:8px;
+  }
+  .reservation-error-summary ul{
+    margin:0;
+    padding-left:18px;
+    color:#7f1d1d;
+    line-height:1.8;
+    font-size:13px;
+  }
+  .reservation-check-card{
+    padding:16px;
+    border:1px solid #bfdbfe;
+    background:#f8fbff;
+    border-radius:16px;
+  }
+  .reservation-check-title{
+    font-size:18px;
+    font-weight:800;
+    margin:0 0 12px;
+    color:#0f172a;
+  }
+  .reservation-check-list{
+    display:grid;
+    gap:10px;
+  }
+  .reservation-check-row{
+    padding:12px;
+    border:1px solid #dbeafe;
+    background:#fff;
+    border-radius:12px;
+  }
+  .reservation-check-label{
+    font-size:12px;
+    color:#64748b;
+    margin-bottom:4px;
+  }
+  .reservation-check-value{
+    font-size:15px;
+    font-weight:800;
+    color:#0f172a;
+    line-height:1.55;
+    word-break:break-word;
+  }
+  .reservation-ticket-box{
+    margin-top:14px;
+    padding:14px;
+    border:1px solid #c7d2fe;
+    background:#eef2ff;
+    border-radius:14px;
+  }
+  .reservation-ticket-title{
+    font-size:15px;
+    font-weight:800;
+    color:#312e81;
+    margin:0 0 8px;
+  }
+  .reservation-ticket-line{
+    font-size:13px;
+    color:#3730a3;
+    line-height:1.8;
+  }
+  .reservation-calendar-note{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+  .reservation-action-row{
+    margin-top:18px;
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .reservation-mobile-bar{
+    display:none;
+  }
+
   #requestCalendar{
     min-height:680px;
   }
@@ -186,7 +203,23 @@
     font-size:12px;
   }
 
+  @media (max-width: 980px){
+    .reservation-page{
+      grid-template-columns:1fr;
+    }
+    .reservation-sticky{
+      position:static;
+      top:auto;
+    }
+  }
+
   @media (max-width: 768px){
+    .reservation-summary-grid,
+    .reservation-guide-grid,
+    .reservation-form-grid{
+      grid-template-columns:1fr;
+    }
+
     #requestCalendar{
       min-height:520px;
     }
@@ -204,8 +237,286 @@
       font-size:12px !important;
       padding:0.3em 0.5em !important;
     }
+
+    .reservation-action-row{
+      display:none;
+    }
+
+    .reservation-mobile-bar{
+      display:flex;
+      position:sticky;
+      bottom:0;
+      z-index:40;
+      gap:8px;
+      padding:10px;
+      margin:18px -16px -16px;
+      background:rgba(255,255,255,0.96);
+      backdrop-filter:blur(8px);
+      border-top:1px solid #e5e7eb;
+    }
+    .reservation-mobile-bar .btn,
+    .reservation-mobile-bar button{
+      flex:1 1 0;
+      min-height:44px;
+    }
   }
 </style>
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h1 style="margin:0;">予約作成</h1>
+      <p class="muted" style="margin:8px 0 0;">
+        {{ user.display_name }} さんの予約申請を作成します。
+      </p>
+    </div>
+
+    {% if user.role == "member" %}
+      <div class="reservation-summary-grid" style="margin-top:0;">
+        <div class="reservation-mini-box" style="border-color:#fed7aa; background:#fff7ed;">
+          <div class="reservation-mini-label">現在のチケット残数</div>
+          <div class="reservation-mini-value" id="current-ticket-balance">{{ user.ticket_balance }}枚</div>
+        </div>
+        <div class="reservation-mini-box">
+          <div class="reservation-mini-label">現在のレベル</div>
+          <div class="reservation-mini-value">{{ user.get_member_level_display }}</div>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="reservation-guide-grid">
+    <div class="reservation-guide-card" style="border-color:#ede9fe; background:#f5f3ff;">
+      <h2 class="reservation-guide-title">プライベート</h2>
+      <div class="reservation-guide-text">
+        1時間ごとにチケット2枚です。<br>
+        申請後、コーチ承認で成立します。
+      </div>
+    </div>
+    <div class="reservation-guide-card" style="border-color:#dcfce7; background:#f0fdf4;">
+      <h2 class="reservation-guide-title">グループ</h2>
+      <div class="reservation-guide-text">
+        1時間ごとに参加人数×1枚です。<br>
+        申請後、コーチ承認で成立します。
+      </div>
+    </div>
+  </div>
+
+  <div class="reservation-alert info">
+    <strong>使い方</strong><br>
+    コーチは「おまかせ」も選べます。コート選択はありません。下のカレンダーでドラッグすると開始・終了に反映され、開始日時を先に入れると終了は1時間後が自動入力されます。
+  </div>
+
+  <div class="reservation-alert warn">
+    <strong>申請前に確認</strong><br>
+    この画面ではプライベート / グループの申請を受け付けます。確定予約ではなく、コーチ承認後に成立します。
+  </div>
+</div>
+
+<div class="reservation-page">
+  <div class="reservation-left">
+    <div class="card">
+      <form method="post" id="reservationCreateForm">
+        {% csrf_token %}
+
+        {% if form.non_field_errors or form.coach_choice.errors or form.lesson_type.errors or form.start_date.errors or form.start_hour.errors or form.end_date.errors or form.end_hour.errors %}
+          <div class="reservation-error-summary">
+            <div class="reservation-error-summary-title">入力内容を確認してください</div>
+            <ul>
+              {% for error in form.non_field_errors %}
+                <li>{{ error }}</li>
+              {% endfor %}
+              {% for error in form.coach_choice.errors %}
+                <li>{{ error }}</li>
+              {% endfor %}
+              {% for error in form.lesson_type.errors %}
+                <li>{{ error }}</li>
+              {% endfor %}
+              {% for error in form.start_date.errors %}
+                <li>{{ error }}</li>
+              {% endfor %}
+              {% for error in form.start_hour.errors %}
+                <li>{{ error }}</li>
+              {% endfor %}
+              {% for error in form.end_date.errors %}
+                <li>{{ error }}</li>
+              {% endfor %}
+              {% for error in form.end_hour.errors %}
+                <li>{{ error }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+
+        <div class="reservation-form-grid">
+          <div class="reservation-field">
+            <label for="{{ form.coach_choice.id_for_label }}">
+              {{ form.coach_choice.label }}
+            </label>
+            {{ form.coach_choice }}
+            {% if form.coach_choice.help_text %}
+              <div class="muted" style="margin-top:6px; font-size:13px;">
+                {{ form.coach_choice.help_text }}
+              </div>
+            {% endif %}
+            {% if form.coach_choice.errors %}
+              <div class="message error" style="margin-top:8px;">
+                {{ form.coach_choice.errors }}
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="reservation-field">
+            <label for="{{ form.lesson_type.id_for_label }}">
+              {{ form.lesson_type.label }}
+            </label>
+            {{ form.lesson_type }}
+            {% if form.lesson_type.help_text %}
+              <div class="muted" style="margin-top:6px; font-size:13px;">
+                {{ form.lesson_type.help_text }}
+              </div>
+            {% endif %}
+            {% if form.lesson_type.errors %}
+              <div class="message error" style="margin-top:8px;">
+                {{ form.lesson_type.errors }}
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="reservation-field">
+            <label for="{{ form.start_date.id_for_label }}">
+              {{ form.start_date.label }}
+            </label>
+            {{ form.start_date }}
+            {% if form.start_date.errors %}
+              <div class="message error" style="margin-top:8px;">
+                {{ form.start_date.errors }}
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="reservation-field">
+            <label for="{{ form.start_hour.id_for_label }}">
+              {{ form.start_hour.label }}
+            </label>
+            {{ form.start_hour }}
+            {% if form.start_hour.errors %}
+              <div class="message error" style="margin-top:8px;">
+                {{ form.start_hour.errors }}
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="reservation-field">
+            <label for="{{ form.end_date.id_for_label }}">
+              {{ form.end_date.label }}
+            </label>
+            {{ form.end_date }}
+            {% if form.end_date.errors %}
+              <div class="message error" style="margin-top:8px;">
+                {{ form.end_date.errors }}
+              </div>
+            {% endif %}
+          </div>
+
+          <div class="reservation-field">
+            <label for="{{ form.end_hour.id_for_label }}">
+              {{ form.end_hour.label }}
+            </label>
+            {{ form.end_hour }}
+            {% if form.end_hour.errors %}
+              <div class="message error" style="margin-top:8px;">
+                {{ form.end_hour.errors }}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="reservation-action-row">
+          <button type="submit" class="btn btn-primary" id="reservation-submit-button">申請する</button>
+          <a href="{% url 'club:reservation_list' %}" class="btn">予約一覧へ</a>
+          <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
+        </div>
+
+        <div class="reservation-mobile-bar">
+          <a href="{% url 'club:reservation_list' %}" class="btn">一覧</a>
+          <button type="submit" class="btn btn-primary" id="reservation-submit-button-mobile">申請する</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="reservation-calendar-note">
+        <div>
+          <h2 style="margin:0;">時間選択カレンダー</h2>
+          <p class="muted" style="margin:8px 0 0;">
+            週表示のカレンダー上でドラッグすると、開始・終了に自動反映されます。
+          </p>
+        </div>
+        <div class="muted" style="font-size:13px;">
+          緑 = 空き枠 / 赤・青 = 既存予約
+        </div>
+      </div>
+
+      <div style="margin-top:16px;">
+        <div id="requestCalendar"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="reservation-right">
+    <div class="card reservation-sticky">
+      <div class="reservation-check-card">
+        <h2 class="reservation-check-title">申請内容の確認</h2>
+
+        <div class="reservation-check-list">
+          <div class="reservation-check-row">
+            <div class="reservation-check-label">コーチ</div>
+            <div class="reservation-check-value" id="confirm-coach">未選択</div>
+          </div>
+          <div class="reservation-check-row">
+            <div class="reservation-check-label">レッスン種別</div>
+            <div class="reservation-check-value" id="confirm-lesson-type">未選択</div>
+          </div>
+          <div class="reservation-check-row">
+            <div class="reservation-check-label">開始</div>
+            <div class="reservation-check-value" id="confirm-start">未選択</div>
+          </div>
+          <div class="reservation-check-row">
+            <div class="reservation-check-label">終了</div>
+            <div class="reservation-check-value" id="confirm-end">未選択</div>
+          </div>
+          <div class="reservation-check-row">
+            <div class="reservation-check-label">利用時間</div>
+            <div class="reservation-check-value" id="confirm-duration">未選択</div>
+          </div>
+        </div>
+
+        <div class="reservation-ticket-box">
+          <div class="reservation-ticket-title">チケット見込み</div>
+          <div class="reservation-ticket-line" id="ticket-preview-main">日時と種別を選ぶと見込みを表示します。</div>
+          <div class="reservation-ticket-line" id="ticket-preview-sub" style="margin-top:4px;">グループは参加人数により確定後に変動します。</div>
+          {% if user.role == "member" %}
+            <div class="reservation-ticket-line" id="ticket-preview-balance" style="margin-top:6px;">
+              現在残高: {{ user.ticket_balance }}枚
+            </div>
+          {% endif %}
+        </div>
+
+        <div class="reservation-alert info" style="margin-top:14px;">
+          <strong>申請ボタンの動き</strong><br>
+          プライベート / グループともに、ここでは「申請送信」です。承認後に予約成立となります。
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/locales-all.global.min.js"></script>
 
 <script>
   document.addEventListener("DOMContentLoaded", function () {
@@ -217,7 +528,19 @@
     const endHourField = document.getElementById("id_end_hour");
     const calendarEl = document.getElementById("requestCalendar");
 
+    const confirmCoach = document.getElementById("confirm-coach");
+    const confirmLessonType = document.getElementById("confirm-lesson-type");
+    const confirmStart = document.getElementById("confirm-start");
+    const confirmEnd = document.getElementById("confirm-end");
+    const confirmDuration = document.getElementById("confirm-duration");
+    const ticketPreviewMain = document.getElementById("ticket-preview-main");
+    const ticketPreviewSub = document.getElementById("ticket-preview-sub");
+    const ticketPreviewBalance = document.getElementById("ticket-preview-balance");
+    const submitButton = document.getElementById("reservation-submit-button");
+    const submitButtonMobile = document.getElementById("reservation-submit-button-mobile");
+
     let endTouched = false;
+    const currentBalance = Number("{{ user.ticket_balance|default:0 }}");
 
     function pad(value) {
       return String(value).padStart(2, "0");
@@ -231,24 +554,103 @@
       return String(dateObj.getHours());
     }
 
+    function formatDateHour(dateValue, hourValue) {
+      if (!dateValue || hourValue === "" || hourValue === null || typeof hourValue === "undefined") {
+        return "未選択";
+      }
+      return `${dateValue} ${pad(hourValue)}:00`;
+    }
+
+    function calculateDurationHours() {
+      if (!startDateField.value || !startHourField.value || !endDateField.value || !endHourField.value) {
+        return null;
+      }
+      const start = new Date(`${startDateField.value}T${pad(startHourField.value)}:00:00`);
+      const end = new Date(`${endDateField.value}T${pad(endHourField.value)}:00:00`);
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+        return null;
+      }
+      return Math.round((end.getTime() - start.getTime()) / 3600000);
+    }
+
+    function updateSummaryCard() {
+      const coachText = coachField && coachField.value
+        ? coachField.options[coachField.selectedIndex].text
+        : "おまかせ";
+      const lessonTypeText = lessonTypeField && lessonTypeField.value
+        ? lessonTypeField.options[lessonTypeField.selectedIndex].text
+        : "未選択";
+
+      const startText = formatDateHour(startDateField.value, startHourField.value);
+      const endText = formatDateHour(endDateField.value, endHourField.value);
+      const durationHours = calculateDurationHours();
+
+      confirmCoach.textContent = coachText;
+      confirmLessonType.textContent = lessonTypeText;
+      confirmStart.textContent = startText;
+      confirmEnd.textContent = endText;
+      confirmDuration.textContent = durationHours ? `${durationHours}時間` : "未選択";
+
+      if (!lessonTypeField.value || !durationHours) {
+        ticketPreviewMain.textContent = "日時と種別を選ぶと見込みを表示します。";
+        ticketPreviewSub.textContent = "グループは参加人数により確定後に変動します。";
+        if (ticketPreviewBalance) {
+          ticketPreviewBalance.textContent = `現在残高: ${currentBalance}枚`;
+        }
+        return;
+      }
+
+      if (lessonTypeField.value === "private") {
+        const estimatedUse = durationHours * 2;
+        const remaining = currentBalance - estimatedUse;
+        ticketPreviewMain.textContent = `プライベート見込み: ${estimatedUse}枚`;
+        ticketPreviewSub.textContent = "1時間ごとに2枚で計算しています。";
+        if (ticketPreviewBalance) {
+          ticketPreviewBalance.textContent = `申請後の残高見込み: ${remaining}枚`;
+        }
+      } else if (lessonTypeField.value === "group") {
+        ticketPreviewMain.textContent = `グループ見込み: ${durationHours}時間分の申請`;
+        ticketPreviewSub.textContent = "1時間ごとに参加人数×1枚のため、承認後に確定します。";
+        if (ticketPreviewBalance) {
+          ticketPreviewBalance.textContent = `現在残高: ${currentBalance}枚`;
+        }
+      } else {
+        ticketPreviewMain.textContent = "日時と種別を選ぶと見込みを表示します。";
+        ticketPreviewSub.textContent = "グループは参加人数により確定後に変動します。";
+        if (ticketPreviewBalance) {
+          ticketPreviewBalance.textContent = `現在残高: ${currentBalance}枚`;
+        }
+      }
+    }
+
+    function updateSubmitLabels() {
+      const label = lessonTypeField && lessonTypeField.value === "group" ? "グループ申請を送信" : "プライベート申請を送信";
+      if (submitButton) submitButton.textContent = label;
+      if (submitButtonMobile) submitButtonMobile.textContent = label;
+    }
+
     function applySelection(startDate, endDate) {
       startDateField.value = toLocalDateInputValue(startDate);
       startHourField.value = toHourString(startDate);
       endDateField.value = toLocalDateInputValue(endDate);
       endHourField.value = toHourString(endDate);
       endTouched = true;
+      updateSummaryCard();
     }
 
     function autoFillEndByStart() {
       if (!startDateField.value || !startHourField.value) {
+        updateSummaryCard();
         return;
       }
       if (endTouched && endDateField.value && endHourField.value) {
+        updateSummaryCard();
         return;
       }
 
       const base = new Date(`${startDateField.value}T${pad(startHourField.value)}:00:00`);
       if (Number.isNaN(base.getTime())) {
+        updateSummaryCard();
         return;
       }
 
@@ -257,6 +659,7 @@
 
       endDateField.value = toLocalDateInputValue(end);
       endHourField.value = String(end.getHours());
+      updateSummaryCard();
     }
 
     startDateField.addEventListener("change", function () {
@@ -271,13 +674,32 @@
 
     endDateField.addEventListener("change", function () {
       endTouched = true;
+      updateSummaryCard();
     });
 
     endHourField.addEventListener("change", function () {
       endTouched = true;
+      updateSummaryCard();
     });
 
+    if (coachField) {
+      coachField.addEventListener("change", function() {
+        calendar.refetchEvents();
+        updateSummaryCard();
+      });
+    }
+
+    if (lessonTypeField) {
+      lessonTypeField.addEventListener("change", function() {
+        autoFillEndByStart();
+        updateSubmitLabels();
+        updateSummaryCard();
+      });
+    }
+
     autoFillEndByStart();
+    updateSubmitLabels();
+    updateSummaryCard();
 
     const calendar = new FullCalendar.Calendar(calendarEl, {
       locale: "ja",
@@ -332,14 +754,6 @@
           applySelection(new Date(info.start), endDate);
         }
       }
-    });
-
-    coachField.addEventListener("change", function() {
-      calendar.refetchEvents();
-    });
-
-    lessonTypeField.addEventListener("change", function() {
-      autoFillEndByStart();
     });
 
     calendar.render();
