@@ -578,7 +578,6 @@
               <a href="{% url 'club:tickets' %}">チケット</a>
               <a href="{% url 'club:schedule_survey' %}">アンケート</a>
               <a href="{% url 'club:stringing_order_create' %}">ガット張り依頼</a>
-              <a href="{% url 'club:stringing_order_list' %}">ガット張り一覧</a>
               <a href="{% url 'club:shop_estimate' %}">Shop</a>
               <a href="{% url 'club:line_connect' %}">LINE連携</a>
 
@@ -641,7 +640,7 @@
               <a href="{% url 'club:coach_payroll_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_payroll_summary' %}active{% endif %}">給与計算</a>
               <a href="{% url 'club:coach_expense_manage' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_expense_manage' %}active{% endif %}">経費登録</a>
               <a href="{% url 'club:schedule_survey_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'schedule_survey_summary' %}active{% endif %}">アンケート集計</a>
-              <a href="{% url 'club:stringing_order_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'stringing_order_list' %}active{% endif %}">ガット張り管理</a>
+              <a href="{% url 'club:stringing_order_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'stringing_order_list' %}active{% endif %}">ガット張り一覧</a>
               <a href="{% url 'club:shop_estimate' %}" class="coach-tab {% if request.resolver_match.url_name == 'shop_estimate' %}active{% endif %}">Shop</a>
               <a href="{% url 'club:reservation_create' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_create' %}active{% endif %}">予約作成</a>
               <a href="{% url 'club:line_connect' %}" class="coach-tab {% if request.resolver_match.url_name == 'line_connect' %}active{% endif %}">LINE連携</a>
