@@ -46,6 +46,34 @@
       font-size:13px;
       line-height:1.7;
     }
+    .shop-progress{
+      display:grid;
+      grid-template-columns:repeat(3, minmax(0, 1fr));
+      gap:10px;
+      margin-top:14px;
+      margin-bottom:14px;
+    }
+    .shop-progress-item{
+      padding:12px;
+      border:1px solid #dbeafe;
+      background:#f8fbff;
+      border-radius:14px;
+    }
+    .shop-progress-label{
+      font-size:11px;
+      color:#64748b;
+      margin-bottom:6px;
+    }
+    .shop-progress-value{
+      font-size:14px;
+      font-weight:800;
+      color:#0f172a;
+      line-height:1.5;
+    }
+    .shop-progress-item.is-done{
+      border-color:#bbf7d0;
+      background:#f0fdf4;
+    }
     .shop-step-grid{
       display:grid;
       grid-template-columns:repeat(2, minmax(0, 1fr));
@@ -221,6 +249,19 @@
       font-size:13px;
       font-weight:700;
     }
+    .shop-clear-button{
+      appearance:none;
+      border:1px solid #fecaca;
+      background:#fff1f2;
+      color:#be123c;
+      min-height:38px;
+      padding:8px 12px;
+      border-radius:999px;
+      cursor:pointer;
+      font:inherit;
+      font-size:13px;
+      font-weight:700;
+    }
     .shop-candidate-toolbar{
       display:none;
       gap:8px;
@@ -250,6 +291,13 @@
       font-size:13px;
       line-height:1.8;
     }
+    .shop-guide-list{
+      margin:8px 0 0;
+      padding-left:18px;
+    }
+    .shop-guide-list li{
+      margin-bottom:4px;
+    }
     .shop-section-window{
       padding:14px 16px;
       border:1px solid #dbeafe;
@@ -261,10 +309,35 @@
       border-color:#e5e7eb;
       background:#f8fafc;
     }
+    .shop-window-head{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      margin-bottom:10px;
+      flex-wrap:wrap;
+    }
     .shop-window-title{
       font-size:18px;
       font-weight:800;
-      margin-bottom:10px;
+      margin:0;
+    }
+    .shop-window-meta{
+      font-size:12px;
+      color:#64748b;
+      line-height:1.6;
+    }
+    .shop-window-count{
+      display:inline-flex;
+      align-items:center;
+      min-height:26px;
+      padding:4px 10px;
+      border-radius:999px;
+      border:1px solid #c7d2fe;
+      background:#fff;
+      color:#334155;
+      font-size:11px;
+      font-weight:800;
     }
     .shop-candidate-list{
       display:flex;
@@ -292,6 +365,11 @@
       transform:translateY(-1px);
       box-shadow:0 10px 20px rgba(15,23,42,0.08);
       border-color:#93c5fd;
+    }
+    .shop-candidate-card.is-selected{
+      border-color:#22c55e;
+      background:#f0fdf4;
+      box-shadow:0 10px 20px rgba(34,197,94,0.08);
     }
     .shop-candidate-top{
       display:flex;
@@ -341,6 +419,9 @@
       font:inherit;
       font-size:13px;
       font-weight:700;
+    }
+    .shop-candidate-select.is-selected{
+      background:#166534;
     }
     .shop-spec-box{
       margin-top:10px;
@@ -451,6 +532,7 @@
     }
 
     @media (max-width: 640px){
+      .shop-progress,
       .shop-step-grid,
       .shop-selected-summary,
       .shop-estimate-summary,
@@ -460,7 +542,7 @@
       .shop-section-window{padding:12px;}
       .shop-window-title{
         font-size:16px;
-        margin-bottom:8px;
+        margin-bottom:0;
       }
       .shop-candidate-card{
         padding:12px;
@@ -504,7 +586,8 @@
       }
       .shop-mobile-summary-line{font-size:12px;}
       .shop-toggle-button,
-      .shop-picker-button{
+      .shop-picker-button,
+      .shop-clear-button{
         min-height:36px;
         padding:7px 11px;
         font-size:12px;
@@ -548,6 +631,21 @@
         </div>
         <div class="actions">
           <a href="{% url 'club:shop_estimate_history' %}" class="btn">Shop申込履歴</a>
+        </div>
+      </div>
+
+      <div class="shop-progress" id="shop-progress">
+        <div class="shop-progress-item" id="progress-main">
+          <div class="shop-progress-label">STEP 1</div>
+          <div class="shop-progress-value" id="progress-main-text">メイン商品を選択してください</div>
+        </div>
+        <div class="shop-progress-item" id="progress-string">
+          <div class="shop-progress-label">STEP 2</div>
+          <div class="shop-progress-value" id="progress-string-text">ガット条件を選択してください</div>
+        </div>
+        <div class="shop-progress-item" id="progress-estimate">
+          <div class="shop-progress-label">STEP 3</div>
+          <div class="shop-progress-value" id="progress-estimate-text">内容確認後に見積もりを実行します</div>
         </div>
       </div>
 
@@ -623,6 +721,7 @@
           <div class="shop-selected-sub" id="shop-main-selected-sub">カテゴリとブランドを選んでから、候補一覧で商品を選んでください。</div>
           <div class="shop-inline-picker">
             <button type="button" class="shop-picker-button" id="jump-main-candidates">ラケット候補を見る</button>
+            <button type="button" class="shop-clear-button" id="clear-main-selection">メイン商品を解除</button>
           </div>
         </div>
         <div class="shop-selected-box">
@@ -632,6 +731,7 @@
           <div class="shop-selected-sub" id="shop-string-selected-sub">ガット不要・持ち込み・候補から選択のいずれかを選べます。</div>
           <div class="shop-inline-picker">
             <button type="button" class="shop-picker-button" id="jump-string-candidates">ガット候補を見る</button>
+            <button type="button" class="shop-clear-button" id="clear-string-selection">ガット選択を解除</button>
           </div>
         </div>
       </div>
@@ -739,7 +839,11 @@
 
       <div class="shop-guide-box" id="shop-guide-box">
         まだ候補は表示していません。<br>
-        メイン商品は「商品カテゴリ」と「メイン商品ブランド」、ガットは「ガットブランド」を選ぶと候補が表示されます。
+        次の条件を選ぶと候補が出ます。
+        <ul class="shop-guide-list">
+          <li>メイン商品: 「商品カテゴリ」+「メイン商品ブランド」</li>
+          <li>ガット: 「ガット購入」+「ガットブランド」</li>
+        </ul>
       </div>
 
       <div class="shop-candidate-results" id="shop-candidate-results">
@@ -750,12 +854,24 @@
         </div>
 
         <div class="shop-section-window" id="shop-main-window">
-          <div class="shop-window-title">ラケット候補</div>
+          <div class="shop-window-head">
+            <div>
+              <div class="shop-window-title">ラケット候補</div>
+              <div class="shop-window-meta" id="shop-main-window-meta">カテゴリとブランドを選ぶと候補が表示されます。</div>
+            </div>
+            <div class="shop-window-count" id="shop-main-count">0件</div>
+          </div>
           <div id="shop-main-candidates" class="shop-candidate-list"></div>
         </div>
 
         <div class="shop-section-window string" id="shop-string-window">
-          <div class="shop-window-title">ガット候補</div>
+          <div class="shop-window-head">
+            <div>
+              <div class="shop-window-title">ガット候補</div>
+              <div class="shop-window-meta" id="shop-string-window-meta">ガット購入とブランド選択で候補が表示されます。</div>
+            </div>
+            <div class="shop-window-count" id="shop-string-count">0件</div>
+          </div>
           <div id="shop-string-candidates" class="shop-candidate-list"></div>
         </div>
       </div>
@@ -793,12 +909,24 @@
       const showBothCandidatesButton = document.getElementById("show-both-candidates");
       const jumpMainCandidatesButton = document.getElementById("jump-main-candidates");
       const jumpStringCandidatesButton = document.getElementById("jump-string-candidates");
+      const clearMainSelectionButton = document.getElementById("clear-main-selection");
+      const clearStringSelectionButton = document.getElementById("clear-string-selection");
       const shopMainSelectedName = document.getElementById("shop-main-selected-name");
       const shopMainSelectedSub = document.getElementById("shop-main-selected-sub");
       const shopStringSelectedName = document.getElementById("shop-string-selected-name");
       const shopStringSelectedSub = document.getElementById("shop-string-selected-sub");
       const mainSelectedChip = document.getElementById("main-selected-chip");
       const stringSelectedChip = document.getElementById("string-selected-chip");
+      const progressMain = document.getElementById("progress-main");
+      const progressString = document.getElementById("progress-string");
+      const progressEstimate = document.getElementById("progress-estimate");
+      const progressMainText = document.getElementById("progress-main-text");
+      const progressStringText = document.getElementById("progress-string-text");
+      const progressEstimateText = document.getElementById("progress-estimate-text");
+      const shopMainCount = document.getElementById("shop-main-count");
+      const shopStringCount = document.getElementById("shop-string-count");
+      const shopMainWindowMeta = document.getElementById("shop-main-window-meta");
+      const shopStringWindowMeta = document.getElementById("shop-string-window-meta");
 
       const allProductMasters = productMasterDataElement ? JSON.parse(productMasterDataElement.textContent || "[]") : [];
 
@@ -813,6 +941,11 @@
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#39;");
+      }
+
+      function getSelectedText(selectElement) {
+        if (!selectElement || !selectElement.value || selectElement.selectedIndex < 0) return "";
+        return selectElement.options[selectElement.selectedIndex].text || "";
       }
 
       function toggleTensionField() {
@@ -830,6 +963,60 @@
           if (stringKeyword) stringKeyword.value = "";
           if (stringProductName) stringProductName.value = "";
           if (stringOfficialPrice) stringOfficialPrice.value = "";
+        }
+      }
+
+      function clearMainSelection() {
+        if (mainKeyword) mainKeyword.value = "";
+        if (mainProductName) mainProductName.value = "";
+        if (mainOfficialPrice) mainOfficialPrice.value = "";
+        renderSelectedMainPreview(null);
+        renderCandidatesBySelection();
+      }
+
+      function clearStringSelection() {
+        if (stringKeyword) stringKeyword.value = "";
+        if (stringProductName) stringProductName.value = "";
+        if (stringOfficialPrice) stringOfficialPrice.value = "";
+        updateSelectedBoxes();
+        renderCandidatesBySelection();
+      }
+
+      function updateProgress() {
+        const mainDone = !!(mainProductName && mainProductName.value);
+        const stringOfficial = stringSource && stringSource.value === "{{ string_source_official }}";
+        const stringDone = (
+          (stringSource && stringSource.value === "{{ string_source_none }}") ||
+          (stringSource && stringSource.value === "{{ string_source_bring_in }}") ||
+          (stringOfficial && stringProductName && stringProductName.value)
+        );
+
+        if (progressMain) progressMain.classList.toggle("is-done", mainDone);
+        if (progressString) progressString.classList.toggle("is-done", stringDone);
+        if (progressEstimate) progressEstimate.classList.toggle("is-done", mainDone && stringDone);
+
+        if (progressMainText) {
+          progressMainText.textContent = mainDone
+            ? `選択済み: ${mainProductName.value}`
+            : "メイン商品を選択してください";
+        }
+
+        if (progressStringText) {
+          if (stringSource && stringSource.value === "{{ string_source_none }}") {
+            progressStringText.textContent = "ガット不要を選択済みです";
+          } else if (stringSource && stringSource.value === "{{ string_source_bring_in }}") {
+            progressStringText.textContent = "ガット持ち込みを選択済みです";
+          } else if (stringDone && stringProductName && stringProductName.value) {
+            progressStringText.textContent = `選択済み: ${stringProductName.value}`;
+          } else {
+            progressStringText.textContent = "ガット条件を選択してください";
+          }
+        }
+
+        if (progressEstimateText) {
+          progressEstimateText.textContent = (mainDone && stringDone)
+            ? "このまま見積もり・購入申込へ進めます"
+            : "選択内容をそろえると見積もりしやすくなります";
         }
       }
 
@@ -878,7 +1065,7 @@
           } else if (stringOfficialPrice && stringOfficialPrice.value) {
             shopStringSelectedSub.textContent = `定価 ${yen(stringOfficialPrice.value)}`;
           } else if (stringBrand && stringBrand.value) {
-            shopStringSelectedSub.textContent = `${stringBrand.options[stringBrand.selectedIndex].text} の候補から選べます。`;
+            shopStringSelectedSub.textContent = `${getSelectedText(stringBrand)} の候補から選べます。`;
           } else {
             shopStringSelectedSub.textContent = "ガット不要・持ち込み・候補から選択のいずれかを選べます。";
           }
@@ -895,6 +1082,8 @@
             stringSelectedChip.textContent = "ガット 未選択";
           }
         }
+
+        updateProgress();
       }
 
       function buildRacketSpecRows(item) {
@@ -959,6 +1148,7 @@
         if (mainProductName) mainProductName.value = item.product_name || "";
         if (mainOfficialPrice) mainOfficialPrice.value = item.official_price || "";
         renderSelectedMainPreview(item);
+        renderCandidatesBySelection();
       }
 
       function applyStringCandidate(item) {
@@ -967,6 +1157,7 @@
         if (stringProductName) stringProductName.value = item.product_name || "";
         if (stringOfficialPrice) stringOfficialPrice.value = item.official_price || "";
         updateSelectedBoxes();
+        renderCandidatesBySelection();
       }
 
       function setCandidateMode(mode) {
@@ -1005,12 +1196,45 @@
         }
       }
 
+      function updateWindowMeta(mainItems, stringItems) {
+        if (shopMainCount) {
+          shopMainCount.textContent = `${mainItems.length}件`;
+        }
+        if (shopStringCount) {
+          shopStringCount.textContent = `${stringItems.length}件`;
+        }
+
+        if (shopMainWindowMeta) {
+          if (hasReadyMainFilters()) {
+            shopMainWindowMeta.textContent = `${getSelectedText(category)} / ${getSelectedText(brand)} の候補を表示しています。`;
+          } else {
+            shopMainWindowMeta.textContent = "カテゴリとブランドを選ぶと候補が表示されます。";
+          }
+        }
+
+        if (shopStringWindowMeta) {
+          if (stringSource && stringSource.value === "{{ string_source_none }}") {
+            shopStringWindowMeta.textContent = "ガット不要が選択されています。";
+          } else if (stringSource && stringSource.value === "{{ string_source_bring_in }}") {
+            shopStringWindowMeta.textContent = "ガット持ち込みが選択されています。";
+          } else if (hasReadyStringFilters()) {
+            shopStringWindowMeta.textContent = `${getSelectedText(stringBrand)} の候補を表示しています。`;
+          } else {
+            shopStringWindowMeta.textContent = "ガット購入とブランド選択で候補が表示されます。";
+          }
+        }
+      }
+
       function scrollToCandidates(mode) {
         if (mode === "main" && !hasReadyMainFilters()) {
           if (brand) brand.scrollIntoView({ behavior: "smooth", block: "center" });
           return;
         }
         if (mode === "string" && !hasReadyStringFilters()) {
+          if (stringSource && stringSource.value !== "{{ string_source_official }}") {
+            if (stringSource) stringSource.scrollIntoView({ behavior: "smooth", block: "center" });
+            return;
+          }
           if (stringBrand) stringBrand.scrollIntoView({ behavior: "smooth", block: "center" });
           return;
         }
@@ -1025,7 +1249,9 @@
           button.addEventListener("click", function () {
             applyMainCandidate(JSON.parse(this.dataset.item || "{}"));
             if (window.innerWidth <= 640) {
-              setCandidateMode("string");
+              if (stringSource && stringSource.value === "{{ string_source_official }}") {
+                setCandidateMode("string");
+              }
               if (candidatePanel) {
                 candidatePanel.scrollIntoView({ behavior: "smooth", block: "start" });
               }
@@ -1049,14 +1275,20 @@
           container.innerHTML = '<div class="shop-candidate-empty">現在この条件の候補はありません。</div>';
           return;
         }
+
+        const selectedName = type === "main"
+          ? (mainProductName ? mainProductName.value : "")
+          : (stringProductName ? stringProductName.value : "");
+
         container.innerHTML = items.map((item) => {
           const specRows = type === "main" ? buildRacketSpecRows(item) : buildStringSpecRows(item);
           const nameHtml = item.product_url
             ? `<a href="${escapeHtml(item.product_url)}" target="_blank" rel="noopener">${escapeHtml(item.product_name || "")}</a>`
             : escapeHtml(item.product_name || "");
           const buttonClass = type === "main" ? "shop-main-candidate-select" : "shop-string-candidate-select";
+          const isSelected = selectedName && selectedName === (item.product_name || "");
           return `
-            <div class="shop-candidate-card">
+            <div class="shop-candidate-card ${isSelected ? "is-selected" : ""}">
               <div class="shop-candidate-top">
                 <div>
                   <div class="shop-candidate-name">${nameHtml}</div>
@@ -1066,7 +1298,7 @@
               </div>
               ${renderSpecGrid(specRows)}
               <div class="shop-candidate-actions">
-                <button type="button" class="shop-candidate-select ${buttonClass}" data-item='${escapeHtml(JSON.stringify(item))}'>この商品を選ぶ</button>
+                <button type="button" class="shop-candidate-select ${buttonClass} ${isSelected ? "is-selected" : ""}" data-item='${escapeHtml(JSON.stringify(item))}'>${isSelected ? "選択中" : "この商品を選ぶ"}</button>
               </div>
             </div>
           `;
@@ -1092,14 +1324,25 @@
       }
 
       function renderCandidatesBySelection() {
+        const mainItems = getFilteredMainCandidates();
+        const stringItems = getFilteredStringCandidates();
         syncCandidateVisibility();
-        renderCandidateCards(shopMainCandidates, getFilteredMainCandidates(), "main");
-        renderCandidateCards(shopStringCandidates, getFilteredStringCandidates(), "string");
+        updateWindowMeta(mainItems, stringItems);
+        renderCandidateCards(shopMainCandidates, mainItems, "main");
+        renderCandidateCards(shopStringCandidates, stringItems, "string");
         attachCandidateEvents();
       }
 
-      if (category) category.addEventListener("change", renderCandidatesBySelection);
-      if (brand) brand.addEventListener("change", renderCandidatesBySelection);
+      if (category) category.addEventListener("change", function () {
+        clearMainSelection();
+        renderCandidatesBySelection();
+      });
+
+      if (brand) brand.addEventListener("change", function () {
+        clearMainSelection();
+        renderCandidatesBySelection();
+      });
+
       if (stringBrand) stringBrand.addEventListener("change", function () {
         if (stringKeyword) stringKeyword.value = "";
         if (stringProductName) stringProductName.value = "";
@@ -1107,17 +1350,27 @@
         updateSelectedBoxes();
         renderCandidatesBySelection();
       });
+
       if (requestStringing) requestStringing.addEventListener("change", toggleTensionField);
+
       if (stringSource) stringSource.addEventListener("change", function () {
         toggleStringPurchaseFields();
+        if (stringSource.value !== "{{ string_source_official }}") {
+          if (stringKeyword) stringKeyword.value = "";
+          if (stringProductName) stringProductName.value = "";
+          if (stringOfficialPrice) stringOfficialPrice.value = "";
+        }
         updateSelectedBoxes();
         renderCandidatesBySelection();
       });
+
       if (showMainCandidatesButton) showMainCandidatesButton.addEventListener("click", function () { setCandidateMode("main"); });
       if (showStringCandidatesButton) showStringCandidatesButton.addEventListener("click", function () { setCandidateMode("string"); });
       if (showBothCandidatesButton) showBothCandidatesButton.addEventListener("click", function () { setCandidateMode("both"); });
       if (jumpMainCandidatesButton) jumpMainCandidatesButton.addEventListener("click", function () { scrollToCandidates("main"); });
       if (jumpStringCandidatesButton) jumpStringCandidatesButton.addEventListener("click", function () { scrollToCandidates("string"); });
+      if (clearMainSelectionButton) clearMainSelectionButton.addEventListener("click", clearMainSelection);
+      if (clearStringSelectionButton) clearStringSelectionButton.addEventListener("click", clearStringSelection);
 
       toggleStringPurchaseFields();
       renderCandidatesBySelection();
