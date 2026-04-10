@@ -881,107 +881,6 @@ def home(request):
 
 
 
-def _stringing_status_choices_list():
-    try:
-        return list(StringingOrder.STATUS_CHOICES)
-    except Exception:
-        return [
-            ("requested", "受付済み"),
-            ("in_progress", "対応中"),
-            ("completed", "完了"),
-            ("canceled", "キャンセル"),
-        ]
-
-
-def _stringing_order_total_price_value(order):
-    total_attr = getattr(order, "total_price", None)
-    if callable(total_attr):
-        try:
-            return int(total_attr() or 0)
-        except Exception:
-            return 0
-    try:
-        return int(total_attr or 0)
-    except Exception:
-        return 0
-
-
-def _stringing_order_dashboard_context(request, form=None, status_filter="all"):
-    queryset = StringingOrder.objects.select_related("user", "assigned_coach").all()
-
-    if not _is_staff_like(request.user) and not _is_coach_user(request.user):
-        queryset = queryset.filter(user=request.user)
-
-    all_rows_queryset = queryset.order_by("-created_at", "-id")
-    all_orders = list(all_rows_queryset)
-
-    requested_status = getattr(StringingOrder, "STATUS_REQUESTED", "requested")
-    in_progress_status = getattr(StringingOrder, "STATUS_IN_PROGRESS", "in_progress")
-    completed_status = getattr(StringingOrder, "STATUS_COMPLETED", "completed")
-    canceled_status = getattr(StringingOrder, "STATUS_CANCELED", "canceled")
-
-    status_counts = {
-        "all": len(all_orders),
-        "pending": 0,
-        requested_status: 0,
-        in_progress_status: 0,
-        completed_status: 0,
-        canceled_status: 0,
-    }
-
-    for order in all_orders:
-        status_key = str(getattr(order, "status", "") or "")
-        if status_key in status_counts:
-            status_counts[status_key] += 1
-        if status_key in (requested_status, in_progress_status):
-            status_counts["pending"] += 1
-
-    filtered_orders = all_orders
-    if status_filter == "pending":
-        filtered_orders = [
-            order for order in all_orders
-            if str(getattr(order, "status", "") or "") in (requested_status, in_progress_status)
-        ]
-    elif status_filter not in ("", "all"):
-        filtered_orders = [
-            order for order in all_orders
-            if str(getattr(order, "status", "") or "") == status_filter
-        ]
-
-    order_rows = []
-    for order in filtered_orders:
-        preferred_finish_date = getattr(order, "preferred_finish_date", None)
-        if preferred_finish_date:
-            try:
-                preferred_finish_date_label = preferred_finish_date.strftime("%Y-%m-%d")
-            except Exception:
-                preferred_finish_date_label = str(preferred_finish_date)
-        else:
-            preferred_finish_date_label = ""
-
-        order_rows.append(
-            {
-                "order": order,
-                "status_label": _stringing_status_label(order),
-                "preferred_finish_date": preferred_finish_date_label,
-                "can_manage": bool(_is_staff_like(request.user) or _is_coach_user(request.user)),
-                "total_price": _stringing_order_total_price_value(order),
-            }
-        )
-
-    return {
-        "form": form or StringingOrderForm(),
-        "order_rows": order_rows,
-        "status_filter": status_filter or "all",
-        "status_counts": status_counts,
-        "stringing_status_choices": _stringing_status_choices_list(),
-        "stringing_base_price": 1200,
-        "stringing_delivery_fee": 500,
-        "stringing_total_with_delivery": 1700,
-        "is_stringing_manage_mode": bool(_is_staff_like(request.user) or _is_coach_user(request.user)),
-    }
-
-
 @login_required
 @require_http_methods(["GET", "POST"])
 def stringing_order_create(request):
@@ -993,14 +892,13 @@ def stringing_order_create(request):
     if survey_redirect:
         return survey_redirect
 
-    status_filter = (request.GET.get("status_filter") or request.POST.get("status_filter") or "all").strip() or "all"
     form = StringingOrderForm(request.POST or None)
 
     if request.method == "POST":
         if form.is_valid():
             order = form.save(commit=False)
             order.user = request.user
-            order.status = getattr(StringingOrder, "STATUS_REQUESTED", "requested")
+            order.status = StringingOrder.STATUS_REQUESTED
             order.save()
 
             if getattr(request.user, "role", "") == "member" and order.assigned_coach:
@@ -1009,77 +907,109 @@ def stringing_order_create(request):
 
             messages.success(
                 request,
-                f"ガット張り依頼を受け付けました。料金は {_stringing_order_total_price_value(order)}円 です。"
+                f"ガット張り依頼を受け付けました。料金は {order.total_price()}円 です。"
             )
-            return redirect("club:stringing_order_list")
+            return redirect("club:stringing_order_create")
 
         messages.error(request, "ガット張り依頼を保存できませんでした。入力内容をご確認ください。")
 
     return render(
         request,
         "stringing/create.html",
-        _stringing_order_dashboard_context(
-            request,
-            form=form,
-            status_filter=status_filter,
-        ),
+        {
+            "form": form,
+            "stringing_base_price": 1200,
+            "stringing_delivery_fee": 500,
+            "stringing_total_with_delivery": 1700,
+        },
     )
 
 
 @login_required
-@require_http_methods(["GET", "POST"])
+@require_GET
 def stringing_order_list(request):
     survey_redirect = _require_schedule_survey(request)
     if survey_redirect:
         return survey_redirect
 
-    status_filter = (request.GET.get("status_filter") or request.POST.get("status_filter") or "all").strip() or "all"
+    if not _is_staff_like(request.user) and not _is_coach_user(request.user):
+        return redirect("club:stringing_order_create")
 
-    if request.method == "POST":
-        if not (_is_staff_like(request.user) or _is_coach_user(request.user)):
-            return HttpResponse("Forbidden", status=403)
+    queryset = StringingOrder.objects.select_related("user", "assigned_coach").all().order_by("-created_at", "-id")
 
-        order_id = (request.POST.get("order_id") or "").strip()
-        new_status = (request.POST.get("new_status") or "").strip()
-        valid_statuses = {value for value, _label in _stringing_status_choices_list()}
+    status_filter = (request.GET.get("status_filter") or "all").strip()
+    valid_status_filters = {
+        "all",
+        "pending",
+        StringingOrder.STATUS_REQUESTED,
+        StringingOrder.STATUS_IN_PROGRESS,
+        StringingOrder.STATUS_COMPLETED,
+        StringingOrder.STATUS_CANCELED,
+    }
+    if status_filter not in valid_status_filters:
+        status_filter = "all"
 
-        if not order_id.isdigit():
-            messages.error(request, "対象の依頼が見つかりません。")
-            return redirect(f"{reverse('club:stringing_order_list')}?status_filter={urllib.parse.quote(status_filter)}")
+    all_orders = list(queryset)
 
-        order = StringingOrder.objects.select_related("user", "assigned_coach").filter(pk=int(order_id)).first()
-        if not order:
-            messages.error(request, "対象の依頼が見つかりません。")
-            return redirect(f"{reverse('club:stringing_order_list')}?status_filter={urllib.parse.quote(status_filter)}")
+    def _filter_orders(order_list, current_filter):
+        if current_filter == "all":
+            return order_list
+        if current_filter == "pending":
+            return [
+                order for order in order_list
+                if getattr(order, "status", "") in (
+                    StringingOrder.STATUS_REQUESTED,
+                    StringingOrder.STATUS_IN_PROGRESS,
+                )
+            ]
+        return [order for order in order_list if getattr(order, "status", "") == current_filter]
 
-        if new_status not in valid_statuses:
-            messages.error(request, "更新後の状況が不正です。")
-            return redirect(f"{reverse('club:stringing_order_list')}?status_filter={urllib.parse.quote(status_filter)}")
+    filtered_orders = _filter_orders(all_orders, status_filter)
 
-        try:
-            order.status = new_status
-            order.full_clean()
-            order.save(update_fields=["status", "updated_at"])
-            messages.success(request, "ガット張り依頼の状況を更新しました。")
-        except ValidationError as e:
-            if hasattr(e, "messages"):
-                for message_text in e.messages:
-                    messages.error(request, message_text)
-            else:
-                messages.error(request, "ガット張り依頼の更新に失敗しました。")
-        except Exception as e:
-            messages.error(request, f"ガット張り依頼の更新に失敗しました: {e}")
+    status_counts = {
+        "all": len(all_orders),
+        "pending": len(_filter_orders(all_orders, "pending")),
+        "requested": len(_filter_orders(all_orders, StringingOrder.STATUS_REQUESTED)),
+        "in_progress": len(_filter_orders(all_orders, StringingOrder.STATUS_IN_PROGRESS)),
+        "completed": len(_filter_orders(all_orders, StringingOrder.STATUS_COMPLETED)),
+        "canceled": len(_filter_orders(all_orders, StringingOrder.STATUS_CANCELED)),
+    }
 
-        return redirect(f"{reverse('club:stringing_order_list')}?status_filter={urllib.parse.quote(status_filter)}")
+    order_rows = []
+    for order in filtered_orders:
+        preferred_finish_date = getattr(order, "preferred_finish_date", None)
+        if preferred_finish_date:
+            try:
+                preferred_finish_date_label = preferred_finish_date.strftime("%Y-%m-%d")
+            except Exception:
+                preferred_finish_date_label = str(preferred_finish_date)
+        else:
+            preferred_finish_date_label = "-"
+
+        order_rows.append(
+            {
+                "order": order,
+                "status_label": _stringing_status_label(order),
+                "preferred_finish_date": preferred_finish_date_label,
+                "total_price": order.total_price(),
+                "can_manage": _is_staff_like(request.user) or getattr(order, "assigned_coach_id", None) == request.user.pk,
+            }
+        )
 
     return render(
         request,
-        "stringing/create.html",
-        _stringing_order_dashboard_context(
-            request,
-            form=StringingOrderForm(),
-            status_filter=status_filter,
-        ),
+        "stringing/list.html",
+        {
+            "stringing_orders": queryset,
+            "order_rows": order_rows,
+            "status_filter": status_filter,
+            "status_counts": status_counts,
+            "stringing_status_choices": StringingOrder.STATUS_CHOICES,
+            "is_stringing_manage_mode": True,
+            "stringing_base_price": 1200,
+            "stringing_delivery_fee": 500,
+            "stringing_total_with_delivery": 1700,
+        },
     )
 
 
