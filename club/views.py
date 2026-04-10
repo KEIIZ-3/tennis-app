@@ -3587,11 +3587,13 @@ def _shop_build_form_data_from_request_obj(obj):
         "main_keyword": getattr(obj, "main_keyword", "") or "",
         "main_product_name": getattr(obj, "main_product_name", "") or "",
         "main_official_price": str(getattr(obj, "main_official_price", "") or ""),
+        "grip_size": str(getattr(obj, "grip_size", "") or ""),
         "string_source": getattr(obj, "string_source", ShopEstimateRequest.STRING_SOURCE_NONE),
         "string_keyword": getattr(obj, "string_keyword", "") or "",
         "string_product_name": getattr(obj, "string_product_name", "") or "",
         "string_official_price": str(getattr(obj, "string_official_price", "") or ""),
         "request_stringing": "1" if getattr(obj, "request_stringing", False) else "0",
+        "request_delivery": "1" if getattr(obj, "request_delivery", False) else "0",
         "tension_lbs": str(getattr(obj, "tension_lbs", 50) or 50),
         "note": getattr(obj, "note", "") or "",
     }
@@ -3749,11 +3751,13 @@ def shop_estimate_view(request):
         "main_keyword": "",
         "main_product_name": "",
         "main_official_price": "",
+        "grip_size": "",
         "string_source": ShopEstimateRequest.STRING_SOURCE_NONE,
         "string_keyword": "",
         "string_product_name": "",
         "string_official_price": "",
         "request_stringing": "0",
+        "request_delivery": "0",
         "tension_lbs": "50",
         "note": "",
     }
@@ -3805,11 +3809,13 @@ def shop_estimate_view(request):
             "main_keyword": (request.POST.get("main_keyword") or "").strip(),
             "main_product_name": (request.POST.get("main_product_name") or "").strip(),
             "main_official_price": (request.POST.get("main_official_price") or "").strip(),
+            "grip_size": (request.POST.get("grip_size") or "").strip(),
             "string_source": (request.POST.get("string_source") or ShopEstimateRequest.STRING_SOURCE_NONE).strip(),
             "string_keyword": (request.POST.get("string_keyword") or "").strip(),
             "string_product_name": (request.POST.get("string_product_name") or "").strip(),
             "string_official_price": (request.POST.get("string_official_price") or "").strip(),
             "request_stringing": "1" if (request.POST.get("request_stringing") or "") in ("1", "true", "on") else "0",
+            "request_delivery": "1" if (request.POST.get("request_delivery") or "") in ("1", "true", "on") else "0",
             "tension_lbs": (request.POST.get("tension_lbs") or "50").strip(),
             "note": (request.POST.get("note") or "").strip(),
         }
@@ -3818,6 +3824,7 @@ def shop_estimate_view(request):
         main_official_price = _safe_int(form_data["main_official_price"], 0)
         string_official_price = _safe_int(form_data["string_official_price"], 0)
         request_stringing = form_data["request_stringing"] == "1"
+        request_delivery = form_data["request_delivery"] == "1" if request_stringing else False
         tension_lbs = _safe_int(form_data["tension_lbs"], 50) if request_stringing else None
 
         main_official_links = _shop_brand_search_links(form_data["brand"], form_data["main_keyword"], item_label="商品")
@@ -3828,8 +3835,12 @@ def shop_estimate_view(request):
             string_catalog_links = []
             string_image_links = _shop_image_search_links(form_data["brand"], form_data["string_keyword"], item_label="ガット画像")
 
+        valid_grip_sizes = {"", "1", "2", "3"}
+
         if main_official_price <= 0:
             page_error = "商品定価を入力してください。"
+        elif form_data["grip_size"] not in valid_grip_sizes:
+            page_error = "グリップサイズは1〜3で指定してください。"
         elif request_stringing and (tension_lbs is None or tension_lbs < 30 or tension_lbs > 60):
             page_error = "張り上げテンションは30〜60lbsで指定してください。"
         elif form_data["string_source"] == ShopEstimateRequest.STRING_SOURCE_OFFICIAL and string_official_price <= 0:
@@ -3842,6 +3853,7 @@ def shop_estimate_view(request):
                 else 0
             )
             stringing_fee = 1200 if request_stringing else 0
+            delivery_fee = 500 if request_delivery else 0
 
             estimate_result = {
                 "brand_label": brand_label_map.get(form_data["brand"], form_data["brand"]),
@@ -3850,6 +3862,7 @@ def shop_estimate_view(request):
                 "main_keyword": form_data["main_keyword"],
                 "main_official_price": main_official_price,
                 "main_sale_price": main_sale_price,
+                "grip_size": form_data["grip_size"],
                 "string_source": form_data["string_source"],
                 "string_source_label": string_source_label_map.get(form_data["string_source"], form_data["string_source"]),
                 "string_product_name": form_data["string_product_name"],
@@ -3857,29 +3870,42 @@ def shop_estimate_view(request):
                 "string_official_price": string_official_price,
                 "string_sale_price": string_sale_price,
                 "request_stringing": request_stringing,
+                "request_delivery": request_delivery,
                 "tension_lbs": tension_lbs,
                 "stringing_fee": stringing_fee,
-                "estimated_total": main_sale_price + string_sale_price + stringing_fee,
+                "delivery_fee": delivery_fee,
+                "estimated_total": main_sale_price + string_sale_price + stringing_fee + delivery_fee,
                 "note": form_data["note"],
             }
 
             if (request.POST.get("action") or "") == "purchase":
                 try:
-                    saved_request = ShopEstimateRequest.objects.create(
-                        user=request.user,
-                        product_category=form_data["product_category"],
-                        brand=form_data["brand"],
-                        main_keyword=form_data["main_keyword"],
-                        main_product_name=form_data["main_product_name"],
-                        main_official_price=main_official_price,
-                        string_source=form_data["string_source"],
-                        string_keyword=form_data["string_keyword"],
-                        string_product_name=form_data["string_product_name"],
-                        string_official_price=string_official_price,
-                        request_stringing=request_stringing,
-                        tension_lbs=tension_lbs,
-                        note=form_data["note"],
-                    )
+                    create_kwargs = {
+                        "user": request.user,
+                        "product_category": form_data["product_category"],
+                        "brand": form_data["brand"],
+                        "main_keyword": form_data["main_keyword"],
+                        "main_product_name": form_data["main_product_name"],
+                        "main_official_price": main_official_price,
+                        "string_source": form_data["string_source"],
+                        "string_keyword": form_data["string_keyword"],
+                        "string_product_name": form_data["string_product_name"],
+                        "string_official_price": string_official_price,
+                        "request_stringing": request_stringing,
+                        "tension_lbs": tension_lbs,
+                        "note": form_data["note"],
+                    }
+
+                    shop_estimate_request_field_names = {
+                        field.name for field in ShopEstimateRequest._meta.get_fields()
+                        if getattr(field, "concrete", False)
+                    }
+                    if "grip_size" in shop_estimate_request_field_names:
+                        create_kwargs["grip_size"] = form_data["grip_size"]
+                    if "request_delivery" in shop_estimate_request_field_names:
+                        create_kwargs["request_delivery"] = request_delivery
+
+                    saved_request = ShopEstimateRequest.objects.create(**create_kwargs)
                     messages.success(request, "物販の購入申込を受け付けました。")
                     return redirect("club:shop_estimate_complete", pk=saved_request.pk)
                 except Exception as e:
@@ -3943,7 +3969,9 @@ def shop_estimate_history_view(request):
                 int(estimate_request.string_official_price or 0)
             )
         stringing_fee = 1200 if estimate_request.request_stringing else 0
-        estimated_total = main_sale_price + string_sale_price + stringing_fee
+        request_delivery = bool(getattr(estimate_request, "request_delivery", False))
+        delivery_fee = 500 if request_delivery else 0
+        estimated_total = main_sale_price + string_sale_price + stringing_fee + delivery_fee
 
         history_rows.append(
             {
@@ -3951,6 +3979,7 @@ def shop_estimate_history_view(request):
                 "main_sale_price": main_sale_price,
                 "string_sale_price": string_sale_price,
                 "stringing_fee": stringing_fee,
+                "delivery_fee": delivery_fee,
                 "estimated_total": estimated_total,
             }
         )
@@ -3961,6 +3990,7 @@ def shop_estimate_history_view(request):
         {
             "history_rows": history_rows,
             "stringing_fee": 1200,
+            "delivery_fee": 500,
             "string_source_official": ShopEstimateRequest.STRING_SOURCE_OFFICIAL,
             "string_source_bring_in": ShopEstimateRequest.STRING_SOURCE_BRING_IN,
             "string_source_none": ShopEstimateRequest.STRING_SOURCE_NONE,
