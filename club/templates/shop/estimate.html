@@ -5,7 +5,7 @@
   <div class="page-head">
     <h1 class="page-title">Shop</h1>
     <p class="page-subtitle">
-      ブランド公式サイトを確認しながら、ラケット・ガット・アクセサリの見積もりを作成できます。販売価格は定価の80％で計算します。
+      ラケット・ガット・アクセサリの見積もりを作成できます。販売価格は定価の80％で計算します。
     </p>
   </div>
 
@@ -24,12 +24,7 @@
       gap:18px;
       align-items:start;
     }
-    .shop-form-panel{
-      min-width:0;
-    }
-    .shop-candidate-panel{
-      min-width:0;
-    }
+    .shop-form-panel,.shop-candidate-panel{min-width:0;}
     .shop-sticky-panel{
       position:sticky;
       top:180px;
@@ -60,9 +55,7 @@
       line-height:1.7;
       color:#334155;
     }
-    .shop-mobile-summary strong{
-      color:#0f172a;
-    }
+    .shop-mobile-summary strong{color:#0f172a;}
     .shop-candidate-toolbar{
       display:none;
       gap:8px;
@@ -82,6 +75,15 @@
       font:inherit;
       font-size:13px;
       font-weight:700;
+    }
+    .shop-guide-box{
+      padding:14px 16px;
+      border:1px dashed #cbd5e1;
+      background:#fff;
+      border-radius:14px;
+      color:#64748b;
+      font-size:13px;
+      line-height:1.8;
     }
     .shop-section-window{
       padding:14px 16px;
@@ -145,9 +147,7 @@
       text-decoration:underline;
       text-underline-offset:2px;
     }
-    .shop-candidate-name a:hover{
-      color:#1d4ed8;
-    }
+    .shop-candidate-name a:hover{color:#1d4ed8;}
     .shop-candidate-price{
       font-size:18px;
       font-weight:800;
@@ -212,9 +212,7 @@
       text-decoration:underline;
       text-underline-offset:2px;
     }
-    .shop-selected-preview-title a:hover{
-      color:#1d4ed8;
-    }
+    .shop-selected-preview-title a:hover{color:#1d4ed8;}
     .shop-selected-preview-sub{
       color:#64748b;
       font-size:13px;
@@ -227,38 +225,25 @@
       flex-wrap:wrap;
       margin-top:4px;
     }
-    .shop-mobile-bottom-bar{
-      display:none;
-    }
+    .shop-mobile-bottom-bar{display:none;}
+    .shop-candidate-results{display:none;}
+    .shop-candidate-panel.has-ready-filters .shop-candidate-results{display:block;}
+    .shop-candidate-panel.has-ready-filters .shop-guide-box{display:none;}
 
     @media (max-width: 900px){
-      .shop-layout{
-        grid-template-columns:1fr;
-      }
-      .shop-form-panel{
-        order:2;
-      }
-      .shop-candidate-panel{
-        order:1;
-      }
+      .shop-layout{grid-template-columns:1fr;}
+      .shop-form-panel{order:1;}
+      .shop-candidate-panel{order:2;}
       .shop-sticky-panel{
         position:static;
         top:auto;
         max-height:none;
         overflow:visible;
       }
-      .shop-spec-grid{
-        grid-template-columns:1fr;
-      }
-      .shop-mobile-summary{
-        display:block;
-      }
-      .shop-candidate-toolbar{
-        display:flex;
-      }
-      .shop-inline-actions{
-        display:none;
-      }
+      .shop-spec-grid{grid-template-columns:1fr;}
+      .shop-mobile-summary{display:block;}
+      .shop-candidate-toolbar{display:flex;}
+      .shop-inline-actions{display:none;}
       .shop-mobile-bottom-bar{
         display:flex;
         position:sticky;
@@ -280,9 +265,7 @@
     }
 
     @media (max-width: 640px){
-      .shop-section-window{
-        padding:12px;
-      }
+      .shop-section-window{padding:12px;}
       .shop-window-title{
         font-size:16px;
         margin-bottom:8px;
@@ -299,9 +282,7 @@
         font-size:14px;
         line-height:1.45;
       }
-      .shop-candidate-price{
-        font-size:16px;
-      }
+      .shop-candidate-price{font-size:16px;}
       .shop-candidate-meta{
         font-size:11px;
         line-height:1.5;
@@ -314,53 +295,30 @@
         font-size:11px;
         margin-bottom:6px;
       }
-      .shop-spec-grid{
-        gap:6px 8px;
-      }
-      .shop-spec-label{
-        font-size:10px;
-      }
-      .shop-spec-value{
-        font-size:12px;
-      }
+      .shop-spec-grid{gap:6px 8px;}
+      .shop-spec-label{font-size:10px;}
+      .shop-spec-value{font-size:12px;}
       .shop-selected-preview{
         padding:12px;
         border-radius:12px;
       }
-      .shop-selected-preview-title{
-        font-size:16px;
-      }
+      .shop-selected-preview-title{font-size:16px;}
       .shop-selected-preview-sub{
         font-size:12px;
         line-height:1.7;
       }
-      .shop-mobile-summary-line{
-        font-size:12px;
-      }
+      .shop-mobile-summary-line{font-size:12px;}
       .shop-toggle-button{
         min-height:36px;
         padding:7px 11px;
         font-size:12px;
       }
-      .shop-mobile-collapsed{
-        display:none;
-      }
-      .shop-candidate-panel.is-main-open #shop-main-window{
-        display:block;
-      }
-      .shop-candidate-panel.is-main-open #shop-string-window{
-        display:none;
-      }
-      .shop-candidate-panel.is-string-open #shop-main-window{
-        display:none;
-      }
-      .shop-candidate-panel.is-string-open #shop-string-window{
-        display:block;
-      }
+      .shop-candidate-panel.is-main-open #shop-main-window{display:block;}
+      .shop-candidate-panel.is-main-open #shop-string-window{display:none;}
+      .shop-candidate-panel.is-string-open #shop-main-window{display:none;}
+      .shop-candidate-panel.is-string-open #shop-string-window{display:block;}
       .shop-candidate-panel.is-both-open #shop-main-window,
-      .shop-candidate-panel.is-both-open #shop-string-window{
-        display:block;
-      }
+      .shop-candidate-panel.is-both-open #shop-string-window{display:block;}
     }
   </style>
 
@@ -408,9 +366,9 @@
       </div>
 
       <div class="shop-note">
-        {{ shop_candidate_support_message }}
+        商品カテゴリとブランドを選ぶと、下に候補が表示されます。
         <br>
-        スマートフォンでは、先に候補を選んでから下の入力内容を確認すると見やすいです。
+        先に候補を見せないようにしているので、「これしかない」と誤解しにくい表示です。
       </div>
 
       <form method="post" id="shop-estimate-form" style="margin-top:16px;">
@@ -517,22 +475,29 @@
 
     <div class="card shop-candidate-panel shop-sticky-panel is-both-open" id="shop-candidate-panel">
       <h2 class="card-title">商品マスタ候補</h2>
-      <p class="card-subtitle">商品名リンクで商品ページを開けます。カード本体を押すと左側へ反映されます。</p>
+      <p class="card-subtitle">商品カテゴリとブランドを選ぶと、ここに候補が表示されます。</p>
 
-      <div class="shop-candidate-toolbar">
-        <button type="button" class="shop-toggle-button" id="show-main-candidates">ラケット候補</button>
-        <button type="button" class="shop-toggle-button" id="show-string-candidates">ガット候補</button>
-        <button type="button" class="shop-toggle-button" id="show-both-candidates">両方表示</button>
+      <div class="shop-guide-box" id="shop-guide-box">
+        まだ候補は表示していません。<br>
+        上の「商品カテゴリ」と「ブランド」を選ぶと、ラケット候補とガット候補が表示されます。
       </div>
 
-      <div class="shop-section-window" id="shop-main-window">
-        <div class="shop-window-title">ラケット候補</div>
-        <div id="shop-main-candidates" class="shop-candidate-list"></div>
-      </div>
+      <div class="shop-candidate-results" id="shop-candidate-results">
+        <div class="shop-candidate-toolbar">
+          <button type="button" class="shop-toggle-button" id="show-main-candidates">ラケット候補</button>
+          <button type="button" class="shop-toggle-button" id="show-string-candidates">ガット候補</button>
+          <button type="button" class="shop-toggle-button" id="show-both-candidates">両方表示</button>
+        </div>
 
-      <div class="shop-section-window string" id="shop-string-window">
-        <div class="shop-window-title">ガット候補</div>
-        <div id="shop-string-candidates" class="shop-candidate-list"></div>
+        <div class="shop-section-window" id="shop-main-window">
+          <div class="shop-window-title">ラケット候補</div>
+          <div id="shop-main-candidates" class="shop-candidate-list"></div>
+        </div>
+
+        <div class="shop-section-window string" id="shop-string-window">
+          <div class="shop-window-title">ガット候補</div>
+          <div id="shop-string-candidates" class="shop-candidate-list"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -602,21 +567,19 @@
       }
 
       function buildRacketSpecRows(item) {
-        const rows = [
+        return [
           ["重量", item.spec_weight_unstrung],
           ["パターン", item.spec_string_pattern],
           ["ヘッド", item.spec_head_size],
           ["バランス", item.spec_balance]
         ].filter((row) => row[1]);
-        return rows;
       }
 
       function buildStringSpecRows(item) {
-        const rows = [
+        return [
           ["ゲージ", item.spec_gauge],
           ["長さ", item.spec_set_length || item.spec_length]
         ].filter((row) => row[1]);
-        return rows;
       }
 
       function renderSpecGrid(rows) {
@@ -687,6 +650,19 @@
         }
       }
 
+      function hasReadyFilters() {
+        return !!(category && brand && category.value && brand.value);
+      }
+
+      function syncCandidateVisibility() {
+        if (!candidatePanel) return;
+        if (hasReadyFilters()) {
+          candidatePanel.classList.add("has-ready-filters");
+        } else {
+          candidatePanel.classList.remove("has-ready-filters");
+        }
+      }
+
       function attachCandidateEvents() {
         document.querySelectorAll(".shop-main-candidate").forEach((button) => {
           button.addEventListener("click", function (event) {
@@ -716,7 +692,6 @@
           container.innerHTML = '<div class="shop-candidate-empty">現在この条件の候補はありません。</div>';
           return;
         }
-
         container.innerHTML = items.map((item) => {
           const specRows = type === "main" ? buildRacketSpecRows(item) : buildStringSpecRows(item);
           const nameHtml = item.product_url
@@ -738,22 +713,25 @@
       }
 
       function getFilteredMainCandidates() {
+        if (!hasReadyFilters()) return [];
         return allProductMasters.filter((item) => {
           return item.product_type === "main"
-            && item.brand === (brand ? brand.value : "")
-            && item.category === (category ? category.value : "");
+            && item.brand === brand.value
+            && item.category === category.value;
         });
       }
 
       function getFilteredStringCandidates() {
+        if (!hasReadyFilters()) return [];
         return allProductMasters.filter((item) => {
           return item.product_type === "string"
-            && item.brand === (brand ? brand.value : "")
+            && item.brand === brand.value
             && item.category === "string";
         });
       }
 
       function renderCandidatesBySelection() {
+        syncCandidateVisibility();
         renderCandidateCards(shopMainCandidates, getFilteredMainCandidates(), "main");
         renderCandidateCards(shopStringCandidates, getFilteredStringCandidates(), "string");
         attachCandidateEvents();
@@ -790,15 +768,20 @@
       renderCandidatesBySelection();
       toggleTensionField();
       updateMobileSummary();
-      renderSelectedMainPreview(mainProductName && mainProductName.value ? {
-        product_name: mainProductName.value,
-        product_url: "",
-        official_price: mainOfficialPrice ? mainOfficialPrice.value : "",
-        spec_weight_unstrung: "",
-        spec_string_pattern: "",
-        spec_head_size: "",
-        spec_balance: ""
-      } : null);
+
+      if (mainProductName && mainProductName.value) {
+        renderSelectedMainPreview({
+          product_name: mainProductName.value,
+          product_url: "",
+          official_price: mainOfficialPrice ? mainOfficialPrice.value : "",
+          spec_weight_unstrung: "",
+          spec_string_pattern: "",
+          spec_head_size: "",
+          spec_balance: ""
+        });
+      } else {
+        renderSelectedMainPreview(null);
+      }
     })();
   </script>
 {% endblock %}
