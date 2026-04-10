@@ -150,6 +150,13 @@
       line-height:1.4;
       word-break:break-word;
     }
+    .shop-estimate-box-sub{
+      margin-top:6px;
+      font-size:12px;
+      color:#0f766e;
+      line-height:1.6;
+      font-weight:700;
+    }
     .shop-estimate-detail{
       display:grid;
       grid-template-columns:repeat(2, minmax(0, 1fr));
@@ -171,6 +178,20 @@
       font-size:13px;
       color:#334155;
       line-height:1.8;
+    }
+    .shop-sale-saving{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      margin-top:8px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid #99f6e4;
+      background:#ecfeff;
+      color:#0f766e;
+      font-size:12px;
+      font-weight:800;
+      line-height:1.4;
     }
     .shop-selected-summary{
       display:grid;
@@ -390,11 +411,21 @@
       text-underline-offset:2px;
     }
     .shop-candidate-name a:hover{color:#1d4ed8;}
+    .shop-candidate-price-wrap{
+      text-align:right;
+      white-space:nowrap;
+    }
     .shop-candidate-price{
       font-size:18px;
       font-weight:800;
-      white-space:nowrap;
       color:#0f172a;
+    }
+    .shop-candidate-saving{
+      margin-top:4px;
+      font-size:12px;
+      color:#0f766e;
+      font-weight:800;
+      line-height:1.4;
     }
     .shop-candidate-meta{
       color:#64748b;
@@ -670,18 +701,22 @@
             <div class="shop-estimate-box">
               <div class="shop-estimate-box-label">メイン商品販売価格</div>
               <div class="shop-estimate-box-value">{{ estimate_result.main_sale_price }}円</div>
+              <div class="shop-estimate-box-sub">参考: 定価より {{ estimate_result.main_official_price|add:"-"|add:estimate_result.main_sale_price|default:"0" }}円お得</div>
             </div>
             <div class="shop-estimate-box">
               <div class="shop-estimate-box-label">ガット販売価格</div>
               <div class="shop-estimate-box-value">{{ estimate_result.string_sale_price }}円</div>
+              <div class="shop-estimate-box-sub">参考: 定価より {{ estimate_result.string_official_price|add:"-"|add:estimate_result.string_sale_price|default:"0" }}円お得</div>
             </div>
             <div class="shop-estimate-box">
               <div class="shop-estimate-box-label">ガット張り代</div>
               <div class="shop-estimate-box-value">{{ estimate_result.stringing_fee }}円</div>
+              <div class="shop-estimate-box-sub">張り依頼時のみ加算</div>
             </div>
             <div class="shop-estimate-box">
               <div class="shop-estimate-box-label">見積合計</div>
               <div class="shop-estimate-box-value">{{ estimate_result.estimated_total }}円</div>
+              <div class="shop-estimate-box-sub">参考価格としてご確認ください</div>
             </div>
           </div>
 
@@ -693,6 +728,7 @@
               <div class="shop-estimate-line">商品名: {{ estimate_result.main_product_name|default:"-" }}</div>
               <div class="shop-estimate-line">定価: {{ estimate_result.main_official_price }}円</div>
               <div class="shop-estimate-line">販売価格: {{ estimate_result.main_sale_price }}円</div>
+              <div class="shop-sale-saving">参考: 定価より {{ estimate_result.main_official_price|add:"-"|add:estimate_result.main_sale_price|default:"0" }}円お得</div>
             </div>
 
             <div class="shop-estimate-detail-card">
@@ -703,6 +739,7 @@
               <div class="shop-estimate-line">ガット販売価格: {{ estimate_result.string_sale_price }}円</div>
               <div class="shop-estimate-line">ガット張り: {% if estimate_result.request_stringing %}依頼する{% else %}依頼しない{% endif %}</div>
               <div class="shop-estimate-line">テンション: {% if estimate_result.request_stringing %}{{ estimate_result.tension_lbs }} lbs{% else %}-{% endif %}</div>
+              <div class="shop-sale-saving">参考: 定価より {{ estimate_result.string_official_price|add:"-"|add:estimate_result.string_sale_price|default:"0" }}円お得</div>
             </div>
           </div>
         </div>
@@ -934,6 +971,18 @@
         return `${Number(value || 0).toLocaleString("ja-JP")}円`;
       }
 
+      function savingYen(value) {
+        return `${Number(value || 0).toLocaleString("ja-JP")}円お得`;
+      }
+
+      function calcSalePrice(officialPrice) {
+        return Math.floor(Number(officialPrice || 0) * 0.8);
+      }
+
+      function calcSavingPrice(officialPrice) {
+        return Math.max(Number(officialPrice || 0) - calcSalePrice(officialPrice), 0);
+      }
+
       function escapeHtml(value) {
         return String(value || "")
           .replace(/&/g, "&amp;")
@@ -1028,9 +1077,11 @@
           shopMainSelectedName.textContent = (mainProductName && mainProductName.value) ? mainProductName.value : "まだ選択されていません";
         }
         if (shopMainSelectedSub) {
-          shopMainSelectedSub.textContent = (mainOfficialPrice && mainOfficialPrice.value)
-            ? `定価 ${yen(mainOfficialPrice.value)}`
-            : "カテゴリとブランドを選んでから、候補一覧で商品を選んでください。";
+          if (mainOfficialPrice && mainOfficialPrice.value) {
+            shopMainSelectedSub.innerHTML = `定価 ${yen(mainOfficialPrice.value)}<br>参考: 定価より ${savingYen(calcSavingPrice(mainOfficialPrice.value))}`;
+          } else {
+            shopMainSelectedSub.textContent = "カテゴリとブランドを選んでから、候補一覧で商品を選んでください。";
+          }
         }
         if (mainSelectedChip) {
           mainSelectedChip.textContent = (mainProductName && mainProductName.value) ? "メイン商品 選択済み" : "メイン商品 未選択";
@@ -1063,7 +1114,7 @@
           } else if (stringSource && stringSource.value === "{{ string_source_bring_in }}") {
             shopStringSelectedSub.textContent = "持ち込みのため、ガット代は加算されません。";
           } else if (stringOfficialPrice && stringOfficialPrice.value) {
-            shopStringSelectedSub.textContent = `定価 ${yen(stringOfficialPrice.value)}`;
+            shopStringSelectedSub.innerHTML = `定価 ${yen(stringOfficialPrice.value)}<br>参考: 定価より ${savingYen(calcSavingPrice(stringOfficialPrice.value))}`;
           } else if (stringBrand && stringBrand.value) {
             shopStringSelectedSub.textContent = `${getSelectedText(stringBrand)} の候補から選べます。`;
           } else {
@@ -1132,12 +1183,14 @@
         const titleText = escapeHtml(item.product_name || "");
         const productUrl = item.product_url ? escapeHtml(item.product_url) : "";
         const priceText = yen(item.official_price || 0);
+        const savingText = savingYen(calcSavingPrice(item.official_price || 0));
         const specRows = buildRacketSpecRows(item);
         shopSelectedMainTitle.innerHTML = productUrl
           ? `<a href="${productUrl}" target="_blank" rel="noopener">${titleText}</a>`
           : titleText;
         shopSelectedMainSub.innerHTML = [
           `定価：<strong>${priceText}</strong>`,
+          `参考: <strong>${savingText}</strong>`,
           specRows.map((row) => `${escapeHtml(row[0])}：<strong>${escapeHtml(row[1])}</strong>`).join("<br>")
         ].filter(Boolean).join("<br>");
         updateSelectedBoxes();
@@ -1294,7 +1347,10 @@
                   <div class="shop-candidate-name">${nameHtml}</div>
                   <div class="shop-candidate-meta">${escapeHtml(item.product_code || "")}${item.product_code && item.keyword ? " / " : ""}${escapeHtml(item.keyword || "")}</div>
                 </div>
-                <div class="shop-candidate-price">${yen(item.official_price || 0)}</div>
+                <div class="shop-candidate-price-wrap">
+                  <div class="shop-candidate-price">${yen(item.official_price || 0)}</div>
+                  <div class="shop-candidate-saving">参考: ${savingYen(calcSavingPrice(item.official_price || 0))}</div>
+                </div>
               </div>
               ${renderSpecGrid(specRows)}
               <div class="shop-candidate-actions">
