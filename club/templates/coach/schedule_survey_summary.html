@@ -2,672 +2,446 @@
 {% block title %}アンケート集計{% endblock %}
 
 {% block content %}
-  <div class="page-head">
-    <h1 class="page-title">アンケート集計</h1>
-    <p class="page-subtitle">
-      会員のレッスン希望時間帯をリアルタイム集計しています。
-    </p>
-  </div>
+<style>
+  .survey-title{
+    margin:0;
+    font-size:28px;
+    font-weight:900;
+    line-height:1.25;
+    letter-spacing:-0.02em;
+  }
 
-  <style>
-    .survey-stat-value{
-      font-size:32px;
-      font-weight:800;
-      line-height:1.1;
-      margin-top:8px;
-    }
+  .survey-lead{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
 
-    .survey-stat-sub{
-      margin-top:8px;
-      color:#64748b;
-      font-size:13px;
-    }
+  .survey-stat-grid{
+    display:grid;
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    gap:12px;
+  }
 
-    .survey-table-wrap{
-      overflow-x:auto;
-    }
+  .survey-stat{
+    padding:16px;
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
 
-    .survey-matrix{
-      min-width:760px;
-    }
+  .survey-stat.primary{
+    background:#0f172a;
+    color:#fff;
+    border-color:#0f172a;
+  }
 
-    .survey-matrix th{
-      white-space:nowrap;
-      text-align:center;
-    }
+  .survey-stat.info{
+    background:#eff6ff;
+    border-color:#bfdbfe;
+  }
 
-    .survey-matrix td{
-      text-align:center;
-      white-space:nowrap;
-    }
+  .survey-stat.notice{
+    background:#fff7ed;
+    border-color:#fed7aa;
+  }
 
-    .survey-matrix td:first-child,
-    .survey-matrix th:first-child{
-      text-align:left;
-      position:sticky;
-      left:0;
-      background:#f8fafc;
-      z-index:1;
-    }
+  .survey-stat-label{
+    color:var(--muted);
+    font-size:12px;
+    font-weight:800;
+  }
 
-    .survey-count-cell{
-      font-weight:700;
-      font-variant-numeric:tabular-nums;
-    }
+  .survey-stat.primary .survey-stat-label{
+    color:#cbd5e1;
+  }
 
-    .survey-count-high{
-      background:#eff6ff;
-      color:#1d4ed8;
-      font-weight:800;
-      border-radius:8px;
-    }
+  .survey-stat-value{
+    margin-top:6px;
+    font-size:24px;
+    font-weight:900;
+    line-height:1.2;
+  }
 
-    .survey-list{
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-    }
+  .ranking-grid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:16px;
+  }
 
-    .survey-user-chip{
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      padding:7px 11px;
-      border-radius:999px;
-      border:1px solid #dbeafe;
-      background:#eff6ff;
-      color:#1d4ed8;
-      font-size:13px;
-      font-weight:700;
-      margin:0 8px 8px 0;
-    }
+  .ranking-list{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:10px;
+  }
 
-    .survey-detail-box{
-      border:1px solid #e5e7eb;
-      border-radius:14px;
-      padding:14px;
-      background:#fff;
-    }
+  .ranking-card{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    align-items:center;
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:14px;
+    padding:12px;
+  }
 
-    .survey-detail-user{
-      display:flex;
-      justify-content:space-between;
-      gap:12px;
-      align-items:flex-start;
-      flex-wrap:wrap;
-      margin-bottom:10px;
-    }
+  .ranking-main{
+    font-weight:900;
+    line-height:1.4;
+  }
 
-    .survey-detail-name{
-      font-size:16px;
-      font-weight:800;
-    }
+  .ranking-sub{
+    margin-top:3px;
+    color:var(--muted);
+    font-size:12px;
+  }
 
-    .survey-detail-date{
-      color:#64748b;
-      font-size:13px;
-      white-space:nowrap;
-    }
+  .ranking-count{
+    flex:0 0 auto;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:48px;
+    padding:6px 10px;
+    border-radius:999px;
+    background:#eff6ff;
+    border:1px solid #bfdbfe;
+    color:#1d4ed8;
+    font-size:12px;
+    font-weight:900;
+  }
 
-    .survey-chip-row{
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      margin-top:6px;
-    }
+  .desktop-table-area{
+    display:block;
+  }
 
-    .survey-chip{
-      display:inline-flex;
-      align-items:center;
-      padding:6px 10px;
-      border-radius:999px;
-      background:#f8fafc;
-      border:1px solid #e5e7eb;
-      color:#334155;
-      font-size:12px;
-      font-weight:700;
-    }
+  .mobile-card-area{
+    display:none;
+  }
 
-    .survey-comment{
-      margin-top:10px;
-      padding:10px 12px;
-      background:#fffbeb;
-      border:1px solid #fde68a;
-      border-radius:12px;
-      color:#92400e;
-      font-size:13px;
-      white-space:pre-wrap;
-    }
+  .response-card{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    padding:14px;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
 
-    .survey-muted{
-      color:#64748b;
-      font-size:13px;
+  .response-title{
+    font-size:16px;
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .response-sub{
+    margin-top:3px;
+    color:var(--muted);
+    font-size:12px;
+    line-height:1.4;
+  }
+
+  .mobile-info-row{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    padding:8px 0;
+    border-top:1px solid #f1f5f9;
+    font-size:13px;
+  }
+
+  .mobile-info-label{
+    flex:0 0 112px;
+    color:var(--muted);
+    font-weight:800;
+  }
+
+  .mobile-info-value{
+    text-align:right;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+
+  @media (max-width: 1000px){
+    .survey-stat-grid{
+      grid-template-columns:repeat(2, minmax(0, 1fr));
     }
 
     .ranking-grid{
-      display:grid;
-      grid-template-columns:repeat(2, minmax(0, 1fr));
-      gap:16px;
+      grid-template-columns:1fr;
+    }
+  }
+
+  @media (max-width: 768px){
+    .survey-title{
+      font-size:23px;
     }
 
-    .ranking-grid-1{
+    .survey-stat-grid{
+      grid-template-columns:1fr;
+      gap:8px;
+    }
+
+    .survey-stat{
+      padding:14px;
+      border-radius:15px;
+    }
+
+    .survey-stat-value{
+      font-size:22px;
+    }
+
+    .ranking-card{
+      align-items:flex-start;
+    }
+
+    .desktop-table-area{
+      display:none;
+    }
+
+    .mobile-card-area{
       display:grid;
       grid-template-columns:1fr;
-      gap:16px;
-    }
-
-    .guide-box{
-      padding:14px 16px;
-      border-radius:14px;
-      border:1px solid #bfdbfe;
-      background:#eff6ff;
-      color:#1e3a8a;
-    }
-
-    .guide-title{
-      font-size:16px;
-      font-weight:800;
-      margin-bottom:6px;
-    }
-
-    .ranking-list{
-      display:flex;
-      flex-direction:column;
       gap:10px;
     }
 
-    .ranking-item{
-      display:grid;
-      grid-template-columns:56px 1fr auto;
-      gap:12px;
-      align-items:center;
-      padding:12px 14px;
-      border:1px solid #e5e7eb;
-      border-radius:14px;
-      background:#ffffff;
+    .mobile-info-row{
+      display:block;
+      padding:8px 0;
     }
 
-    .ranking-rank{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      width:42px;
-      height:42px;
-      border-radius:999px;
-      background:#0f172a;
-      color:#fff;
-      font-size:14px;
-      font-weight:800;
-    }
-
-    .ranking-main{
-      font-size:14px;
-      font-weight:800;
-      color:#0f172a;
-      line-height:1.4;
-    }
-
-    .ranking-sub{
-      margin-top:2px;
-      color:#64748b;
+    .mobile-info-label{
+      display:block;
+      margin-bottom:3px;
       font-size:12px;
-      line-height:1.4;
     }
 
-    .ranking-count{
-      font-size:20px;
-      font-weight:800;
-      color:#1d4ed8;
-      white-space:nowrap;
+    .mobile-info-value{
+      text-align:left;
     }
+  }
+</style>
 
-    .ranking-count-unit{
-      font-size:12px;
-      color:#64748b;
-      margin-left:2px;
-    }
-
-    @media (max-width: 768px){
-      .survey-stat-value{
-        font-size:28px;
-      }
-
-      .survey-detail-box{
-        padding:12px;
-      }
-
-      .ranking-grid{
-        grid-template-columns:1fr;
-      }
-
-      .ranking-item{
-        grid-template-columns:48px 1fr auto;
-        gap:10px;
-        padding:10px 12px;
-      }
-
-      .ranking-rank{
-        width:38px;
-        height:38px;
-        font-size:13px;
-      }
-
-      .ranking-count{
-        font-size:18px;
-      }
-    }
-  </style>
-
-  <div class="grid-3">
-    <div class="card">
-      <div class="muted" style="font-size:13px;">会員総数</div>
-      <div class="survey-stat-value">{{ total_members }}</div>
-      <div class="survey-stat-sub">member ロールの有効会員数</div>
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h1 class="survey-title">アンケート集計</h1>
+      <p class="survey-lead">
+        会員の希望曜日・時間帯・レッスン種別を確認し、開催候補を判断するための画面です。
+      </p>
     </div>
-    <div class="card">
-      <div class="muted" style="font-size:13px;">回答済み</div>
-      <div class="survey-stat-value">{{ answered_count }}</div>
-      <div class="survey-stat-sub">未回答 {{ unanswered_count }} 人</div>
-    </div>
-    <div class="card">
-      <div class="muted" style="font-size:13px;">回答率</div>
-      <div class="survey-stat-value">{{ answered_rate }}%</div>
-      <div class="survey-stat-sub">リアルタイム自動集計</div>
-    </div>
+    <a href="{% url 'club:home' %}" class="btn">コーチホームへ戻る</a>
   </div>
+</div>
 
-  <div class="card">
-    <div class="guide-box">
-      <div class="guide-title">未回答者への案内導線</div>
-      <div>{{ unanswered_guide_message }}</div>
-      {% if unanswered_users %}
-        <div style="margin-top:10px;">
-          <span class="survey-muted">未回答者数:</span>
-          <strong>{{ unanswered_count }}人</strong>
-        </div>
-      {% endif %}
-    </div>
+<div class="survey-stat-grid">
+  <div class="survey-stat primary">
+    <div class="survey-stat-label">回答率</div>
+    <div class="survey-stat-value">{{ answered_rate }}%</div>
   </div>
+  <div class="survey-stat info">
+    <div class="survey-stat-label">回答済み</div>
+    <div class="survey-stat-value">{{ answered_count }}人</div>
+  </div>
+  <div class="survey-stat notice">
+    <div class="survey-stat-label">未回答</div>
+    <div class="survey-stat-value">{{ unanswered_count }}人</div>
+  </div>
+  <div class="survey-stat">
+    <div class="survey-stat-label">会員数</div>
+    <div class="survey-stat-value">{{ total_members }}人</div>
+  </div>
+</div>
 
+<div class="ranking-grid">
   <div class="card">
-    <h2 class="card-title">おすすめ開催時間帯ランキング</h2>
-    <p class="survey-muted" style="margin-top:0;">
-      曜日 × 時間帯の組み合わせで、希望人数が多い順に表示しています。
-    </p>
+    <h2 style="margin-top:0;">おすすめ開催候補</h2>
     {% if top_recommended_slot_rows %}
       <div class="ranking-list">
         {% for row in top_recommended_slot_rows %}
-          <div class="ranking-item">
-            <div class="ranking-rank">#{{ row.rank }}</div>
+          <div class="ranking-card">
             <div>
-              <div class="ranking-main">{{ row.day_label }} × {{ row.slot_label }}</div>
-              <div class="ranking-sub">{{ row.day_group_label }}の人気開催候補</div>
+              <div class="ranking-main">{{ row.day_label }} / {{ row.slot_label }}</div>
+              <div class="ranking-sub">開催候補順位 {{ forloop.counter }}</div>
             </div>
-            <div class="ranking-count">{{ row.count }}<span class="ranking-count-unit">人</span></div>
+            <div class="ranking-count">{{ row.count }}票</div>
           </div>
         {% endfor %}
       </div>
     {% else %}
-      <p class="survey-muted">まだ回答がありません。</p>
+      <p class="muted" style="margin:0;">集計データはまだありません。</p>
     {% endif %}
   </div>
 
-  <div class="ranking-grid">
-    <div class="card">
-      <h2 class="card-title">曜日ランキング</h2>
-      {% if top_day_rows %}
-        <div class="ranking-list">
-          {% for row in top_day_rows %}
-            <div class="ranking-item">
-              <div class="ranking-rank">#{{ row.rank }}</div>
-              <div>
-                <div class="ranking-main">{{ row.label }}</div>
-                <div class="ranking-sub">参加しやすい曜日</div>
-              </div>
-              <div class="ranking-count">{{ row.count }}<span class="ranking-count-unit">人</span></div>
-            </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <p class="survey-muted">まだ回答がありません。</p>
-      {% endif %}
-    </div>
-
-    <div class="card">
-      <h2 class="card-title">レッスン種別ランキング</h2>
-      {% if top_lesson_type_rows %}
-        <div class="ranking-list">
-          {% for row in top_lesson_type_rows %}
-            <div class="ranking-item">
-              <div class="ranking-rank">#{{ row.rank }}</div>
-              <div>
-                <div class="ranking-main">{{ row.label }}</div>
-                <div class="ranking-sub">希望レッスン種別</div>
-              </div>
-              <div class="ranking-count">{{ row.count }}<span class="ranking-count-unit">人</span></div>
-            </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <p class="survey-muted">まだ回答がありません。</p>
-      {% endif %}
-    </div>
-  </div>
-
-  <div class="ranking-grid">
-    <div class="card">
-      <h2 class="card-title">平日時間帯ランキング</h2>
-      {% if top_weekday_time_slot_rows %}
-        <div class="ranking-list">
-          {% for row in top_weekday_time_slot_rows %}
-            <div class="ranking-item">
-              <div class="ranking-rank">#{{ row.rank }}</div>
-              <div>
-                <div class="ranking-main">{{ row.label }}</div>
-                <div class="ranking-sub">平日に参加しやすい時間帯</div>
-              </div>
-              <div class="ranking-count">{{ row.count }}<span class="ranking-count-unit">人</span></div>
-            </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <p class="survey-muted">まだ回答がありません。</p>
-      {% endif %}
-    </div>
-
-    <div class="card">
-      <h2 class="card-title">土日時間帯ランキング</h2>
-      {% if top_weekend_time_slot_rows %}
-        <div class="ranking-list">
-          {% for row in top_weekend_time_slot_rows %}
-            <div class="ranking-item">
-              <div class="ranking-rank">#{{ row.rank }}</div>
-              <div>
-                <div class="ranking-main">{{ row.label }}</div>
-                <div class="ranking-sub">土日に参加しやすい時間帯</div>
-              </div>
-              <div class="ranking-count">{{ row.count }}<span class="ranking-count-unit">人</span></div>
-            </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <p class="survey-muted">まだ回答がありません。</p>
-      {% endif %}
-    </div>
-  </div>
-
   <div class="card">
-    <h2 class="card-title">頻度ランキング</h2>
-    {% if top_frequency_rows %}
+    <h2 style="margin-top:0;">人気のレッスン種別</h2>
+    {% if top_lesson_type_rows %}
       <div class="ranking-list">
-        {% for row in top_frequency_rows %}
-          <div class="ranking-item">
-            <div class="ranking-rank">#{{ row.rank }}</div>
+        {% for row in top_lesson_type_rows %}
+          <div class="ranking-card">
             <div>
               <div class="ranking-main">{{ row.label }}</div>
-              <div class="ranking-sub">希望頻度</div>
+              <div class="ranking-sub">希望種別</div>
             </div>
-            <div class="ranking-count">{{ row.count }}<span class="ranking-count-unit">人</span></div>
+            <div class="ranking-count">{{ row.count }}票</div>
           </div>
         {% endfor %}
       </div>
     {% else %}
-      <p class="survey-muted">まだ回答がありません。</p>
+      <p class="muted" style="margin:0;">集計データはまだありません。</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="ranking-grid">
+  <div class="card">
+    <h2 style="margin-top:0;">平日時間帯 TOP</h2>
+    {% if top_weekday_time_slot_rows %}
+      <div class="ranking-list">
+        {% for row in top_weekday_time_slot_rows %}
+          <div class="ranking-card">
+            <div>
+              <div class="ranking-main">{{ row.label }}</div>
+              <div class="ranking-sub">平日希望時間</div>
+            </div>
+            <div class="ranking-count">{{ row.count }}票</div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted" style="margin:0;">集計データはまだありません。</p>
     {% endif %}
   </div>
 
   <div class="card">
-    <h2 class="card-title">曜日別の希望人数</h2>
-    <div class="survey-table-wrap">
+    <h2 style="margin-top:0;">土日時間帯 TOP</h2>
+    {% if top_weekend_time_slot_rows %}
+      <div class="ranking-list">
+        {% for row in top_weekend_time_slot_rows %}
+          <div class="ranking-card">
+            <div>
+              <div class="ranking-main">{{ row.label }}</div>
+              <div class="ranking-sub">土日希望時間</div>
+            </div>
+            <div class="ranking-count">{{ row.count }}票</div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted" style="margin:0;">集計データはまだありません。</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">レベル・種別クロス集計</h2>
+  {% if cross_rows %}
+    <div style="overflow-x:auto;">
       <table>
         <thead>
           <tr>
-            <th>曜日</th>
-            <th>希望人数</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in day_rows %}
-            <tr>
-              <td>{{ row.label }}</td>
-              <td class="survey-count-cell {% if row.count > 0 %}survey-count-high{% endif %}">{{ row.count }}</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="grid-2">
-    <div class="card">
-      <h2 class="card-title">時間帯別の希望人数（平日）</h2>
-      <div class="survey-table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>時間帯</th>
-              <th>希望人数</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in weekday_time_slot_rows %}
-              <tr>
-                <td>{{ row.label }}</td>
-                <td class="survey-count-cell {% if row.count > 0 %}survey-count-high{% endif %}">{{ row.count }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2 class="card-title">時間帯別の希望人数（土日）</h2>
-      <div class="survey-table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>時間帯</th>
-              <th>希望人数</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in weekend_time_slot_rows %}
-              <tr>
-                <td>{{ row.label }}</td>
-                <td class="survey-count-cell {% if row.count > 0 %}survey-count-high{% endif %}">{{ row.count }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2 class="card-title">曜日 × 時間帯のクロス集計</h2>
-    <p class="survey-muted" style="margin-top:0;">
-      曜日ごとに、どの時間帯の希望が多いかを一目で確認できます。
-    </p>
-    <div class="survey-table-wrap">
-      <table class="survey-matrix">
-        <thead>
-          <tr>
-            <th>曜日</th>
-            <th>9:00〜11:00</th>
-            <th>11:00〜13:00</th>
-            <th>13:00〜15:00</th>
-            <th>15:00〜17:00</th>
-            <th>17:00〜19:00</th>
-            <th>19:00〜21:00</th>
+            <th>分類</th>
+            <th>件数</th>
           </tr>
         </thead>
         <tbody>
           {% for row in cross_rows %}
             <tr>
-              <td><strong>{{ row.day_label }}</strong></td>
-              {% for cell in row.cells %}
-                <td class="survey-count-cell {% if cell.count > 0 %}survey-count-high{% endif %}">{{ cell.count }}</td>
-              {% endfor %}
+              <td>{{ row.label }}</td>
+              <td>{{ row.count }}件</td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-  </div>
+  {% else %}
+    <p class="muted" style="margin:0;">クロス集計データはまだありません。</p>
+  {% endif %}
+</div>
 
+<div class="card">
+  <h2 style="margin-top:0;">最近の回答</h2>
 
-  <div class="ranking-grid">
-    <div class="card">
-      <h2 class="card-title">レベル別おすすめ時間帯</h2>
-      {% if level_ranking_groups %}
-        <div class="ranking-list">
-          {% for group in level_ranking_groups %}
-            <div class="survey-detail-box">
-              <div class="survey-detail-user">
-                <div class="survey-detail-name">{{ group.level_label }}</div>
-                <div class="survey-detail-date">回答 {{ group.answer_count }} 件</div>
-              </div>
-              {% if group.rows %}
-                <div class="ranking-list">
-                  {% for row in group.rows|slice:":3" %}
-                    <div class="ranking-item">
-                      <div class="ranking-rank">#{{ row.rank }}</div>
-                      <div>
-                        <div class="ranking-main">{{ row.day_label }} × {{ row.slot_label }}</div>
-                        <div class="ranking-sub">このレベル帯のおすすめ時間帯</div>
-                      </div>
-                      <div class="ranking-count">{{ row.count }}<span class="ranking-count-unit">人</span></div>
-                    </div>
-                  {% endfor %}
-                </div>
-              {% else %}
-                <p class="survey-muted">このレベル帯の回答はまだありません。</p>
-              {% endif %}
-            </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <p class="survey-muted">レベル別集計に十分な回答がありません。</p>
-      {% endif %}
+  {% if latest_responses %}
+    <div class="desktop-table-area">
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>会員</th>
+              <th>レベル</th>
+              <th>希望曜日</th>
+              <th>平日時間</th>
+              <th>土日時間</th>
+              <th>種別</th>
+              <th>頻度</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for response in latest_responses %}
+              <tr>
+                <td>{{ response.user.display_name }}</td>
+                <td>{{ response.user.get_member_level_display }}</td>
+                <td>{{ response.preferred_days_display|default:"-" }}</td>
+                <td>{{ response.weekday_time_slots_display|default:"-" }}</td>
+                <td>{{ response.weekend_time_slots_display|default:"-" }}</td>
+                <td>{{ response.lesson_types_display|default:"-" }}</td>
+                <td>{{ response.frequency_display|default:"-" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
 
-    <div class="card">
-      <h2 class="card-title">種別別おすすめ時間帯</h2>
-      {% if lesson_type_ranking_groups %}
-        <div class="ranking-list">
-          {% for group in lesson_type_ranking_groups %}
-            <div class="survey-detail-box">
-              <div class="survey-detail-user">
-                <div class="survey-detail-name">{{ group.lesson_type_label }}</div>
-                <div class="survey-detail-date">回答 {{ group.answer_count }} 件</div>
-              </div>
-              {% if group.rows %}
-                <div class="ranking-list">
-                  {% for row in group.rows|slice:":3" %}
-                    <div class="ranking-item">
-                      <div class="ranking-rank">#{{ row.rank }}</div>
-                      <div>
-                        <div class="ranking-main">{{ row.day_label }} × {{ row.slot_label }}</div>
-                        <div class="ranking-sub">この種別のおすすめ時間帯</div>
-                      </div>
-                      <div class="ranking-count">{{ row.count }}<span class="ranking-count-unit">人</span></div>
-                    </div>
-                  {% endfor %}
-                </div>
-              {% else %}
-                <p class="survey-muted">この種別の回答はまだありません。</p>
-              {% endif %}
-            </div>
-          {% endfor %}
+    <div class="mobile-card-area">
+      {% for response in latest_responses %}
+        <div class="response-card">
+          <div class="response-title">{{ response.user.display_name }}</div>
+          <div class="response-sub">{{ response.user.get_member_level_display }}</div>
+
+          <div class="mobile-info-row">
+            <div class="mobile-info-label">希望曜日</div>
+            <div class="mobile-info-value">{{ response.preferred_days_display|default:"-" }}</div>
+          </div>
+          <div class="mobile-info-row">
+            <div class="mobile-info-label">平日時間</div>
+            <div class="mobile-info-value">{{ response.weekday_time_slots_display|default:"-" }}</div>
+          </div>
+          <div class="mobile-info-row">
+            <div class="mobile-info-label">土日時間</div>
+            <div class="mobile-info-value">{{ response.weekend_time_slots_display|default:"-" }}</div>
+          </div>
+          <div class="mobile-info-row">
+            <div class="mobile-info-label">種別</div>
+            <div class="mobile-info-value">{{ response.lesson_types_display|default:"-" }}</div>
+          </div>
         </div>
-      {% else %}
-        <p class="survey-muted">種別別集計に十分な回答がありません。</p>
-      {% endif %}
+      {% endfor %}
     </div>
-  </div>
+  {% else %}
+    <p class="muted" style="margin:0;">回答はまだありません。</p>
+  {% endif %}
+</div>
 
-  <div class="grid-2">
-    <div class="card">
-      <h2 class="card-title">未回答者一覧</h2>
-      <p class="survey-muted" style="margin-top:0;">
-        未回答者への案内対象をすぐに確認できます。
-      </p>
-      {% if unanswered_users %}
-        <div>
-          {% for user in unanswered_users %}
-            <span class="survey-user-chip">{{ user.display_name }}</span>
-          {% endfor %}
+<div class="card">
+  <h2 style="margin-top:0;">未回答者</h2>
+  {% if unanswered_users %}
+    <div class="ranking-list">
+      {% for member in unanswered_users %}
+        <div class="ranking-card">
+          <div>
+            <div class="ranking-main">{{ member.display_name }}</div>
+            <div class="ranking-sub">{{ member.get_member_level_display }}</div>
+          </div>
+          <div class="ranking-count">未回答</div>
         </div>
-      {% else %}
-        <p class="survey-muted">未回答者はいません。</p>
-      {% endif %}
+      {% endfor %}
     </div>
-
-    <div class="card">
-      <h2 class="card-title">回答済み会員の詳細</h2>
-      <p class="survey-muted" style="margin-top:0;">
-        新しい回答から最大50件を表示しています。
-      </p>
-      {% if latest_responses %}
-        <div class="survey-list">
-          {% for response in latest_responses %}
-            <div class="survey-detail-box">
-              <div class="survey-detail-user">
-                <div class="survey-detail-name">{{ response.user.display_name }}</div>
-                <div class="survey-detail-date">{{ response.answered_at|date:"Y-m-d H:i" }}</div>
-              </div>
-
-              <div class="survey-muted">参加しやすい曜日</div>
-              <div class="survey-chip-row">
-                {% for label in response.selected_day_labels %}
-                  <span class="survey-chip">{{ label }}</span>
-                {% empty %}
-                  <span class="survey-chip">未選択</span>
-                {% endfor %}
-              </div>
-
-              <div class="survey-muted" style="margin-top:10px;">参加しやすい時間帯（平日）</div>
-              <div class="survey-chip-row">
-                {% for label in response.selected_weekday_time_slot_labels %}
-                  <span class="survey-chip">{{ label }}</span>
-                {% empty %}
-                  <span class="survey-chip">未選択</span>
-                {% endfor %}
-              </div>
-
-              <div class="survey-muted" style="margin-top:10px;">参加しやすい時間帯（土日）</div>
-              <div class="survey-chip-row">
-                {% for label in response.selected_weekend_time_slot_labels %}
-                  <span class="survey-chip">{{ label }}</span>
-                {% empty %}
-                  <span class="survey-chip">未選択</span>
-                {% endfor %}
-              </div>
-
-              <div class="survey-muted" style="margin-top:10px;">希望レッスン種別</div>
-              <div class="survey-chip-row">
-                {% for label in response.selected_lesson_type_labels %}
-                  <span class="survey-chip">{{ label }}</span>
-                {% empty %}
-                  <span class="survey-chip">未選択</span>
-                {% endfor %}
-              </div>
-
-              <div class="survey-muted" style="margin-top:10px;">希望頻度</div>
-              <div class="survey-chip-row">
-                <span class="survey-chip">{{ response.preferred_frequency_label }}</span>
-              </div>
-
-              {% if response.free_comment %}
-                <div class="survey-comment">{{ response.free_comment }}</div>
-              {% endif %}
-            </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <p class="survey-muted">まだ回答がありません。</p>
-      {% endif %}
-    </div>
-  </div>
+  {% else %}
+    <p class="muted" style="margin:0;">未回答者はいません。</p>
+  {% endif %}
+</div>
 {% endblock %}
