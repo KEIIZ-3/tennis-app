@@ -2,30 +2,239 @@
 {% block title %}コーチ別チケット集計{% endblock %}
 
 {% block content %}
+<style>
+  .summary-title{
+    margin:0;
+    font-size:28px;
+    font-weight:900;
+    line-height:1.25;
+    letter-spacing:-0.02em;
+  }
+
+  .summary-lead{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
+
+  .filter-panel{
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+    align-items:end;
+  }
+
+  .filter-panel > div{
+    min-width:120px;
+  }
+
+  .month-actions{
+    margin-top:14px;
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+
+  .stat-grid{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:12px;
+  }
+
+  .stat-card{
+    padding:16px;
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .stat-card.notice{
+    background:#fff7ed;
+    border-color:#fed7aa;
+  }
+
+  .stat-card.info{
+    background:#eff6ff;
+    border-color:#bfdbfe;
+  }
+
+  .stat-label{
+    color:var(--muted);
+    font-size:12px;
+    font-weight:800;
+  }
+
+  .stat-value{
+    margin-top:6px;
+    font-size:24px;
+    font-weight:900;
+    line-height:1.2;
+  }
+
+  .desktop-table-area{
+    display:block;
+  }
+
+  .mobile-card-area{
+    display:none;
+  }
+
+  .mobile-row-list{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:10px;
+  }
+
+  .mobile-row-card{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    padding:14px;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .mobile-row-title{
+    font-size:16px;
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .mobile-row-sub{
+    margin-top:3px;
+    color:var(--muted);
+    font-size:12px;
+    line-height:1.4;
+  }
+
+  .mobile-info-row{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    padding:8px 0;
+    border-top:1px solid #f1f5f9;
+    font-size:13px;
+  }
+
+  .mobile-info-label{
+    flex:0 0 104px;
+    color:var(--muted);
+    font-weight:800;
+  }
+
+  .mobile-info-value{
+    text-align:right;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+
+  .price-chip{
+    display:inline-block;
+    margin:2px 0 2px 4px;
+    padding:5px 8px;
+    border-radius:999px;
+    background:#eff6ff;
+    border:1px solid #bfdbfe;
+    font-size:12px;
+    color:#1d4ed8;
+    font-weight:700;
+  }
+
+  @media (max-width: 900px){
+    .stat-grid{
+      grid-template-columns:1fr;
+    }
+  }
+
+  @media (max-width: 768px){
+    .summary-title{
+      font-size:23px;
+    }
+
+    .filter-panel{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:8px;
+    }
+
+    .filter-panel > div{
+      min-width:0;
+    }
+
+    .filter-panel button{
+      grid-column:span 2;
+      width:100%;
+    }
+
+    .month-actions{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:8px;
+    }
+
+    .month-actions .btn{
+      width:100%;
+    }
+
+    .stat-card{
+      padding:14px;
+      border-radius:15px;
+    }
+
+    .stat-value{
+      font-size:22px;
+    }
+
+    .desktop-table-area{
+      display:none;
+    }
+
+    .mobile-card-area{
+      display:block;
+    }
+
+    .mobile-info-row{
+      display:block;
+      padding:8px 0;
+    }
+
+    .mobile-info-label{
+      display:block;
+      margin-bottom:3px;
+      font-size:12px;
+    }
+
+    .mobile-info-value{
+      text-align:left;
+    }
+  }
+</style>
+
 <div class="card">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
     <div>
-      <h1 style="margin:0;">コーチ別チケット集計</h1>
-      <p class="muted" style="margin:8px 0 0;">
-        {{ month_label }} の価格帯別チケット消費を確認できます。
+      <h1 class="summary-title">コーチ別チケット集計</h1>
+      <p class="summary-lead">
+        {{ month_label }} の価格帯別チケット消費を確認できます。スマホでは予約ごとにカード表示します。
       </p>
     </div>
 
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
-      <a href="{% url 'club:coach_availability_list' %}" class="btn">コーチ空き時間</a>
+      <a href="{% url 'club:coach_availability_list' %}" class="btn">スケジュール管理</a>
       <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
     </div>
   </div>
 </div>
 
 <div class="card">
-  <form method="get" style="display:flex; gap:12px; flex-wrap:wrap; align-items:end;">
-    <div style="min-width:120px;">
+  <form method="get" class="filter-panel">
+    <div>
       <label for="year">年</label>
       <input type="number" id="year" name="year" value="{{ selected_year }}">
     </div>
 
-    <div style="min-width:120px;">
+    <div>
       <label for="month">月</label>
       <input type="number" id="month" name="month" min="1" max="12" value="{{ selected_month }}">
     </div>
@@ -46,16 +255,16 @@
     <button type="submit" class="btn btn-primary">表示する</button>
   </form>
 
-  <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
+  <div class="month-actions">
     <a href="?year={{ prev_year }}&month={{ prev_month }}{% if selected_coach %}&coach_id={{ selected_coach.id }}{% endif %}" class="btn">前の月</a>
     <a href="?year={{ next_year }}&month={{ next_month }}{% if selected_coach %}&coach_id={{ selected_coach.id }}{% endif %}" class="btn">次の月</a>
   </div>
 </div>
 
-<div class="grid-3">
-  <div class="card">
-    <div class="muted" style="font-size:13px;">対象コーチ</div>
-    <div style="font-size:24px; font-weight:800; margin-top:6px;">
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-label">対象コーチ</div>
+    <div class="stat-value">
       {% if selected_coach %}
         {{ selected_coach.display_name }}
       {% else %}
@@ -64,125 +273,173 @@
     </div>
   </div>
 
-  <div class="card">
-    <div class="muted" style="font-size:13px;">総消費枚数</div>
-    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ total_tickets }}枚</div>
+  <div class="stat-card info">
+    <div class="stat-label">総消費枚数</div>
+    <div class="stat-value">{{ total_tickets }}枚</div>
   </div>
 
-  <div class="card">
-    <div class="muted" style="font-size:13px;">価格帯換算合計</div>
-    <div style="font-size:24px; font-weight:800; margin-top:6px;">{{ total_amount }}円</div>
+  <div class="stat-card notice">
+    <div class="stat-label">価格帯換算合計</div>
+    <div class="stat-value">{{ total_amount }}円</div>
   </div>
 </div>
 
-<div class="card">
-  <h2 style="margin-top:0;">価格帯別集計</h2>
+<div class="grid-2">
+  <div class="card">
+    <h2 style="margin-top:0;">価格帯別集計</h2>
 
-  {% if breakdown_rows %}
-    <div style="overflow-x:auto;">
-      <table>
-        <thead>
-          <tr>
-            <th>価格帯</th>
-            <th>消費枚数</th>
-            <th>換算額</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in breakdown_rows %}
+    {% if breakdown_rows %}
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
             <tr>
-              <td>{{ row.label }}</td>
-              <td>{{ row.tickets }}枚</td>
-              <td>{{ row.amount }}円</td>
+              <th>価格帯</th>
+              <th>消費枚数</th>
+              <th>換算額</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  {% else %}
-    <p class="muted" style="margin:0;">この月の消費データはまだありません。</p>
-  {% endif %}
-</div>
+          </thead>
+          <tbody>
+            {% for row in breakdown_rows %}
+              <tr>
+                <td>{{ row.label }}</td>
+                <td>{{ row.tickets }}枚</td>
+                <td>{{ row.amount }}円</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted" style="margin:0;">この月の消費データはまだありません。</p>
+    {% endif %}
+  </div>
 
-<div class="card">
-  <h2 style="margin-top:0;">レッスン種別ごとの消費枚数</h2>
+  <div class="card">
+    <h2 style="margin-top:0;">レッスン種別ごとの消費枚数</h2>
 
-  {% if lesson_type_rows %}
-    <div style="overflow-x:auto;">
-      <table>
-        <thead>
-          <tr>
-            <th>レッスン種別</th>
-            <th>消費枚数</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in lesson_type_rows %}
+    {% if lesson_type_rows %}
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
             <tr>
-              <td>{{ row.lesson_label }}</td>
-              <td>{{ row.tickets }}枚</td>
+              <th>レッスン種別</th>
+              <th>消費枚数</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  {% else %}
-    <p class="muted" style="margin:0;">この月のレッスン消費はまだありません。</p>
-  {% endif %}
+          </thead>
+          <tbody>
+            {% for row in lesson_type_rows %}
+              <tr>
+                <td>{{ row.lesson_label }}</td>
+                <td>{{ row.tickets }}枚</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted" style="margin:0;">この月のレッスン消費はまだありません。</p>
+    {% endif %}
+  </div>
 </div>
 
 <div class="card">
   <h2 style="margin-top:0;">予約ごとの内訳</h2>
 
   {% if reservation_rows %}
-    <div style="overflow-x:auto;">
-      <table>
-        <thead>
-          <tr>
-            <th>日時</th>
-            <th>会員</th>
-            <th>種別</th>
-            <th>担当コーチ</th>
-            <th>コート</th>
-            <th>消費枚数</th>
-            <th>価格帯内訳</th>
-            <th>換算額</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in reservation_rows %}
+    <div class="desktop-table-area">
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
             <tr>
-              <td>
-                <div>{{ row.reservation.start_at|date:"Y-m-d H:i" }}</div>
-                <div class="muted" style="font-size:12px;">〜 {{ row.reservation.end_at|date:"H:i" }}</div>
-              </td>
-              <td>{{ row.reservation.user.display_name }}</td>
-              <td>{{ row.reservation.get_lesson_type_display }}</td>
-              <td>
-                {% if row.has_substitute %}
-                  <div><strong>実施:</strong> {{ row.assigned_coach_name }}</div>
-                  <div class="muted" style="font-size:12px;">通常担当: {{ row.normal_coach_name }}</div>
-                  <div class="muted" style="font-size:12px;">代行: {{ row.substitute_coach_name }}</div>
-                {% else %}
-                  <div>{{ row.assigned_coach_name }}</div>
-                {% endif %}
-              </td>
-              <td>{{ row.reservation.court }}</td>
-              <td>{{ row.tickets }}枚</td>
-              <td>
-                <div style="display:flex; flex-direction:column; gap:6px;">
-                  {% for item in row.breakdown_items %}
-                    <div style="display:inline-block; padding:6px 8px; border:1px solid #dbeafe; background:#eff6ff; border-radius:8px; font-size:13px;">
-                      {{ item.label }} × {{ item.tickets }}枚
-                    </div>
-                  {% endfor %}
-                </div>
-              </td>
-              <td>{{ row.amount }}円</td>
+              <th>日時</th>
+              <th>会員</th>
+              <th>種別</th>
+              <th>担当コーチ</th>
+              <th>コート</th>
+              <th>消費枚数</th>
+              <th>価格帯内訳</th>
+              <th>換算額</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for row in reservation_rows %}
+              <tr>
+                <td>
+                  <div>{{ row.reservation.start_at|date:"Y-m-d H:i" }}</div>
+                  <div class="muted" style="font-size:12px;">〜 {{ row.reservation.end_at|date:"H:i" }}</div>
+                </td>
+                <td>{{ row.reservation.user.display_name }}</td>
+                <td>{{ row.reservation.get_lesson_type_display }}</td>
+                <td>
+                  {% if row.has_substitute %}
+                    <div><strong>実施:</strong> {{ row.assigned_coach_name }}</div>
+                    <div class="muted" style="font-size:12px;">通常担当: {{ row.normal_coach_name }}</div>
+                    <div class="muted" style="font-size:12px;">代行: {{ row.substitute_coach_name }}</div>
+                  {% else %}
+                    <div>{{ row.assigned_coach_name }}</div>
+                  {% endif %}
+                </td>
+                <td>{{ row.reservation.court }}</td>
+                <td>{{ row.tickets }}枚</td>
+                <td>
+                  <div style="display:flex; flex-direction:column; gap:6px;">
+                    {% for item in row.breakdown_items %}
+                      <div style="display:inline-block; padding:6px 8px; border:1px solid #dbeafe; background:#eff6ff; border-radius:8px; font-size:13px;">
+                        {{ item.label }} × {{ item.tickets }}枚
+                      </div>
+                    {% endfor %}
+                  </div>
+                </td>
+                <td>{{ row.amount }}円</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="mobile-card-area">
+      <div class="mobile-row-list">
+        {% for row in reservation_rows %}
+          <div class="mobile-row-card">
+            <div class="mobile-row-title">{{ row.reservation.user.display_name }} / {{ row.amount }}円</div>
+            <div class="mobile-row-sub">
+              {{ row.reservation.start_at|date:"Y-m-d H:i" }}〜{{ row.reservation.end_at|date:"H:i" }} / {{ row.reservation.get_lesson_type_display }}
+            </div>
+
+            <div class="mobile-info-row">
+              <div class="mobile-info-label">担当</div>
+              <div class="mobile-info-value">
+                {% if row.has_substitute %}
+                  実施: {{ row.assigned_coach_name }}<br>
+                  <span class="muted">通常: {{ row.normal_coach_name }}</span>
+                {% else %}
+                  {{ row.assigned_coach_name }}
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="mobile-info-row">
+              <div class="mobile-info-label">コート</div>
+              <div class="mobile-info-value">{{ row.reservation.court }}</div>
+            </div>
+
+            <div class="mobile-info-row">
+              <div class="mobile-info-label">消費枚数</div>
+              <div class="mobile-info-value">{{ row.tickets }}枚</div>
+            </div>
+
+            <div class="mobile-info-row">
+              <div class="mobile-info-label">価格帯</div>
+              <div class="mobile-info-value">
+                {% for item in row.breakdown_items %}
+                  <span class="price-chip">{{ item.label }} × {{ item.tickets }}枚</span>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
     </div>
   {% else %}
     <p class="muted" style="margin:0;">この月の予約内訳はまだありません。</p>
