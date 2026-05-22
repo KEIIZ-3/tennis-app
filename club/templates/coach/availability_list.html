@@ -292,6 +292,25 @@
   </div>
 </div>
 
+
+<div class="card">
+  <h2 class="secondary-section-title">スケジュールメニュー</h2>
+  <div class="pending-request-list">
+    <a href="{% url 'club:coach_availability_list' %}" class="availability-card" style="text-decoration:none;">
+      <div class="item-title">通常スケジュール</div>
+      <div class="item-subtitle">レッスン枠の登録、編集、雨天中止を行います。</div>
+    </a>
+    <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="availability-card" style="text-decoration:none;">
+      <div class="item-title">固定レッスン</div>
+      <div class="item-subtitle">今週の固定レッスン、代行、登録メンバーを確認します。</div>
+    </a>
+    <a href="{% url 'club:reservation_list' %}" class="availability-card" style="text-decoration:none;">
+      <div class="item-title">予約・承認</div>
+      <div class="item-subtitle">承認待ち申請、担当予約、キャンセル状況を確認します。</div>
+    </a>
+  </div>
+</div>
+
 <div class="card">
   <h2 class="secondary-section-title">承認待ち申請</h2>
 
