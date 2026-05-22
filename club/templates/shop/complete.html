@@ -1,203 +1,282 @@
 {% extends "base.html" %}
-{% block title %}物販申込確認{% endblock %}
+{% block title %}Shop申込完了{% endblock %}
 
 {% block content %}
-  <div class="page-head">
-    <h1 class="page-title">物販申込確認</h1>
-    <p class="page-subtitle">
-      申込ID {{ estimate_request.id }} の内容です。ブランド公式ページ確認用リンクもここから開けます。
-    </p>
+<style>
+  .complete-title{
+    margin:0;
+    font-size:28px;
+    font-weight:900;
+    line-height:1.25;
+    letter-spacing:-0.02em;
+  }
+
+  .complete-lead{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
+
+  .complete-hero{
+    border:1px solid #bbf7d0;
+    background:#ecfdf5;
+    border-radius:18px;
+    padding:18px;
+  }
+
+  .complete-badge{
+    display:inline-flex;
+    align-items:center;
+    padding:6px 11px;
+    border-radius:999px;
+    background:#166534;
+    color:#fff;
+    font-size:12px;
+    font-weight:900;
+    margin-bottom:10px;
+  }
+
+  .detail-grid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:14px;
+  }
+
+  .detail-card{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    padding:16px;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .detail-card-title{
+    margin:0 0 10px;
+    font-size:18px;
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .detail-row{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    padding:9px 0;
+    border-top:1px solid #f1f5f9;
+    font-size:13px;
+  }
+
+  .detail-label{
+    color:var(--muted);
+    font-weight:800;
+    flex:0 0 110px;
+  }
+
+  .detail-value{
+    text-align:right;
+    min-width:0;
+    overflow-wrap:anywhere;
+    font-weight:700;
+  }
+
+  .link-list{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:8px;
+  }
+
+  .external-link{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    padding:12px;
+    border:1px solid #dbeafe;
+    background:#f8fbff;
+    border-radius:12px;
+    font-weight:800;
+  }
+
+  .external-link span{
+    color:#64748b;
+  }
+
+  .action-row{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+
+  @media (max-width: 900px){
+    .detail-grid{
+      grid-template-columns:1fr;
+    }
+  }
+
+  @media (max-width: 768px){
+    .complete-title{
+      font-size:23px;
+    }
+
+    .complete-hero,
+    .detail-card{
+      padding:14px;
+      border-radius:15px;
+    }
+
+    .detail-row{
+      display:block;
+      padding:8px 0;
+    }
+
+    .detail-label{
+      display:block;
+      margin-bottom:3px;
+      font-size:12px;
+    }
+
+    .detail-value{
+      text-align:left;
+    }
+
+    .action-row{
+      display:grid;
+      grid-template-columns:1fr;
+    }
+
+    .action-row .btn{
+      width:100%;
+    }
+  }
+</style>
+
+<div class="complete-hero">
+  <div class="complete-badge">申込完了</div>
+  <h1 class="complete-title">Shop申込を受け付けました</h1>
+  <p class="complete-lead">
+    申込ID {{ estimate_request.id }} の内容を保存しました。内容を確認し、必要に応じて運営から連絡します。
+  </p>
+</div>
+
+<div class="detail-grid" style="margin-top:16px;">
+  <div class="detail-card">
+    <h2 class="detail-card-title">メイン商品</h2>
+
+    <div class="detail-row">
+      <div class="detail-label">カテゴリ</div>
+      <div class="detail-value">{{ estimate_request.get_product_category_display|default:estimate_request.product_category }}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">ブランド</div>
+      <div class="detail-value">{{ estimate_request.get_brand_display|default:estimate_request.brand }}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">商品名</div>
+      <div class="detail-value">{{ estimate_request.main_product_name|default:"-" }}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">定価</div>
+      <div class="detail-value">{{ estimate_request.main_official_price|default:0 }}円</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">グリップ</div>
+      <div class="detail-value">{{ estimate_request.grip_size|default:"-" }}</div>
+    </div>
   </div>
 
-  <div class="grid-3" style="margin-bottom:16px;">
-    <div class="card" style="padding:16px;">
-      <div class="muted" style="font-size:12px;">メイン商品販売価格</div>
-      <div style="font-size:26px; font-weight:800; margin-top:6px;">{{ estimate_request.main_sale_price }}円</div>
-    </div>
-    <div class="card" style="padding:16px;">
-      <div class="muted" style="font-size:12px;">ガット販売価格</div>
-      <div style="font-size:26px; font-weight:800; margin-top:6px;">{{ estimate_request.string_sale_price }}円</div>
-    </div>
-    <div class="card" style="padding:16px;">
-      <div class="muted" style="font-size:12px;">見積もり合計</div>
-      <div style="font-size:26px; font-weight:800; margin-top:6px;">{{ estimate_request.estimated_total }}円</div>
-    </div>
-  </div>
+  <div class="detail-card">
+    <h2 class="detail-card-title">ガット・張り</h2>
 
-  <div class="card" style="margin-bottom:16px;">
-    <h2 class="card-title">価格サマリー</h2>
-    <div class="grid-3" style="margin-top:12px;">
-      <div style="padding:16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
-        <div class="muted" style="font-size:12px;">メイン商品</div>
-        <div style="font-size:22px; font-weight:800; margin-top:6px;">{{ estimate_request.main_sale_price }}円</div>
-        <div class="muted" style="font-size:12px; margin-top:6px;">定価 {{ estimate_request.main_official_price }}円 の 80％</div>
-      </div>
-
-      <div style="padding:16px; border:1px solid #fed7aa; background:#fff7ed; border-radius:12px;">
-        <div class="muted" style="font-size:12px;">ガット</div>
-        <div style="font-size:22px; font-weight:800; margin-top:6px;">{{ estimate_request.string_sale_price }}円</div>
+    <div class="detail-row">
+      <div class="detail-label">ガット区分</div>
+      <div class="detail-value">
         {% if estimate_request.string_source == string_source_official %}
-          <div class="muted" style="font-size:12px; margin-top:6px;">定価 {{ estimate_request.string_official_price }}円 の 80％</div>
+          購入
         {% elif estimate_request.string_source == string_source_bring_in %}
-          <div class="muted" style="font-size:12px; margin-top:6px;">持ち込みのため 0円</div>
+          持ち込み
+        {% elif estimate_request.string_source == string_source_none %}
+          不要
         {% else %}
-          <div class="muted" style="font-size:12px; margin-top:6px;">不要のため 0円</div>
+          {{ estimate_request.string_source|default:"-" }}
         {% endif %}
       </div>
-
-      <div style="padding:16px; border:1px solid #c7d2fe; background:#eef2ff; border-radius:12px;">
-        <div class="muted" style="font-size:12px;">ガット張り</div>
-        <div style="font-size:22px; font-weight:800; margin-top:6px;">{{ estimate_request.stringing_fee }}円</div>
-        {% if estimate_request.request_stringing %}
-          <div class="muted" style="font-size:12px; margin-top:6px;">{{ estimate_request.tension_lbs }} lbs / 一律 1200円</div>
-        {% else %}
-          <div class="muted" style="font-size:12px; margin-top:6px;">依頼なし</div>
-        {% endif %}
-      </div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">ガット名</div>
+      <div class="detail-value">{{ estimate_request.string_product_name|default:"-" }}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">ガット定価</div>
+      <div class="detail-value">{{ estimate_request.string_official_price|default:0 }}円</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">ガット張り</div>
+      <div class="detail-value">{% if estimate_request.request_stringing %}依頼する{% else %}依頼しない{% endif %}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">テンション</div>
+      <div class="detail-value">{% if estimate_request.request_stringing %}{{ estimate_request.tension_lbs|default:"-" }} lbs{% else %}-{% endif %}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">デリバリー</div>
+      <div class="detail-value">{% if estimate_request.request_delivery %}希望する{% else %}希望しない{% endif %}</div>
     </div>
   </div>
+</div>
 
-  <div class="grid-2">
-    <div class="card">
-      <h2 class="card-title">申込内容</h2>
-
-      <table style="margin-top:12px;">
-        <tbody>
-          <tr>
-            <th>申込日時</th>
-            <td>{{ estimate_request.created_at|date:"Y-m-d H:i" }}</td>
-          </tr>
-          <tr>
-            <th>カテゴリ</th>
-            <td>{{ estimate_request.get_product_category_display }}</td>
-          </tr>
-          <tr>
-            <th>ブランド</th>
-            <td>{{ estimate_request.get_brand_display }}</td>
-          </tr>
-          <tr>
-            <th>メイン商品</th>
-            <td>{{ estimate_request.main_product_name|default:estimate_request.main_keyword|default:"-" }}</td>
-          </tr>
-          <tr>
-            <th>メイン商品定価</th>
-            <td>{{ estimate_request.main_official_price }}円</td>
-          </tr>
-          <tr>
-            <th>メイン商品販売価格</th>
-            <td>{{ estimate_request.main_sale_price }}円</td>
-          </tr>
-          <tr>
-            <th>ガット</th>
-            <td>{{ estimate_request.get_string_source_display }}</td>
-          </tr>
-          {% if estimate_request.string_source == string_source_official %}
-            <tr>
-              <th>ガット商品</th>
-              <td>{{ estimate_request.string_product_name|default:estimate_request.string_keyword|default:"-" }}</td>
-            </tr>
-            <tr>
-              <th>ガット定価</th>
-              <td>{{ estimate_request.string_official_price }}円</td>
-            </tr>
-            <tr>
-              <th>ガット販売価格</th>
-              <td>{{ estimate_request.string_sale_price }}円</td>
-            </tr>
-          {% elif estimate_request.string_source == string_source_bring_in %}
-            <tr>
-              <th>ガット商品</th>
-              <td>持ち込み</td>
-            </tr>
-          {% endif %}
-          <tr>
-            <th>ガット張り</th>
-            <td>{% if estimate_request.request_stringing %}依頼する{% else %}依頼しない{% endif %}</td>
-          </tr>
-          {% if estimate_request.request_stringing %}
-            <tr>
-              <th>張り上げテンション</th>
-              <td>{{ estimate_request.tension_lbs }} lbs</td>
-            </tr>
-            <tr>
-              <th>ガット張り料金</th>
-              <td>{{ estimate_request.stringing_fee }}円</td>
-            </tr>
-          {% endif %}
-          <tr>
-            <th>備考</th>
-            <td>{{ estimate_request.note|default:"-" }}</td>
-          </tr>
-          <tr>
-            <th>見積もり合計</th>
-            <td><strong>{{ estimate_request.estimated_total }}円</strong></td>
-          </tr>
-        </tbody>
-      </table>
-
-      <div style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px; margin-top:16px;">
-        <div style="font-weight:800; margin-bottom:6px;">この申込の計算ルール</div>
-        <div class="muted">
-          メイン商品80%価格
-          {% if estimate_request.string_source != string_source_none %} + ガット{% endif %}
-          {% if estimate_request.request_stringing %} + ガット張り料金{% endif %}
-          の合計です。
-        </div>
-      </div>
-
-      <div class="actions" style="margin-top:16px;">
-        <a href="{% url 'club:shop_estimate' %}?reuse={{ estimate_request.id }}" class="btn">この内容で再見積もり</a>
-        <a href="{% url 'club:shop_estimate' %}" class="btn btn-primary">物販見積もりへ戻る</a>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2 class="card-title">公式サイト確認リンク</h2>
-
-      <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px; margin-bottom:14px;">
-        <div style="font-weight:800; margin-bottom:8px;">メイン商品</div>
-        <div class="actions">
-          {% for link in main_catalog_links %}
-            <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn">{{ link.label }}</a>
-          {% endfor %}
-          {% for link in main_official_links %}
-            <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn btn-primary">{{ link.label }}</a>
-          {% endfor %}
-          {% for link in main_image_links %}
-            <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn">公式画像を確認</a>
-          {% endfor %}
-        </div>
-      </div>
-
-      <div style="padding:14px 16px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:12px; margin-bottom:14px;">
-        <div style="font-weight:800; margin-bottom:8px;">ガット</div>
-        {% if estimate_request.string_source == string_source_official %}
-          <div class="actions">
-            {% for link in string_catalog_links %}
-              <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn">{{ link.label }}</a>
-            {% endfor %}
-            {% for link in string_official_links %}
-              <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn btn-primary">{{ link.label }}</a>
-            {% endfor %}
-            {% for link in string_image_links %}
-              <a href="{{ link.url }}" target="_blank" rel="noopener" class="btn">公式画像を確認</a>
-            {% endfor %}
-          </div>
-        {% elif estimate_request.string_source == string_source_bring_in %}
-          <div class="muted">ガット持ち込みの申込です。</div>
-        {% else %}
-          <div class="muted">ガット不要の申込です。</div>
-        {% endif %}
-      </div>
-
-      <div style="padding:14px 16px; border:1px solid #e5e7eb; background:#fff; border-radius:12px;">
-        <div style="font-weight:800; margin-bottom:8px;">次の操作</div>
-        <ul class="clean" style="line-height:1.9; margin:0;">
-          <li>この内容をもう一度使う場合は「この内容で再見積もり」</li>
-          <li>別商品を調べる場合は「物販見積もりへ戻る」</li>
-          <li>公式サイトリンクから商品画像・価格を再確認できます</li>
-        </ul>
-      </div>
-    </div>
+{% if estimate_request.note %}
+  <div class="card">
+    <h2 style="margin-top:0;">備考</h2>
+    <div style="line-height:1.8; color:#475569;">{{ estimate_request.note }}</div>
   </div>
+{% endif %}
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <h2 class="detail-card-title">メイン商品参考リンク</h2>
+    {% if main_official_links or main_catalog_links or main_image_links %}
+      <div class="link-list">
+        {% for link in main_official_links %}
+          <a href="{{ link.url }}" target="_blank" rel="noopener" class="external-link">{{ link.label }} <span>›</span></a>
+        {% endfor %}
+        {% for link in main_catalog_links %}
+          <a href="{{ link.url }}" target="_blank" rel="noopener" class="external-link">{{ link.label }} <span>›</span></a>
+        {% endfor %}
+        {% for link in main_image_links %}
+          <a href="{{ link.url }}" target="_blank" rel="noopener" class="external-link">{{ link.label }} <span>›</span></a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted" style="margin:0;">参考リンクはありません。</p>
+    {% endif %}
+  </div>
+
+  <div class="detail-card">
+    <h2 class="detail-card-title">ガット参考リンク</h2>
+    {% if string_official_links or string_catalog_links or string_image_links %}
+      <div class="link-list">
+        {% for link in string_official_links %}
+          <a href="{{ link.url }}" target="_blank" rel="noopener" class="external-link">{{ link.label }} <span>›</span></a>
+        {% endfor %}
+        {% for link in string_catalog_links %}
+          <a href="{{ link.url }}" target="_blank" rel="noopener" class="external-link">{{ link.label }} <span>›</span></a>
+        {% endfor %}
+        {% for link in string_image_links %}
+          <a href="{{ link.url }}" target="_blank" rel="noopener" class="external-link">{{ link.label }} <span>›</span></a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted" style="margin:0;">参考リンクはありません。</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="action-row">
+    <a href="{% url 'club:shop_estimate' %}" class="btn btn-primary">別の見積を作る</a>
+    <a href="{% url 'club:shop_estimate_history' %}" class="btn">申込履歴を見る</a>
+    <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
+  </div>
+</div>
 {% endblock %}
