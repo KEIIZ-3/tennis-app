@@ -1,140 +1,187 @@
 {% extends "base.html" %}
-{% block title %}会員情報の入力{% endblock %}
+{% block title %}会員情報登録{% endblock %}
 
 {% block content %}
-<div class="page-head" style="max-width:860px; margin:0 auto 16px;">
-  <h1 class="page-title">会員情報の入力</h1>
-  <p class="page-subtitle">
-    予約を始める前に、必要な会員情報を登録してください。
-  </p>
-</div>
-
-<div class="card" style="max-width:860px; margin:0 auto 16px;">
-  <div style="display:grid; grid-template-columns:minmax(0, 1.2fr) minmax(280px, 0.8fr); gap:16px; align-items:start;">
-    <div>
-      <h2 class="card-title" style="margin-bottom:6px;">初回登録のご案内</h2>
-      <p class="card-subtitle">
-        LINEから登録された方も、この画面で会員情報を入力すると予約を始められます。
-      </p>
-
-      <div class="spacer-16"></div>
-
-      <div class="section-note">
-        <strong>入力していただく項目</strong>
-        <ul class="clean" style="margin-top:8px; line-height:1.9;">
-          <li>お名前</li>
-          <li>メールアドレス</li>
-          <li>電話番号</li>
-          <li>レベル</li>
-        </ul>
-      </div>
-
-      <div class="spacer-12"></div>
-
-      <p class="muted" style="margin:0;">
-        レベルに応じて、予約できるレッスン内容が変わります。<br>
-        分からない場合は、いったん現在の近いレベルを選んでください。
-      </p>
-    </div>
-
-    <div style="display:grid; gap:12px;">
-      {% if user.is_authenticated and user.role == "member" %}
-        <div style="padding:16px; border:1px solid #fed7aa; background:#fff7ed; border-radius:14px;">
-          <div style="font-size:13px; color:#9a3412; font-weight:700; margin-bottom:4px;">現在のチケット残数</div>
-          <div style="font-size:28px; line-height:1.1; font-weight:800;">{{ user.ticket_balance }}枚</div>
-        </div>
-      {% endif %}
-
-      <div style="padding:16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:14px;">
-        <div style="font-size:13px; color:#1d4ed8; font-weight:700; margin-bottom:6px;">登録後にできること</div>
-        <ul class="clean" style="margin:0; line-height:1.8;">
-          <li>レッスン予約</li>
-          <li>予約一覧の確認</li>
-          <li>チケット履歴の確認</li>
-          <li>LINE連携の利用</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="card" style="max-width:860px; margin:0 auto;">
-  <h2 class="card-title">会員情報を入力する</h2>
-  <p class="card-subtitle">必須項目を入力して保存してください。</p>
-
-  <div class="spacer-16"></div>
-
-  <form method="post">
-    {% csrf_token %}
-
-    {% if form.non_field_errors %}
-      <div class="message error" style="margin-bottom:16px;">
-        {{ form.non_field_errors }}
-      </div>
-    {% endif %}
-
-    <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px;">
-      {% for field in form %}
-        <div style="{% if field.name == 'member_level' %}grid-column:1 / -1;{% endif %}">
-          <label for="{{ field.id_for_label }}">
-            {{ field.label }}
-            {% if field.field.required %}
-              <span class="muted">（必須）</span>
-            {% endif %}
-          </label>
-
-          {{ field }}
-
-          {% if field.help_text %}
-            <div class="muted" style="font-size:13px; margin-top:6px;">
-              {{ field.help_text }}
-            </div>
-          {% endif %}
-
-          {% if field.errors %}
-            <div class="message error" style="margin-top:8px; margin-bottom:0;">
-              {{ field.errors }}
-            </div>
-          {% endif %}
-        </div>
-      {% endfor %}
-    </div>
-
-    <div class="spacer-16"></div>
-
-    <div style="padding:14px 16px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:12px;">
-      <div style="font-weight:700; margin-bottom:6px;">入力前にご確認ください</div>
-      <ul class="clean" style="margin:0; line-height:1.8; color:#475569;">
-        <li>メールアドレスは今後のご連絡に使用することがあります。</li>
-        <li>電話番号は当日の連絡が必要な場合に利用します。</li>
-        <li>保存後はホーム画面へ戻ります。</li>
-      </ul>
-    </div>
-
-    <div class="actions" style="margin-top:18px;">
-      <button type="submit" class="btn btn-primary">保存する</button>
-      <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
-    </div>
-  </form>
-</div>
-
 <style>
+  .profile-title{
+    margin:0;
+    font-size:28px;
+    font-weight:900;
+    line-height:1.25;
+    letter-spacing:-0.02em;
+  }
+
+  .profile-lead{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
+
+  .profile-layout{
+    display:grid;
+    grid-template-columns:minmax(0, 1fr) 320px;
+    gap:16px;
+    align-items:start;
+  }
+
+  .profile-side{
+    position:sticky;
+    top:120px;
+  }
+
+  .profile-step{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:14px;
+    padding:14px;
+    margin-bottom:10px;
+  }
+
+  .profile-step-number{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:26px;
+    height:26px;
+    border-radius:999px;
+    background:#0f172a;
+    color:#fff;
+    font-size:12px;
+    font-weight:900;
+    margin-bottom:8px;
+  }
+
+  .profile-step-title{
+    font-weight:900;
+    margin-bottom:4px;
+  }
+
+  .profile-step-text{
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.7;
+  }
+
+  .form-card p{
+    margin:0 0 14px;
+  }
+
+  .form-card ul.errorlist{
+    margin:6px 0 0;
+    padding-left:18px;
+    color:#991b1b;
+    font-size:13px;
+    line-height:1.7;
+  }
+
+  .profile-mobile-actions{
+    display:none;
+  }
+
+  @media (max-width: 900px){
+    .profile-layout{
+      grid-template-columns:1fr;
+    }
+
+    .profile-side{
+      position:static;
+    }
+  }
+
   @media (max-width: 768px){
-    .page-head{
-      margin-bottom:12px !important;
+    .profile-title{
+      font-size:23px;
     }
 
-    .page-title{
-      font-size:24px !important;
+    .profile-mobile-actions{
+      display:flex;
+      position:sticky;
+      bottom:0;
+      z-index:40;
+      gap:8px;
+      padding:10px;
+      margin:18px -16px -16px;
+      background:rgba(255,255,255,0.96);
+      backdrop-filter:blur(8px);
+      border-top:1px solid #e5e7eb;
     }
 
-    .card[style*="max-width:860px"] > div[style*="grid-template-columns:minmax(0, 1.2fr) minmax(280px, 0.8fr)"]{
-      grid-template-columns:1fr !important;
-    }
-
-    form > div[style*="grid-template-columns:repeat(2, minmax(0, 1fr))"]{
-      grid-template-columns:1fr !important;
+    .profile-mobile-actions button{
+      flex:1 1 0;
+      min-height:44px;
     }
   }
 </style>
+
+<div class="card">
+  <h1 class="profile-title">会員情報登録</h1>
+  <p class="profile-lead">
+    予約と通知に必要な会員情報を登録してください。登録後、必要に応じてアンケート回答へ進みます。
+  </p>
+</div>
+
+<div class="profile-layout">
+  <div class="card form-card">
+    <h2 style="margin-top:0;">登録フォーム</h2>
+
+    <form method="post" id="profile-complete-form">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div class="message error">
+          {{ form.non_field_errors }}
+        </div>
+      {% endif %}
+
+      {% for hidden in form.hidden_fields %}
+        {{ hidden }}
+      {% endfor %}
+
+      {% for field in form.visible_fields %}
+        <p>
+          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}
+            <span class="muted" style="display:block; margin-top:6px; font-size:13px;">{{ field.help_text }}</span>
+          {% endif %}
+          {{ field.errors }}
+        </p>
+      {% endfor %}
+
+      <div class="actions">
+        <button type="submit" class="btn btn-primary">会員情報を保存する</button>
+        <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
+      </div>
+
+      <div class="profile-mobile-actions">
+        <button type="submit" class="btn btn-primary">保存する</button>
+      </div>
+    </form>
+  </div>
+
+  <aside class="profile-side">
+    <div class="card">
+      <h2 style="margin-top:0;">登録の流れ</h2>
+
+      <div class="profile-step">
+        <div class="profile-step-number">1</div>
+        <div class="profile-step-title">会員情報を入力</div>
+        <div class="profile-step-text">名前、メール、電話番号など、予約に必要な情報を登録します。</div>
+      </div>
+
+      <div class="profile-step">
+        <div class="profile-step-number">2</div>
+        <div class="profile-step-title">アンケート回答</div>
+        <div class="profile-step-text">希望曜日・時間帯を回答すると、今後のレッスン開催の参考になります。</div>
+      </div>
+
+      <div class="profile-step">
+        <div class="profile-step-number">3</div>
+        <div class="profile-step-title">予約開始</div>
+        <div class="profile-step-text">ホーム画面からレッスン予約、チケット確認、LINE連携へ進めます。</div>
+      </div>
+    </div>
+  </aside>
+</div>
 {% endblock %}
