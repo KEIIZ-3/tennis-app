@@ -1,129 +1,212 @@
 {% extends "base.html" %}
-
-{% block title %}LINE連携 | Tennis Club{% endblock %}
+{% block title %}新規登録{% endblock %}
 
 {% block content %}
+<style>
+  .register-layout{
+    display:grid;
+    grid-template-columns:minmax(0, 1fr) 340px;
+    gap:16px;
+    align-items:start;
+  }
+
+  .register-title{
+    margin:0;
+    font-size:28px;
+    font-weight:900;
+    line-height:1.25;
+    letter-spacing:-0.02em;
+  }
+
+  .register-lead{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
+
+  .register-form-card p{
+    margin:0 0 14px;
+  }
+
+  .register-form-card ul.errorlist{
+    margin:6px 0 0;
+    padding-left:18px;
+    color:#991b1b;
+    font-size:13px;
+    line-height:1.7;
+  }
+
+  .register-line-button{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:48px;
+    padding:12px 16px;
+    border-radius:14px;
+    background:#06c755;
+    color:#fff;
+    border:1px solid #06c755;
+    font-weight:900;
+    margin-top:12px;
+  }
+
+  .register-side{
+    position:sticky;
+    top:120px;
+  }
+
+  .register-step{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:14px;
+    padding:14px;
+    margin-bottom:10px;
+  }
+
+  .register-step-number{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:26px;
+    height:26px;
+    border-radius:999px;
+    background:#0f172a;
+    color:#fff;
+    font-size:12px;
+    font-weight:900;
+    margin-bottom:8px;
+  }
+
+  .register-step-title{
+    font-weight:900;
+    margin-bottom:4px;
+  }
+
+  .register-step-text{
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.7;
+  }
+
+  .register-mobile-actions{
+    display:none;
+  }
+
+  @media (max-width: 900px){
+    .register-layout{
+      grid-template-columns:1fr;
+    }
+
+    .register-side{
+      position:static;
+    }
+  }
+
+  @media (max-width: 768px){
+    .register-title{
+      font-size:23px;
+    }
+
+    .register-mobile-actions{
+      display:flex;
+      position:sticky;
+      bottom:0;
+      z-index:40;
+      gap:8px;
+      padding:10px;
+      margin:18px -16px -16px;
+      background:rgba(255,255,255,0.96);
+      backdrop-filter:blur(8px);
+      border-top:1px solid #e5e7eb;
+    }
+
+    .register-mobile-actions button,
+    .register-mobile-actions a{
+      flex:1 1 0;
+      min-height:44px;
+    }
+  }
+</style>
+
 <div class="card">
-  <h1>LINE連携</h1>
-
-  <p>
-    この画面では、予約通知・開催通知・中止通知・その他お知らせ用の
-    LINE連携を設定できます。
+  <h1 class="register-title">新規登録</h1>
+  <p class="register-lead">
+    Play Design Tennis の会員登録画面です。スマホ利用ではLINEから始めると、その後の通知連携もスムーズです。
   </p>
+</div>
 
-  {% if line_link and line_link.is_active %}
-    <div style="padding:12px; border:1px solid #cfe8cf; background:#f3fff3; border-radius:8px; margin:16px 0;">
-      <strong>現在の状態:</strong> 連携中<br>
-      <strong>LINE userId:</strong> {{ line_link.line_user_id }}
-    </div>
-  {% elif line_link %}
-    <div style="padding:12px; border:1px solid #f0d9a7; background:#fffaf0; border-radius:8px; margin:16px 0;">
-      <strong>現在の状態:</strong> 連携情報あり（無効）
-    </div>
-  {% else %}
-    <div style="padding:12px; border:1px solid #ddd; background:#fafafa; border-radius:8px; margin:16px 0;">
-      <strong>現在の状態:</strong> 未連携
-    </div>
-  {% endif %}
+<div class="register-layout">
+  <div class="card register-form-card">
+    <h2 style="margin-top:0;">登録フォーム</h2>
 
-  <hr style="margin:24px 0;">
-
-  <h2>おすすめの連携方法（LINE Login）</h2>
-  <p>
-    こちらの方法なら、LINE認証が終わった時点で自動的にこの会員アカウントへ連携できます。
-  </p>
-
-  {% if line_login_enabled %}
-    <div style="margin:16px 0;">
-      <a
-        href="{{ line_login_url }}"
-        style="display:inline-block; padding:10px 16px; border-radius:8px; background:#06c755; color:#fff; text-decoration:none; font-weight:bold;"
-      >
-        LINEでログインして自動連携
-      </a>
-    </div>
-    <p style="color:#666;">
-      ※ すでにログイン中の会員が実行した場合は、現在の会員アカウントに自動紐付けします。<br>
-      ※ 未ログインの状態で実行した場合は、初回なら会員を自動作成してそのままログインします。
-    </p>
-  {% else %}
-    <div style="padding:12px; border:1px solid #f0d9a7; background:#fffaf0; border-radius:8px; margin:16px 0;">
-      LINE Login の環境変数が未設定です。先に Render の環境変数を設定してください。
-    </div>
-  {% endif %}
-
-  <hr style="margin:24px 0;">
-
-  <h2>連携コード方式（予備）</h2>
-  <p>
-    従来どおり、連携コードをLINEトークに送る方法も使えます。
-  </p>
-
-  <ol>
-    <li>LINE公式アカウントを友だち追加します</li>
-    <li>下の「連携コード」をLINEトークにそのまま送信します</li>
-    <li>Webhookで自動的に userId を取得して、このアカウントに紐づけます</li>
-  </ol>
-
-  <div style="padding:16px; border:1px solid #ddd; border-radius:8px; background:#fafafa; margin:16px 0;">
-    <div style="font-weight:bold; margin-bottom:8px;">連携コード</div>
-    <div style="word-break:break-all; font-family:monospace; font-size:14px;">
-      {{ line_link_token }}
-    </div>
-  </div>
-
-  <p style="color:#666;">
-    ※ この連携コードは一定期間で無効になります。
-  </p>
-
-  <hr style="margin:24px 0;">
-
-  <h2>手動で line_user_id を保存する</h2>
-  <p>
-    LINE Developers / Messaging API の確認用として、
-    一時的に手入力で line_user_id を保存したい場合はこちらを使ってください。
-  </p>
-
-  <form method="post" action="{% url 'club:line_link' %}" style="margin-top:16px;">
-    {% csrf_token %}
-
-    {% if manual_form %}
-      {{ manual_form.as_p }}
-    {% else %}
-      <p>
-        <label for="id_line_user_id">line_user_id</label><br>
-        <input type="text" name="line_user_id" id="id_line_user_id" style="width:100%;">
-      </p>
-      <p>
-        <label>
-          <input type="checkbox" name="is_active" checked>
-          有効化する
-        </label>
-      </p>
+    {% if liff_enabled %}
+      <a href="{% url 'club:liff_entry' %}" class="register-line-button">LINEで登録・ログイン</a>
+      <div style="margin:14px 0; display:flex; align-items:center; gap:10px; color:#64748b; font-size:13px;">
+        <div style="height:1px; background:#e5e7eb; flex:1;"></div>
+        <div>または通常登録</div>
+        <div style="height:1px; background:#e5e7eb; flex:1;"></div>
+      </div>
     {% endif %}
 
-    <button type="submit">保存する</button>
-  </form>
+    <form method="post" id="register-form">
+      {% csrf_token %}
 
-  <hr style="margin:24px 0;">
+      {% if form.non_field_errors %}
+        <div class="message error">
+          {{ form.non_field_errors }}
+        </div>
+      {% endif %}
 
-  <h2>連携解除</h2>
-  <form method="post" action="{% url 'club:line_link' %}">
-    {% csrf_token %}
-    <input type="hidden" name="action" value="unlink">
-    <button type="submit" style="background:#fff; border:1px solid #d33; color:#d33; padding:8px 12px; border-radius:6px;">
-      LINE連携を解除する
-    </button>
-  </form>
+      {% for hidden in form.hidden_fields %}
+        {{ hidden }}
+      {% endfor %}
 
-  <hr style="margin:24px 0;">
+      {% for field in form.visible_fields %}
+        <p>
+          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}
+            <span class="muted" style="display:block; margin-top:6px; font-size:13px;">{{ field.help_text }}</span>
+          {% endif %}
+          {{ field.errors }}
+        </p>
+      {% endfor %}
 
-  <h2>Webhook設定時のURL</h2>
-  <p>
-    LINE Developers 側では、Webhook URL に次を設定します。
-  </p>
-  <div style="padding:16px; border:1px solid #ddd; border-radius:8px; background:#fafafa; margin:16px 0; word-break:break-all; font-family:monospace; font-size:14px;">
-    {{ line_webhook_full_url }}
+      <div class="actions">
+        <button type="submit" class="btn btn-primary">登録する</button>
+        <a href="{% url 'club:login' %}" class="btn">ログインへ</a>
+      </div>
+
+      <div class="register-mobile-actions">
+        <a href="{% url 'club:login' %}" class="btn">ログイン</a>
+        <button type="submit" class="btn btn-primary">登録</button>
+      </div>
+    </form>
   </div>
+
+  <aside class="register-side">
+    <div class="card">
+      <h2 style="margin-top:0;">登録後の流れ</h2>
+
+      <div class="register-step">
+        <div class="register-step-number">1</div>
+        <div class="register-step-title">会員情報登録</div>
+        <div class="register-step-text">名前、メール、電話番号など予約に必要な情報を入力します。</div>
+      </div>
+
+      <div class="register-step">
+        <div class="register-step-number">2</div>
+        <div class="register-step-title">アンケート回答</div>
+        <div class="register-step-text">希望曜日・時間帯を回答すると、今後の開催計画の参考になります。</div>
+      </div>
+
+      <div class="register-step">
+        <div class="register-step-number">3</div>
+        <div class="register-step-title">予約開始</div>
+        <div class="register-step-text">ホームからレッスン予約、チケット確認、ガット張り依頼に進めます。</div>
+      </div>
+    </div>
+  </aside>
 </div>
 {% endblock %}
