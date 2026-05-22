@@ -35,13 +35,17 @@
     }
 
     *{ box-sizing:border-box; }
-    html{ -webkit-text-size-adjust:100%; }
+    html{
+      -webkit-text-size-adjust:100%;
+      overflow-x:hidden;
+    }
     body{
       margin:0;
       font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       background:var(--bg);
       color:var(--text);
       line-height:1.6;
+      overflow-x:hidden;
     }
     a{ color:inherit; text-decoration:none; }
 
@@ -57,6 +61,7 @@
       max-width:1120px;
       margin:0 auto;
       padding:0 16px;
+      width:100%;
     }
     .topbar .wrap{
       padding-top:14px;
@@ -94,10 +99,15 @@
     }
     .brand-text{ min-width:0; }
     .brand-title{
+      display:block;
       font-size:20px;
       font-weight:800;
       letter-spacing:0.01em;
       line-height:1.2;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      max-width:100%;
     }
     .brand-sub{
       margin-top:2px;
@@ -282,6 +292,7 @@
       padding:22px;
       box-shadow:var(--shadow);
       margin-bottom:16px;
+      max-width:100%;
     }
     .card-title{
       margin:0 0 8px;
@@ -390,6 +401,11 @@
       gap:16px;
     }
 
+    .table-scroll{
+      overflow-x:auto;
+      -webkit-overflow-scrolling:touch;
+      width:100%;
+    }
     table{
       width:100%;
       border-collapse:collapse;
@@ -410,6 +426,105 @@
       color:#334155;
     }
 
+    .mobile-only{ display:none; }
+    .desktop-only{ display:block; }
+
+    .status-pill{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding:6px 10px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:800;
+      line-height:1.2;
+      border:1px solid var(--line);
+      background:#f8fafc;
+      color:#475569;
+      white-space:nowrap;
+    }
+    .status-pill.pending{
+      background:#fff7ed;
+      color:#9a3412;
+      border-color:#fed7aa;
+    }
+    .status-pill.active{
+      background:#ecfdf5;
+      color:#166534;
+      border-color:#bbf7d0;
+    }
+    .status-pill.canceled{
+      background:#f8fafc;
+      color:#475569;
+      border-color:#e2e8f0;
+    }
+
+    .mobile-card-list{
+      display:none;
+      flex-direction:column;
+      gap:12px;
+    }
+    .mobile-data-card{
+      border:1px solid var(--line);
+      background:#fff;
+      border-radius:16px;
+      padding:14px;
+      box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+    }
+    .mobile-card-head{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:10px;
+    }
+    .mobile-card-title{
+      font-size:15px;
+      font-weight:800;
+      line-height:1.4;
+    }
+    .mobile-card-subtitle{
+      margin-top:2px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.35;
+    }
+    .mobile-info-grid{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:8px;
+      margin-top:10px;
+    }
+    .mobile-info-row{
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      padding:8px 0;
+      border-top:1px solid #f1f5f9;
+      font-size:13px;
+    }
+    .mobile-info-label{
+      color:var(--muted);
+      font-weight:700;
+      flex:0 0 96px;
+    }
+    .mobile-info-value{
+      text-align:right;
+      min-width:0;
+      overflow-wrap:anywhere;
+    }
+    .mobile-actions{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:8px;
+      margin-top:12px;
+    }
+    .mobile-actions .btn,
+    .mobile-actions button{
+      width:100%;
+      min-height:44px;
+    }
+
     .spacer-16{ height:16px; }
 
     @media (max-width: 900px){
@@ -420,19 +535,41 @@
     @media (max-width: 768px){
       .wrap{ padding:0 12px; }
       .topbar .wrap{
-        padding-top:12px;
-        padding-bottom:12px;
+        padding-top:10px;
+        padding-bottom:10px;
+        gap:9px;
       }
-      .topbar-row{ align-items:flex-start; }
+      .topbar-row{
+        align-items:flex-start;
+        gap:10px;
+      }
+      .brand{
+        width:100%;
+        gap:10px;
+      }
       .brand-mark{
-        width:36px;
-        height:36px;
+        width:34px;
+        height:34px;
         border-radius:10px;
-        font-size:16px;
+        font-size:15px;
       }
-      .brand-title{ font-size:18px; }
+      .brand-title{
+        font-size:17px;
+        max-width:calc(100vw - 80px);
+      }
       .brand-sub{ font-size:11px; }
-      .top-meta{ width:100%; }
+      .top-meta{
+        width:100%;
+        gap:6px;
+      }
+      .top-badge{
+        min-height:30px;
+        padding:6px 9px;
+        font-size:11px;
+        max-width:100%;
+        white-space:normal;
+        line-height:1.25;
+      }
 
       .member-menu,
       .coach-menu{ gap:8px; }
@@ -465,11 +602,36 @@
         font-size:12px;
         border-radius:12px;
         justify-content:center;
+        white-space:normal;
+        text-align:center;
+        line-height:1.25;
       }
       .member-menu .logout-form{
         display:block;
         width:100%;
         grid-column:span 2;
+      }
+
+      .topbar-row > .nav{
+        width:100%;
+        display:grid;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:7px;
+      }
+      .topbar-row > .nav a,
+      .topbar-row > .nav .logout-button{
+        width:100%;
+        min-height:38px;
+        padding:7px 9px;
+        font-size:12px;
+        border-radius:12px;
+        white-space:normal;
+        text-align:center;
+        line-height:1.25;
+      }
+      .topbar-row > .nav .logout-form{
+        display:block;
+        width:100%;
       }
 
       .coach-tabs{
@@ -481,7 +643,7 @@
       .coach-menu.is-open .coach-tabs{ display:grid; }
       .coach-tab{
         width:100%;
-        min-height:44px;
+        min-height:42px;
         padding:8px 10px;
         border-radius:14px;
         font-size:12px;
@@ -490,33 +652,51 @@
         text-align:center;
       }
 
-      .main{ padding:16px 0 28px; }
-      .page-title{ font-size:24px; }
+      .main{ padding:14px 0 28px; }
+      .page-title{ font-size:23px; }
       .card{
-        padding:16px;
+        padding:14px;
         border-radius:14px;
+        margin-bottom:12px;
       }
+      .card-title{ font-size:18px; }
       th, td{
         font-size:13px;
         padding:10px 8px;
       }
+      .desktop-only{ display:none !important; }
+      .mobile-only{ display:block !important; }
+      .mobile-card-list{ display:flex; }
+      .mobile-data-card{ padding:13px; }
+      .btn,
+      button,
+      input[type="submit"]{
+        min-height:42px;
+        padding:9px 12px;
+        font-size:13px;
+      }
     }
 
     @media (max-width: 480px){
+      .wrap{ padding:0 10px; }
+      .topbar .wrap{ gap:8px; }
       .top-badge{
-        min-height:34px;
-        padding:7px 10px;
-        font-size:12px;
+        min-height:30px;
+        padding:6px 8px;
+        font-size:11px;
       }
       .member-menu-title,
       .coach-menu-title{ font-size:12px; }
       .member-menu .nav,
-      .coach-tabs{
+      .coach-tabs,
+      .topbar-row > .nav{
         grid-template-columns:repeat(2, minmax(0, 1fr));
         gap:7px;
       }
       .member-menu .nav a,
       .member-menu .logout-button,
+      .topbar-row > .nav a,
+      .topbar-row > .nav .logout-button,
       .coach-tab{
         min-height:38px;
         padding:7px 8px;
@@ -528,6 +708,20 @@
         border-radius:12px;
         min-height:40px;
       }
+      .mobile-info-row{
+        display:block;
+        padding:8px 0;
+      }
+      .mobile-info-label{
+        display:block;
+        margin-bottom:3px;
+        font-size:12px;
+      }
+      .mobile-info-value{
+        text-align:left;
+        font-size:13px;
+      }
+      .mobile-card-title{ font-size:14px; }
     }
   </style>
 </head>
