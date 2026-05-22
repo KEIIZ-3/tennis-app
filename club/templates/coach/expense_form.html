@@ -2,107 +2,352 @@
 {% block title %}経費登録{% endblock %}
 
 {% block content %}
-  <div class="page-head">
-    <h1 class="page-title">経費登録</h1>
-    <p class="page-subtitle">
-      コーチ用の経費申請を登録できます。領収書原本は運営LINEノートで管理し、この画面では領収書あり/なしと確認状況を管理します。
-    </p>
+<style>
+  .expense-title{
+    margin:0;
+    font-size:28px;
+    font-weight:900;
+    line-height:1.25;
+    letter-spacing:-0.02em;
+  }
+
+  .expense-lead{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
+
+  .summary-grid{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:12px;
+  }
+
+  .summary-card{
+    padding:14px;
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+  }
+
+  .summary-card.notice{
+    border-color:#fed7aa;
+    background:#fff7ed;
+  }
+
+  .summary-card.info{
+    border-color:#bfdbfe;
+    background:#eff6ff;
+  }
+
+  .summary-label{
+    color:var(--muted);
+    font-size:12px;
+    font-weight:800;
+  }
+
+  .summary-value{
+    margin-top:4px;
+    font-size:24px;
+    line-height:1.2;
+    font-weight:900;
+  }
+
+  .expense-note-box{
+    padding:13px 14px;
+    border:1px solid #bfdbfe;
+    background:#eff6ff;
+    border-radius:14px;
+    color:#1e3a8a;
+    font-size:13px;
+    line-height:1.7;
+    margin-bottom:14px;
+  }
+
+  .desktop-table-area{
+    display:block;
+  }
+
+  .mobile-expense-area{
+    display:none;
+  }
+
+  .mobile-expense-list{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+
+  .mobile-expense-card{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    padding:16px;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .mobile-expense-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:12px;
+    margin-bottom:10px;
+  }
+
+  .mobile-expense-title{
+    font-size:16px;
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .mobile-expense-sub{
+    margin-top:3px;
+    color:var(--muted);
+    font-size:12px;
+    line-height:1.4;
+  }
+
+  .status-pill{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid #e2e8f0;
+    background:#f8fafc;
+    color:#475569;
+    font-size:12px;
+    font-weight:900;
+    line-height:1.2;
+    white-space:nowrap;
+  }
+
+  .status-pill.pending{
+    border-color:#fed7aa;
+    background:#fff7ed;
+    color:#9a3412;
+  }
+
+  .status-pill.done{
+    border-color:#bbf7d0;
+    background:#ecfdf5;
+    color:#166534;
+  }
+
+  .mobile-info-row{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    padding:8px 0;
+    border-top:1px solid #f1f5f9;
+    font-size:13px;
+  }
+
+  .mobile-info-label{
+    flex:0 0 104px;
+    color:var(--muted);
+    font-weight:800;
+  }
+
+  .mobile-info-value{
+    text-align:right;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+
+  .mobile-admin-form{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:8px;
+    margin-top:12px;
+  }
+
+  @media (max-width: 900px){
+    .summary-grid{
+      grid-template-columns:1fr;
+    }
+  }
+
+  @media (max-width: 768px){
+    .expense-title{
+      font-size:23px;
+    }
+
+    .summary-grid{
+      grid-template-columns:1fr;
+      gap:8px;
+    }
+
+    .summary-card{
+      padding:12px;
+      border-radius:14px;
+    }
+
+    .summary-value{
+      font-size:22px;
+    }
+
+    .desktop-table-area{
+      display:none;
+    }
+
+    .mobile-expense-area{
+      display:block;
+    }
+
+    .mobile-expense-card{
+      padding:14px;
+      border-radius:15px;
+    }
+
+    .mobile-expense-head{
+      display:block;
+    }
+
+    .mobile-expense-head .status-pill{
+      margin-top:8px;
+    }
+
+    .mobile-info-row{
+      display:block;
+      padding:8px 0;
+    }
+
+    .mobile-info-label{
+      display:block;
+      margin-bottom:3px;
+      font-size:12px;
+    }
+
+    .mobile-info-value{
+      text-align:left;
+    }
+  }
+</style>
+
+<div class="card">
+  <h1 class="expense-title">経費登録</h1>
+  <p class="expense-lead">
+    コーチ用の経費申請を登録できます。スマホでは入力と最近の登録確認をしやすく整理しています。
+  </p>
+</div>
+
+<div class="summary-grid">
+  <div class="summary-card notice">
+    <div class="summary-label">当月合計</div>
+    <div class="summary-value">{{ current_month_total }}円</div>
   </div>
 
-  <div class="grid-2">
-    <div class="card">
-      <h2 class="card-title">新規登録</h2>
-      <form method="post">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="create">
+  {% if expense_type_rows %}
+    {% for row in expense_type_rows|slice:":2" %}
+      <div class="summary-card">
+        <div class="summary-label">{{ row.label }}</div>
+        <div class="summary-value">{{ row.amount }}円</div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="summary-card">
+      <div class="summary-label">登録状況</div>
+      <div class="summary-value">0円</div>
+    </div>
+    <div class="summary-card info">
+      <div class="summary-label">承認待ち</div>
+      <div class="summary-value">-</div>
+    </div>
+  {% endif %}
+</div>
 
-        <p>
-          <label for="id_expense_date">経費日付</label>
-          <input type="date" id="id_expense_date" name="expense_date" value="{{ today_value }}" required>
-        </p>
+<div class="grid-2">
+  <div class="card">
+    <h2 class="card-title">新規登録</h2>
 
-        <p>
-          <label for="id_expense_type">経費種別</label>
-          <select id="id_expense_type" name="expense_type" required>
-            {% for value, label in expense_type_choices %}
-              <option value="{{ value }}" {% if value == "personal" %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </p>
+    <div class="expense-note-box">
+      領収書原本は運営LINEノートで管理し、この画面では「領収書あり/なし」と確認状況を管理します。
+    </div>
 
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="create">
+
+      <p>
+        <label for="id_expense_date">経費日付</label>
+        <input type="date" id="id_expense_date" name="expense_date" value="{{ today_value }}" required>
+      </p>
+
+      <p>
+        <label for="id_expense_type">経費種別</label>
+        <select id="id_expense_type" name="expense_type" required>
+          {% for value, label in expense_type_choices %}
+            <option value="{{ value }}" {% if value == "personal" %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </p>
+
+      <p>
+        <label for="id_category">カテゴリ</label>
+        <select id="id_category" name="category" required>
+          {% for value, label in expense_category_choices %}
+            <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </p>
+
+      <p>
+        <label for="id_amount">金額</label>
+        <input type="number" id="id_amount" name="amount" min="0" step="1" placeholder="例: 1200" required>
+      </p>
+
+      <div class="grid-2">
         <p>
-          <label for="id_category">カテゴリ</label>
-          <select id="id_category" name="category" required>
-            {% for value, label in expense_category_choices %}
+          <label for="id_receipt_status">領収書</label>
+          <select id="id_receipt_status" name="receipt_status" required>
+            {% for value, label in expense_receipt_choices %}
               <option value="{{ value }}">{{ label }}</option>
             {% endfor %}
           </select>
         </p>
 
-        <p>
-          <label for="id_amount">金額</label>
-          <input type="number" id="id_amount" name="amount" min="0" step="1" placeholder="例: 1200" required>
-        </p>
-
-        <div class="grid-2">
+        {% if is_admin_mode %}
           <p>
-            <label for="id_receipt_status">領収書</label>
-            <select id="id_receipt_status" name="receipt_status" required>
-              {% for value, label in expense_receipt_choices %}
+            <label for="id_receipt_check_status">領収書確認</label>
+            <select id="id_receipt_check_status" name="receipt_check_status" required>
+              {% for value, label in expense_receipt_check_choices %}
                 <option value="{{ value }}">{{ label }}</option>
               {% endfor %}
             </select>
           </p>
-
-          {% if is_admin_mode %}
-            <p>
-              <label for="id_receipt_check_status">領収書確認</label>
-              <select id="id_receipt_check_status" name="receipt_check_status" required>
-                {% for value, label in expense_receipt_check_choices %}
-                  <option value="{{ value }}">{{ label }}</option>
-                {% endfor %}
-              </select>
-            </p>
-          {% endif %}
-        </div>
-
-        {% if is_admin_mode %}
-          <p>
-            <label for="id_approval_status">承認状態</label>
-            <select id="id_approval_status" name="approval_status" required>
-              {% for value, label in expense_approval_choices %}
-                <option value="{{ value }}" {% if value == "approved" %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </p>
         {% endif %}
+      </div>
 
+      {% if is_admin_mode %}
         <p>
-          <label for="id_note">メモ</label>
-          <textarea id="id_note" name="note" rows="4" placeholder="例: ボール購入 / 交通費 / LINEノート 4/9 投稿分"></textarea>
+          <label for="id_approval_status">承認状態</label>
+          <select id="id_approval_status" name="approval_status" required>
+            {% for value, label in expense_approval_choices %}
+              <option value="{{ value }}" {% if value == "approved" %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
         </p>
+      {% endif %}
 
-        <div class="actions">
-          <button type="submit">経費を登録する</button>
-          <a href="{% url 'club:coach_payroll_summary' %}" class="btn">給与計算を見る</a>
-        </div>
-      </form>
-    </div>
+      <p>
+        <label for="id_note">メモ</label>
+        <textarea id="id_note" name="note" rows="4" placeholder="例: ボール購入 / 交通費 / LINEノート 4/9 投稿分"></textarea>
+      </p>
 
-    <div class="card">
-      <h2 class="card-title">当月サマリー</h2>
-      <table>
-        <tbody>
-          <tr>
-            <th>当月合計</th>
-            <td><strong>{{ current_month_total }}円</strong></td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="actions">
+        <button type="submit">経費を登録する</button>
+        <a href="{% url 'club:coach_payroll_summary' %}" class="btn">給与計算を見る</a>
+      </div>
+    </form>
+  </div>
 
-      <div class="spacer-16"></div>
+  <div class="card">
+    <h2 class="card-title">当月サマリー</h2>
 
-      {% if expense_type_rows %}
+    {% if expense_type_rows %}
+      <div style="overflow-x:auto;">
         <table>
           <thead>
             <tr>
@@ -119,11 +364,14 @@
             {% endfor %}
           </tbody>
         </table>
-      {% endif %}
+      </div>
+    {% else %}
+      <p class="muted" style="margin:0;">今月の経費はまだ登録されていません。</p>
+    {% endif %}
 
+    {% if approval_rows %}
       <div class="spacer-16"></div>
-
-      {% if approval_rows %}
+      <div style="overflow-x:auto;">
         <table>
           <thead>
             <tr>
@@ -140,14 +388,16 @@
             {% endfor %}
           </tbody>
         </table>
-      {% endif %}
-    </div>
+      </div>
+    {% endif %}
   </div>
+</div>
 
-  <div class="card">
-    <h2 class="card-title">カテゴリ別集計</h2>
+<div class="card">
+  <h2 class="card-title">カテゴリ別集計</h2>
 
-    {% if category_rows %}
+  {% if category_rows %}
+    <div style="overflow-x:auto;">
       <table>
         <thead>
           <tr>
@@ -164,15 +414,17 @@
           {% endfor %}
         </tbody>
       </table>
-    {% else %}
-      <p class="muted" style="margin:0;">今月の経費はまだ登録されていません。</p>
-    {% endif %}
-  </div>
+    </div>
+  {% else %}
+    <p class="muted" style="margin:0;">今月の経費はまだ登録されていません。</p>
+  {% endif %}
+</div>
 
-  <div class="card">
-    <h2 class="card-title">最近の登録</h2>
+<div class="card">
+  <h2 class="card-title">最近の登録</h2>
 
-    {% if recent_expenses %}
+  {% if recent_expenses %}
+    <div class="desktop-table-area">
       <div style="overflow-x:auto;">
         <table>
           <thead>
@@ -243,8 +495,82 @@
           </tbody>
         </table>
       </div>
-    {% else %}
-      <p class="muted" style="margin:0;">まだ経費登録はありません。</p>
-    {% endif %}
-  </div>
+    </div>
+
+    <div class="mobile-expense-area">
+      <div class="mobile-expense-list">
+        {% for row in recent_expenses %}
+          <div class="mobile-expense-card">
+            <div class="mobile-expense-head">
+              <div>
+                <div class="mobile-expense-title">{{ row.expense.get_category_display }} / {{ row.expense.amount }}円</div>
+                <div class="mobile-expense-sub">{{ row.expense.expense_date|date:"Y-m-d" }} / {{ row.expense_type_label }}</div>
+              </div>
+              {% if row.approval_status == "approved" %}
+                <span class="status-pill done">{{ row.approval_status_label }}</span>
+              {% elif row.approval_status == "submitted" or row.approval_status == "draft" %}
+                <span class="status-pill pending">{{ row.approval_status_label }}</span>
+              {% else %}
+                <span class="status-pill">{{ row.approval_status_label }}</span>
+              {% endif %}
+            </div>
+
+            <div class="mobile-info-row">
+              <div class="mobile-info-label">領収書</div>
+              <div class="mobile-info-value">{{ row.receipt_status_label }}</div>
+            </div>
+            <div class="mobile-info-row">
+              <div class="mobile-info-label">確認状況</div>
+              <div class="mobile-info-value">{{ row.receipt_check_status_label }}</div>
+            </div>
+            <div class="mobile-info-row">
+              <div class="mobile-info-label">メモ</div>
+              <div class="mobile-info-value">{{ row.plain_note|default:"-" }}</div>
+            </div>
+            {% if is_admin_mode %}
+              <div class="mobile-info-row">
+                <div class="mobile-info-label">登録者</div>
+                <div class="mobile-info-value">{% if row.expense.created_by %}{{ row.expense.created_by.display_name }}{% else %}-{% endif %}</div>
+              </div>
+
+              <form method="post" class="mobile-admin-form">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="update_meta">
+                <input type="hidden" name="expense_id" value="{{ row.expense.id }}">
+
+                <select name="expense_type">
+                  {% for value, label in expense_type_choices %}
+                    <option value="{{ value }}" {% if row.expense_type == value %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+
+                <select name="receipt_status">
+                  {% for value, label in expense_receipt_choices %}
+                    <option value="{{ value }}" {% if row.receipt_status == value %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+
+                <select name="receipt_check_status">
+                  {% for value, label in expense_receipt_check_choices %}
+                    <option value="{{ value }}" {% if row.receipt_check_status == value %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+
+                <select name="approval_status">
+                  {% for value, label in expense_approval_choices %}
+                    <option value="{{ value }}" {% if row.approval_status == value %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+
+                <button type="submit">更新</button>
+              </form>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% else %}
+    <p class="muted" style="margin:0;">まだ経費登録はありません。</p>
+  {% endif %}
+</div>
 {% endblock %}
