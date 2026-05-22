@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}給与計算{% endblock %}
+{% block title %}給与・経費{% endblock %}
 
 {% block content %}
 <style>
@@ -243,15 +243,16 @@
 <div class="card">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
     <div>
-      <h1 class="payroll-title">給与計算</h1>
+      <h1 class="payroll-title">給与・経費</h1>
       <p class="payroll-lead">
-        {{ month_label }} のレッスン売上、ガット張り、経費をまとめて確認できます。スマホでは要点を上に表示します。
+        {{ month_label }} の給与計算、チケット集計、ガット張り、経費登録をまとめて確認できます。
       </p>
     </div>
 
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
-      <a href="{% url 'club:coach_ticket_summary' %}" class="btn">チケット集計</a>
+      <a href="{% url 'club:coach_payroll_summary' %}" class="btn btn-primary">給与計算</a>
       <a href="{% url 'club:coach_expense_manage' %}" class="btn">経費登録</a>
+      <a href="{% url 'club:coach_ticket_summary' %}" class="btn">チケット集計</a>
       <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
     </div>
   </div>
@@ -288,6 +289,25 @@
   <div class="month-actions">
     <a href="?year={{ prev_year }}&month={{ prev_month }}{% if selected_coach %}&coach_id={{ selected_coach.id }}{% endif %}" class="btn">前の月</a>
     <a href="?year={{ next_year }}&month={{ next_month }}{% if selected_coach %}&coach_id={{ selected_coach.id }}{% endif %}" class="btn">次の月</a>
+  </div>
+</div>
+
+
+<div class="card">
+  <h2 style="margin-top:0;">給与・経費メニュー</h2>
+  <div class="mobile-row-list">
+    <a href="{% url 'club:coach_payroll_summary' %}" class="mobile-row-card" style="text-decoration:none;">
+      <div class="mobile-row-title">給与計算</div>
+      <div class="mobile-row-sub">レッスン売上、ガット張り、経費按分をまとめて確認します。</div>
+    </a>
+    <a href="{% url 'club:coach_expense_manage' %}" class="mobile-row-card" style="text-decoration:none;">
+      <div class="mobile-row-title">経費登録</div>
+      <div class="mobile-row-sub">コート代・ボール代などの経費を登録します。</div>
+    </a>
+    <a href="{% url 'club:coach_ticket_summary' %}" class="mobile-row-card" style="text-decoration:none;">
+      <div class="mobile-row-title">チケット集計</div>
+      <div class="mobile-row-sub">給与計算の根拠になるチケット消費内訳を確認します。</div>
+    </a>
   </div>
 </div>
 
