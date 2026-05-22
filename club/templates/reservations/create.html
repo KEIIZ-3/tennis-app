@@ -1,762 +1,416 @@
-<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Play Design Tennis{% endblock %}</title>
+{% extends "base.html" %}
+{% block title %}予約{% endblock %}
 
-  <style>
-    :root{
-      --bg:#f6f8fb;
-      --card:#ffffff;
-      --text:#111827;
-      --muted:#6b7280;
-      --line:#e5e7eb;
-      --line-strong:#d1d5db;
-      --primary:#0f172a;
-      --success-bg:#f0fdf4;
-      --success-border:#bbf7d0;
-      --error-bg:#fef2f2;
-      --error-border:#fecaca;
-      --warning-bg:#fff7ed;
-      --warning-border:#fed7aa;
-      --info-bg:#eff6ff;
-      --info-border:#bfdbfe;
-      --ticket-bg:#fff7ed;
-      --ticket-border:#fdba74;
-      --line-green:#06c755;
-      --line-green-dark:#05b74d;
-      --menu-tab-bg:#eef2ff;
-      --menu-tab-border:#c7d2fe;
-      --menu-tab-active:#0f172a;
-      --menu-tab-active-text:#ffffff;
-      --shadow:0 8px 24px rgba(15, 23, 42, 0.06);
-      --radius:16px;
-    }
+{% block content %}
+<style>
+  .reserve-title{
+    margin:0;
+    font-size:28px;
+    font-weight:900;
+    line-height:1.25;
+    letter-spacing:-0.02em;
+  }
 
-    *{ box-sizing:border-box; }
-    html{ -webkit-text-size-adjust:100%; }
-    body{
-      margin:0;
-      font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background:var(--bg);
-      color:var(--text);
-      line-height:1.6;
-    }
-    a{ color:inherit; text-decoration:none; }
+  .reserve-lead{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
 
-    .topbar{
-      position:sticky;
-      top:0;
-      z-index:100;
-      background:rgba(255,255,255,0.96);
-      backdrop-filter:blur(10px);
-      border-bottom:1px solid var(--line);
-    }
-    .wrap{
-      max-width:1120px;
-      margin:0 auto;
-      padding:0 16px;
-    }
-    .topbar .wrap{
-      padding-top:14px;
-      padding-bottom:14px;
-      display:flex;
-      flex-direction:column;
-      gap:12px;
-    }
-    .topbar-row{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      gap:16px;
-      flex-wrap:wrap;
-    }
-    .brand{
-      display:flex;
-      align-items:center;
-      gap:12px;
-      min-width:0;
-    }
-    .brand-mark{
-      width:40px;
-      height:40px;
-      border-radius:12px;
-      background:linear-gradient(135deg, #0f172a 0%, #334155 100%);
-      color:#fff;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-size:18px;
-      font-weight:700;
-      flex:0 0 auto;
-      box-shadow:var(--shadow);
-    }
-    .brand-text{ min-width:0; }
-    .brand-title{
-      font-size:20px;
-      font-weight:800;
-      letter-spacing:0.01em;
-      line-height:1.2;
-    }
-    .brand-sub{
-      margin-top:2px;
-      color:var(--muted);
-      font-size:12px;
-      line-height:1.3;
-    }
-    .top-meta{
-      display:flex;
-      align-items:center;
-      gap:8px;
-      flex-wrap:wrap;
-    }
-    .top-badge{
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      min-height:36px;
-      padding:8px 12px;
-      border-radius:999px;
-      border:1px solid var(--line);
-      background:#fff;
-      color:var(--text);
-      font-size:13px;
-      white-space:nowrap;
-    }
-    .top-badge.ticket{
-      background:var(--ticket-bg);
-      border-color:var(--ticket-border);
-      font-weight:700;
-    }
-    .top-badge.coach{
-      background:var(--menu-tab-bg);
-      border-color:var(--menu-tab-border);
-      font-weight:700;
-      color:#312e81;
-    }
+  .reserve-layout{
+    display:grid;
+    grid-template-columns:minmax(0, 1fr) 340px;
+    gap:16px;
+    align-items:start;
+  }
 
-    .member-menu,
-    .coach-menu{
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-      padding-top:4px;
-      border-top:1px solid var(--line);
-    }
-    .member-menu-head,
-    .coach-menu-head{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      gap:10px;
-      flex-wrap:wrap;
-    }
-    .member-menu-title,
-    .coach-menu-title{
-      font-size:13px;
-      font-weight:800;
-      color:#4b5563;
-    }
-    .member-menu-toggle,
-    .coach-menu-toggle{
-      display:none;
-      appearance:none;
-      border:1px solid var(--menu-tab-border);
-      background:var(--menu-tab-bg);
-      color:#3730a3;
-      min-height:38px;
-      padding:8px 12px;
-      border-radius:999px;
-      cursor:pointer;
-      font:inherit;
-      font-size:13px;
-      font-weight:700;
-    }
+  .reserve-side{
+    position:sticky;
+    top:120px;
+  }
 
-    .nav{
-      display:flex;
-      align-items:center;
-      gap:8px;
-      flex-wrap:wrap;
-    }
-    .nav a{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      min-height:40px;
-      padding:9px 13px;
-      border:1px solid transparent;
-      border-radius:999px;
-      color:var(--text);
-      font-size:14px;
-      font-weight:600;
-      transition:all .15s ease;
-      background:#fff;
-      white-space:nowrap;
-    }
-    .nav a:hover{
-      background:#f8fafc;
-      border-color:var(--line);
-    }
-    .nav a.nav-primary{
-      background:var(--primary);
-      color:#fff;
-      border-color:var(--primary);
-    }
-    .nav a.line-login-link{
-      background:var(--line-green);
-      color:#fff;
-      border-color:var(--line-green);
-      font-weight:700;
-    }
-    .nav a.line-login-link:hover{
-      background:var(--line-green-dark);
-      border-color:var(--line-green-dark);
+  .reserve-mode-grid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:12px;
+  }
+
+  .reserve-mode-card{
+    display:block;
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    padding:16px;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .reserve-mode-card.primary{
+    background:#0f172a;
+    color:#fff;
+    border-color:#0f172a;
+  }
+
+  .reserve-mode-card.info{
+    background:#eff6ff;
+    border-color:#bfdbfe;
+  }
+
+  .reserve-mode-card.notice{
+    background:#fff7ed;
+    border-color:#fed7aa;
+  }
+
+  .reserve-mode-title{
+    font-size:18px;
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .reserve-mode-text{
+    margin-top:8px;
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.7;
+  }
+
+  .reserve-mode-card.primary .reserve-mode-text{
+    color:#d1d5db;
+  }
+
+  .reserve-mode-action{
+    margin-top:14px;
+  }
+
+  .reserve-mode-card.primary .btn{
+    background:#fff;
+    color:#0f172a;
+    border-color:#fff;
+  }
+
+  .reserve-form-card p{
+    margin:0 0 14px;
+  }
+
+  .reserve-form-card ul.errorlist{
+    margin:6px 0 0;
+    padding-left:18px;
+    color:#991b1b;
+    font-size:13px;
+    line-height:1.7;
+  }
+
+  .field-section{
+    border:1px solid #e5e7eb;
+    background:#fff;
+    border-radius:16px;
+    padding:16px;
+    margin-bottom:14px;
+  }
+
+  .field-section-title{
+    margin:0 0 10px;
+    font-size:17px;
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .field-section-sub{
+    margin:0 0 12px;
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.7;
+  }
+
+  .field-grid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:14px;
+  }
+
+  .field-block.full{
+    grid-column:1 / -1;
+  }
+
+  .reserve-guide-card{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:14px;
+    padding:14px;
+    margin-bottom:10px;
+  }
+
+  .reserve-guide-number{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:26px;
+    height:26px;
+    border-radius:999px;
+    background:#0f172a;
+    color:#fff;
+    font-size:12px;
+    font-weight:900;
+    margin-bottom:8px;
+  }
+
+  .reserve-guide-title{
+    font-weight:900;
+    margin-bottom:4px;
+  }
+
+  .reserve-guide-text{
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.7;
+  }
+
+  .reserve-summary-box{
+    padding:14px;
+    border:1px solid #bfdbfe;
+    background:#eff6ff;
+    border-radius:14px;
+    color:#1d4ed8;
+    font-size:13px;
+    line-height:1.8;
+    margin-bottom:14px;
+  }
+
+  .reserve-mobile-actions{
+    display:none;
+  }
+
+  @media (max-width: 900px){
+    .reserve-layout,
+    .reserve-mode-grid{
+      grid-template-columns:1fr;
     }
 
-    .coach-tabs{
-      display:flex;
-      gap:8px;
-      flex-wrap:wrap;
+    .reserve-side{
+      position:static;
     }
-    .coach-tab{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      min-height:40px;
-      padding:9px 14px;
-      border-radius:999px;
-      border:1px solid var(--menu-tab-border);
-      background:var(--menu-tab-bg);
-      color:#3730a3;
-      font-size:14px;
-      font-weight:700;
-      transition:all .15s ease;
-      white-space:nowrap;
-    }
-    .coach-tab:hover{ filter:brightness(0.98); }
-    .coach-tab.active{
-      background:var(--menu-tab-active);
-      color:var(--menu-tab-active-text);
-      border-color:var(--menu-tab-active);
-    }
+  }
 
-    .logout-form{ display:inline; margin:0; }
-    .logout-button{
-      appearance:none;
-      border:1px solid var(--line-strong);
-      background:#fff;
-      color:var(--text);
-      min-height:40px;
-      padding:9px 13px;
-      border-radius:999px;
-      cursor:pointer;
-      font:inherit;
-      font-size:14px;
-      font-weight:600;
-      transition:all .15s ease;
-      width:auto;
-    }
-    .logout-button:hover{ background:#f8fafc; }
-
-    .main{ padding:24px 0 40px; }
-    .page-head{ margin-bottom:16px; }
-    .page-title{
-      margin:0 0 6px;
-      font-size:28px;
-      line-height:1.2;
-      font-weight:800;
-      letter-spacing:-0.01em;
-    }
-    .page-subtitle{
-      margin:0;
-      color:var(--muted);
-      font-size:14px;
-    }
-
-    .card{
-      background:var(--card);
-      border:1px solid var(--line);
-      border-radius:var(--radius);
-      padding:22px;
-      box-shadow:var(--shadow);
-      margin-bottom:16px;
-    }
-    .card-title{
-      margin:0 0 8px;
-      font-size:20px;
-      font-weight:800;
-      line-height:1.3;
-    }
-    .card-subtitle{
-      margin:0;
-      color:var(--muted);
-      font-size:14px;
-    }
-
-    .messages{ margin-bottom:16px; }
-    .message{
-      padding:13px 15px;
-      border-radius:12px;
-      margin-bottom:10px;
-      border:1px solid transparent;
-      font-size:14px;
-    }
-    .message.success{ background:var(--success-bg); border-color:var(--success-border); }
-    .message.error{ background:var(--error-bg); border-color:var(--error-border); }
-    .message.warning{ background:var(--warning-bg); border-color:var(--warning-border); }
-    .message.info{ background:var(--info-bg); border-color:var(--info-border); }
-
-    .muted{ color:var(--muted); }
-    form{ margin:0; }
-    form p{ margin:0 0 14px; }
-    label{
-      display:block;
-      margin-bottom:8px;
-      font-size:14px;
-      font-weight:700;
-      color:var(--text);
-    }
-    input[type="text"], input[type="email"], input[type="password"], input[type="datetime-local"],
-    input[type="date"], input[type="time"], input[type="number"], select, textarea{
-      width:100%;
-      min-height:46px;
-      padding:11px 13px;
-      border:1px solid var(--line-strong);
-      border-radius:12px;
-      background:#fff;
-      color:var(--text);
-      font:inherit;
-      transition:border-color .15s ease, box-shadow .15s ease;
-    }
-    input:focus, select:focus, textarea:focus{
-      outline:none;
-      border-color:#93c5fd;
-      box-shadow:0 0 0 4px rgba(59,130,246,0.12);
-    }
-    textarea{ min-height:120px; resize:vertical; }
-
-    button, input[type="submit"]{
-      appearance:none;
-      border:none;
-      background:var(--primary);
-      color:#fff;
-      min-height:44px;
-      padding:11px 16px;
-      border-radius:12px;
-      cursor:pointer;
-      font:inherit;
-      font-weight:700;
-      transition:transform .12s ease, opacity .12s ease;
-    }
-    button:hover, input[type="submit"]:hover{ opacity:0.95; }
-
-    .btn{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      gap:6px;
-      min-height:44px;
-      padding:11px 16px;
-      border-radius:12px;
-      border:1px solid var(--line-strong);
-      background:#fff;
-      color:var(--text);
-      text-decoration:none;
-      font-size:14px;
-      font-weight:700;
-      cursor:pointer;
-      transition:all .15s ease;
-    }
-    .btn:hover{ background:#f8fafc; }
-    .btn-primary{ background:var(--primary); color:#fff; border-color:var(--primary); }
-    .btn-primary:hover{ background:#0b1220; }
-
-    .actions{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      align-items:center;
-    }
-    .grid-2{
-      display:grid;
-      grid-template-columns:repeat(2, minmax(0, 1fr));
-      gap:16px;
-    }
-    .grid-3{
-      display:grid;
-      grid-template-columns:repeat(3, minmax(0, 1fr));
-      gap:16px;
-    }
-
-    table{
-      width:100%;
-      border-collapse:collapse;
-      background:#fff;
-      border-radius:12px;
-      overflow:hidden;
-    }
-    th, td{
-      border-bottom:1px solid var(--line);
-      padding:12px 10px;
-      text-align:left;
-      vertical-align:top;
-      font-size:14px;
-    }
-    th{
-      background:#f8fafc;
-      font-weight:800;
-      color:#334155;
-    }
-
-    .spacer-16{ height:16px; }
-
-    @media (max-width: 900px){
-      .grid-3{ grid-template-columns:1fr; }
-      .grid-2{ grid-template-columns:1fr; }
-    }
-
-    @media (max-width: 768px){
-
-    .reservation-page-title{
+  @media (max-width: 768px){
+    .reserve-title{
       font-size:23px;
     }
 
-    .reservation-mobile-shortcuts{
-      display:grid;
-      grid-template-columns:repeat(3, minmax(0, 1fr));
+    .field-grid{
+      grid-template-columns:1fr;
     }
 
-    .reservation-alert{
-      padding:12px;
-      border-radius:12px;
-      font-size:12px;
+    .field-section,
+    .reserve-mode-card{
+      padding:14px;
+      border-radius:15px;
     }
 
-    .reservation-guide-card{
-      padding:12px;
-      border-radius:12px;
-    }
-
-    .reservation-check-card{
-      padding:12px;
-      border-radius:14px;
-    }
-
-    .reservation-check-list{
+    .reserve-mobile-actions{
+      display:flex;
+      position:sticky;
+      bottom:0;
+      z-index:40;
       gap:8px;
-    }
-
-    .reservation-check-row{
       padding:10px;
-      border-radius:10px;
-    }
-      .wrap{ padding:0 12px; }
-      .topbar .wrap{
-        padding-top:12px;
-        padding-bottom:12px;
-      }
-      .topbar-row{ align-items:flex-start; }
-      .brand-mark{
-        width:36px;
-        height:36px;
-        border-radius:10px;
-        font-size:16px;
-      }
-      .brand-title{ font-size:18px; }
-      .brand-sub{ font-size:11px; }
-      .top-meta{ width:100%; }
-
-      .member-menu,
-      .coach-menu{ gap:8px; }
-      .member-menu-head,
-      .coach-menu-head{ align-items:center; }
-
-      .member-menu-toggle,
-      .coach-menu-toggle{
-        display:inline-flex;
-        align-items:center;
-        justify-content:center;
-        min-height:36px;
-        padding:7px 12px;
-        font-size:12px;
-      }
-
-      .member-menu .nav{
-        display:none;
-        width:100%;
-        grid-template-columns:repeat(2, minmax(0, 1fr));
-        gap:7px;
-      }
-      .member-menu.is-open .nav{ display:grid; }
-
-      .member-menu .nav a,
-      .member-menu .logout-button{
-        width:100%;
-        min-height:40px;
-        padding:8px 10px;
-        font-size:12px;
-        border-radius:12px;
-        justify-content:center;
-      }
-      .member-menu .logout-form{
-        display:block;
-        width:100%;
-        grid-column:span 2;
-      }
-
-      .coach-tabs{
-        display:none;
-        width:100%;
-        grid-template-columns:repeat(2, minmax(0, 1fr));
-        gap:8px;
-      }
-      .coach-menu.is-open .coach-tabs{ display:grid; }
-      .coach-tab{
-        width:100%;
-        min-height:44px;
-        padding:8px 10px;
-        border-radius:14px;
-        font-size:12px;
-        line-height:1.35;
-        white-space:normal;
-        text-align:center;
-      }
-
-      .main{ padding:16px 0 28px; }
-      .page-title{ font-size:24px; }
-      .card{
-        padding:16px;
-        border-radius:14px;
-      }
-      th, td{
-        font-size:13px;
-        padding:10px 8px;
-      }
+      margin:18px -16px -16px;
+      background:rgba(255,255,255,0.96);
+      backdrop-filter:blur(8px);
+      border-top:1px solid #e5e7eb;
     }
 
-    @media (max-width: 480px){
-      .top-badge{
-        min-height:34px;
-        padding:7px 10px;
-        font-size:12px;
-      }
-      .member-menu-title,
-      .coach-menu-title{ font-size:12px; }
-      .member-menu .nav,
-      .coach-tabs{
-        grid-template-columns:repeat(2, minmax(0, 1fr));
-        gap:7px;
-      }
-      .member-menu .nav a,
-      .member-menu .logout-button,
-      .coach-tab{
-        min-height:38px;
-        padding:7px 8px;
-        border-radius:11px;
-        font-size:11px;
-        font-weight:700;
-      }
-      .coach-tab{
-        border-radius:12px;
-        min-height:40px;
-      }
+    .reserve-mobile-actions button,
+    .reserve-mobile-actions a{
+      flex:1 1 0;
+      min-height:44px;
     }
-  </style>
-</head>
-<body>
-  <header class="topbar">
-    <div class="wrap">
-      <div class="topbar-row">
-        <div class="brand">
-          <div class="brand-mark">T</div>
-          <div class="brand-text">
-            <a href="{% url 'club:home' %}" class="brand-title">Play Design Tennis</a>
-            <div class="brand-sub">予約・チケット・LINE連携</div>
-          </div>
-        </div>
+  }
+</style>
 
-        {% if user.is_authenticated %}
-          <div class="top-meta">
-            <span class="top-badge">ログイン中: {{ user.display_name }}</span>
-            {% if user.role == "member" %}
-              <span class="top-badge">レベル: {{ user.get_member_level_display }}</span>
-              <span class="top-badge ticket">チケット残数: {{ user.ticket_balance }}枚</span>
-            {% else %}
-              {% if user.role == "coach" or user.is_staff or user.is_superuser %}
-                <span class="top-badge coach">コーチ専用メニュー表示中</span>
-              {% endif %}
-            {% endif %}
-          </div>
-        {% endif %}
-      </div>
-
-      {% if user.is_authenticated %}
-        {% if user.role == "member" %}
-          <div class="member-menu" id="member-menu">
-            <div class="member-menu-head">
-              <div class="member-menu-title">メニュー</div>
-              <button type="button" class="member-menu-toggle" id="member-menu-toggle" aria-expanded="false" aria-controls="member-nav">
-                メニューを開く
-              </button>
-            </div>
-
-            <nav class="nav" id="member-nav">
-              <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
-              <a href="{% url 'club:lesson_calendar' %}">レッスンカレンダー</a>
-              <a href="{% url 'club:help' %}">使い方</a>
-              <a href="{% url 'club:terms' %}">利用規約</a>
-              <a href="{% url 'club:reservation_create' %}">予約作成</a>
-              <a href="{% url 'club:reservation_list' %}">予約一覧</a>
-              <a href="{% url 'club:tickets' %}">チケット</a>
-              <a href="{% url 'club:schedule_survey' %}">アンケート</a>
-              <a href="{% url 'club:stringing_order_create' %}">ガット張り依頼</a>
-              <a href="{% url 'club:shop_estimate' %}">Shop</a>
-              <a href="{% url 'club:line_connect' %}">LINE連携</a>
-
-              <form method="post" action="{% url 'club:logout' %}" class="logout-form">
-                {% csrf_token %}
-                <button type="submit" class="logout-button">ログアウト</button>
-              </form>
-            </nav>
-          </div>
-        {% else %}
-          <div class="topbar-row">
-            <nav class="nav">
-              <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
-              <a href="{% url 'club:lesson_calendar' %}">レッスンカレンダー</a>
-              <a href="{% url 'club:help' %}">使い方</a>
-              <a href="{% url 'club:terms' %}">利用規約</a>
-
-              {% if user.role == "coach" or user.is_staff or user.is_superuser %}
-                <a href="{% url 'club:line_connect' %}">LINE連携</a>
-
-                <form method="post" action="{% url 'club:logout' %}" class="logout-form">
-                  {% csrf_token %}
-                  <button type="submit" class="logout-button">ログアウト</button>
-                </form>
-              {% endif %}
-            </nav>
-          </div>
-        {% endif %}
-      {% else %}
-        <div class="topbar-row">
-          <nav class="nav">
-            <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
-            <a href="{% url 'club:lesson_calendar' %}">レッスンカレンダー</a>
-            <a href="{% url 'club:help' %}">使い方</a>
-            <a href="{% url 'club:terms' %}">利用規約</a>
-            <a href="{% url 'club:line_login_start' %}" class="line-login-link">LINEでログイン</a>
-            <a href="{% url 'club:login' %}">通常ログイン</a>
-            <a href="{% url 'club:register' %}">新規登録</a>
-          </nav>
-        </div>
-      {% endif %}
-
-      {% if user.is_authenticated %}
-        {% if user.role == "coach" or user.is_staff or user.is_superuser %}
-          <div class="coach-menu" id="coach-menu">
-            <div class="coach-menu-head">
-              <div class="coach-menu-title">コーチ専用メニュー</div>
-              <button type="button" class="coach-menu-toggle" id="coach-menu-toggle" aria-expanded="false" aria-controls="coach-tabs">
-                メニューを開く
-              </button>
-            </div>
-
-            <div class="coach-tabs" id="coach-tabs">
-              <a href="{% url 'club:home' %}" class="coach-tab {% if request.resolver_match.url_name == 'home' %}active{% endif %}">コーチホーム</a>
-              <a href="{% url 'club:lesson_calendar' %}" class="coach-tab {% if request.resolver_match.url_name == 'lesson_calendar' %}active{% endif %}">レッスンカレンダー</a>
-              <a href="{% url 'club:reservation_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_list' %}active{% endif %}">予約一覧</a>
-              <a href="{% url 'club:coach_availability_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_availability_list' or request.resolver_match.url_name == 'coach_availability_create' or request.resolver_match.url_name == 'coach_availability_edit' %}active{% endif %}">スケジュール管理</a>
-              <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}active{% endif %}">固定レッスン</a>
-              <a href="{% url 'club:coach_ticket_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_ticket_summary' %}active{% endif %}">チケット集計</a>
-              <a href="{% url 'club:coach_payroll_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_payroll_summary' %}active{% endif %}">給与計算</a>
-              <a href="{% url 'club:coach_expense_manage' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_expense_manage' %}active{% endif %}">経費登録</a>
-              <a href="{% url 'club:schedule_survey_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'schedule_survey_summary' %}active{% endif %}">アンケート集計</a>
-              <a href="{% url 'club:stringing_order_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'stringing_order_list' %}active{% endif %}">ガット張り一覧</a>
-              <a href="{% url 'club:shop_estimate' %}" class="coach-tab {% if request.resolver_match.url_name == 'shop_estimate' %}active{% endif %}">Shop</a>
-              <a href="{% url 'club:reservation_create' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_create' %}active{% endif %}">予約作成</a>
-              <a href="{% url 'club:line_connect' %}" class="coach-tab {% if request.resolver_match.url_name == 'line_connect' %}active{% endif %}">LINE連携</a>
-            </div>
-          </div>
-        {% endif %}
-      {% endif %}
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h1 class="reserve-title">予約</h1>
+      <p class="reserve-lead">
+        一般レッスンの予約と、プライベート/グループレッスンの申請を分かりやすく分けています。
+      </p>
     </div>
-  </header>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <a href="{% url 'club:reservation_list' %}" class="btn">予約確認</a>
+      <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
+    </div>
+  </div>
+</div>
 
-  <main class="main">
-    <div class="wrap">
-      {% if messages %}
-        <div class="messages">
-          {% for message in messages %}
-            <div class="message {% if message.tags %}{{ message.tags }}{% else %}info{% endif %}">
-              {{ message }}
-            </div>
+<div class="reserve-mode-grid">
+  <a href="{% url 'club:home' %}#lesson-calendar-area" class="reserve-mode-card primary">
+    <div class="reserve-mode-title">通常レッスンを予約する</div>
+    <div class="reserve-mode-text">
+      ホームのカレンダーから受付中の一般レッスン枠を選びます。空き枠をタップして予約へ進んでください。
+    </div>
+    <div class="reserve-mode-action">
+      <span class="btn">カレンダーへ</span>
+    </div>
+  </a>
+
+  <div class="reserve-mode-card info">
+    <div class="reserve-mode-title">個別レッスンを申請する</div>
+    <div class="reserve-mode-text">
+      プライベート/グループレッスンは、下のフォームから申請します。コーチ承認後に予約成立します。
+    </div>
+    <div class="reserve-mode-action">
+      <a href="#individual-request-form" class="btn btn-primary">申請フォームへ</a>
+    </div>
+  </div>
+</div>
+
+<div class="reserve-layout" id="individual-request-form" style="margin-top:16px;">
+  <div class="card reserve-form-card">
+    <h2 style="margin-top:0;">個別レッスン申請フォーム</h2>
+
+    <div class="reserve-summary-box" id="reserve-summary-box">
+      レッスン種別、コーチ、開始・終了日時を入力して申請してください。申請後は「予約確認」で承認待ち状態を確認できます。
+    </div>
+
+    <form method="post" id="reservation-request-form">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div class="message error">
+          {{ form.non_field_errors }}
+        </div>
+      {% endif %}
+
+      {% for hidden in form.hidden_fields %}
+        {{ hidden }}
+      {% endfor %}
+
+      <div class="field-section">
+        <h3 class="field-section-title">1. レッスン内容</h3>
+        <p class="field-section-sub">プライベートまたはグループを選び、希望コーチを指定してください。</p>
+        <div class="field-grid">
+          {% for field in form.visible_fields %}
+            {% if field.name == "lesson_type" or field.name == "coach_choice" or field.name == "coach" %}
+              <div class="field-block">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<span class="muted" style="display:block; margin-top:6px; font-size:13px;">{{ field.help_text }}</span>{% endif %}
+                {{ field.errors }}
+              </div>
+            {% endif %}
           {% endfor %}
         </div>
-      {% endif %}
+      </div>
 
-      {% block content %}{% endblock %}
+      <div class="field-section">
+        <h3 class="field-section-title">2. 希望日時</h3>
+        <p class="field-section-sub">開始日時と終了日時を指定してください。プライベート/グループはコーチ承認後に成立します。</p>
+        <div class="field-grid">
+          {% for field in form.visible_fields %}
+            {% if field.name == "start_at" or field.name == "end_at" or field.name == "date" or field.name == "start_time" or field.name == "end_time" %}
+              <div class="field-block">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<span class="muted" style="display:block; margin-top:6px; font-size:13px;">{{ field.help_text }}</span>{% endif %}
+                {{ field.errors }}
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="field-section">
+        <h3 class="field-section-title">3. コート希望・補足</h3>
+        <p class="field-section-sub">希望コートや補足事項があれば入力してください。</p>
+        <div class="field-grid">
+          {% for field in form.visible_fields %}
+            {% if field.name == "court" or field.name == "requested_court_type" or field.name == "requested_court_note" or field.name == "note" %}
+              <div class="field-block {% if field.name == 'requested_court_note' or field.name == 'note' %}full{% endif %}">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<span class="muted" style="display:block; margin-top:6px; font-size:13px;">{{ field.help_text }}</span>{% endif %}
+                {{ field.errors }}
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="field-section">
+        <h3 class="field-section-title">その他</h3>
+        <p class="field-section-sub">上の分類に入らない項目です。必要に応じて入力してください。</p>
+        <div class="field-grid">
+          {% for field in form.visible_fields %}
+            {% if field.name != "lesson_type" and field.name != "coach_choice" and field.name != "coach" and field.name != "start_at" and field.name != "end_at" and field.name != "date" and field.name != "start_time" and field.name != "end_time" and field.name != "court" and field.name != "requested_court_type" and field.name != "requested_court_note" and field.name != "note" %}
+              <div class="field-block">
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<span class="muted" style="display:block; margin-top:6px; font-size:13px;">{{ field.help_text }}</span>{% endif %}
+                {{ field.errors }}
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn btn-primary">申請を送信する</button>
+        <a href="{% url 'club:reservation_list' %}" class="btn">予約確認へ</a>
+      </div>
+
+      <div class="reserve-mobile-actions">
+        <a href="{% url 'club:reservation_list' %}" class="btn">確認</a>
+        <button type="submit" class="btn btn-primary">申請</button>
+      </div>
+    </form>
+  </div>
+
+  <aside class="reserve-side">
+    <div class="card">
+      <h2 style="margin-top:0;">予約の考え方</h2>
+
+      <div class="reserve-guide-card">
+        <div class="reserve-guide-number">1</div>
+        <div class="reserve-guide-title">一般レッスン</div>
+        <div class="reserve-guide-text">ホームのカレンダーで受付中の枠を選び、そのまま予約します。</div>
+      </div>
+
+      <div class="reserve-guide-card">
+        <div class="reserve-guide-number">2</div>
+        <div class="reserve-guide-title">個別レッスン</div>
+        <div class="reserve-guide-text">プライベート/グループは申請後、コーチが承認すると成立します。</div>
+      </div>
+
+      <div class="reserve-guide-card">
+        <div class="reserve-guide-number">3</div>
+        <div class="reserve-guide-title">確認・キャンセル</div>
+        <div class="reserve-guide-text">申請状況や予約キャンセルは「予約確認」から行います。</div>
+      </div>
     </div>
-  </main>
+  </aside>
+</div>
 
-  <script>
-    (function () {
-      const memberMenu = document.getElementById("member-menu");
-      const memberToggle = document.getElementById("member-menu-toggle");
+<script>
+  (function () {
+    const summary = document.getElementById("reserve-summary-box");
+    const lessonType = document.getElementById("id_lesson_type");
 
-      if (memberMenu && memberToggle) {
-        function syncMemberMenuState() {
-          if (window.innerWidth > 768) {
-            memberMenu.classList.add("is-open");
-            memberToggle.setAttribute("aria-expanded", "true");
-            memberToggle.textContent = "メニュー表示中";
-          } else if (!memberMenu.dataset.mobileReady) {
-            memberMenu.classList.remove("is-open");
-            memberToggle.setAttribute("aria-expanded", "false");
-            memberToggle.textContent = "メニューを開く";
-            memberMenu.dataset.mobileReady = "1";
-          }
-        }
-
-        memberToggle.addEventListener("click", function () {
-          const isOpen = memberMenu.classList.toggle("is-open");
-          memberToggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
-          memberToggle.textContent = isOpen ? "メニューを閉じる" : "メニューを開く";
-        });
-
-        window.addEventListener("resize", syncMemberMenuState);
-        syncMemberMenuState();
+    function updateSummary() {
+      if (!summary || !lessonType) return;
+      const text = lessonType.options && lessonType.selectedIndex >= 0 ? lessonType.options[lessonType.selectedIndex].text : "";
+      if (text.indexOf("グループ") !== -1) {
+        summary.textContent = "グループレッスン申請です。希望日時・コート希望・参加人数の想定が分かるように入力してください。承認後に予約成立します。";
+      } else if (text.indexOf("プライベート") !== -1) {
+        summary.textContent = "プライベートレッスン申請です。希望コーチと日時を指定してください。承認後に予約成立します。";
+      } else {
+        summary.textContent = "レッスン種別、コーチ、開始・終了日時を入力して申請してください。申請後は予約確認で承認待ち状態を確認できます。";
       }
+    }
 
-      const coachMenu = document.getElementById("coach-menu");
-      const coachToggle = document.getElementById("coach-menu-toggle");
-
-      if (coachMenu && coachToggle) {
-        function syncCoachMenuState() {
-          if (window.innerWidth > 768) {
-            coachMenu.classList.add("is-open");
-            coachToggle.setAttribute("aria-expanded", "true");
-            coachToggle.textContent = "メニュー表示中";
-          } else if (!coachMenu.dataset.mobileReady) {
-            coachMenu.classList.remove("is-open");
-            coachToggle.setAttribute("aria-expanded", "false");
-            coachToggle.textContent = "メニューを開く";
-            coachMenu.dataset.mobileReady = "1";
-          }
-        }
-
-        coachToggle.addEventListener("click", function () {
-          const isOpen = coachMenu.classList.toggle("is-open");
-          coachToggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
-          coachToggle.textContent = isOpen ? "メニューを閉じる" : "メニューを開く";
-        });
-
-        window.addEventListener("resize", syncCoachMenuState);
-        syncCoachMenuState();
-      }
-    })();
-  </script>
-</body>
-</html>
+    if (lessonType) {
+      lessonType.addEventListener("change", updateSummary);
+      updateSummary();
+    }
+  })();
+</script>
+{% endblock %}
