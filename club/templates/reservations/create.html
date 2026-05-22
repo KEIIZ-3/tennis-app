@@ -1,762 +1,762 @@
-{% extends "base.html" %}
-{% block title %}予約作成{% endblock %}
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Play Design Tennis{% endblock %}</title>
 
-{% block content %}
-<style>
-  .reservation-page{
-    display:grid;
-    grid-template-columns:minmax(0, 1.02fr) minmax(300px, 0.98fr);
-    gap:18px;
-    align-items:start;
-  }
-  .reservation-left,
-  .reservation-right{
-    min-width:0;
-  }
-  .reservation-sticky{
-    position:sticky;
-    top:120px;
-    align-self:start;
-  }
-  .reservation-summary-grid{
-    display:grid;
-    grid-template-columns:repeat(2, minmax(0, 1fr));
-    gap:12px;
-    margin-top:14px;
-  }
-  .reservation-mini-box{
-    padding:12px 14px;
-    border:1px solid #dbeafe;
-    background:#f8fbff;
-    border-radius:12px;
-  }
-  .reservation-mini-label{
-    font-size:12px;
-    color:#64748b;
-    margin-bottom:6px;
-  }
-  .reservation-mini-value{
-    font-size:18px;
-    font-weight:800;
-    color:#0f172a;
-    line-height:1.45;
-  }
-  .reservation-guide-grid{
-    display:grid;
-    grid-template-columns:repeat(2, minmax(0, 1fr));
-    gap:12px;
-    margin-top:14px;
-  }
-  .reservation-guide-card{
-    padding:14px;
-    border:1px solid #e5e7eb;
-    background:#fff;
-    border-radius:12px;
-  }
-  .reservation-guide-title{
-    font-size:15px;
-    font-weight:800;
-    margin:0 0 6px;
-    color:#0f172a;
-  }
-  .reservation-guide-text{
-    font-size:13px;
-    color:#475569;
-    line-height:1.75;
-  }
-  .reservation-alert{
-    padding:14px 16px;
-    border-radius:12px;
-    margin-top:14px;
-    line-height:1.8;
-    font-size:13px;
-  }
-  .reservation-alert.info{
-    border:1px solid #dbeafe;
-    background:#eff6ff;
-    color:#1d4ed8;
-  }
-  .reservation-alert.warn{
-    border:1px solid #fde68a;
-    background:#fffbeb;
-    color:#92400e;
-  }
-  .reservation-form-grid{
-    display:grid;
-    grid-template-columns:repeat(2, minmax(0, 1fr));
-    gap:16px;
-  }
-  .reservation-field{
-    min-width:0;
-  }
-  .reservation-field.full{
-    grid-column:1 / -1;
-  }
-  .reservation-field label{
-    display:block;
-    font-size:13px;
-    font-weight:700;
-    color:#0f172a;
-    margin-bottom:6px;
-  }
-  .reservation-field .muted{
-    line-height:1.7;
-  }
-  .reservation-error-summary{
-    margin-bottom:16px;
-    padding:14px 16px;
-    border:1px solid #fecaca;
-    background:#fff5f5;
-    border-radius:12px;
-  }
-  .reservation-error-summary-title{
-    font-size:14px;
-    font-weight:800;
-    color:#991b1b;
-    margin-bottom:8px;
-  }
-  .reservation-error-summary ul{
-    margin:0;
-    padding-left:18px;
-    color:#7f1d1d;
-    line-height:1.8;
-    font-size:13px;
-  }
-  .reservation-check-card{
-    padding:16px;
-    border:1px solid #bfdbfe;
-    background:#f8fbff;
-    border-radius:16px;
-  }
-  .reservation-check-title{
-    font-size:18px;
-    font-weight:800;
-    margin:0 0 12px;
-    color:#0f172a;
-  }
-  .reservation-check-list{
-    display:grid;
-    gap:10px;
-  }
-  .reservation-check-row{
-    padding:12px;
-    border:1px solid #dbeafe;
-    background:#fff;
-    border-radius:12px;
-  }
-  .reservation-check-label{
-    font-size:12px;
-    color:#64748b;
-    margin-bottom:4px;
-  }
-  .reservation-check-value{
-    font-size:15px;
-    font-weight:800;
-    color:#0f172a;
-    line-height:1.55;
-    word-break:break-word;
-  }
-  .reservation-ticket-box{
-    margin-top:14px;
-    padding:14px;
-    border:1px solid #c7d2fe;
-    background:#eef2ff;
-    border-radius:14px;
-  }
-  .reservation-ticket-title{
-    font-size:15px;
-    font-weight:800;
-    color:#312e81;
-    margin:0 0 8px;
-  }
-  .reservation-ticket-line{
-    font-size:13px;
-    color:#3730a3;
-    line-height:1.8;
-  }
-  .reservation-calendar-note{
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    gap:12px;
-    flex-wrap:wrap;
-  }
-  .reservation-action-row{
-    margin-top:18px;
-    display:flex;
-    gap:10px;
-    flex-wrap:wrap;
-  }
-  .reservation-mobile-bar{
-    display:none;
-  }
-
-  #requestCalendar{
-    min-height:680px;
-  }
-
-  .fc .fc-event{
-    white-space:pre-line;
-    cursor:pointer;
-    border-radius:8px;
-    padding:2px 4px;
-    font-size:12px;
-  }
-
-  @media (max-width: 980px){
-    .reservation-page{
-      grid-template-columns:1fr;
-    }
-    .reservation-sticky{
-      position:static;
-      top:auto;
-    }
-  }
-
-  @media (max-width: 768px){
-    .reservation-summary-grid,
-    .reservation-guide-grid,
-    .reservation-form-grid{
-      grid-template-columns:1fr;
+  <style>
+    :root{
+      --bg:#f6f8fb;
+      --card:#ffffff;
+      --text:#111827;
+      --muted:#6b7280;
+      --line:#e5e7eb;
+      --line-strong:#d1d5db;
+      --primary:#0f172a;
+      --success-bg:#f0fdf4;
+      --success-border:#bbf7d0;
+      --error-bg:#fef2f2;
+      --error-border:#fecaca;
+      --warning-bg:#fff7ed;
+      --warning-border:#fed7aa;
+      --info-bg:#eff6ff;
+      --info-border:#bfdbfe;
+      --ticket-bg:#fff7ed;
+      --ticket-border:#fdba74;
+      --line-green:#06c755;
+      --line-green-dark:#05b74d;
+      --menu-tab-bg:#eef2ff;
+      --menu-tab-border:#c7d2fe;
+      --menu-tab-active:#0f172a;
+      --menu-tab-active-text:#ffffff;
+      --shadow:0 8px 24px rgba(15, 23, 42, 0.06);
+      --radius:16px;
     }
 
-    #requestCalendar{
-      min-height:520px;
+    *{ box-sizing:border-box; }
+    html{ -webkit-text-size-adjust:100%; }
+    body{
+      margin:0;
+      font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      line-height:1.6;
     }
+    a{ color:inherit; text-decoration:none; }
 
-    .fc .fc-toolbar{
-      flex-direction:column;
-      gap:8px;
-    }
-
-    .fc .fc-toolbar-title{
-      font-size:18px !important;
-    }
-
-    .fc .fc-button{
-      font-size:12px !important;
-      padding:0.3em 0.5em !important;
-    }
-
-    .reservation-action-row{
-      display:none;
-    }
-
-    .reservation-mobile-bar{
-      display:flex;
+    .topbar{
       position:sticky;
-      bottom:0;
-      z-index:40;
-      gap:8px;
-      padding:10px;
-      margin:18px -16px -16px;
+      top:0;
+      z-index:100;
       background:rgba(255,255,255,0.96);
-      backdrop-filter:blur(8px);
-      border-top:1px solid #e5e7eb;
+      backdrop-filter:blur(10px);
+      border-bottom:1px solid var(--line);
     }
-    .reservation-mobile-bar .btn,
-    .reservation-mobile-bar button{
-      flex:1 1 0;
+    .wrap{
+      max-width:1120px;
+      margin:0 auto;
+      padding:0 16px;
+    }
+    .topbar .wrap{
+      padding-top:14px;
+      padding-bottom:14px;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+    }
+    .topbar-row{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:16px;
+      flex-wrap:wrap;
+    }
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      min-width:0;
+    }
+    .brand-mark{
+      width:40px;
+      height:40px;
+      border-radius:12px;
+      background:linear-gradient(135deg, #0f172a 0%, #334155 100%);
+      color:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:18px;
+      font-weight:700;
+      flex:0 0 auto;
+      box-shadow:var(--shadow);
+    }
+    .brand-text{ min-width:0; }
+    .brand-title{
+      font-size:20px;
+      font-weight:800;
+      letter-spacing:0.01em;
+      line-height:1.2;
+    }
+    .brand-sub{
+      margin-top:2px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.3;
+    }
+    .top-meta{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .top-badge{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      min-height:36px;
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid var(--line);
+      background:#fff;
+      color:var(--text);
+      font-size:13px;
+      white-space:nowrap;
+    }
+    .top-badge.ticket{
+      background:var(--ticket-bg);
+      border-color:var(--ticket-border);
+      font-weight:700;
+    }
+    .top-badge.coach{
+      background:var(--menu-tab-bg);
+      border-color:var(--menu-tab-border);
+      font-weight:700;
+      color:#312e81;
+    }
+
+    .member-menu,
+    .coach-menu{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      padding-top:4px;
+      border-top:1px solid var(--line);
+    }
+    .member-menu-head,
+    .coach-menu-head{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .member-menu-title,
+    .coach-menu-title{
+      font-size:13px;
+      font-weight:800;
+      color:#4b5563;
+    }
+    .member-menu-toggle,
+    .coach-menu-toggle{
+      display:none;
+      appearance:none;
+      border:1px solid var(--menu-tab-border);
+      background:var(--menu-tab-bg);
+      color:#3730a3;
+      min-height:38px;
+      padding:8px 12px;
+      border-radius:999px;
+      cursor:pointer;
+      font:inherit;
+      font-size:13px;
+      font-weight:700;
+    }
+
+    .nav{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .nav a{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-height:40px;
+      padding:9px 13px;
+      border:1px solid transparent;
+      border-radius:999px;
+      color:var(--text);
+      font-size:14px;
+      font-weight:600;
+      transition:all .15s ease;
+      background:#fff;
+      white-space:nowrap;
+    }
+    .nav a:hover{
+      background:#f8fafc;
+      border-color:var(--line);
+    }
+    .nav a.nav-primary{
+      background:var(--primary);
+      color:#fff;
+      border-color:var(--primary);
+    }
+    .nav a.line-login-link{
+      background:var(--line-green);
+      color:#fff;
+      border-color:var(--line-green);
+      font-weight:700;
+    }
+    .nav a.line-login-link:hover{
+      background:var(--line-green-dark);
+      border-color:var(--line-green-dark);
+    }
+
+    .coach-tabs{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .coach-tab{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-height:40px;
+      padding:9px 14px;
+      border-radius:999px;
+      border:1px solid var(--menu-tab-border);
+      background:var(--menu-tab-bg);
+      color:#3730a3;
+      font-size:14px;
+      font-weight:700;
+      transition:all .15s ease;
+      white-space:nowrap;
+    }
+    .coach-tab:hover{ filter:brightness(0.98); }
+    .coach-tab.active{
+      background:var(--menu-tab-active);
+      color:var(--menu-tab-active-text);
+      border-color:var(--menu-tab-active);
+    }
+
+    .logout-form{ display:inline; margin:0; }
+    .logout-button{
+      appearance:none;
+      border:1px solid var(--line-strong);
+      background:#fff;
+      color:var(--text);
+      min-height:40px;
+      padding:9px 13px;
+      border-radius:999px;
+      cursor:pointer;
+      font:inherit;
+      font-size:14px;
+      font-weight:600;
+      transition:all .15s ease;
+      width:auto;
+    }
+    .logout-button:hover{ background:#f8fafc; }
+
+    .main{ padding:24px 0 40px; }
+    .page-head{ margin-bottom:16px; }
+    .page-title{
+      margin:0 0 6px;
+      font-size:28px;
+      line-height:1.2;
+      font-weight:800;
+      letter-spacing:-0.01em;
+    }
+    .page-subtitle{
+      margin:0;
+      color:var(--muted);
+      font-size:14px;
+    }
+
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      padding:22px;
+      box-shadow:var(--shadow);
+      margin-bottom:16px;
+    }
+    .card-title{
+      margin:0 0 8px;
+      font-size:20px;
+      font-weight:800;
+      line-height:1.3;
+    }
+    .card-subtitle{
+      margin:0;
+      color:var(--muted);
+      font-size:14px;
+    }
+
+    .messages{ margin-bottom:16px; }
+    .message{
+      padding:13px 15px;
+      border-radius:12px;
+      margin-bottom:10px;
+      border:1px solid transparent;
+      font-size:14px;
+    }
+    .message.success{ background:var(--success-bg); border-color:var(--success-border); }
+    .message.error{ background:var(--error-bg); border-color:var(--error-border); }
+    .message.warning{ background:var(--warning-bg); border-color:var(--warning-border); }
+    .message.info{ background:var(--info-bg); border-color:var(--info-border); }
+
+    .muted{ color:var(--muted); }
+    form{ margin:0; }
+    form p{ margin:0 0 14px; }
+    label{
+      display:block;
+      margin-bottom:8px;
+      font-size:14px;
+      font-weight:700;
+      color:var(--text);
+    }
+    input[type="text"], input[type="email"], input[type="password"], input[type="datetime-local"],
+    input[type="date"], input[type="time"], input[type="number"], select, textarea{
+      width:100%;
+      min-height:46px;
+      padding:11px 13px;
+      border:1px solid var(--line-strong);
+      border-radius:12px;
+      background:#fff;
+      color:var(--text);
+      font:inherit;
+      transition:border-color .15s ease, box-shadow .15s ease;
+    }
+    input:focus, select:focus, textarea:focus{
+      outline:none;
+      border-color:#93c5fd;
+      box-shadow:0 0 0 4px rgba(59,130,246,0.12);
+    }
+    textarea{ min-height:120px; resize:vertical; }
+
+    button, input[type="submit"]{
+      appearance:none;
+      border:none;
+      background:var(--primary);
+      color:#fff;
       min-height:44px;
+      padding:11px 16px;
+      border-radius:12px;
+      cursor:pointer;
+      font:inherit;
+      font-weight:700;
+      transition:transform .12s ease, opacity .12s ease;
     }
-  }
-</style>
+    button:hover, input[type="submit"]:hover{ opacity:0.95; }
 
-<div class="card">
-  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
-    <div>
-      <h1 style="margin:0;">予約作成</h1>
-      <p class="muted" style="margin:8px 0 0;">
-        {{ user.display_name }} さんの予約申請を作成します。
-      </p>
-    </div>
+    .btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:6px;
+      min-height:44px;
+      padding:11px 16px;
+      border-radius:12px;
+      border:1px solid var(--line-strong);
+      background:#fff;
+      color:var(--text);
+      text-decoration:none;
+      font-size:14px;
+      font-weight:700;
+      cursor:pointer;
+      transition:all .15s ease;
+    }
+    .btn:hover{ background:#f8fafc; }
+    .btn-primary{ background:var(--primary); color:#fff; border-color:var(--primary); }
+    .btn-primary:hover{ background:#0b1220; }
 
-    {% if user.role == "member" %}
-      <div class="reservation-summary-grid" style="margin-top:0;">
-        <div class="reservation-mini-box" style="border-color:#fed7aa; background:#fff7ed;">
-          <div class="reservation-mini-label">現在のチケット残数</div>
-          <div class="reservation-mini-value" id="current-ticket-balance">{{ user.ticket_balance }}枚</div>
+    .actions{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .grid-2{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:16px;
+    }
+    .grid-3{
+      display:grid;
+      grid-template-columns:repeat(3, minmax(0, 1fr));
+      gap:16px;
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      background:#fff;
+      border-radius:12px;
+      overflow:hidden;
+    }
+    th, td{
+      border-bottom:1px solid var(--line);
+      padding:12px 10px;
+      text-align:left;
+      vertical-align:top;
+      font-size:14px;
+    }
+    th{
+      background:#f8fafc;
+      font-weight:800;
+      color:#334155;
+    }
+
+    .spacer-16{ height:16px; }
+
+    @media (max-width: 900px){
+      .grid-3{ grid-template-columns:1fr; }
+      .grid-2{ grid-template-columns:1fr; }
+    }
+
+    @media (max-width: 768px){
+
+    .reservation-page-title{
+      font-size:23px;
+    }
+
+    .reservation-mobile-shortcuts{
+      display:grid;
+      grid-template-columns:repeat(3, minmax(0, 1fr));
+    }
+
+    .reservation-alert{
+      padding:12px;
+      border-radius:12px;
+      font-size:12px;
+    }
+
+    .reservation-guide-card{
+      padding:12px;
+      border-radius:12px;
+    }
+
+    .reservation-check-card{
+      padding:12px;
+      border-radius:14px;
+    }
+
+    .reservation-check-list{
+      gap:8px;
+    }
+
+    .reservation-check-row{
+      padding:10px;
+      border-radius:10px;
+    }
+      .wrap{ padding:0 12px; }
+      .topbar .wrap{
+        padding-top:12px;
+        padding-bottom:12px;
+      }
+      .topbar-row{ align-items:flex-start; }
+      .brand-mark{
+        width:36px;
+        height:36px;
+        border-radius:10px;
+        font-size:16px;
+      }
+      .brand-title{ font-size:18px; }
+      .brand-sub{ font-size:11px; }
+      .top-meta{ width:100%; }
+
+      .member-menu,
+      .coach-menu{ gap:8px; }
+      .member-menu-head,
+      .coach-menu-head{ align-items:center; }
+
+      .member-menu-toggle,
+      .coach-menu-toggle{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-height:36px;
+        padding:7px 12px;
+        font-size:12px;
+      }
+
+      .member-menu .nav{
+        display:none;
+        width:100%;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:7px;
+      }
+      .member-menu.is-open .nav{ display:grid; }
+
+      .member-menu .nav a,
+      .member-menu .logout-button{
+        width:100%;
+        min-height:40px;
+        padding:8px 10px;
+        font-size:12px;
+        border-radius:12px;
+        justify-content:center;
+      }
+      .member-menu .logout-form{
+        display:block;
+        width:100%;
+        grid-column:span 2;
+      }
+
+      .coach-tabs{
+        display:none;
+        width:100%;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:8px;
+      }
+      .coach-menu.is-open .coach-tabs{ display:grid; }
+      .coach-tab{
+        width:100%;
+        min-height:44px;
+        padding:8px 10px;
+        border-radius:14px;
+        font-size:12px;
+        line-height:1.35;
+        white-space:normal;
+        text-align:center;
+      }
+
+      .main{ padding:16px 0 28px; }
+      .page-title{ font-size:24px; }
+      .card{
+        padding:16px;
+        border-radius:14px;
+      }
+      th, td{
+        font-size:13px;
+        padding:10px 8px;
+      }
+    }
+
+    @media (max-width: 480px){
+      .top-badge{
+        min-height:34px;
+        padding:7px 10px;
+        font-size:12px;
+      }
+      .member-menu-title,
+      .coach-menu-title{ font-size:12px; }
+      .member-menu .nav,
+      .coach-tabs{
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:7px;
+      }
+      .member-menu .nav a,
+      .member-menu .logout-button,
+      .coach-tab{
+        min-height:38px;
+        padding:7px 8px;
+        border-radius:11px;
+        font-size:11px;
+        font-weight:700;
+      }
+      .coach-tab{
+        border-radius:12px;
+        min-height:40px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap">
+      <div class="topbar-row">
+        <div class="brand">
+          <div class="brand-mark">T</div>
+          <div class="brand-text">
+            <a href="{% url 'club:home' %}" class="brand-title">Play Design Tennis</a>
+            <div class="brand-sub">予約・チケット・LINE連携</div>
+          </div>
         </div>
-        <div class="reservation-mini-box">
-          <div class="reservation-mini-label">現在のレベル</div>
-          <div class="reservation-mini-value">{{ user.get_member_level_display }}</div>
-        </div>
-      </div>
-    {% endif %}
-  </div>
-</div>
 
-<div class="card">
-  <div class="reservation-guide-grid">
-    <div class="reservation-guide-card" style="border-color:#ede9fe; background:#f5f3ff;">
-      <h2 class="reservation-guide-title">プライベート</h2>
-      <div class="reservation-guide-text">
-        1時間ごとにチケット2枚です。<br>
-        申請後、コーチ承認で成立します。
-      </div>
-    </div>
-    <div class="reservation-guide-card" style="border-color:#dcfce7; background:#f0fdf4;">
-      <h2 class="reservation-guide-title">グループ</h2>
-      <div class="reservation-guide-text">
-        1時間ごとに参加人数×1枚です。<br>
-        申請後、コーチ承認で成立します。
-      </div>
-    </div>
-  </div>
-
-  <div class="reservation-alert info">
-    <strong>使い方</strong><br>
-    コーチは「おまかせ」も選べます。コート選択はありません。下のカレンダーでドラッグすると開始・終了に反映され、開始日時を先に入れると終了は1時間後が自動入力されます。
-  </div>
-
-  <div class="reservation-alert warn">
-    <strong>申請前に確認</strong><br>
-    この画面ではプライベート / グループの申請を受け付けます。確定予約ではなく、コーチ承認後に成立します。
-  </div>
-</div>
-
-<div class="reservation-page">
-  <div class="reservation-left">
-    <div class="card">
-      <form method="post" id="reservationCreateForm">
-        {% csrf_token %}
-
-        {% if form.non_field_errors or form.coach_choice.errors or form.lesson_type.errors or form.start_date.errors or form.start_hour.errors or form.end_date.errors or form.end_hour.errors %}
-          <div class="reservation-error-summary">
-            <div class="reservation-error-summary-title">入力内容を確認してください</div>
-            <ul>
-              {% for error in form.non_field_errors %}
-                <li>{{ error }}</li>
-              {% endfor %}
-              {% for error in form.coach_choice.errors %}
-                <li>{{ error }}</li>
-              {% endfor %}
-              {% for error in form.lesson_type.errors %}
-                <li>{{ error }}</li>
-              {% endfor %}
-              {% for error in form.start_date.errors %}
-                <li>{{ error }}</li>
-              {% endfor %}
-              {% for error in form.start_hour.errors %}
-                <li>{{ error }}</li>
-              {% endfor %}
-              {% for error in form.end_date.errors %}
-                <li>{{ error }}</li>
-              {% endfor %}
-              {% for error in form.end_hour.errors %}
-                <li>{{ error }}</li>
-              {% endfor %}
-            </ul>
+        {% if user.is_authenticated %}
+          <div class="top-meta">
+            <span class="top-badge">ログイン中: {{ user.display_name }}</span>
+            {% if user.role == "member" %}
+              <span class="top-badge">レベル: {{ user.get_member_level_display }}</span>
+              <span class="top-badge ticket">チケット残数: {{ user.ticket_balance }}枚</span>
+            {% else %}
+              {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+                <span class="top-badge coach">コーチ専用メニュー表示中</span>
+              {% endif %}
+            {% endif %}
           </div>
         {% endif %}
-
-        <div class="reservation-form-grid">
-          <div class="reservation-field">
-            <label for="{{ form.coach_choice.id_for_label }}">
-              {{ form.coach_choice.label }}
-            </label>
-            {{ form.coach_choice }}
-            {% if form.coach_choice.help_text %}
-              <div class="muted" style="margin-top:6px; font-size:13px;">
-                {{ form.coach_choice.help_text }}
-              </div>
-            {% endif %}
-            {% if form.coach_choice.errors %}
-              <div class="message error" style="margin-top:8px;">
-                {{ form.coach_choice.errors }}
-              </div>
-            {% endif %}
-          </div>
-
-          <div class="reservation-field">
-            <label for="{{ form.lesson_type.id_for_label }}">
-              {{ form.lesson_type.label }}
-            </label>
-            {{ form.lesson_type }}
-            {% if form.lesson_type.help_text %}
-              <div class="muted" style="margin-top:6px; font-size:13px;">
-                {{ form.lesson_type.help_text }}
-              </div>
-            {% endif %}
-            {% if form.lesson_type.errors %}
-              <div class="message error" style="margin-top:8px;">
-                {{ form.lesson_type.errors }}
-              </div>
-            {% endif %}
-          </div>
-
-          <div class="reservation-field">
-            <label for="{{ form.start_date.id_for_label }}">
-              {{ form.start_date.label }}
-            </label>
-            {{ form.start_date }}
-            {% if form.start_date.errors %}
-              <div class="message error" style="margin-top:8px;">
-                {{ form.start_date.errors }}
-              </div>
-            {% endif %}
-          </div>
-
-          <div class="reservation-field">
-            <label for="{{ form.start_hour.id_for_label }}">
-              {{ form.start_hour.label }}
-            </label>
-            {{ form.start_hour }}
-            {% if form.start_hour.errors %}
-              <div class="message error" style="margin-top:8px;">
-                {{ form.start_hour.errors }}
-              </div>
-            {% endif %}
-          </div>
-
-          <div class="reservation-field">
-            <label for="{{ form.end_date.id_for_label }}">
-              {{ form.end_date.label }}
-            </label>
-            {{ form.end_date }}
-            {% if form.end_date.errors %}
-              <div class="message error" style="margin-top:8px;">
-                {{ form.end_date.errors }}
-              </div>
-            {% endif %}
-          </div>
-
-          <div class="reservation-field">
-            <label for="{{ form.end_hour.id_for_label }}">
-              {{ form.end_hour.label }}
-            </label>
-            {{ form.end_hour }}
-            {% if form.end_hour.errors %}
-              <div class="message error" style="margin-top:8px;">
-                {{ form.end_hour.errors }}
-              </div>
-            {% endif %}
-          </div>
-        </div>
-
-        <div class="reservation-action-row">
-          <button type="submit" class="btn btn-primary" id="reservation-submit-button">申請する</button>
-          <a href="{% url 'club:reservation_list' %}" class="btn">予約一覧へ</a>
-          <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
-        </div>
-
-        <div class="reservation-mobile-bar">
-          <a href="{% url 'club:reservation_list' %}" class="btn">一覧</a>
-          <button type="submit" class="btn btn-primary" id="reservation-submit-button-mobile">申請する</button>
-        </div>
-      </form>
-    </div>
-
-    <div class="card">
-      <div class="reservation-calendar-note">
-        <div>
-          <h2 style="margin:0;">時間選択カレンダー</h2>
-          <p class="muted" style="margin:8px 0 0;">
-            週表示のカレンダー上でドラッグすると、開始・終了に自動反映されます。
-          </p>
-        </div>
-        <div class="muted" style="font-size:13px;">
-          緑 = 空き枠 / 赤・青 = 既存予約
-        </div>
       </div>
 
-      <div style="margin-top:16px;">
-        <div id="requestCalendar"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="reservation-right">
-    <div class="card reservation-sticky">
-      <div class="reservation-check-card">
-        <h2 class="reservation-check-title">申請内容の確認</h2>
-
-        <div class="reservation-check-list">
-          <div class="reservation-check-row">
-            <div class="reservation-check-label">コーチ</div>
-            <div class="reservation-check-value" id="confirm-coach">未選択</div>
-          </div>
-          <div class="reservation-check-row">
-            <div class="reservation-check-label">レッスン種別</div>
-            <div class="reservation-check-value" id="confirm-lesson-type">未選択</div>
-          </div>
-          <div class="reservation-check-row">
-            <div class="reservation-check-label">開始</div>
-            <div class="reservation-check-value" id="confirm-start">未選択</div>
-          </div>
-          <div class="reservation-check-row">
-            <div class="reservation-check-label">終了</div>
-            <div class="reservation-check-value" id="confirm-end">未選択</div>
-          </div>
-          <div class="reservation-check-row">
-            <div class="reservation-check-label">利用時間</div>
-            <div class="reservation-check-value" id="confirm-duration">未選択</div>
-          </div>
-        </div>
-
-        <div class="reservation-ticket-box">
-          <div class="reservation-ticket-title">チケット見込み</div>
-          <div class="reservation-ticket-line" id="ticket-preview-main">日時と種別を選ぶと見込みを表示します。</div>
-          <div class="reservation-ticket-line" id="ticket-preview-sub" style="margin-top:4px;">グループは参加人数により確定後に変動します。</div>
-          {% if user.role == "member" %}
-            <div class="reservation-ticket-line" id="ticket-preview-balance" style="margin-top:6px;">
-              現在残高: {{ user.ticket_balance }}枚
+      {% if user.is_authenticated %}
+        {% if user.role == "member" %}
+          <div class="member-menu" id="member-menu">
+            <div class="member-menu-head">
+              <div class="member-menu-title">メニュー</div>
+              <button type="button" class="member-menu-toggle" id="member-menu-toggle" aria-expanded="false" aria-controls="member-nav">
+                メニューを開く
+              </button>
             </div>
-          {% endif %}
-        </div>
 
-        <div class="reservation-alert info" style="margin-top:14px;">
-          <strong>申請ボタンの動き</strong><br>
-          プライベート / グループともに、ここでは「申請送信」です。承認後に予約成立となります。
+            <nav class="nav" id="member-nav">
+              <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
+              <a href="{% url 'club:lesson_calendar' %}">レッスンカレンダー</a>
+              <a href="{% url 'club:help' %}">使い方</a>
+              <a href="{% url 'club:terms' %}">利用規約</a>
+              <a href="{% url 'club:reservation_create' %}">予約作成</a>
+              <a href="{% url 'club:reservation_list' %}">予約一覧</a>
+              <a href="{% url 'club:tickets' %}">チケット</a>
+              <a href="{% url 'club:schedule_survey' %}">アンケート</a>
+              <a href="{% url 'club:stringing_order_create' %}">ガット張り依頼</a>
+              <a href="{% url 'club:shop_estimate' %}">Shop</a>
+              <a href="{% url 'club:line_connect' %}">LINE連携</a>
+
+              <form method="post" action="{% url 'club:logout' %}" class="logout-form">
+                {% csrf_token %}
+                <button type="submit" class="logout-button">ログアウト</button>
+              </form>
+            </nav>
+          </div>
+        {% else %}
+          <div class="topbar-row">
+            <nav class="nav">
+              <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
+              <a href="{% url 'club:lesson_calendar' %}">レッスンカレンダー</a>
+              <a href="{% url 'club:help' %}">使い方</a>
+              <a href="{% url 'club:terms' %}">利用規約</a>
+
+              {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+                <a href="{% url 'club:line_connect' %}">LINE連携</a>
+
+                <form method="post" action="{% url 'club:logout' %}" class="logout-form">
+                  {% csrf_token %}
+                  <button type="submit" class="logout-button">ログアウト</button>
+                </form>
+              {% endif %}
+            </nav>
+          </div>
+        {% endif %}
+      {% else %}
+        <div class="topbar-row">
+          <nav class="nav">
+            <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
+            <a href="{% url 'club:lesson_calendar' %}">レッスンカレンダー</a>
+            <a href="{% url 'club:help' %}">使い方</a>
+            <a href="{% url 'club:terms' %}">利用規約</a>
+            <a href="{% url 'club:line_login_start' %}" class="line-login-link">LINEでログイン</a>
+            <a href="{% url 'club:login' %}">通常ログイン</a>
+            <a href="{% url 'club:register' %}">新規登録</a>
+          </nav>
         </div>
-      </div>
+      {% endif %}
+
+      {% if user.is_authenticated %}
+        {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+          <div class="coach-menu" id="coach-menu">
+            <div class="coach-menu-head">
+              <div class="coach-menu-title">コーチ専用メニュー</div>
+              <button type="button" class="coach-menu-toggle" id="coach-menu-toggle" aria-expanded="false" aria-controls="coach-tabs">
+                メニューを開く
+              </button>
+            </div>
+
+            <div class="coach-tabs" id="coach-tabs">
+              <a href="{% url 'club:home' %}" class="coach-tab {% if request.resolver_match.url_name == 'home' %}active{% endif %}">コーチホーム</a>
+              <a href="{% url 'club:lesson_calendar' %}" class="coach-tab {% if request.resolver_match.url_name == 'lesson_calendar' %}active{% endif %}">レッスンカレンダー</a>
+              <a href="{% url 'club:reservation_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_list' %}active{% endif %}">予約一覧</a>
+              <a href="{% url 'club:coach_availability_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_availability_list' or request.resolver_match.url_name == 'coach_availability_create' or request.resolver_match.url_name == 'coach_availability_edit' %}active{% endif %}">スケジュール管理</a>
+              <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}active{% endif %}">固定レッスン</a>
+              <a href="{% url 'club:coach_ticket_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_ticket_summary' %}active{% endif %}">チケット集計</a>
+              <a href="{% url 'club:coach_payroll_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_payroll_summary' %}active{% endif %}">給与計算</a>
+              <a href="{% url 'club:coach_expense_manage' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_expense_manage' %}active{% endif %}">経費登録</a>
+              <a href="{% url 'club:schedule_survey_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'schedule_survey_summary' %}active{% endif %}">アンケート集計</a>
+              <a href="{% url 'club:stringing_order_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'stringing_order_list' %}active{% endif %}">ガット張り一覧</a>
+              <a href="{% url 'club:shop_estimate' %}" class="coach-tab {% if request.resolver_match.url_name == 'shop_estimate' %}active{% endif %}">Shop</a>
+              <a href="{% url 'club:reservation_create' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_create' %}active{% endif %}">予約作成</a>
+              <a href="{% url 'club:line_connect' %}" class="coach-tab {% if request.resolver_match.url_name == 'line_connect' %}active{% endif %}">LINE連携</a>
+            </div>
+          </div>
+        {% endif %}
+      {% endif %}
     </div>
-  </div>
-</div>
+  </header>
 
-<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/locales-all.global.min.js"></script>
+  <main class="main">
+    <div class="wrap">
+      {% if messages %}
+        <div class="messages">
+          {% for message in messages %}
+            <div class="message {% if message.tags %}{{ message.tags }}{% else %}info{% endif %}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
 
-<script>
-  document.addEventListener("DOMContentLoaded", function () {
-    const coachField = document.getElementById("id_coach_choice");
-    const lessonTypeField = document.getElementById("id_lesson_type");
-    const startDateField = document.getElementById("id_start_date");
-    const startHourField = document.getElementById("id_start_hour");
-    const endDateField = document.getElementById("id_end_date");
-    const endHourField = document.getElementById("id_end_hour");
-    const calendarEl = document.getElementById("requestCalendar");
+      {% block content %}{% endblock %}
+    </div>
+  </main>
 
-    const confirmCoach = document.getElementById("confirm-coach");
-    const confirmLessonType = document.getElementById("confirm-lesson-type");
-    const confirmStart = document.getElementById("confirm-start");
-    const confirmEnd = document.getElementById("confirm-end");
-    const confirmDuration = document.getElementById("confirm-duration");
-    const ticketPreviewMain = document.getElementById("ticket-preview-main");
-    const ticketPreviewSub = document.getElementById("ticket-preview-sub");
-    const ticketPreviewBalance = document.getElementById("ticket-preview-balance");
-    const submitButton = document.getElementById("reservation-submit-button");
-    const submitButtonMobile = document.getElementById("reservation-submit-button-mobile");
+  <script>
+    (function () {
+      const memberMenu = document.getElementById("member-menu");
+      const memberToggle = document.getElementById("member-menu-toggle");
 
-    let endTouched = false;
-    const currentBalance = Number("{{ user.ticket_balance|default:0 }}");
-
-    function pad(value) {
-      return String(value).padStart(2, "0");
-    }
-
-    function toLocalDateInputValue(dateObj) {
-      return `${dateObj.getFullYear()}-${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())}`;
-    }
-
-    function toHourString(dateObj) {
-      return String(dateObj.getHours());
-    }
-
-    function formatDateHour(dateValue, hourValue) {
-      if (!dateValue || hourValue === "" || hourValue === null || typeof hourValue === "undefined") {
-        return "未選択";
-      }
-      return `${dateValue} ${pad(hourValue)}:00`;
-    }
-
-    function calculateDurationHours() {
-      if (!startDateField.value || !startHourField.value || !endDateField.value || !endHourField.value) {
-        return null;
-      }
-      const start = new Date(`${startDateField.value}T${pad(startHourField.value)}:00:00`);
-      const end = new Date(`${endDateField.value}T${pad(endHourField.value)}:00:00`);
-      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
-        return null;
-      }
-      return Math.round((end.getTime() - start.getTime()) / 3600000);
-    }
-
-    function updateSummaryCard() {
-      const coachText = coachField && coachField.value
-        ? coachField.options[coachField.selectedIndex].text
-        : "おまかせ";
-      const lessonTypeText = lessonTypeField && lessonTypeField.value
-        ? lessonTypeField.options[lessonTypeField.selectedIndex].text
-        : "未選択";
-
-      const startText = formatDateHour(startDateField.value, startHourField.value);
-      const endText = formatDateHour(endDateField.value, endHourField.value);
-      const durationHours = calculateDurationHours();
-
-      confirmCoach.textContent = coachText;
-      confirmLessonType.textContent = lessonTypeText;
-      confirmStart.textContent = startText;
-      confirmEnd.textContent = endText;
-      confirmDuration.textContent = durationHours ? `${durationHours}時間` : "未選択";
-
-      if (!lessonTypeField.value || !durationHours) {
-        ticketPreviewMain.textContent = "日時と種別を選ぶと見込みを表示します。";
-        ticketPreviewSub.textContent = "グループは参加人数により確定後に変動します。";
-        if (ticketPreviewBalance) {
-          ticketPreviewBalance.textContent = `現在残高: ${currentBalance}枚`;
-        }
-        return;
-      }
-
-      if (lessonTypeField.value === "private") {
-        const estimatedUse = durationHours * 2;
-        const remaining = currentBalance - estimatedUse;
-        ticketPreviewMain.textContent = `プライベート見込み: ${estimatedUse}枚`;
-        ticketPreviewSub.textContent = "1時間ごとに2枚で計算しています。";
-        if (ticketPreviewBalance) {
-          ticketPreviewBalance.textContent = `申請後の残高見込み: ${remaining}枚`;
-        }
-      } else if (lessonTypeField.value === "group") {
-        ticketPreviewMain.textContent = `グループ見込み: ${durationHours}時間分の申請`;
-        ticketPreviewSub.textContent = "1時間ごとに参加人数×1枚のため、承認後に確定します。";
-        if (ticketPreviewBalance) {
-          ticketPreviewBalance.textContent = `現在残高: ${currentBalance}枚`;
-        }
-      } else {
-        ticketPreviewMain.textContent = "日時と種別を選ぶと見込みを表示します。";
-        ticketPreviewSub.textContent = "グループは参加人数により確定後に変動します。";
-        if (ticketPreviewBalance) {
-          ticketPreviewBalance.textContent = `現在残高: ${currentBalance}枚`;
-        }
-      }
-    }
-
-    function updateSubmitLabels() {
-      const label = lessonTypeField && lessonTypeField.value === "group" ? "グループ申請を送信" : "プライベート申請を送信";
-      if (submitButton) submitButton.textContent = label;
-      if (submitButtonMobile) submitButtonMobile.textContent = label;
-    }
-
-    function applySelection(startDate, endDate) {
-      startDateField.value = toLocalDateInputValue(startDate);
-      startHourField.value = toHourString(startDate);
-      endDateField.value = toLocalDateInputValue(endDate);
-      endHourField.value = toHourString(endDate);
-      endTouched = true;
-      updateSummaryCard();
-    }
-
-    function autoFillEndByStart() {
-      if (!startDateField.value || !startHourField.value) {
-        updateSummaryCard();
-        return;
-      }
-      if (endTouched && endDateField.value && endHourField.value) {
-        updateSummaryCard();
-        return;
-      }
-
-      const base = new Date(`${startDateField.value}T${pad(startHourField.value)}:00:00`);
-      if (Number.isNaN(base.getTime())) {
-        updateSummaryCard();
-        return;
-      }
-
-      const end = new Date(base.getTime());
-      end.setHours(end.getHours() + 1);
-
-      endDateField.value = toLocalDateInputValue(end);
-      endHourField.value = String(end.getHours());
-      updateSummaryCard();
-    }
-
-    startDateField.addEventListener("change", function () {
-      endTouched = false;
-      autoFillEndByStart();
-    });
-
-    startHourField.addEventListener("change", function () {
-      endTouched = false;
-      autoFillEndByStart();
-    });
-
-    endDateField.addEventListener("change", function () {
-      endTouched = true;
-      updateSummaryCard();
-    });
-
-    endHourField.addEventListener("change", function () {
-      endTouched = true;
-      updateSummaryCard();
-    });
-
-    if (coachField) {
-      coachField.addEventListener("change", function() {
-        calendar.refetchEvents();
-        updateSummaryCard();
-      });
-    }
-
-    if (lessonTypeField) {
-      lessonTypeField.addEventListener("change", function() {
-        autoFillEndByStart();
-        updateSubmitLabels();
-        updateSummaryCard();
-      });
-    }
-
-    autoFillEndByStart();
-    updateSubmitLabels();
-    updateSummaryCard();
-
-    const calendar = new FullCalendar.Calendar(calendarEl, {
-      locale: "ja",
-      initialView: window.innerWidth < 768 ? "timeGridDay" : "timeGridWeek",
-      selectable: true,
-      selectMirror: true,
-      allDaySlot: false,
-      nowIndicator: true,
-      height: "auto",
-      expandRows: true,
-      slotMinTime: "06:00:00",
-      slotMaxTime: "23:00:00",
-      slotDuration: "01:00:00",
-      slotLabelInterval: "01:00:00",
-      headerToolbar: {
-        left: "prev,next today",
-        center: "title",
-        right: window.innerWidth < 768 ? "timeGridDay,listDay" : "timeGridWeek,dayGridMonth,listWeek"
-      },
-      eventTimeFormat: {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false
-      },
-      events: function(fetchInfo, successCallback, failureCallback) {
-        const url = new URL("{% url 'club:calendar_events' %}", window.location.origin);
-        url.searchParams.set("start", fetchInfo.startStr);
-        url.searchParams.set("end", fetchInfo.endStr);
-
-        if (coachField.value) {
-          url.searchParams.set("coach", coachField.value);
+      if (memberMenu && memberToggle) {
+        function syncMemberMenuState() {
+          if (window.innerWidth > 768) {
+            memberMenu.classList.add("is-open");
+            memberToggle.setAttribute("aria-expanded", "true");
+            memberToggle.textContent = "メニュー表示中";
+          } else if (!memberMenu.dataset.mobileReady) {
+            memberMenu.classList.remove("is-open");
+            memberToggle.setAttribute("aria-expanded", "false");
+            memberToggle.textContent = "メニューを開く";
+            memberMenu.dataset.mobileReady = "1";
+          }
         }
 
-        fetch(url, { credentials: "same-origin" })
-          .then(function(response) {
-            if (!response.ok) {
-              throw new Error("イベント取得に失敗しました");
-            }
-            return response.json();
-          })
-          .then(function(data) {
-            successCallback(data);
-          })
-          .catch(function(error) {
-            console.error(error);
-            failureCallback(error);
-          });
-      },
-      select: function(info) {
-        const endDate = new Date(info.end);
-        if (endDate.getMinutes() === 0 && endDate.getSeconds() === 0) {
-          applySelection(new Date(info.start), endDate);
-        }
-      }
-    });
+        memberToggle.addEventListener("click", function () {
+          const isOpen = memberMenu.classList.toggle("is-open");
+          memberToggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+          memberToggle.textContent = isOpen ? "メニューを閉じる" : "メニューを開く";
+        });
 
-    calendar.render();
-  });
-</script>
-{% endblock %}
+        window.addEventListener("resize", syncMemberMenuState);
+        syncMemberMenuState();
+      }
+
+      const coachMenu = document.getElementById("coach-menu");
+      const coachToggle = document.getElementById("coach-menu-toggle");
+
+      if (coachMenu && coachToggle) {
+        function syncCoachMenuState() {
+          if (window.innerWidth > 768) {
+            coachMenu.classList.add("is-open");
+            coachToggle.setAttribute("aria-expanded", "true");
+            coachToggle.textContent = "メニュー表示中";
+          } else if (!coachMenu.dataset.mobileReady) {
+            coachMenu.classList.remove("is-open");
+            coachToggle.setAttribute("aria-expanded", "false");
+            coachToggle.textContent = "メニューを開く";
+            coachMenu.dataset.mobileReady = "1";
+          }
+        }
+
+        coachToggle.addEventListener("click", function () {
+          const isOpen = coachMenu.classList.toggle("is-open");
+          coachToggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+          coachToggle.textContent = isOpen ? "メニューを閉じる" : "メニューを開く";
+        });
+
+        window.addEventListener("resize", syncCoachMenuState);
+        syncCoachMenuState();
+      }
+    })();
+  </script>
+</body>
+</html>
