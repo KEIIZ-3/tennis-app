@@ -14,7 +14,7 @@
       </h1>
       <p style="margin:8px 0 0;">
         {% if user.role == "coach" %}
-          {{ user.display_name }} さんが担当する予約確認画面です。
+          {{ user.display_name }} さんが担当する予約確認画面です。承認待ちの申請は、この画面から承認・却下できます。
         {% else %}
           {{ user.display_name }} さんの予約確認画面です。
         {% endif %}
@@ -41,7 +41,7 @@
     <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
       <div style="font-weight:700; margin-bottom:6px;">コーチ向け表示</div>
       <div class="muted">
-        通常担当または代行コーチとして割り当てられている予約のみ表示しています。
+        通常担当または代行コーチとして割り当てられている予約のみ表示しています。状態が「承認待ち」の申請は、操作欄から承認または却下できます。
       </div>
     </div>
   </div>
@@ -105,9 +105,36 @@
                   {% endif %}
                 {% endwith %}
               </td>
-              <td>{{ reservation.get_status_display }}</td>
               <td>
-                {% if row.can_cancel %}
+                {% if reservation.status == "pending" %}
+                  <span style="display:inline-block; padding:6px 10px; border-radius:999px; background:#fff7ed; color:#9a3412; border:1px solid #fed7aa; font-weight:700;">
+                    {{ reservation.get_status_display }}
+                  </span>
+                {% elif reservation.status == "active" %}
+                  <span style="display:inline-block; padding:6px 10px; border-radius:999px; background:#ecfdf5; color:#166534; border:1px solid #bbf7d0; font-weight:700;">
+                    {{ reservation.get_status_display }}
+                  </span>
+                {% elif reservation.status == "canceled" or reservation.status == "rain_canceled" %}
+                  <span style="display:inline-block; padding:6px 10px; border-radius:999px; background:#f8fafc; color:#475569; border:1px solid #e2e8f0; font-weight:700;">
+                    {{ reservation.get_status_display }}
+                  </span>
+                {% else %}
+                  {{ reservation.get_status_display }}
+                {% endif %}
+              </td>
+              <td>
+                {% if user.role == "coach" and reservation.status == "pending" %}
+                  <div style="display:flex; flex-direction:column; gap:8px; min-width:96px;">
+                    <form method="post" action="{% url 'club:coach_request_approve' reservation.pk %}" style="margin:0;" onsubmit="return confirm('この申請を承認しますか？');">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-primary" style="width:100%; padding:8px 10px;">承認</button>
+                    </form>
+                    <form method="post" action="{% url 'club:coach_request_reject' reservation.pk %}" style="margin:0;" onsubmit="return confirm('この申請を却下しますか？');">
+                      {% csrf_token %}
+                      <button type="submit" class="btn" style="width:100%; padding:8px 10px; border-color:#fecaca; color:#991b1b; background:#fff5f5;">却下</button>
+                    </form>
+                  </div>
+                {% elif row.can_cancel %}
                   <form method="post" action="{% url 'club:reservation_cancel' reservation.pk %}" style="margin:0;" onsubmit="return confirm('この予約をキャンセルしますか？');">
                     {% csrf_token %}
                     <button type="submit">キャンセル</button>
