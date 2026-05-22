@@ -3,474 +3,333 @@ import hashlib
 import hmac
 import json
 import logging
-import os
 import urllib.error
 import urllib.request
 
-from django.apps import apps
+from django.conf import settings
+from django.core.mail import send_mail
 from django.utils import timezone
-
 
 logger = logging.getLogger(__name__)
 
-LINE_PUSH_API_URL = "https://api.line.me/v2/bot/message/push"
-LINE_REPLY_API_URL = "https://api.line.me/v2/bot/message/reply"
+
+def _safe_display_name(user):
+    if not user:
+        return "ユーザー"
+    try:
+        return user.display_name()
+    except Exception:
+        return getattr(user, "username", "ユーザー")
 
 
-def _get_env(name: str, default: str = "") -> str:
-    return (os.environ.get(name) or default).strip()
-
-
-def _get_channel_access_token() -> str:
-    return _get_env("LINE_CHANNEL_ACCESS_TOKEN")
-
-
-def _get_channel_secret() -> str:
-    return _get_env("LINE_CHANNEL_SECRET")
-
-
-def _mask_line_user_id(line_user_id: str) -> str:
-    value = str(line_user_id or "").strip()
-    if not value:
-        return ""
-    if len(value) <= 8:
-        return value[:2] + "***"
-    return value[:4] + "..." + value[-4:]
-
-
-def _line_request(url: str, payload: dict) -> tuple[bool, str]:
-    token = _get_channel_access_token()
-    if not token:
-        logger.warning("LINE notify skipped: LINE_CHANNEL_ACCESS_TOKEN is not set.")
-        return False, "LINE_CHANNEL_ACCESS_TOKEN is not set."
-
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url=url,
-        data=data,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}",
-        },
-        method="POST",
-    )
+def _format_datetime_range(start_at, end_at):
+    if not start_at or not end_at:
+        return "日時未定"
 
     try:
-        with urllib.request.urlopen(req, timeout=10) as res:
-            body = res.read().decode("utf-8", errors="ignore")
-            logger.info("LINE API success: url=%s response=%s", url, body)
-            return True, body
-    except urllib.error.HTTPError as e:
-        try:
-            error_body = e.read().decode("utf-8", errors="ignore")
-        except Exception:
-            error_body = str(e)
-        logger.warning("LINE API http error: url=%s status=%s body=%s", url, getattr(e, "code", ""), error_body)
-        return False, error_body
-    except Exception as e:
-        logger.exception("LINE API unexpected error: url=%s error=%s", url, e)
-        return False, str(e)
+        start_local = timezone.localtime(start_at) if timezone.is_aware(start_at) else start_at
+        end_local = timezone.localtime(end_at) if timezone.is_aware(end_at) else end_at
+        return f"{start_local:%Y-%m-%d %H:%M}〜{end_local:%H:%M}"
+    except Exception:
+        return f"{start_at}〜{end_at}"
 
 
-def send_line_push(line_user_id: str, message: str) -> tuple[bool, str]:
+def _lesson_type_label(obj):
+    if not obj:
+        return "-"
+    try:
+        return obj.get_lesson_type_display()
+    except Exception:
+        return getattr(obj, "lesson_type", "-") or "-"
+
+
+def _court_label(obj):
+    court = getattr(obj, "court", None)
+    if court:
+        return str(court)
+    return "-"
+
+
+def _reservation_common_lines(reservation):
+    assigned_coach = None
+    try:
+        assigned_coach = reservation.assigned_coach()
+    except Exception:
+        assigned_coach = getattr(reservation, "substitute_coach", None) or getattr(reservation, "coach", None)
+
+    return [
+        f"会員: {_safe_display_name(getattr(reservation, 'user', None))}",
+        f"コーチ: {_safe_display_name(assigned_coach)}",
+        f"種別: {_lesson_type_label(reservation)}",
+        f"日時: {_format_datetime_range(getattr(reservation, 'start_at', None), getattr(reservation, 'end_at', None))}",
+        f"コート: {_court_label(reservation)}",
+    ]
+
+
+def build_pending_request_for_coach_message(reservation):
+    lines = [
+        "【Play Design Tennis】新しいレッスン申請があります。",
+        "",
+        *_reservation_common_lines(reservation),
+        "",
+        "コーチ画面から承認または却下をお願いします。",
+    ]
+
+    requested_court_note = (getattr(reservation, "requested_court_note", "") or "").strip()
+    if requested_court_note:
+        lines.insert(-2, f"希望・備考: {requested_court_note}")
+
+    return "\n".join(lines)
+
+
+def build_request_approved_for_member_message(reservation):
+    lines = [
+        "【Play Design Tennis】レッスン申請が承認されました。",
+        "",
+        *_reservation_common_lines(reservation),
+        "",
+        "予約一覧から内容をご確認ください。",
+    ]
+
+    approved_court_note = (getattr(reservation, "approved_court_note", "") or "").strip()
+    if approved_court_note:
+        lines.insert(-2, f"コート連絡: {approved_court_note}")
+
+    return "\n".join(lines)
+
+
+def build_request_rejected_for_member_message(reservation):
+    reason = (getattr(reservation, "cancellation_reason", "") or "コーチ却下").strip()
+    return "\n".join(
+        [
+            "【Play Design Tennis】レッスン申請が却下されました。",
+            "",
+            *_reservation_common_lines(reservation),
+            f"理由: {reason}",
+            "",
+            "必要に応じて、別日時で再申請をお願いします。",
+        ]
+    )
+
+
+def build_reservation_rain_canceled_message(reservation):
+    reason = (getattr(reservation, "cancellation_reason", "") or "雨天中止").strip()
+    return "\n".join(
+        [
+            "【Play Design Tennis】レッスンが雨天中止になりました。",
+            "",
+            *_reservation_common_lines(reservation),
+            f"理由: {reason}",
+            "",
+            "使用済みチケットがある場合は返却処理されています。",
+        ]
+    )
+
+
+def build_reservation_canceled_message(reservation):
+    reason = (getattr(reservation, "cancellation_reason", "") or "キャンセル").strip()
+    return "\n".join(
+        [
+            "【Play Design Tennis】予約がキャンセルされました。",
+            "",
+            *_reservation_common_lines(reservation),
+            f"理由: {reason}",
+        ]
+    )
+
+
+def build_stringing_order_created_for_coach_message(order):
+    user = getattr(order, "user", None)
+    delivery_requested = bool(getattr(order, "delivery_requested", False))
+    delivery_label = "あり" if delivery_requested else "なし"
+
+    lines = [
+        "【Play Design Tennis】新しいガット張り依頼があります。",
+        "",
+        f"会員: {_safe_display_name(user)}",
+        f"ラケット: {(getattr(order, 'racket_name', '') or '-').strip() or '-'}",
+        f"ガット: {(getattr(order, 'string_name', '') or '-').strip() or '-'}",
+        f"テンション: {getattr(order, 'tension_lbs', '-') } lbs",
+        f"デリバリー: {delivery_label}",
+        f"希望日時/納期: {(getattr(order, 'preferred_delivery_time', '') or '-').strip() or '-'}",
+        f"料金: {order.total_price()}円" if hasattr(order, "total_price") else "料金: -",
+    ]
+
+    delivery_location = (getattr(order, "delivery_location", "") or "").strip()
+    if delivery_requested and delivery_location:
+        lines.insert(-2, f"届け場所: {delivery_location}")
+
+    note = (getattr(order, "note", "") or "").strip()
+    if note:
+        lines.append(f"備考: {note}")
+
+    return "\n".join(lines)
+
+
+def verify_line_signature(body, signature):
+    channel_secret = (getattr(settings, "LINE_CHANNEL_SECRET", "") or "").strip()
+    if not channel_secret:
+        logger.warning("LINE_CHANNEL_SECRET is not configured.")
+        return False
+
+    if not signature:
+        return False
+
+    digest = hmac.new(
+        channel_secret.encode("utf-8"),
+        body,
+        hashlib.sha256,
+    ).digest()
+    expected_signature = base64.b64encode(digest).decode("utf-8")
+    return hmac.compare_digest(expected_signature, signature)
+
+
+def _line_push_message(line_user_id, message_text):
+    channel_access_token = (getattr(settings, "LINE_CHANNEL_ACCESS_TOKEN", "") or "").strip()
+    if not channel_access_token:
+        logger.info("LINE_CHANNEL_ACCESS_TOKEN is not configured. Skip LINE push.")
+        return False
+
     if not line_user_id:
-        logger.warning("LINE push skipped: line_user_id is empty.")
-        return False, "line_user_id is empty."
+        return False
 
     payload = {
         "to": line_user_id,
         "messages": [
             {
                 "type": "text",
-                "text": message,
+                "text": str(message_text)[:5000],
             }
         ],
     }
-    logger.info(
-        "LINE push attempt: to=%s message_preview=%s",
-        _mask_line_user_id(line_user_id),
-        (message or "")[:80],
+
+    request = urllib.request.Request(
+        "https://api.line.me/v2/bot/message/push",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {channel_access_token}",
+        },
+        method="POST",
     )
-    return _line_request(LINE_PUSH_API_URL, payload)
 
-
-def send_line_reply(reply_token: str, message: str) -> tuple[bool, str]:
-    if not reply_token:
-        logger.warning("LINE reply skipped: reply_token is empty.")
-        return False, "reply_token is empty."
-
-    payload = {
-        "replyToken": reply_token,
-        "messages": [
-            {
-                "type": "text",
-                "text": message,
-            }
-        ],
-    }
-    logger.info("LINE reply attempt: message_preview=%s", (message or "")[:80])
-    return _line_request(LINE_REPLY_API_URL, payload)
-
-
-def verify_line_signature(body: bytes, signature: str) -> bool:
-    secret = _get_channel_secret()
-    if not secret:
-        logger.warning("LINE signature verify failed: LINE_CHANNEL_SECRET is not set.")
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            response.read()
+        return True
+    except urllib.error.HTTPError as e:
+        try:
+            error_body = e.read().decode("utf-8")
+        except Exception:
+            error_body = str(e)
+        logger.warning("LINE push failed: %s", error_body)
+        return False
+    except Exception as e:
+        logger.warning("LINE push failed: %s", e)
         return False
 
-    if not isinstance(body, (bytes, bytearray)):
-        body = (body or "").encode("utf-8")
 
-    digest = hmac.new(
-        secret.encode("utf-8"),
-        body,
-        hashlib.sha256,
-    ).digest()
-    expected_signature = base64.b64encode(digest).decode("utf-8")
-    matched = hmac.compare_digest(expected_signature, signature or "")
-    if not matched:
-        logger.warning("LINE signature mismatch.")
-    return matched
+def notify_line_messaging_api(user, message_text):
+    if not user or not message_text:
+        return False
 
-
-def _get_line_account_link_model():
     try:
-        return apps.get_model("club", "LineAccountLink")
+        line_link = getattr(user, "line_link", None)
     except Exception:
-        logger.exception("Failed to load LineAccountLink model.")
-        return None
+        line_link = None
+
+    if not line_link:
+        return False
+
+    if not getattr(line_link, "is_active", False):
+        return False
+
+    line_user_id = (getattr(line_link, "line_user_id", "") or "").strip()
+    return _line_push_message(line_user_id, message_text)
 
 
-def _get_user_display(user) -> str:
-    if not user:
-        return "ユーザー"
+def notify_email(user, subject, message_text):
+    if not user or not message_text:
+        return False
 
-    try:
-        if hasattr(user, "display_name"):
-            value = user.display_name()
-            if value:
-                return str(value)
-    except Exception:
-        pass
+    email = (getattr(user, "email", "") or "").strip()
+    if not email:
+        return False
 
-    for attr in ("full_name", "first_name", "name", "username", "email"):
-        value = getattr(user, attr, None)
-        if value:
-            return str(value)
-
-    if hasattr(user, "get_full_name"):
-        try:
-            value = user.get_full_name()
-            if value:
-                return str(value)
-        except Exception:
-            pass
-
-    return "ユーザー"
-
-
-def notify_user(user, message: str) -> tuple[bool, str]:
-    if not user or not message:
-        logger.warning("notify_user skipped: user or message is empty.")
-        return False, "user or message is empty."
-
-    user_label = _get_user_display(user)
-    user_id = getattr(user, "pk", None)
-
-    LineAccountLink = _get_line_account_link_model()
-    if LineAccountLink is None:
-        logger.warning("notify_user failed: LineAccountLink model not found. user_id=%s user=%s", user_id, user_label)
-        return False, "LineAccountLink model not found."
+    from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "") or None
 
     try:
-        link = LineAccountLink.objects.filter(user=user, is_active=True).first()
+        send_mail(
+            subject=subject,
+            message=message_text,
+            from_email=from_email,
+            recipient_list=[email],
+            fail_silently=False,
+        )
+        return True
     except Exception as e:
-        logger.exception("notify_user failed: LineAccountLink lookup error. user_id=%s user=%s", user_id, user_label)
-        return False, f"failed to lookup LineAccountLink: {e}"
+        logger.warning("Email notification failed for user=%s: %s", getattr(user, "pk", None), e)
+        return False
 
-    if not link:
-        logger.warning(
-            "notify_user skipped: active LineAccountLink not found. user_id=%s user=%s",
-            user_id,
-            user_label,
+
+def notify_admins(subject, message_text):
+    recipients = []
+
+    admin_notify_email = (getattr(settings, "ADMIN_NOTIFY_EMAIL", "") or "").strip()
+    if admin_notify_email:
+        recipients.extend(
+            [email.strip() for email in admin_notify_email.split(",") if email.strip()]
         )
-        return False, "active LineAccountLink not found."
 
-    line_user_id = getattr(link, "line_user_id", "") or ""
-    if not line_user_id:
-        logger.warning(
-            "notify_user skipped: line_user_id is empty. user_id=%s user=%s",
-            user_id,
-            user_label,
-        )
-        return False, "line_user_id is empty."
+    for _name, email in getattr(settings, "ADMINS", []):
+        if email:
+            recipients.append(email)
 
-    ok, result = send_line_push(line_user_id=line_user_id, message=message)
-    if ok:
-        logger.info(
-            "notify_user success: user_id=%s user=%s to=%s",
-            user_id,
-            user_label,
-            _mask_line_user_id(line_user_id),
-        )
-    else:
-        logger.warning(
-            "notify_user failed: user_id=%s user=%s to=%s result=%s",
-            user_id,
-            user_label,
-            _mask_line_user_id(line_user_id),
-            result,
-        )
-    return ok, result
+    recipients = list(dict.fromkeys(recipients))
+    if not recipients:
+        return False
 
-
-def notify_users(users, message: str):
-    results = []
-    seen_ids = set()
-
-    for user in users:
-        if not user or not getattr(user, "pk", None):
-            continue
-        if user.pk in seen_ids:
-            continue
-        seen_ids.add(user.pk)
-        results.append((user, *notify_user(user, message)))
-    return results
-
-
-def _fmt_dt(value) -> str:
-    if not value:
-        return "未設定"
-    try:
-        if timezone.is_aware(value):
-            value = timezone.localtime(value)
-        return value.strftime("%Y-%m-%d %H:%M")
-    except Exception:
-        return str(value)
-
-
-def _pick_first_attr(obj, names, default=""):
-    for name in names:
-        value = getattr(obj, name, None)
-        if value not in (None, ""):
-            return value
-    return default
-
-
-def _extract_reservation_data(reservation):
-    user = _pick_first_attr(reservation, ["user", "customer", "member", "owner"], None)
-    coach = _pick_first_attr(reservation, ["coach"], None)
-    substitute_coach = _pick_first_attr(reservation, ["substitute_coach"], None)
-    court = _pick_first_attr(reservation, ["court"], None)
-    start_at = _pick_first_attr(reservation, ["start_at", "start", "starts_at"], None)
-    end_at = _pick_first_attr(reservation, ["end_at", "end", "ends_at"], None)
-    availability = _pick_first_attr(reservation, ["coach_availability", "availability"], None)
-    lesson_type = _pick_first_attr(reservation, ["lesson_type"], "")
-    tickets_used = _pick_first_attr(reservation, ["tickets_used"], 0)
-    requested_court_note = _pick_first_attr(reservation, ["requested_court_note"], "")
-    approved_court_note = _pick_first_attr(reservation, ["approved_court_note"], "")
-    cancellation_reason = _pick_first_attr(reservation, ["cancellation_reason"], "")
-
-    if not start_at and availability is not None:
-        start_at = _pick_first_attr(availability, ["start_at", "start", "starts_at"], None)
-    if not end_at and availability is not None:
-        end_at = _pick_first_attr(availability, ["end_at", "end", "ends_at"], None)
-    if coach is None and availability is not None:
-        coach = _pick_first_attr(availability, ["coach"], None)
-    if court is None and availability is not None:
-        court = _pick_first_attr(availability, ["court"], None)
-
-    lesson_type_text_map = {
-        "general": "一般レッスン",
-        "private": "プライベートレッスン",
-        "group": "グループレッスン",
-        "event": "イベント",
-    }
-    lesson_type_text = lesson_type_text_map.get(lesson_type, "レッスン")
-
-    assigned_coach = substitute_coach or coach
-    balance_text = ""
-    if user is not None and hasattr(user, "ticket_balance"):
-        balance_text = f"{user.ticket_balance}"
-
-    return {
-        "user_name": _get_user_display(user),
-        "coach_name": _get_user_display(coach) if coach else "未設定",
-        "substitute_coach_name": _get_user_display(substitute_coach) if substitute_coach else "",
-        "assigned_coach_name": _get_user_display(assigned_coach) if assigned_coach else "未設定",
-        "court_name": str(court) if court else "未設定",
-        "start_text": _fmt_dt(start_at),
-        "end_text": _fmt_dt(end_at),
-        "lesson_type_text": lesson_type_text,
-        "tickets_used": tickets_used,
-        "ticket_balance": balance_text,
-        "requested_court_note": str(requested_court_note or "").strip(),
-        "approved_court_note": str(approved_court_note or "").strip(),
-        "cancellation_reason": str(cancellation_reason or "").strip(),
-    }
-
-
-def build_reservation_created_message(reservation) -> str:
-    data = _extract_reservation_data(reservation)
-    return (
-        "【予約完了】\n"
-        "ご予約ありがとうございます。\n\n"
-        f"お名前: {data['user_name']}\n"
-        f"レッスン種別: {data['lesson_type_text']}\n"
-        f"コーチ: {data['assigned_coach_name']}\n"
-        f"コート: {data['court_name']}\n"
-        f"開始: {data['start_text']}\n"
-        f"終了: {data['end_text']}\n"
-        f"消費チケット: {data['tickets_used']}枚\n"
-        f"現在残数: {data['ticket_balance']}枚\n\n"
-        "内容をご確認ください。"
-    )
-
-
-def build_reservation_canceled_message(reservation) -> str:
-    data = _extract_reservation_data(reservation)
-    return (
-        "【予約キャンセル】\n"
-        "ご予約のキャンセルを受け付けました。\n\n"
-        f"お名前: {data['user_name']}\n"
-        f"レッスン種別: {data['lesson_type_text']}\n"
-        f"コーチ: {data['assigned_coach_name']}\n"
-        f"コート: {data['court_name']}\n"
-        f"開始: {data['start_text']}\n"
-        f"終了: {data['end_text']}\n"
-        f"返却チケット: {data['tickets_used']}枚\n"
-        f"現在残数: {data['ticket_balance']}枚\n\n"
-        "必要に応じて、あらためてご予約ください。"
-    )
-
-
-def build_reservation_rain_canceled_message(reservation) -> str:
-    data = _extract_reservation_data(reservation)
-    return (
-        "【雨天中止】\n"
-        "本日のレッスンは雨天のため中止となりました。\n\n"
-        f"お名前: {data['user_name']}\n"
-        f"レッスン種別: {data['lesson_type_text']}\n"
-        f"コーチ: {data['assigned_coach_name']}\n"
-        f"コート: {data['court_name']}\n"
-        f"開始: {data['start_text']}\n"
-        f"終了: {data['end_text']}\n"
-        f"返却チケット: {data['tickets_used']}枚\n"
-        f"現在残数: {data['ticket_balance']}枚\n\n"
-        "またのご予約をお待ちしております。"
-    )
-
-
-def build_pending_request_for_coach_message(reservation) -> str:
-    data = _extract_reservation_data(reservation)
-    message = (
-        "【新規申請】\n"
-        "プライベート / グループの申請が入りました。\n\n"
-        f"会員: {data['user_name']}\n"
-        f"種別: {data['lesson_type_text']}\n"
-        f"担当コーチ: {data['coach_name']}\n"
-        f"実施コーチ: {data['assigned_coach_name']}\n"
-        f"コート: {data['court_name']}\n"
-        f"開始: {data['start_text']}\n"
-        f"終了: {data['end_text']}\n"
-    )
-    if data["requested_court_note"]:
-        message += f"申請メモ: {data['requested_court_note']}\n"
-    message += "\n管理画面から承認・却下をお願いします。"
-    return message
-
-
-def build_request_approved_for_member_message(reservation) -> str:
-    data = _extract_reservation_data(reservation)
-    message = (
-        "【申請承認】\n"
-        "ご申請いただいた予約が承認されました。\n\n"
-        f"種別: {data['lesson_type_text']}\n"
-        f"担当コーチ: {data['assigned_coach_name']}\n"
-        f"コート: {data['court_name']}\n"
-        f"開始: {data['start_text']}\n"
-        f"終了: {data['end_text']}\n"
-        f"消費チケット: {data['tickets_used']}枚\n"
-    )
-    if data["ticket_balance"]:
-        message += f"現在残数: {data['ticket_balance']}枚\n"
-    if data["approved_court_note"]:
-        message += f"承認メモ: {data['approved_court_note']}\n"
-    message += "\n当日のご参加をお待ちしております。"
-    return message
-
-
-def build_request_rejected_for_member_message(reservation) -> str:
-    data = _extract_reservation_data(reservation)
-    message = (
-        "【申請却下】\n"
-        "ご申請いただいた予約は今回は承認されませんでした。\n\n"
-        f"種別: {data['lesson_type_text']}\n"
-        f"担当コーチ: {data['assigned_coach_name']}\n"
-        f"コート: {data['court_name']}\n"
-        f"開始: {data['start_text']}\n"
-        f"終了: {data['end_text']}\n"
-    )
-    if data["cancellation_reason"]:
-        message += f"理由: {data['cancellation_reason']}\n"
-    message += "\n別枠でのご予約もご検討ください。"
-    return message
-
-
-def _extract_stringing_order_data(order):
-    user = getattr(order, "user", None)
-    assigned_coach = getattr(order, "assigned_coach", None)
-    delivery_requested = bool(getattr(order, "delivery_requested", False))
-    delivery_location = str(getattr(order, "delivery_location", "") or "").strip()
-    preferred_delivery_time = str(getattr(order, "preferred_delivery_time", "") or "").strip()
-    racket_name = str(getattr(order, "racket_name", "") or "").strip()
-    string_name = str(getattr(order, "string_name", "") or "").strip()
-    note = str(getattr(order, "note", "") or "").strip()
+    from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "") or None
 
     try:
-        total_price = int(order.total_price() or 0)
-    except Exception:
-        total_price = 0
+        send_mail(
+            subject=subject,
+            message=message_text,
+            from_email=from_email,
+            recipient_list=recipients,
+            fail_silently=False,
+        )
+        return True
+    except Exception as e:
+        logger.warning("Admin email notification failed: %s", e)
+        return False
+
+
+def notify_user(user, message_text, subject="Play Design Tennis 通知"):
+    """
+    ユーザーにLINE通知を送り、メールアドレスが登録されている場合はメール通知も送ります。
+    どちらかが未設定・失敗しても画面処理は止めません。
+    """
+    line_ok = False
+    email_ok = False
+
+    try:
+        line_ok = notify_line_messaging_api(user, message_text)
+    except Exception as e:
+        logger.warning("notify_user LINE failed: %s", e)
+
+    try:
+        email_ok = notify_email(user, subject, message_text)
+    except Exception as e:
+        logger.warning("notify_user email failed: %s", e)
 
     return {
-        "user_name": _get_user_display(user),
-        "assigned_coach_name": _get_user_display(assigned_coach) if assigned_coach else "未設定",
-        "delivery_requested": delivery_requested,
-        "delivery_location": delivery_location,
-        "preferred_delivery_time": preferred_delivery_time,
-        "racket_name": racket_name or "未入力",
-        "string_name": string_name or "未入力",
-        "note": note,
-        "total_price": total_price,
+        "line": line_ok,
+        "email": email_ok,
     }
 
 
-def build_stringing_order_created_for_coach_message(order) -> str:
-    data = _extract_stringing_order_data(order)
-
-    message = (
-        "【ガット張り新規依頼】\n"
-        "会員からガット張り依頼が入りました。\n\n"
-        f"会員: {data['user_name']}\n"
-        f"担当コーチ: {data['assigned_coach_name']}\n"
-        f"ラケット名: {data['racket_name']}\n"
-        f"ガット名: {data['string_name']}\n"
-        f"料金: {data['total_price']}円\n"
-    )
-
-    if data["delivery_requested"]:
-        message += "受け渡し: デリバリー希望\n"
-        if data["delivery_location"]:
-            message += f"届け場所: {data['delivery_location']}\n"
-        if data["preferred_delivery_time"]:
-            message += f"日時指定: {data['preferred_delivery_time']}\n"
-    else:
-        message += "受け渡し: レッスン時受け渡し / デリバリーなし\n"
-        if data["preferred_delivery_time"]:
-            message += f"希望張り上げ納期: {data['preferred_delivery_time']}\n"
-
-    if data["note"]:
-        message += f"備考: {data['note']}\n"
-
-    message += "\n管理画面または一覧画面で内容をご確認ください。"
-    return message
+# 旧実装名が残っていても落ちないようにする互換関数
+def notify_line_notify(message_text):
+    logger.info("LINE Notify is deprecated / not used. message=%s", message_text)
+    return False
