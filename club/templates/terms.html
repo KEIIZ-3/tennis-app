@@ -2,39 +2,115 @@
 {% block title %}利用規約{% endblock %}
 
 {% block content %}
-  <div class="page-head">
-    <h1 class="page-title">利用規約</h1>
-    <p class="page-subtitle">
-      Play Design Tennis の予約・チケット・関連機能をご利用いただく際の基本ルールです。
-    </p>
-  </div>
+<style>
+  .terms-title{
+    margin:0;
+    font-size:28px;
+    font-weight:900;
+    line-height:1.25;
+    letter-spacing:-0.02em;
+  }
 
-  <div class="card">
-    <div class="section-note">
-      本ページは運用開始用の基本版です。今後、ガット貼り機能や物販機能の追加に合わせて内容を更新します。
-    </div>
-  </div>
+  .terms-lead{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
 
+  .terms-list{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+
+  .terms-section{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    padding:18px;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .terms-section-title{
+    margin:0 0 10px;
+    font-size:18px;
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .terms-body{
+    margin:0;
+    padding-left:20px;
+    line-height:1.9;
+    color:#334155;
+    font-size:14px;
+  }
+
+  .terms-note{
+    padding:14px 16px;
+    border:1px solid #bfdbfe;
+    background:#eff6ff;
+    border-radius:14px;
+    color:#1d4ed8;
+    line-height:1.8;
+    font-size:13px;
+  }
+
+  @media (max-width: 768px){
+    .terms-title{
+      font-size:23px;
+    }
+
+    .terms-section{
+      padding:14px;
+      border-radius:15px;
+    }
+
+    .terms-section-title{
+      font-size:16px;
+    }
+
+    .terms-body{
+      font-size:13px;
+    }
+  }
+</style>
+
+<div class="card">
+  <h1 class="terms-title">利用規約</h1>
+  <p class="terms-lead">
+    Play Design Tennis の利用条件です。予約・チケット・LINE連携を利用する前にご確認ください。
+  </p>
+</div>
+
+<div class="card">
+  <div class="terms-note">
+    本ページはスマホでも読みやすいように、各条項をカード形式で表示しています。
+  </div>
+</div>
+
+<div class="terms-list">
   {% for section in terms_sections %}
-    <div class="card">
-      <h2 class="card-title">{{ section.title }}</h2>
-      <div style="display:flex; flex-direction:column; gap:10px;">
-        {% for row in section.body %}
-          <p style="margin:0; line-height:1.9;">{{ row }}</p>
-        {% endfor %}
-      </div>
-    </div>
+    <section class="terms-section">
+      <h2 class="terms-section-title">{{ section.title }}</h2>
+      {% if section.body %}
+        <ol class="terms-body">
+          {% for line in section.body %}
+            <li>{{ line }}</li>
+          {% endfor %}
+        </ol>
+      {% endif %}
+    </section>
   {% endfor %}
+</div>
 
-  <div class="card">
-    <h2 class="card-title">お問い合わせ</h2>
-    <p style="margin:0; line-height:1.9;">
-      規約や運用に関する確認事項がある場合は、コーチまたは運営へご確認ください。
-    </p>
-
-    <div class="actions" style="margin-top:18px;">
-      <a href="{% url 'club:home' %}" class="btn btn-primary">ホームへ戻る</a>
-      <a href="{% url 'club:help' %}" class="btn">使い方を見る</a>
-    </div>
+<div class="card">
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{% url 'club:home' %}" class="btn btn-primary">ホームへ戻る</a>
+    {% if not user.is_authenticated %}
+      <a href="{% url 'club:line_login_start' %}" class="btn">LINEでログイン</a>
+    {% endif %}
   </div>
+</div>
 {% endblock %}
