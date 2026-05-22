@@ -3,128 +3,631 @@
 
 {% block content %}
 
+<style>
+  .home-hero{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:14px;
+    flex-wrap:wrap;
+  }
+
+  .home-title{
+    margin:0;
+    font-size:28px;
+    line-height:1.25;
+    font-weight:900;
+    letter-spacing:-0.02em;
+  }
+
+  .home-lead{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
+
+  .home-badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:9px 12px;
+    border-radius:999px;
+    border:1px solid #c7d2fe;
+    background:#eef2ff;
+    color:#3730a3;
+    font-size:13px;
+    font-weight:800;
+    white-space:nowrap;
+  }
+
+  .home-section-title{
+    margin:0 0 12px;
+    font-size:20px;
+    line-height:1.3;
+    font-weight:900;
+  }
+
+  .home-section-sub{
+    margin:0 0 14px;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
+
+  .quick-grid{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:12px;
+  }
+
+  .quick-grid.two{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+
+  .quick-card{
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    gap:12px;
+    min-height:150px;
+    padding:16px;
+    border:1px solid var(--line);
+    border-radius:16px;
+    background:#fff;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .quick-card.primary{
+    background:#0f172a;
+    color:#fff;
+    border-color:#0f172a;
+  }
+
+  .quick-card.primary .quick-card-sub{
+    color:#d1d5db;
+  }
+
+  .quick-card.notice{
+    background:#fff7ed;
+    border-color:#fed7aa;
+  }
+
+  .quick-card.info{
+    background:#eff6ff;
+    border-color:#bfdbfe;
+  }
+
+  .quick-card.success{
+    background:#f0fdf4;
+    border-color:#bbf7d0;
+  }
+
+  .quick-card-title{
+    font-size:18px;
+    line-height:1.35;
+    font-weight:900;
+  }
+
+  .quick-card-sub{
+    margin-top:6px;
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.55;
+  }
+
+  .quick-card-action{
+    margin-top:auto;
+  }
+
+  .quick-card.primary .btn{
+    background:#fff;
+    color:#0f172a;
+    border-color:#fff;
+  }
+
+  .mini-stat-grid{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:12px;
+  }
+
+  .mini-stat{
+    padding:14px;
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+  }
+
+  .mini-stat.notice{
+    border-color:#fed7aa;
+    background:#fff7ed;
+  }
+
+  .mini-stat.info{
+    border-color:#bfdbfe;
+    background:#eff6ff;
+  }
+
+  .mini-stat-label{
+    color:var(--muted);
+    font-size:12px;
+    font-weight:800;
+  }
+
+  .mini-stat-value{
+    margin-top:4px;
+    font-size:24px;
+    line-height:1.2;
+    font-weight:900;
+  }
+
+  .mobile-priority-list{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:10px;
+  }
+
+  .priority-link{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px;
+    padding:14px;
+    border:1px solid var(--line);
+    border-radius:16px;
+    background:#fff;
+    text-decoration:none;
+  }
+
+  .priority-link strong{
+    display:block;
+    font-size:15px;
+    line-height:1.35;
+  }
+
+  .priority-link span{
+    display:block;
+    margin-top:3px;
+    color:var(--muted);
+    font-size:12px;
+    line-height:1.4;
+  }
+
+  .priority-link-arrow{
+    flex:0 0 auto;
+    color:#64748b;
+    font-weight:900;
+  }
+
+  .page-grid{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) 320px;
+    gap:16px;
+    align-items:start;
+  }
+
+  .toolbar-card,
+  .calendar-card,
+  .detail-card{
+    padding:16px;
+  }
+
+  .toolbar-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+
+  .filter-block{
+    min-width:220px;
+  }
+
+  .toolbar-links{
+    margin-top:12px;
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+
+  .legend{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+
+  .legend-item{
+    display:inline-block;
+    padding:6px 10px;
+    border-radius:999px;
+    color:#fff;
+    font-size:12px;
+  }
+
+  .legend-available{ background:#22c55e; }
+  .legend-pending{ background:#f59e0b; }
+  .legend-reserved{ background:#ef4444; }
+  .legend-mine{ background:#3b82f6; }
+
+  #calendar{
+    min-height:720px;
+  }
+
+  .fc .fc-event{
+    white-space:normal;
+    cursor:pointer;
+    border-radius:8px;
+    padding:3px 5px;
+    font-size:12px;
+    line-height:1.2;
+    overflow:hidden;
+  }
+
+  .fc-event-title-wrap{
+    white-space:normal;
+    word-break:break-word;
+    line-height:1.2;
+  }
+
+  .fc-event-line-main{
+    font-weight:700;
+  }
+
+  .fc-event-line-sub{
+    font-size:11px;
+    opacity:0.95;
+    margin-top:2px;
+  }
+
+  .detail-table{
+    width:100%;
+    border-collapse:collapse;
+  }
+
+  .detail-table th,
+  .detail-table td{
+    text-align:left;
+    padding:6px 0;
+    vertical-align:top;
+    border-bottom:1px solid #eee;
+    font-size:14px;
+  }
+
+  .detail-actions{
+    margin-top:16px;
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+
+  .price-chip{
+    display:inline-block;
+    margin:2px 6px 2px 0;
+    padding:5px 8px;
+    border-radius:999px;
+    background:#eff6ff;
+    border:1px solid #bfdbfe;
+    font-size:12px;
+    color:#1d4ed8;
+    font-weight:600;
+  }
+
+  .coach-box{
+    margin-top:6px;
+    padding:8px 10px;
+    border-radius:10px;
+    background:#f8fafc;
+    border:1px solid #e5e7eb;
+    font-size:13px;
+    line-height:1.6;
+  }
+
+  .muted-inline{
+    color:#666;
+    font-size:13px;
+  }
+
+  @media (max-width: 960px){
+    .quick-grid,
+    .quick-grid.two,
+    .mini-stat-grid{
+      grid-template-columns:1fr;
+    }
+
+    .page-grid{
+      grid-template-columns:1fr;
+    }
+
+    #calendar{
+      min-height:520px;
+    }
+
+    .fc .fc-toolbar{
+      flex-direction:column;
+      gap:8px;
+    }
+
+    .fc .fc-toolbar-title{
+      font-size:18px !important;
+    }
+
+    .fc .fc-button{
+      font-size:12px !important;
+      padding:0.3em 0.5em !important;
+    }
+
+    .fc .fc-col-header-cell-cushion,
+    .fc .fc-timegrid-slot-label-cushion,
+    .fc .fc-timegrid-axis-cushion{
+      font-size:12px;
+    }
+
+    .fc .fc-event{
+      font-size:11px;
+    }
+
+    .fc-event-line-sub{
+      font-size:10px;
+    }
+  }
+
+  @media (max-width: 768px){
+    .home-title{
+      font-size:23px;
+    }
+
+    .home-hero{
+      gap:10px;
+    }
+
+    .home-badge{
+      width:100%;
+      border-radius:14px;
+    }
+
+    .quick-card{
+      min-height:auto;
+      padding:14px;
+      border-radius:15px;
+    }
+
+    .quick-card-title{
+      font-size:16px;
+    }
+
+    .quick-card-sub{
+      font-size:12px;
+    }
+
+    .mini-stat-value{
+      font-size:22px;
+    }
+
+    .toolbar-row{
+      display:block;
+    }
+
+    .filter-block{
+      min-width:0;
+      width:100%;
+      margin-bottom:12px;
+    }
+
+    .legend{
+      margin-top:8px;
+    }
+
+    .toolbar-links{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:8px;
+    }
+
+    .toolbar-links .btn{
+      width:100%;
+      min-height:40px;
+      padding:8px 10px;
+      font-size:12px;
+    }
+
+    .calendar-card{
+      padding:10px;
+    }
+
+    .detail-card{
+      padding:14px;
+    }
+  }
+</style>
+
 {% if not user.is_authenticated %}
   <div class="card">
-    <h1 style="margin-top:0;">Play Design Tennis へようこそ</h1>
-    <p style="margin:12px 0 0;">
-      初めての方は、<strong>LINE内の予約ボタン</strong>から進むと、そのまま会員登録とLINE連携が自動で完了します。
-    </p>
-
-    <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
-      {% if liff_enabled %}
-        <a
-          href="{% url 'club:liff_entry' %}"
-          style="display:inline-block; padding:12px 18px; border-radius:10px; background:#06c755; color:#fff; text-decoration:none; font-weight:bold;"
-        >
-          LINEで始める
-        </a>
-      {% endif %}
-      <a
-        href="{% url 'club:register' %}"
-        style="display:inline-block; padding:12px 18px; border-radius:10px; background:#fff; color:#111; text-decoration:none; border:1px solid #ddd;"
-      >
-        新規会員登録
-      </a>
-      <a
-        href="{% url 'club:login' %}"
-        style="display:inline-block; padding:12px 18px; border-radius:10px; background:#fff; color:#111; text-decoration:none; border:1px solid #ddd;"
-      >
-        通常ログイン
-      </a>
+    <div class="home-hero">
+      <div>
+        <h1 class="home-title">Play Design Tennis へようこそ</h1>
+        <p class="home-lead">
+          初めての方は、LINE内の予約ボタンから進むと、そのまま会員登録とLINE連携ができます。
+        </p>
+      </div>
     </div>
 
-    <ul style="margin-top:18px; padding-left:20px; line-height:1.8;">
-      <li>公式LINEからそのまま始められます</li>
-      <li>初回は会員登録とLINE連携が自動で完了します</li>
-      <li>初回ログイン時に1〜2分のアンケート回答をお願いしています</li>
-      <li>アンケート結果をもとに、おすすめ開催時間帯をランキング表示しています</li>
-      <li>ログイン後、予約作成や予約確認ができます</li>
-    </ul>
+    <div class="quick-grid" style="margin-top:18px;">
+      {% if liff_enabled %}
+        <div class="quick-card primary">
+          <div>
+            <div class="quick-card-title">LINEで始める</div>
+            <div class="quick-card-sub">スマホから一番かんたんに始められます。</div>
+          </div>
+          <div class="quick-card-action">
+            <a href="{% url 'club:liff_entry' %}" class="btn">LINEで始める</a>
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="quick-card">
+        <div>
+          <div class="quick-card-title">新規会員登録</div>
+          <div class="quick-card-sub">通常ログイン用の会員登録はこちらです。</div>
+        </div>
+        <div class="quick-card-action">
+          <a href="{% url 'club:register' %}" class="btn">新規会員登録</a>
+        </div>
+      </div>
+
+      <div class="quick-card">
+        <div>
+          <div class="quick-card-title">ログイン</div>
+          <div class="quick-card-sub">登録済みの方はこちらから入れます。</div>
+        </div>
+        <div class="quick-card-action">
+          <a href="{% url 'club:login' %}" class="btn">通常ログイン</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin:18px 0 0; box-shadow:none;">
+      <h2 class="home-section-title">できること</h2>
+      <div class="mobile-priority-list">
+        <div class="priority-link">
+          <div>
+            <strong>レッスン予約</strong>
+            <span>空き枠を見て、そのまま予約できます。</span>
+          </div>
+          <div class="priority-link-arrow">›</div>
+        </div>
+        <div class="priority-link">
+          <div>
+            <strong>チケット管理</strong>
+            <span>チケット残数と利用履歴を確認できます。</span>
+          </div>
+          <div class="priority-link-arrow">›</div>
+        </div>
+        <div class="priority-link">
+          <div>
+            <strong>LINE通知</strong>
+            <span>予約や承認に関する通知を受け取れます。</span>
+          </div>
+          <div class="priority-link-arrow">›</div>
+        </div>
+      </div>
+    </div>
   </div>
 
 {% elif user.role == "coach" %}
   <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div class="home-hero">
       <div>
-        <h1 style="margin:0;">コーチホーム</h1>
-        <p class="muted" style="margin:8px 0 0;">
-          {{ user.display_name }} さん用のコーチ専用ダッシュボードです。
+        <h1 class="home-title">コーチホーム</h1>
+        <p class="home-lead">
+          {{ user.display_name }} さん用のコーチ専用ダッシュボードです。日々使う操作を上にまとめました。
         </p>
       </div>
-      <div style="padding:10px 14px; border:1px solid #c7d2fe; background:#eef2ff; border-radius:10px; font-weight:700; color:#3730a3;">
-        Coachロール専用表示
+      <div class="home-badge">Coachロール専用表示</div>
+    </div>
+  </div>
+
+  <div class="quick-grid">
+    <div class="quick-card primary">
+      <div>
+        <div class="quick-card-title">承認待ちを確認する</div>
+        <div class="quick-card-sub">
+          private / group の申請を承認・却下します。スマホではまずここを確認します。
+        </div>
+      </div>
+      <div class="quick-card-action">
+        <a href="{% url 'club:reservation_list' %}" class="btn">承認待ちを見る</a>
+      </div>
+    </div>
+
+    <div class="quick-card info">
+      <div>
+        <div class="quick-card-title">今日・今週の予定を見る</div>
+        <div class="quick-card-sub">
+          担当レッスン、固定レッスン、代行状況を確認します。
+        </div>
+      </div>
+      <div class="quick-card-action">
+        <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="btn">固定レッスンへ</a>
+      </div>
+    </div>
+
+    <div class="quick-card notice">
+      <div>
+        <div class="quick-card-title">スケジュール管理</div>
+        <div class="quick-card-sub">
+          レッスン枠の編集、雨天中止、空き枠管理を行います。
+        </div>
+      </div>
+      <div class="quick-card-action">
+        <a href="{% url 'club:coach_availability_list' %}" class="btn">管理画面へ</a>
       </div>
     </div>
   </div>
 
-  <div class="grid-3">
-    <div class="card">
-      <div class="muted" style="font-size:13px;">おすすめ導線</div>
-      <div style="font-size:22px; font-weight:800; margin-top:6px;">申請確認</div>
-      <p class="muted" style="margin:10px 0 16px;">
-        private / group の承認待ち申請を確認して、承認・却下を行います。
-      </p>
-      <a href="{% url 'club:coach_availability_list' %}" class="btn btn-primary">スケジュール管理へ</a>
-    </div>
+  <div class="card">
+    <h2 class="home-section-title">よく使う操作</h2>
+    <div class="mobile-priority-list">
+      <a href="{% url 'club:reservation_list' %}" class="priority-link">
+        <div>
+          <strong>予約一覧</strong>
+          <span>承認待ち、担当予約、キャンセル状況を確認します。</span>
+        </div>
+        <div class="priority-link-arrow">›</div>
+      </a>
 
-    <div class="card">
-      <div class="muted" style="font-size:13px;">予約確認</div>
-      <div style="font-size:22px; font-weight:800; margin-top:6px;">担当予約一覧</div>
-      <p class="muted" style="margin:10px 0 16px;">
-        自分が担当する予約や、代行コーチとして入っている予約を確認します。
-      </p>
-      <a href="{% url 'club:reservation_list' %}" class="btn btn-primary">予約一覧へ</a>
-    </div>
+      <a href="{% url 'club:stringing_order_list' %}" class="priority-link">
+        <div>
+          <strong>ガット張り一覧</strong>
+          <span>未対応のガット張り依頼を確認します。</span>
+        </div>
+        <div class="priority-link-arrow">›</div>
+      </a>
 
-    <div class="card">
-      <div class="muted" style="font-size:13px;">月次確認</div>
-      <div style="font-size:22px; font-weight:800; margin-top:6px;">集計・給与</div>
-      <p class="muted" style="margin:10px 0 16px;">
-        チケット消費の集計や給与計算を月ごとに確認します。
-      </p>
-      <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="btn">固定レッスン</a>
-        <a href="{% url 'club:coach_ticket_summary' %}" class="btn">チケット集計</a>
-        <a href="{% url 'club:coach_payroll_summary' %}" class="btn">給与計算</a>
-      </div>
+      <a href="{% url 'club:coach_expense_manage' %}" class="priority-link">
+        <div>
+          <strong>経費登録</strong>
+          <span>コート代・ボール代などの経費を登録します。</span>
+        </div>
+        <div class="priority-link-arrow">›</div>
+      </a>
+
+      <a href="{% url 'club:coach_payroll_summary' %}" class="priority-link">
+        <div>
+          <strong>給与計算</strong>
+          <span>月次のチケット売上・ガット張り・経費を確認します。</span>
+        </div>
+        <div class="priority-link-arrow">›</div>
+      </a>
     </div>
   </div>
 
   <div class="grid-2">
     <div class="card">
-      <h2 style="margin-top:0;">アンケートサマリー</h2>
-      <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:12px;">
-        <div style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px; min-width:170px;">
-          <div class="muted" style="font-size:12px;">回答率</div>
-          <div style="font-size:26px; font-weight:800; margin-top:4px;">{{ schedule_survey_answered_rate }}%</div>
+      <h2 class="home-section-title">アンケートサマリー</h2>
+      <div class="mini-stat-grid">
+        <div class="mini-stat info">
+          <div class="mini-stat-label">回答率</div>
+          <div class="mini-stat-value">{{ schedule_survey_answered_rate }}%</div>
         </div>
-        <div style="padding:12px 14px; border:1px solid #fed7aa; background:#fff7ed; border-radius:10px; min-width:170px;">
-          <div class="muted" style="font-size:12px;">未回答者</div>
-          <div style="font-size:26px; font-weight:800; margin-top:4px;">{{ schedule_survey_unanswered_count }}人</div>
+        <div class="mini-stat notice">
+          <div class="mini-stat-label">未回答者</div>
+          <div class="mini-stat-value">{{ schedule_survey_unanswered_count }}人</div>
+        </div>
+        <div class="mini-stat">
+          <div class="mini-stat-label">回答済み</div>
+          <div class="mini-stat-value">{{ schedule_survey_answered_count }}人</div>
         </div>
       </div>
 
       {% if schedule_survey_top_slots %}
         <div style="margin-top:16px;">
-          <div style="font-weight:700; margin-bottom:8px;">開催候補TOP3</div>
+          <div style="font-weight:800; margin-bottom:8px;">開催候補TOP3</div>
           <ol style="margin:0; padding-left:20px; line-height:1.9;">
             {% for row in schedule_survey_top_slots|slice:":3" %}
               <li>
                 <strong>{{ row.day_label }}</strong> / {{ row.slot_label }}
-                <span class="muted">（{{ row.count }}票）</span>
-              </li>
-            {% endfor %}
-          </ol>
-        </div>
-      {% endif %}
-
-      {% if schedule_survey_coach_top_lesson_types %}
-        <div style="margin-top:16px;">
-          <div style="font-weight:700; margin-bottom:8px;">人気のレッスン種別</div>
-          <ol style="margin:0; padding-left:20px; line-height:1.9;">
-            {% for row in schedule_survey_coach_top_lesson_types %}
-              <li>
-                <strong>{{ row.lesson_type_label }}</strong>
                 <span class="muted">（{{ row.count }}票）</span>
               </li>
             {% endfor %}
@@ -138,56 +641,138 @@
     </div>
 
     <div class="card">
-      <h2 style="margin-top:0;">運用メモ</h2>
-      <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:12px;">
-        <div style="font-weight:700; margin-bottom:6px;">運用メモ</div>
-        <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
-          <li>private / group の申請確認は「スケジュール管理」から行います。</li>
-          <li>チケット集計・給与計算は代行コーチ側に寄せた表示です。</li>
-          <li>固定レッスンは「固定レッスン」タブから1週間単位で確認できます。</li>
-          <li>アンケート集計で、種別別・レベル別の開催候補も順次確認できます。</li>
-        </ul>
+      <h2 class="home-section-title">管理メニュー</h2>
+      <div class="mobile-priority-list">
+        <a href="{% url 'club:coach_ticket_summary' %}" class="priority-link">
+          <div>
+            <strong>チケット集計</strong>
+            <span>月ごとのチケット利用を確認します。</span>
+          </div>
+          <div class="priority-link-arrow">›</div>
+        </a>
+        <a href="{% url 'club:shop_estimate' %}" class="priority-link">
+          <div>
+            <strong>Shop</strong>
+            <span>ラケット・ガット見積を確認します。</span>
+          </div>
+          <div class="priority-link-arrow">›</div>
+        </a>
+        <a href="{% url 'club:line_connect' %}" class="priority-link">
+          <div>
+            <strong>LINE連携</strong>
+            <span>通知連携状態を確認します。</span>
+          </div>
+          <div class="priority-link-arrow">›</div>
+        </a>
       </div>
     </div>
   </div>
 
 {% else %}
   <div class="card">
-    <h1 style="margin-top:0;">{{ user.display_name }} さん、こんにちは</h1>
-
-    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:12px;">
-      {% if user.role == "member" %}
-        <div style="padding:12px 14px; border:1px solid #fed7aa; background:#fff7ed; border-radius:10px;">
-          <strong>現在のチケット残数:</strong> {{ user.ticket_balance }}枚
-        </div>
-        <div style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px;">
-          <strong>レベル:</strong> {{ user.get_member_level_display }}
-        </div>
-      {% endif %}
-      <div style="padding:12px 14px; border:2px solid #93c5fd; background:#eff6ff; border-radius:10px;">
-        <strong>おすすめ:</strong> 4枚セット 14,000円（1枚あたり 3,500円）
-      </div>
-      <div style="padding:12px 14px; border:1px solid #e5e7eb; background:#f9fafb; border-radius:10px;">
-        <strong>通常:</strong> 1枚 4,000円
+    <div class="home-hero">
+      <div>
+        <h1 class="home-title">{{ user.display_name }} さん、こんにちは</h1>
+        <p class="home-lead">
+          スマホでよく使う操作を上にまとめました。まずは「レッスンを予約する」または「予約を見る」から進めます。
+        </p>
       </div>
     </div>
 
-    <p style="margin:14px 0 0; color:#666;">
-      一般レッスンは2時間でチケット1枚、プライベートは1時間で2枚、グループは1時間で参加人数分、イベントは都度設定です。
-    </p>
+    <div class="mini-stat-grid" style="margin-top:16px;">
+      <div class="mini-stat notice">
+        <div class="mini-stat-label">チケット残数</div>
+        <div class="mini-stat-value">{{ user.ticket_balance }}枚</div>
+      </div>
+      <div class="mini-stat info">
+        <div class="mini-stat-label">レベル</div>
+        <div class="mini-stat-value" style="font-size:20px;">{{ user.get_member_level_display }}</div>
+      </div>
+      <div class="mini-stat">
+        <div class="mini-stat-label">おすすめ</div>
+        <div class="mini-stat-value" style="font-size:18px;">4枚 14,000円</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="quick-grid">
+    <div class="quick-card primary">
+      <div>
+        <div class="quick-card-title">レッスンを予約する</div>
+        <div class="quick-card-sub">
+          カレンダーから空き枠を選んで予約します。
+        </div>
+      </div>
+      <div class="quick-card-action">
+        <a href="#lesson-calendar-area" class="btn">カレンダーへ</a>
+      </div>
+    </div>
+
+    <div class="quick-card info">
+      <div>
+        <div class="quick-card-title">自分の予約を見る</div>
+        <div class="quick-card-sub">
+          予約内容・承認状況・キャンセル可否を確認します。
+        </div>
+      </div>
+      <div class="quick-card-action">
+        <a href="{% url 'club:reservation_list' %}" class="btn">予約一覧へ</a>
+      </div>
+    </div>
+
+    <div class="quick-card notice">
+      <div>
+        <div class="quick-card-title">チケットを確認する</div>
+        <div class="quick-card-sub">
+          残数、消費履歴、価格帯別の利用状況を確認します。
+        </div>
+      </div>
+      <div class="quick-card-action">
+        <a href="{% url 'club:tickets' %}" class="btn">チケットへ</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="home-section-title">その他の便利機能</h2>
+    <div class="mobile-priority-list">
+      <a href="{% url 'club:stringing_order_create' %}" class="priority-link">
+        <div>
+          <strong>ガット張り依頼</strong>
+          <span>ガット張り、デリバリー希望、納期希望を送れます。</span>
+        </div>
+        <div class="priority-link-arrow">›</div>
+      </a>
+
+      <a href="{% url 'club:shop_estimate' %}" class="priority-link">
+        <div>
+          <strong>Shop見積</strong>
+          <span>ラケット・ガットの見積を確認できます。</span>
+        </div>
+        <div class="priority-link-arrow">›</div>
+      </a>
+
+      <a href="{% url 'club:line_connect' %}" class="priority-link">
+        <div>
+          <strong>LINE連携</strong>
+          <span>予約通知を受け取るための連携状態を確認します。</span>
+        </div>
+        <div class="priority-link-arrow">›</div>
+      </a>
+    </div>
   </div>
 
   <div class="grid-2">
     <div class="card">
-      <h2 style="margin-top:0;">アンケートから見たおすすめ開催候補</h2>
+      <h2 class="home-section-title">おすすめ開催候補</h2>
       {% if schedule_survey_answered %}
-        <p class="muted" style="margin-top:0;">
-          あなたの回答と全体集計をもとに、参加しやすそうな時間帯を表示しています。
+        <p class="home-section-sub">
+          アンケート回答と全体集計をもとに、参加しやすそうな時間帯を表示しています。
         </p>
 
         {% if schedule_survey_top_slots %}
           <div style="margin-top:12px;">
-            <div style="font-weight:700; margin-bottom:8px;">全体ランキング TOP3</div>
+            <div style="font-weight:800; margin-bottom:8px;">全体ランキング TOP3</div>
             <ol style="margin:0; padding-left:20px; line-height:1.9;">
               {% for row in schedule_survey_top_slots|slice:":3" %}
                 <li>
@@ -201,7 +786,7 @@
 
         {% if schedule_survey_level_top_slots %}
           <div style="margin-top:16px;">
-            <div style="font-weight:700; margin-bottom:8px;">{{ user.get_member_level_display }} レベルのおすすめ TOP3</div>
+            <div style="font-weight:800; margin-bottom:8px;">{{ user.get_member_level_display }} レベルのおすすめ TOP3</div>
             <ol style="margin:0; padding-left:20px; line-height:1.9;">
               {% for row in schedule_survey_level_top_slots|slice:":3" %}
                 <li>
@@ -212,32 +797,9 @@
             </ol>
           </div>
         {% endif %}
-
-        {% if schedule_survey_lesson_type_top_slots %}
-          <div style="margin-top:16px;">
-            <div style="font-weight:700; margin-bottom:8px;">希望種別ごとのおすすめ</div>
-            <div style="display:flex; flex-direction:column; gap:10px;">
-              {% for block in schedule_survey_lesson_type_top_slots %}
-                <div style="padding:12px 14px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:12px;">
-                  <div style="font-weight:700;">{{ block.lesson_type_label }}</div>
-                  <div class="muted" style="margin-top:6px; line-height:1.8;">
-                    {% for row in block.rows|slice:":2" %}
-                      <div>{{ row.day_label }} / {{ row.slot_label }}（{{ row.count }}票）</div>
-                    {% endfor %}
-                  </div>
-                </div>
-              {% endfor %}
-            </div>
-          </div>
-        {% endif %}
-
-        <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;">
-          <a href="{% url 'club:schedule_survey' %}" class="btn">アンケート内容を見る</a>
-          <a href="{% url 'club:reservation_create' %}" class="btn btn-primary">予約を作成する</a>
-        </div>
       {% else %}
         <div style="padding:14px 16px; border:1px solid #fcd34d; background:#fffbeb; border-radius:12px; color:#92400e;">
-          <div style="font-weight:800;">アンケート未回答です</div>
+          <div style="font-weight:900;">アンケート未回答です</div>
           <div style="margin-top:6px; line-height:1.8;">
             今後のレッスン時間帯の参考にするため、先にアンケート回答をお願いします。
           </div>
@@ -249,26 +811,34 @@
     </div>
 
     <div class="card">
-      <h2 style="margin-top:0;">アンケート集計の状況</h2>
-      <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:12px;">
-        <div style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px; min-width:160px;">
-          <div class="muted" style="font-size:12px;">回答済み</div>
-          <div style="font-size:26px; font-weight:800; margin-top:4px;">{{ schedule_survey_answered_count }}人</div>
+      <h2 class="home-section-title">チケット料金</h2>
+      <div class="mobile-priority-list">
+        <div class="priority-link">
+          <div>
+            <strong>おすすめ：4枚セット 14,000円</strong>
+            <span>1枚あたり3,500円です。</span>
+          </div>
+          <div class="priority-link-arrow">›</div>
         </div>
-        <div style="padding:12px 14px; border:1px solid #fed7aa; background:#fff7ed; border-radius:10px; min-width:160px;">
-          <div class="muted" style="font-size:12px;">回答率</div>
-          <div style="font-size:26px; font-weight:800; margin-top:4px;">{{ schedule_survey_answered_rate }}%</div>
+        <div class="priority-link">
+          <div>
+            <strong>通常：1枚 4,000円</strong>
+            <span>一般レッスンは2時間で1枚です。</span>
+          </div>
+          <div class="priority-link-arrow">›</div>
         </div>
       </div>
-      <p class="muted" style="margin:14px 0 0;">
-        {{ schedule_survey_member_help_message }}
-      </p>
     </div>
   </div>
 
-  <div class="page-grid">
+  <div id="lesson-calendar-area" class="page-grid">
     <section class="main-panel">
       <div class="card toolbar-card">
+        <h2 class="home-section-title">レッスンカレンダー</h2>
+        <p class="home-section-sub">
+          受付中の枠をタップすると詳細と予約ボタンが表示されます。
+        </p>
+
         <div class="toolbar-row">
           <div class="filter-block">
             <label for="coachFilter"><strong>コーチ表示</strong></label>
@@ -308,7 +878,7 @@
       <div class="card detail-card">
         <h3 style="margin-top:0;">詳細</h3>
         <div id="detailPanel">
-          <p>カレンダー上の枠をクリックしてください。</p>
+          <p>カレンダー上の枠をタップしてください。</p>
         </div>
       </div>
     </aside>
@@ -324,186 +894,6 @@
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/index.global.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.17/locales-all.global.min.js"></script>
-
-  <style>
-    .page-grid{
-      display:grid;
-      grid-template-columns:minmax(0,1fr) 320px;
-      gap:16px;
-      align-items:start;
-    }
-
-    .toolbar-card,
-    .calendar-card,
-    .detail-card{
-      padding:16px;
-    }
-
-    .toolbar-row{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      gap:12px;
-      flex-wrap:wrap;
-    }
-
-    .filter-block{
-      min-width:220px;
-    }
-
-    .toolbar-links{
-      margin-top:12px;
-      display:flex;
-      gap:12px;
-      flex-wrap:wrap;
-    }
-
-    .legend{
-      display:flex;
-      gap:8px;
-      flex-wrap:wrap;
-    }
-
-    .legend-item{
-      display:inline-block;
-      padding:6px 10px;
-      border-radius:999px;
-      color:#fff;
-      font-size:12px;
-    }
-
-    .legend-available{
-      background:#22c55e;
-    }
-
-    .legend-pending{
-      background:#f59e0b;
-    }
-
-    .legend-reserved{
-      background:#ef4444;
-    }
-
-    .legend-mine{
-      background:#3b82f6;
-    }
-
-    #calendar{
-      min-height:720px;
-    }
-
-    .fc .fc-event{
-      white-space:normal;
-      cursor:pointer;
-      border-radius:8px;
-      padding:3px 5px;
-      font-size:12px;
-      line-height:1.2;
-      overflow:hidden;
-    }
-
-    .fc-event-title-wrap{
-      white-space:normal;
-      word-break:break-word;
-      line-height:1.2;
-    }
-
-    .fc-event-line-main{
-      font-weight:700;
-    }
-
-    .fc-event-line-sub{
-      font-size:11px;
-      opacity:0.95;
-      margin-top:2px;
-    }
-
-    .detail-table{
-      width:100%;
-      border-collapse:collapse;
-    }
-
-    .detail-table th,
-    .detail-table td{
-      text-align:left;
-      padding:6px 0;
-      vertical-align:top;
-      border-bottom:1px solid #eee;
-      font-size:14px;
-    }
-
-    .detail-actions{
-      margin-top:16px;
-      display:flex;
-      gap:8px;
-      flex-wrap:wrap;
-    }
-
-    .price-chip{
-      display:inline-block;
-      margin:2px 6px 2px 0;
-      padding:5px 8px;
-      border-radius:999px;
-      background:#eff6ff;
-      border:1px solid #bfdbfe;
-      font-size:12px;
-      color:#1d4ed8;
-      font-weight:600;
-    }
-
-    .coach-box{
-      margin-top:6px;
-      padding:8px 10px;
-      border-radius:10px;
-      background:#f8fafc;
-      border:1px solid #e5e7eb;
-      font-size:13px;
-      line-height:1.6;
-    }
-
-    .muted-inline{
-      color:#666;
-      font-size:13px;
-    }
-
-    @media (max-width: 960px){
-      .page-grid{
-        grid-template-columns:1fr;
-      }
-
-      #calendar{
-        min-height:520px;
-      }
-
-      .fc .fc-toolbar{
-        flex-direction:column;
-        gap:8px;
-      }
-
-      .fc .fc-toolbar-title{
-        font-size:18px !important;
-      }
-
-      .fc .fc-button{
-        font-size:12px !important;
-        padding:0.3em 0.5em !important;
-      }
-
-      .fc .fc-col-header-cell-cushion,
-      .fc .fc-timegrid-slot-label-cushion,
-      .fc .fc-timegrid-axis-cushion{
-        font-size:12px;
-      }
-
-      .fc .fc-event{
-        font-size:11px;
-      }
-
-      .fc-event-line-sub{
-        font-size:10px;
-      }
-    }
-  </style>
 
   <script>
     document.addEventListener("DOMContentLoaded", function () {
@@ -761,7 +1151,7 @@
 
       coachFilter.addEventListener("change", function() {
         calendar.refetchEvents();
-        detailPanel.innerHTML = "<p>カレンダー上の枠をクリックしてください。</p>";
+        detailPanel.innerHTML = "<p>カレンダー上の枠をタップしてください。</p>";
       });
 
       calendar.render();
