@@ -2,71 +2,219 @@
 {% block title %}ログイン{% endblock %}
 
 {% block content %}
-<div class="card" style="max-width:620px; margin:0 auto;">
-  <h1 style="margin-top:0;">ログイン</h1>
+<style>
+  .auth-layout{
+    display:grid;
+    grid-template-columns:minmax(0, 1fr) 340px;
+    gap:16px;
+    align-items:start;
+  }
 
-  <div style="padding:16px; border:1px solid #d8f0dc; background:#f3fff5; border-radius:10px; margin-bottom:20px;">
-    <h2 style="margin:0 0 10px 0; font-size:20px;">初めての方へ</h2>
-    <p style="margin:0 0 12px 0;">
-      LINEアプリからご利用の方は、<strong>公式LINEのリッチメニュー</strong>から始めるのがおすすめです。
-    </p>
+  .auth-title{
+    margin:0;
+    font-size:28px;
+    font-weight:900;
+    line-height:1.25;
+    letter-spacing:-0.02em;
+  }
+
+  .auth-lead{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
+
+  .auth-form-card p{
+    margin:0 0 14px;
+  }
+
+  .auth-form-card ul.errorlist{
+    margin:6px 0 0;
+    padding-left:18px;
+    color:#991b1b;
+    font-size:13px;
+    line-height:1.7;
+  }
+
+  .auth-primary-action{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:10px;
+    margin-top:14px;
+  }
+
+  .auth-line-button{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:48px;
+    padding:12px 16px;
+    border-radius:14px;
+    background:#06c755;
+    color:#fff;
+    border:1px solid #06c755;
+    font-weight:900;
+  }
+
+  .auth-side{
+    position:sticky;
+    top:120px;
+  }
+
+  .auth-step{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:14px;
+    padding:14px;
+    margin-bottom:10px;
+  }
+
+  .auth-step-number{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:26px;
+    height:26px;
+    border-radius:999px;
+    background:#0f172a;
+    color:#fff;
+    font-size:12px;
+    font-weight:900;
+    margin-bottom:8px;
+  }
+
+  .auth-step-title{
+    font-weight:900;
+    margin-bottom:4px;
+  }
+
+  .auth-step-text{
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.7;
+  }
+
+  .auth-mobile-actions{
+    display:none;
+  }
+
+  @media (max-width: 900px){
+    .auth-layout{
+      grid-template-columns:1fr;
+    }
+
+    .auth-side{
+      position:static;
+    }
+  }
+
+  @media (max-width: 768px){
+    .auth-title{
+      font-size:23px;
+    }
+
+    .auth-mobile-actions{
+      display:flex;
+      position:sticky;
+      bottom:0;
+      z-index:40;
+      gap:8px;
+      padding:10px;
+      margin:18px -16px -16px;
+      background:rgba(255,255,255,0.96);
+      backdrop-filter:blur(8px);
+      border-top:1px solid #e5e7eb;
+    }
+
+    .auth-mobile-actions button,
+    .auth-mobile-actions a{
+      flex:1 1 0;
+      min-height:44px;
+    }
+  }
+</style>
+
+<div class="card">
+  <h1 class="auth-title">ログイン</h1>
+  <p class="auth-lead">
+    予約、チケット確認、LINE通知を利用するにはログインしてください。スマホ利用ではLINEログインが便利です。
+  </p>
+</div>
+
+<div class="auth-layout">
+  <div class="card auth-form-card">
+    <h2 style="margin-top:0;">ログイン方法</h2>
+
     {% if liff_enabled %}
-      <a
-        href="{% url 'club:liff_entry' %}"
-        style="display:inline-block; padding:12px 18px; border-radius:8px; background:#06c755; color:#fff; text-decoration:none; font-weight:bold;"
-      >
-        LINEでログイン
-      </a>
-    {% endif %}
-  </div>
-
-  <div style="padding:16px; border:1px solid #eee; background:#fafafa; border-radius:10px; margin-bottom:20px;">
-    <h2 style="margin:0 0 10px 0; font-size:20px;">メールアドレス / パスワードで登録したい方</h2>
-    <p style="margin:0 0 12px 0;">
-      通常の新規会員登録はこちらから行えます。
-    </p>
-    <a
-      href="{% url 'club:register' %}"
-      style="display:inline-block; padding:12px 18px; border-radius:8px; background:#fff; color:#111; text-decoration:none; border:1px solid #ddd; font-weight:bold;"
-    >
-      新規会員登録
-    </a>
-  </div>
-
-  <hr style="margin:24px 0;">
-
-  <h2 style="font-size:20px;">通常ログイン</h2>
-
-  <form method="post" action="{% url 'club:login' %}" novalidate>
-    {% csrf_token %}
-
-    {% if form.non_field_errors %}
-      <div class="message error" style="margin-bottom:14px;">
-        {{ form.non_field_errors }}
+      <div class="auth-primary-action">
+        <a href="{% url 'club:liff_entry' %}" class="auth-line-button">LINEでログイン</a>
+      </div>
+      <div style="margin:14px 0; display:flex; align-items:center; gap:10px; color:#64748b; font-size:13px;">
+        <div style="height:1px; background:#e5e7eb; flex:1;"></div>
+        <div>または</div>
+        <div style="height:1px; background:#e5e7eb; flex:1;"></div>
       </div>
     {% endif %}
 
-    <p>
-      <label for="{{ form.username.id_for_label }}">ユーザー名</label>
-      {{ form.username }}
-      {% if form.username.errors %}
-        <div class="message error" style="margin-top:8px;">
-          {{ form.username.errors }}
+    <form method="post" id="login-form">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div class="message error">
+          {{ form.non_field_errors }}
         </div>
       {% endif %}
-    </p>
 
-    <p>
-      <label for="{{ form.password.id_for_label }}">パスワード</label>
-      {{ form.password }}
-      {% if form.password.errors %}
-        <div class="message error" style="margin-top:8px;">
-          {{ form.password.errors }}
-        </div>
-      {% endif %}
-    </p>
+      {% for hidden in form.hidden_fields %}
+        {{ hidden }}
+      {% endfor %}
 
-    <button type="submit">ログイン</button>
-  </form>
+      {% for field in form.visible_fields %}
+        <p>
+          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}
+            <span class="muted" style="display:block; margin-top:6px; font-size:13px;">{{ field.help_text }}</span>
+          {% endif %}
+          {{ field.errors }}
+        </p>
+      {% endfor %}
+
+      <div class="actions">
+        <button type="submit" class="btn btn-primary">ログインする</button>
+        <a href="{% url 'club:register' %}" class="btn">新規登録</a>
+      </div>
+
+      <div class="auth-mobile-actions">
+        <a href="{% url 'club:register' %}" class="btn">新規登録</a>
+        <button type="submit" class="btn btn-primary">ログイン</button>
+      </div>
+    </form>
+  </div>
+
+  <aside class="auth-side">
+    <div class="card">
+      <h2 style="margin-top:0;">ログイン後にできること</h2>
+
+      <div class="auth-step">
+        <div class="auth-step-number">1</div>
+        <div class="auth-step-title">レッスン予約</div>
+        <div class="auth-step-text">ホームや予約作成画面から希望日時を選んで申請できます。</div>
+      </div>
+
+      <div class="auth-step">
+        <div class="auth-step-number">2</div>
+        <div class="auth-step-title">チケット確認</div>
+        <div class="auth-step-text">残数、保有内訳、消費履歴をスマホで確認できます。</div>
+      </div>
+
+      <div class="auth-step">
+        <div class="auth-step-number">3</div>
+        <div class="auth-step-title">LINE通知</div>
+        <div class="auth-step-text">予約申請や承認結果をLINEで受け取れるようにします。</div>
+      </div>
+    </div>
+  </aside>
 </div>
 {% endblock %}
