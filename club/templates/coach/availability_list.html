@@ -2,127 +2,564 @@
 {% block title %}コーチスケジュール管理{% endblock %}
 
 {% block content %}
+<style>
+  .coach-page-hero{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:14px;
+    flex-wrap:wrap;
+  }
+
+  .coach-page-title{
+    margin:0;
+    font-size:28px;
+    line-height:1.25;
+    font-weight:900;
+    letter-spacing:-0.02em;
+  }
+
+  .coach-page-lead{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
+
+  .coach-action-row{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+
+  .coach-help-grid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:12px;
+  }
+
+  .coach-help-box{
+    padding:14px 16px;
+    border:1px solid #dbeafe;
+    background:#eff6ff;
+    border-radius:14px;
+  }
+
+  .coach-help-box.notice{
+    border-color:#c7d2fe;
+    background:#eef2ff;
+  }
+
+  .coach-help-title{
+    font-weight:900;
+    margin-bottom:6px;
+    color:#3730a3;
+  }
+
+  .coach-help-box ul{
+    margin:0;
+    padding-left:18px;
+    line-height:1.8;
+    color:#475569;
+    font-size:14px;
+  }
+
+  .pending-request-list,
+  .availability-card-list{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+
+  .pending-request-card{
+    border:1px solid #fed7aa;
+    background:#fff7ed;
+    border-radius:16px;
+    padding:16px;
+  }
+
+  .availability-card{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    padding:16px;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .item-card-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:12px;
+    margin-bottom:12px;
+  }
+
+  .item-title{
+    font-size:17px;
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .item-subtitle{
+    margin-top:4px;
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.45;
+  }
+
+  .item-pill{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:6px 10px;
+    border-radius:999px;
+    font-size:12px;
+    font-weight:900;
+    line-height:1.2;
+    white-space:nowrap;
+    border:1px solid #fed7aa;
+    background:#ffedd5;
+    color:#9a3412;
+  }
+
+  .item-pill.active{
+    border-color:#bbf7d0;
+    background:#ecfdf5;
+    color:#166534;
+  }
+
+  .info-row-list{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:0;
+    margin-top:10px;
+  }
+
+  .info-row{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    padding:9px 0;
+    border-top:1px solid #f1f5f9;
+    font-size:14px;
+  }
+
+  .info-label{
+    flex:0 0 110px;
+    color:var(--muted);
+    font-weight:800;
+  }
+
+  .info-value{
+    text-align:right;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+
+  .item-actions{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:14px;
+  }
+
+  .item-actions .btn,
+  .item-actions button{
+    min-height:42px;
+  }
+
+  .danger-btn{
+    border-color:#fecaca !important;
+    color:#991b1b !important;
+    background:#fff5f5 !important;
+  }
+
+  .secondary-section-title{
+    margin:0 0 12px;
+    font-size:20px;
+    font-weight:900;
+    line-height:1.3;
+  }
+
+  .desktop-schedule-table{
+    display:block;
+  }
+
+  .mobile-schedule-cards{
+    display:none;
+  }
+
+  @media (max-width: 900px){
+    .coach-help-grid{
+      grid-template-columns:1fr;
+    }
+  }
+
+  @media (max-width: 768px){
+    .coach-page-title{
+      font-size:23px;
+    }
+
+    .coach-action-row{
+      width:100%;
+      display:grid;
+      grid-template-columns:1fr;
+      gap:8px;
+    }
+
+    .coach-action-row .btn{
+      width:100%;
+    }
+
+    .coach-help-box{
+      padding:13px;
+    }
+
+    .coach-help-box ul{
+      font-size:13px;
+    }
+
+    .desktop-schedule-table{
+      display:none;
+    }
+
+    .mobile-schedule-cards{
+      display:block;
+    }
+
+    .pending-request-card,
+    .availability-card{
+      padding:14px;
+      border-radius:15px;
+    }
+
+    .item-card-head{
+      display:block;
+    }
+
+    .item-pill{
+      margin-top:8px;
+    }
+
+    .item-title{
+      font-size:16px;
+    }
+
+    .info-row{
+      display:block;
+      padding:8px 0;
+    }
+
+    .info-label{
+      display:block;
+      margin-bottom:3px;
+      font-size:12px;
+    }
+
+    .info-value{
+      text-align:left;
+      font-size:13px;
+    }
+
+    .item-actions{
+      display:grid;
+      grid-template-columns:1fr;
+    }
+
+    .item-actions .btn,
+    .item-actions button,
+    .item-actions form{
+      width:100%;
+    }
+  }
+</style>
+
 <div class="card">
-  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+  <div class="coach-page-hero">
     <div>
-      <h1 style="margin:0;">コーチスケジュール管理</h1>
-      <p class="muted" style="margin:8px 0 0;">
-        登録済みのレッスン枠を確認・編集できます。代行コーチ設定や雨天中止処理もこの画面から行えます。
+      <h1 class="coach-page-title">コーチスケジュール管理</h1>
+      <p class="coach-page-lead">
+        承認待ち申請、登録済みレッスン枠、雨天中止処理をまとめて確認できます。
       </p>
     </div>
 
-    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <div class="coach-action-row">
       <a href="{% url 'club:coach_availability_create' %}" class="btn btn-primary">新規登録</a>
-      <a href="{% url 'club:coach_payroll_summary' %}" class="btn">給与計算を見る</a>
-      <a href="{% url 'club:home' %}" class="btn">コーチホームへ戻る</a>
+      <a href="{% url 'club:reservation_list' %}" class="btn">予約一覧</a>
+      <a href="{% url 'club:home' %}" class="btn">コーチホーム</a>
     </div>
   </div>
 </div>
 
 <div class="card">
-  <div style="padding:14px 16px; border:1px solid #c7d2fe; background:#eef2ff; border-radius:10px; margin-bottom:14px;">
-    <div style="font-weight:700; margin-bottom:6px; color:#3730a3;">Coach専用タブ対象ページ</div>
-    <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
-      <li>private / group の申請確認は、この画面の上部カードから行います。</li>
-      <li>雨天中止は、各レッスン枠の「雨天中止」ボタンから実行できます。</li>
-      <li>経費登録は別タブの「経費登録」から行ってください。</li>
-      <li>月次の集計確認は、上部のCoachタブや給与計算ボタンから移動できます。</li>
-    </ul>
-  </div>
+  <h2 class="secondary-section-title">承認待ち申請</h2>
 
-  <div style="padding:14px 16px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px;">
-    <div style="font-weight:700; margin-bottom:6px;">表示の見方</div>
-    <ul style="margin:0; padding-left:18px; line-height:1.8; color:#475569;">
-      <li>一般 / プライベート / グループは通常ルールでチケットが消費されます。</li>
-      <li>イベントは「イベント用チケット価格」に設定した枚数が使われます。</li>
-      <li>代行コーチを設定すると、その時間枠に紐づく予約へ自動反映されます。</li>
-      <li>雨天中止を実行すると、その枠の予約中会員へ返却処理と通知が行われます。</li>
-    </ul>
+  {% if pending_reservations %}
+    <div class="pending-request-list">
+      {% for reservation in pending_reservations %}
+        <div class="pending-request-card">
+          <div class="item-card-head">
+            <div>
+              <div class="item-title">
+                {{ reservation.user.display_name }} さんの申請
+              </div>
+              <div class="item-subtitle">
+                {{ reservation.start_at|date:"Y-m-d H:i" }}〜{{ reservation.end_at|date:"H:i" }} / {{ reservation.get_lesson_type_display }}
+              </div>
+            </div>
+            <div class="item-pill">承認待ち</div>
+          </div>
+
+          <div class="info-row-list">
+            <div class="info-row">
+              <div class="info-label">会員</div>
+              <div class="info-value">{{ reservation.user.display_name }}</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">担当コーチ</div>
+              <div class="info-value">
+                {% if reservation.substitute_coach %}
+                  実施: {{ reservation.substitute_coach.display_name }}<br>
+                  <span class="muted">通常: {{ reservation.coach.display_name }}</span>
+                {% else %}
+                  {{ reservation.coach.display_name }}
+                {% endif %}
+              </div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">コート</div>
+              <div class="info-value">
+                {{ reservation.court }}
+                {% if reservation.requested_court_note %}
+                  <br><span class="muted">{{ reservation.requested_court_note }}</span>
+                {% endif %}
+              </div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">チケット</div>
+              <div class="info-value">{{ reservation.tickets_used }}枚予定</div>
+            </div>
+          </div>
+
+          <div class="item-actions">
+            <form method="post" action="{% url 'club:coach_request_approve' reservation.pk %}" style="margin:0;" onsubmit="return confirm('この申請を承認しますか？');">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-primary">承認する</button>
+            </form>
+
+            <form method="post" action="{% url 'club:coach_request_reject' reservation.pk %}" style="margin:0;" onsubmit="return confirm('この申請を却下しますか？');">
+              {% csrf_token %}
+              <button type="submit" class="btn danger-btn">却下する</button>
+            </form>
+
+            <a href="{% url 'club:reservation_list' %}" class="btn">予約一覧で確認</a>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div style="padding:14px 16px; border:1px solid #bbf7d0; background:#ecfdf5; border-radius:14px; color:#166534; font-weight:800;">
+      現在、承認待ち申請はありません。
+    </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="coach-help-grid">
+    <div class="coach-help-box notice">
+      <div class="coach-help-title">この画面でやること</div>
+      <ul>
+        <li>private / group の申請は、上部の承認待ち申請から処理します。</li>
+        <li>雨天中止は、各レッスン枠の「雨天中止」から実行します。</li>
+        <li>レッスン枠の変更は「編集」から行います。</li>
+      </ul>
+    </div>
+
+    <div class="coach-help-box">
+      <div class="coach-help-title">表示の見方</div>
+      <ul>
+        <li>代行コーチを設定すると、その時間枠に紐づく予約へ自動反映されます。</li>
+        <li>雨天中止を実行すると、返却処理と通知が行われます。</li>
+        <li>経費登録は別タブの「経費登録」から行ってください。</li>
+      </ul>
+    </div>
   </div>
 </div>
 
 <div class="card">
+  <h2 class="secondary-section-title">登録済みレッスン枠</h2>
+
   {% if availability_rows %}
-    <div style="overflow-x:auto;">
-      <table>
-        <thead>
-          <tr>
-            <th>担当コーチ</th>
-            <th>代行コーチ</th>
-            <th>コート</th>
-            <th>種別</th>
-            <th>対象レベル</th>
-            <th>開始</th>
-            <th>終了</th>
-            <th>定員</th>
-            <th>イベント価格</th>
-            <th>メモ</th>
-            <th>予約中</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in availability_rows %}
-            {% with availability=row.availability %}
+    <div class="desktop-schedule-table">
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
             <tr>
-              <td>{{ availability.coach.display_name }}</td>
-              <td>
-                {% if availability.substitute_coach %}
-                  {{ availability.substitute_coach.display_name }}
+              <th>担当コーチ</th>
+              <th>代行コーチ</th>
+              <th>コート</th>
+              <th>種別</th>
+              <th>対象レベル</th>
+              <th>開始</th>
+              <th>終了</th>
+              <th>定員</th>
+              <th>イベント価格</th>
+              <th>メモ</th>
+              <th>予約中</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in availability_rows %}
+              {% with availability=row.availability %}
+              <tr>
+                <td>{{ availability.coach.display_name }}</td>
+                <td>
+                  {% if availability.substitute_coach %}
+                    {{ availability.substitute_coach.display_name }}
+                  {% else %}
+                    <span class="muted">未設定</span>
+                  {% endif %}
+                </td>
+                <td>{{ availability.court }}</td>
+                <td>{{ availability.get_lesson_type_display }}</td>
+                <td>{{ availability.get_target_level_display }}</td>
+                <td>{{ availability.start_at|date:"Y-m-d H:i" }}</td>
+                <td>{{ availability.end_at|date:"Y-m-d H:i" }}</td>
+                <td>
+                  <div>{{ availability.capacity }}</div>
+                  {% if availability.lesson_type == "general" %}
+                    <div class="muted" style="font-size:12px;">
+                      {{ availability.coach_count }}人 / {{ availability.court_count }}面
+                    </div>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if availability.lesson_type == "event" %}
+                    {{ availability.custom_ticket_price }}枚
+                  {% else %}
+                    <span class="muted">通常</span>
+                  {% endif %}
+                </td>
+                <td>{{ availability.note|default:"-" }}</td>
+                <td>
+                  {% if row.active_reservation_count > 0 %}
+                    <strong>{{ row.active_reservation_count }}件</strong>
+                  {% else %}
+                    <span class="muted">0件</span>
+                  {% endif %}
+                </td>
+                <td style="white-space:nowrap;">
+                  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <a href="{% url 'club:coach_availability_edit' availability.pk %}" class="btn">編集</a>
+
+                    <form method="post" action="{% url 'club:coach_availability_list' %}" style="margin:0;" onsubmit="return confirm('この時間枠の予約を雨天中止にします。会員への返却処理と通知も行います。よろしいですか？');">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="rain_cancel_slot">
+                      <input type="hidden" name="availability_id" value="{{ availability.pk }}">
+                      <button type="submit" class="btn danger-btn" {% if not row.can_rain_cancel %}disabled{% endif %}>雨天中止</button>
+                    </form>
+
+                    <form method="post" action="{% url 'club:coach_availability_delete' availability.pk %}" style="margin:0;" onsubmit="return confirm('この枠を削除しますか？');">
+                      {% csrf_token %}
+                      <button type="submit" class="btn danger-btn">削除</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+              {% endwith %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="mobile-schedule-cards">
+      <div class="availability-card-list">
+        {% for row in availability_rows %}
+          {% with availability=row.availability %}
+            <div class="availability-card">
+              <div class="item-card-head">
+                <div>
+                  <div class="item-title">
+                    {{ availability.start_at|date:"m/d H:i" }}〜{{ availability.end_at|date:"H:i" }}
+                  </div>
+                  <div class="item-subtitle">
+                    {{ availability.get_lesson_type_display }} / {{ availability.get_target_level_display }}
+                  </div>
+                </div>
+                {% if row.active_reservation_count > 0 %}
+                  <div class="item-pill active">予約 {{ row.active_reservation_count }}件</div>
                 {% else %}
-                  <span class="muted">未設定</span>
+                  <div class="item-pill">予約 0件</div>
                 {% endif %}
-              </td>
-              <td>{{ availability.court }}</td>
-              <td>{{ availability.get_lesson_type_display }}</td>
-              <td>{{ availability.get_target_level_display }}</td>
-              <td>{{ availability.start_at|date:"Y-m-d H:i" }}</td>
-              <td>{{ availability.end_at|date:"Y-m-d H:i" }}</td>
-              <td>
-                <div>{{ availability.capacity }}</div>
-                {% if availability.lesson_type == "general" %}
-                  <div class="muted" style="font-size:12px;">
-                    {{ availability.coach_count }}人 / {{ availability.court_count }}面
+              </div>
+
+              <div class="info-row-list">
+                <div class="info-row">
+                  <div class="info-label">担当</div>
+                  <div class="info-value">{{ availability.coach.display_name }}</div>
+                </div>
+                <div class="info-row">
+                  <div class="info-label">代行</div>
+                  <div class="info-value">
+                    {% if availability.substitute_coach %}
+                      {{ availability.substitute_coach.display_name }}
+                    {% else %}
+                      未設定
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="info-row">
+                  <div class="info-label">コート</div>
+                  <div class="info-value">{{ availability.court }}</div>
+                </div>
+                <div class="info-row">
+                  <div class="info-label">定員</div>
+                  <div class="info-value">
+                    {{ availability.capacity }}名
+                    {% if availability.lesson_type == "general" %}
+                      <br><span class="muted">{{ availability.coach_count }}人 / {{ availability.court_count }}面</span>
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="info-row">
+                  <div class="info-label">イベント価格</div>
+                  <div class="info-value">
+                    {% if availability.lesson_type == "event" %}
+                      {{ availability.custom_ticket_price }}枚
+                    {% else %}
+                      通常
+                    {% endif %}
+                  </div>
+                </div>
+                {% if availability.note %}
+                  <div class="info-row">
+                    <div class="info-label">メモ</div>
+                    <div class="info-value">{{ availability.note }}</div>
                   </div>
                 {% endif %}
-              </td>
-              <td>
-                {% if availability.lesson_type == "event" %}
-                  {{ availability.custom_ticket_price }}枚
-                {% else %}
-                  <span class="muted">通常</span>
-                {% endif %}
-              </td>
-              <td>{{ availability.note|default:"-" }}</td>
-              <td>
-                {% if row.active_reservation_count > 0 %}
-                  <strong>{{ row.active_reservation_count }}件</strong>
-                {% else %}
-                  <span class="muted">0件</span>
-                {% endif %}
-              </td>
-              <td style="white-space:nowrap;">
-                <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                  <a href="{% url 'club:coach_availability_edit' availability.pk %}" class="btn">編集</a>
+              </div>
 
-                  <form method="post" action="{% url 'club:coach_availability_list' %}" style="margin:0;" onsubmit="return confirm('この時間枠の予約を雨天中止にします。会員への返却処理と通知も行います。よろしいですか？');">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="rain_cancel_slot">
-                    <input type="hidden" name="availability_id" value="{{ availability.pk }}">
-                    <button type="submit" class="btn btn-danger" {% if not row.can_rain_cancel %}disabled{% endif %}>雨天中止</button>
-                  </form>
+              <div class="item-actions">
+                <a href="{% url 'club:coach_availability_edit' availability.pk %}" class="btn">編集</a>
 
-                  <form method="post" action="{% url 'club:coach_availability_delete' availability.pk %}" style="margin:0;" onsubmit="return confirm('この枠を削除しますか？');">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-danger">削除</button>
-                  </form>
-                </div>
-              </td>
-            </tr>
-            {% endwith %}
-          {% endfor %}
-        </tbody>
-      </table>
+                <form method="post" action="{% url 'club:coach_availability_list' %}" style="margin:0;" onsubmit="return confirm('この時間枠の予約を雨天中止にします。会員への返却処理と通知も行います。よろしいですか？');">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="rain_cancel_slot">
+                  <input type="hidden" name="availability_id" value="{{ availability.pk }}">
+                  <button type="submit" class="btn danger-btn" {% if not row.can_rain_cancel %}disabled{% endif %}>雨天中止</button>
+                </form>
+
+                <form method="post" action="{% url 'club:coach_availability_delete' availability.pk %}" style="margin:0;" onsubmit="return confirm('この枠を削除しますか？');">
+                  {% csrf_token %}
+                  <button type="submit" class="btn danger-btn">削除</button>
+                </form>
+              </div>
+            </div>
+          {% endwith %}
+        {% endfor %}
+      </div>
     </div>
   {% else %}
     <p class="muted" style="margin:0;">まだ登録されたスケジュールはありません。</p>
