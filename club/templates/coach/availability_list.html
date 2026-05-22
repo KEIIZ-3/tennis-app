@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}コーチスケジュール管理{% endblock %}
+{% block title %}スケジュール{% endblock %}
 
 {% block content %}
 <style>
@@ -277,15 +277,16 @@
 <div class="card">
   <div class="coach-page-hero">
     <div>
-      <h1 class="coach-page-title">コーチスケジュール管理</h1>
+      <h1 class="coach-page-title">スケジュール</h1>
       <p class="coach-page-lead">
-        承認待ち申請、登録済みレッスン枠、雨天中止処理をまとめて確認できます。
+        通常スケジュール、固定レッスン、承認待ち申請、雨天中止処理をまとめて確認できます。
       </p>
     </div>
 
     <div class="coach-action-row">
       <a href="{% url 'club:coach_availability_create' %}" class="btn btn-primary">新規登録</a>
-      <a href="{% url 'club:reservation_list' %}" class="btn">予約一覧</a>
+      <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="btn">固定レッスン</a>
+      <a href="{% url 'club:reservation_list' %}" class="btn">予約・承認</a>
       <a href="{% url 'club:home' %}" class="btn">コーチホーム</a>
     </div>
   </div>
@@ -367,7 +368,7 @@
 <div class="card">
   <div class="coach-help-grid">
     <div class="coach-help-box notice">
-      <div class="coach-help-title">この画面でやること</div>
+      <div class="coach-help-title">スケジュールでやること</div>
       <ul>
         <li>private / group の申請は、上部の承認待ち申請から処理します。</li>
         <li>雨天中止は、各レッスン枠の「雨天中止」から実行します。</li>
