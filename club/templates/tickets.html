@@ -2,45 +2,331 @@
 {% block title %}チケット{% endblock %}
 
 {% block content %}
+<style>
+  .ticket-title{
+    margin:0;
+    font-size:28px;
+    font-weight:900;
+    line-height:1.25;
+    letter-spacing:-0.02em;
+  }
+
+  .ticket-lead{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
+
+  .ticket-stat-grid{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:12px;
+  }
+
+  .ticket-stat{
+    padding:16px;
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .ticket-stat.primary{
+    background:#0f172a;
+    color:#fff;
+    border-color:#0f172a;
+  }
+
+  .ticket-stat.notice{
+    background:#fff7ed;
+    border-color:#fed7aa;
+  }
+
+  .ticket-stat.info{
+    background:#eff6ff;
+    border-color:#bfdbfe;
+  }
+
+  .ticket-stat-label{
+    color:var(--muted);
+    font-size:12px;
+    font-weight:800;
+  }
+
+  .ticket-stat.primary .ticket-stat-label{
+    color:#cbd5e1;
+  }
+
+  .ticket-stat-value{
+    margin-top:6px;
+    font-size:24px;
+    font-weight:900;
+    line-height:1.2;
+  }
+
+  .price-grid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:14px;
+  }
+
+  .price-card{
+    padding:18px;
+    border:1px solid #e5e7eb;
+    background:#f9fafb;
+    border-radius:16px;
+  }
+
+  .price-card.recommend{
+    border:2px solid #93c5fd;
+    background:#eff6ff;
+  }
+
+  .recommend-chip{
+    display:inline-flex;
+    align-items:center;
+    padding:4px 10px;
+    border-radius:999px;
+    background:#2563eb;
+    color:#fff;
+    font-size:12px;
+    font-weight:900;
+  }
+
+  .price-name{
+    font-size:20px;
+    font-weight:900;
+    margin-top:8px;
+  }
+
+  .price-value{
+    font-size:28px;
+    font-weight:900;
+    margin-top:8px;
+  }
+
+  .price-sub{
+    margin-top:8px;
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.6;
+  }
+
+  .rule-grid{
+    display:grid;
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    gap:10px;
+  }
+
+  .rule-card{
+    padding:14px;
+    border:1px solid #e5e7eb;
+    background:#fff;
+    border-radius:14px;
+  }
+
+  .rule-title{
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .rule-sub{
+    margin-top:6px;
+    color:var(--muted);
+    font-size:12px;
+    line-height:1.6;
+  }
+
+  .desktop-table-area{
+    display:block;
+  }
+
+  .mobile-card-area{
+    display:none;
+  }
+
+  .mobile-list{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:10px;
+  }
+
+  .mobile-data-card{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    padding:14px;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .mobile-data-title{
+    font-size:16px;
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .mobile-data-sub{
+    margin-top:3px;
+    color:var(--muted);
+    font-size:12px;
+    line-height:1.4;
+  }
+
+  .mobile-info-row{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    padding:8px 0;
+    border-top:1px solid #f1f5f9;
+    font-size:13px;
+  }
+
+  .mobile-info-label{
+    flex:0 0 96px;
+    color:var(--muted);
+    font-weight:800;
+  }
+
+  .mobile-info-value{
+    text-align:right;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+
+  .ticket-chip{
+    display:inline-flex;
+    align-items:center;
+    padding:5px 8px;
+    border-radius:999px;
+    background:#eff6ff;
+    border:1px solid #bfdbfe;
+    color:#1d4ed8;
+    font-size:12px;
+    font-weight:900;
+  }
+
+  .ticket-chip.used{
+    background:#fff7ed;
+    border-color:#fed7aa;
+    color:#9a3412;
+  }
+
+  .ticket-chip.refunded{
+    background:#f0fdf4;
+    border-color:#bbf7d0;
+    color:#166534;
+  }
+
+  .ticket-chip.unknown{
+    background:#f8fafc;
+    border-color:#e2e8f0;
+    color:#475569;
+  }
+
+  @media (max-width: 900px){
+    .ticket-stat-grid{
+      grid-template-columns:1fr;
+    }
+
+    .rule-grid{
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 768px){
+    .ticket-title{
+      font-size:23px;
+    }
+
+    .ticket-stat{
+      padding:14px;
+      border-radius:15px;
+    }
+
+    .ticket-stat-value{
+      font-size:22px;
+    }
+
+    .price-grid,
+    .rule-grid{
+      grid-template-columns:1fr;
+    }
+
+    .price-card,
+    .rule-card{
+      padding:14px;
+      border-radius:15px;
+    }
+
+    .desktop-table-area{
+      display:none;
+    }
+
+    .mobile-card-area{
+      display:block;
+    }
+
+    .mobile-info-row{
+      display:block;
+      padding:8px 0;
+    }
+
+    .mobile-info-label{
+      display:block;
+      margin-bottom:3px;
+      font-size:12px;
+    }
+
+    .mobile-info-value{
+      text-align:left;
+    }
+  }
+</style>
+
 <div class="card">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
     <div>
-      <h1 style="margin:0;">チケット</h1>
-      <p style="margin:8px 0 0;">{{ user.display_name }} さんのチケット情報です。</p>
+      <h1 class="ticket-title">チケット</h1>
+      <p class="ticket-lead">
+        {{ user.display_name }} さんのチケット残数、保有内訳、消費履歴を確認できます。
+      </p>
     </div>
+    <a href="{% url 'club:reservation_list' %}" class="btn">予約一覧へ</a>
+  </div>
+</div>
 
-    <div style="display:flex; gap:10px; flex-wrap:wrap;">
-      <div style="padding:12px 14px; border:1px solid #fed7aa; background:#fff7ed; border-radius:10px;">
-        <div style="font-size:12px; color:#666;">現在の残数</div>
-        <div style="font-size:24px; font-weight:bold;">{{ user.ticket_balance }}枚</div>
-      </div>
-
-      <div style="padding:12px 14px; border:1px solid #dbeafe; background:#eff6ff; border-radius:10px;">
-        <div style="font-size:12px; color:#666;">現在のレベル</div>
-        <div style="font-size:18px; font-weight:bold;">{{ user.get_member_level_display }}</div>
-      </div>
-    </div>
+<div class="ticket-stat-grid">
+  <div class="ticket-stat primary">
+    <div class="ticket-stat-label">現在の残数</div>
+    <div class="ticket-stat-value">{{ user.ticket_balance }}枚</div>
+  </div>
+  <div class="ticket-stat info">
+    <div class="ticket-stat-label">現在のレベル</div>
+    <div class="ticket-stat-value" style="font-size:20px;">{{ user.get_member_level_display }}</div>
+  </div>
+  <div class="ticket-stat notice">
+    <div class="ticket-stat-label">おすすめ購入</div>
+    <div class="ticket-stat-value" style="font-size:20px;">4枚 14,000円</div>
   </div>
 </div>
 
 <div class="card">
   <h2 style="margin-top:0;">チケット料金</h2>
 
-  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:16px;">
-    <div style="padding:18px; border:1px solid #e5e7eb; background:#f9fafb; border-radius:12px;">
-      <div style="font-size:13px; color:#666;">通常</div>
-      <div style="font-size:22px; font-weight:bold; margin-top:6px;">1枚</div>
-      <div style="font-size:28px; font-weight:bold; margin-top:8px;">4,000円</div>
-      <div style="margin-top:8px; color:#666;">必要な枚数だけ購入したい方向け</div>
+  <div class="price-grid">
+    <div class="price-card">
+      <div class="muted" style="font-size:13px;">通常</div>
+      <div class="price-name">1枚</div>
+      <div class="price-value">4,000円</div>
+      <div class="price-sub">必要な枚数だけ購入したい方向けです。</div>
     </div>
 
-    <div style="padding:18px; border:2px solid #93c5fd; background:#eff6ff; border-radius:12px;">
-      <div style="display:inline-block; padding:4px 10px; border-radius:999px; background:#2563eb; color:#fff; font-size:12px; font-weight:bold;">
-        おすすめ
-      </div>
-      <div style="font-size:22px; font-weight:bold; margin-top:10px;">4枚セット</div>
-      <div style="font-size:28px; font-weight:bold; margin-top:8px;">14,000円</div>
-      <div style="margin-top:8px; color:#666;">1枚あたり 3,500円でお得です</div>
+    <div class="price-card recommend">
+      <div class="recommend-chip">おすすめ</div>
+      <div class="price-name">4枚セット</div>
+      <div class="price-value">14,000円</div>
+      <div class="price-sub">1枚あたり3,500円でお得です。</div>
     </div>
   </div>
 </div>
@@ -48,47 +334,27 @@
 <div class="card">
   <h2 style="margin-top:0;">チケット消費ルール</h2>
 
-  <div style="overflow-x:auto;">
-    <table>
-      <thead>
-        <tr>
-          <th>レッスン種別</th>
-          <th>時間</th>
-          <th>必要チケット</th>
-          <th>補足</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>一般レッスン</td>
-          <td>2時間</td>
-          <td>1枚</td>
-          <td>通常の公開レッスン</td>
-        </tr>
-        <tr>
-          <td>プライベートレッスン</td>
-          <td>1時間</td>
-          <td>2枚</td>
-          <td>申請後、コーチ承認で成立</td>
-        </tr>
-        <tr>
-          <td>グループレッスン</td>
-          <td>1時間</td>
-          <td>参加人数 × 1枚</td>
-          <td>2〜4名 / 申請後、コーチ承認で成立</td>
-        </tr>
-        <tr>
-          <td>イベント</td>
-          <td>都度設定</td>
-          <td>都度設定</td>
-          <td>開催時に個別設定</td>
-        </tr>
-      </tbody>
-    </table>
+  <div class="rule-grid">
+    <div class="rule-card">
+      <div class="rule-title">一般レッスン</div>
+      <div class="rule-sub">2時間 / 1枚<br>通常の公開レッスン</div>
+    </div>
+    <div class="rule-card">
+      <div class="rule-title">プライベート</div>
+      <div class="rule-sub">1時間 / 2枚<br>コーチ承認で成立</div>
+    </div>
+    <div class="rule-card">
+      <div class="rule-title">グループ</div>
+      <div class="rule-sub">1時間 / 参加人数×1枚<br>2〜4名向け</div>
+    </div>
+    <div class="rule-card">
+      <div class="rule-title">イベント</div>
+      <div class="rule-sub">都度設定<br>開催時に個別設定</div>
+    </div>
   </div>
 
-  <div style="margin-top:14px; padding:14px; border:1px solid #e5e7eb; background:#fafafa; border-radius:10px; color:#666;">
-    <div style="font-weight:700; color:#111; margin-bottom:6px;">価格帯の使われ方</div>
+  <div style="margin-top:14px; padding:14px; border:1px solid #e5e7eb; background:#fafafa; border-radius:14px; color:#666;">
+    <div style="font-weight:900; color:#111; margin-bottom:6px;">価格帯の使われ方</div>
     <ul style="margin:0; padding-left:18px; line-height:1.8;">
       <li>チケットは<strong>古い購入分から順に</strong>消費されます。</li>
       <li>予約後は、どの価格帯のチケットが使われたか確認できます。</li>
@@ -101,41 +367,67 @@
   <h2 style="margin-top:0;">保有中のチケット内訳</h2>
 
   {% if ticket_purchases %}
-    <div style="overflow-x:auto;">
-      <table>
-        <thead>
-          <tr>
-            <th>購入日</th>
-            <th>種別</th>
-            <th>価格帯</th>
-            <th>購入枚数</th>
-            <th>残数</th>
-            <th>メモ</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for purchase in ticket_purchases %}
+    <div class="desktop-table-area">
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
             <tr>
-              <td>{{ purchase.purchased_at|date:"Y-m-d H:i" }}</td>
-              <td>{{ purchase.get_purchase_type_display }}</td>
-              <td>
-                {% if purchase.unit_price > 0 %}
-                  <span style="display:inline-block; padding:5px 8px; border-radius:999px; background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8; font-size:12px; font-weight:700;">
-                    {{ purchase.unit_price }}円券
-                  </span>
-                {% else %}
-                  <span class="muted">価格不明券</span>
-                {% endif %}
-              </td>
-              <td>{{ purchase.total_tickets }}枚</td>
-              <td>
-                <strong>{{ purchase.remaining_tickets }}枚</strong>
-              </td>
-              <td>{{ purchase.note|default:purchase.label|default:"-" }}</td>
+              <th>購入日</th>
+              <th>種別</th>
+              <th>価格帯</th>
+              <th>購入枚数</th>
+              <th>残数</th>
+              <th>メモ</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for purchase in ticket_purchases %}
+              <tr>
+                <td>{{ purchase.purchased_at|date:"Y-m-d H:i" }}</td>
+                <td>{{ purchase.get_purchase_type_display }}</td>
+                <td>
+                  {% if purchase.unit_price > 0 %}
+                    <span class="ticket-chip">{{ purchase.unit_price }}円券</span>
+                  {% else %}
+                    <span class="ticket-chip unknown">価格不明券</span>
+                  {% endif %}
+                </td>
+                <td>{{ purchase.total_tickets }}枚</td>
+                <td><strong>{{ purchase.remaining_tickets }}枚</strong></td>
+                <td>{{ purchase.note|default:purchase.label|default:"-" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="mobile-card-area">
+      <div class="mobile-list">
+        {% for purchase in ticket_purchases %}
+          <div class="mobile-data-card">
+            <div class="mobile-data-title">
+              残り {{ purchase.remaining_tickets }}枚 / 購入 {{ purchase.total_tickets }}枚
+            </div>
+            <div class="mobile-data-sub">{{ purchase.purchased_at|date:"Y-m-d H:i" }} / {{ purchase.get_purchase_type_display }}</div>
+
+            <div class="mobile-info-row">
+              <div class="mobile-info-label">価格帯</div>
+              <div class="mobile-info-value">
+                {% if purchase.unit_price > 0 %}
+                  <span class="ticket-chip">{{ purchase.unit_price }}円券</span>
+                {% else %}
+                  <span class="ticket-chip unknown">価格不明券</span>
+                {% endif %}
+              </div>
+            </div>
+            <div class="mobile-info-row">
+              <div class="mobile-info-label">メモ</div>
+              <div class="mobile-info-value">{{ purchase.note|default:purchase.label|default:"-" }}</div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
     </div>
   {% else %}
     <p>まだ保有中チケットの内訳はありません。</p>
@@ -146,58 +438,96 @@
   <h2 style="margin-top:0;">最近のチケット消費内訳</h2>
 
   {% if ticket_consumptions %}
-    <div style="overflow-x:auto;">
-      <table>
-        <thead>
-          <tr>
-            <th>日時</th>
-            <th>対象</th>
-            <th>価格帯</th>
-            <th>消費枚数</th>
-            <th>返却状態</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for consumption in ticket_consumptions %}
+    <div class="desktop-table-area">
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
             <tr>
-              <td>{{ consumption.created_at|date:"Y-m-d H:i" }}</td>
-              <td>
+              <th>日時</th>
+              <th>対象</th>
+              <th>価格帯</th>
+              <th>消費枚数</th>
+              <th>返却状態</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for consumption in ticket_consumptions %}
+              <tr>
+                <td>{{ consumption.created_at|date:"Y-m-d H:i" }}</td>
+                <td>
+                  {% if consumption.reservation %}
+                    {{ consumption.reservation.get_lesson_type_display }}
+                    <div class="muted" style="font-size:12px;">
+                      {{ consumption.reservation.start_at|date:"Y-m-d H:i" }}
+                    </div>
+                  {% elif consumption.fixed_lesson %}
+                    固定レッスン
+                  {% else %}
+                    <span class="muted">-</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if consumption.unit_price_snapshot > 0 %}
+                    <span class="ticket-chip">{{ consumption.unit_price_snapshot }}円券</span>
+                  {% else %}
+                    <span class="ticket-chip unknown">価格不明券</span>
+                  {% endif %}
+                </td>
+                <td>{{ consumption.tickets_used }}枚</td>
+                <td>
+                  {% if consumption.refunded_at %}
+                    <span class="ticket-chip refunded">返却済み</span>
+                  {% else %}
+                    <span class="ticket-chip used">使用中</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="mobile-card-area">
+      <div class="mobile-list">
+        {% for consumption in ticket_consumptions %}
+          <div class="mobile-data-card">
+            <div class="mobile-data-title">
+              {{ consumption.tickets_used }}枚
+              {% if consumption.refunded_at %}
+                <span class="ticket-chip refunded">返却済み</span>
+              {% else %}
+                <span class="ticket-chip used">使用中</span>
+              {% endif %}
+            </div>
+            <div class="mobile-data-sub">{{ consumption.created_at|date:"Y-m-d H:i" }}</div>
+
+            <div class="mobile-info-row">
+              <div class="mobile-info-label">対象</div>
+              <div class="mobile-info-value">
                 {% if consumption.reservation %}
-                  {{ consumption.reservation.get_lesson_type_display }}
-                  <div class="muted" style="font-size:12px;">
-                    {{ consumption.reservation.start_at|date:"Y-m-d H:i" }}
-                  </div>
+                  {{ consumption.reservation.get_lesson_type_display }}<br>
+                  <span class="muted">{{ consumption.reservation.start_at|date:"Y-m-d H:i" }}</span>
                 {% elif consumption.fixed_lesson %}
                   固定レッスン
                 {% else %}
-                  <span class="muted">-</span>
+                  -
                 {% endif %}
-              </td>
-              <td>
+              </div>
+            </div>
+            <div class="mobile-info-row">
+              <div class="mobile-info-label">価格帯</div>
+              <div class="mobile-info-value">
                 {% if consumption.unit_price_snapshot > 0 %}
-                  <span style="display:inline-block; padding:5px 8px; border-radius:999px; background:#ecfeff; border:1px solid #a5f3fc; color:#155e75; font-size:12px; font-weight:700;">
-                    {{ consumption.unit_price_snapshot }}円券
-                  </span>
+                  <span class="ticket-chip">{{ consumption.unit_price_snapshot }}円券</span>
                 {% else %}
-                  <span class="muted">価格不明券</span>
+                  <span class="ticket-chip unknown">価格不明券</span>
                 {% endif %}
-              </td>
-              <td>{{ consumption.tickets_used }}枚</td>
-              <td>
-                {% if consumption.refunded_at %}
-                  <span style="display:inline-block; padding:5px 8px; border-radius:999px; background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; font-size:12px; font-weight:700;">
-                    返却済み
-                  </span>
-                {% else %}
-                  <span style="display:inline-block; padding:5px 8px; border-radius:999px; background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; font-size:12px; font-weight:700;">
-                    使用中
-                  </span>
-                {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
     </div>
   {% else %}
     <p>まだチケット消費履歴はありません。</p>
@@ -208,31 +538,49 @@
   <h2 style="margin-top:0;">チケット履歴</h2>
 
   {% if ticket_ledgers %}
-    <div style="overflow-x:auto;">
-      <table>
-        <thead>
-          <tr>
-            <th>日時</th>
-            <th>増減</th>
-            <th>残数</th>
-            <th>理由</th>
-            <th>メモ</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for ledger in ticket_ledgers %}
+    <div class="desktop-table-area">
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
             <tr>
-              <td>{{ ledger.created_at|date:"Y-m-d H:i" }}</td>
-              <td>
-                {% if ledger.change_amount > 0 %}+{% endif %}{{ ledger.change_amount }}
-              </td>
-              <td>{{ ledger.balance_after }}</td>
-              <td>{{ ledger.get_reason_display }}</td>
-              <td>{{ ledger.note|default:"-" }}</td>
+              <th>日時</th>
+              <th>増減</th>
+              <th>残数</th>
+              <th>理由</th>
+              <th>メモ</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for ledger in ticket_ledgers %}
+              <tr>
+                <td>{{ ledger.created_at|date:"Y-m-d H:i" }}</td>
+                <td>{% if ledger.change_amount > 0 %}+{% endif %}{{ ledger.change_amount }}</td>
+                <td>{{ ledger.balance_after }}</td>
+                <td>{{ ledger.get_reason_display }}</td>
+                <td>{{ ledger.note|default:"-" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="mobile-card-area">
+      <div class="mobile-list">
+        {% for ledger in ticket_ledgers %}
+          <div class="mobile-data-card">
+            <div class="mobile-data-title">
+              {% if ledger.change_amount > 0 %}+{% endif %}{{ ledger.change_amount }}枚 / 残 {{ ledger.balance_after }}枚
+            </div>
+            <div class="mobile-data-sub">{{ ledger.created_at|date:"Y-m-d H:i" }} / {{ ledger.get_reason_display }}</div>
+
+            <div class="mobile-info-row">
+              <div class="mobile-info-label">メモ</div>
+              <div class="mobile-info-value">{{ ledger.note|default:"-" }}</div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
     </div>
   {% else %}
     <p>まだチケット履歴はありません。</p>
