@@ -2,142 +2,531 @@
 {% block title %}ガット張り管理{% endblock %}
 
 {% block content %}
-  <div class="page-head">
-    <h1 class="page-title">ガット張り管理</h1>
-    <p class="page-subtitle">
-      依頼状況と料金を確認できます。
-    </p>
-  </div>
+<style>
+  .mobile-page-title{
+    margin:0;
+    font-size:28px;
+    font-weight:900;
+    line-height:1.25;
+    letter-spacing:-0.02em;
+  }
 
-  <div class="card">
-    <div class="actions" style="justify-content:space-between; align-items:flex-end;">
-      <div class="muted">
-        基本料金 {{ stringing_base_price }}円 / デリバリー {{ stringing_delivery_fee }}円
-      </div>
-      <div class="actions">
-        <form method="get" class="actions" style="margin:0;">
-          <div>
-            <label for="status_filter" style="margin-bottom:6px;">絞り込み</label>
-            <select id="status_filter" name="status_filter">
-              <option value="all" {% if status_filter == "all" %}selected{% endif %}>すべて ({{ status_counts.all }})</option>
-              <option value="pending" {% if status_filter == "pending" %}selected{% endif %}>未対応のみ ({{ status_counts.pending }})</option>
-              {% for value, label in stringing_status_choices %}
-                {% if value == "requested" %}
-                  <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }} ({{ status_counts.requested }})</option>
-                {% elif value == "in_progress" %}
-                  <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }} ({{ status_counts.in_progress }})</option>
-                {% elif value == "completed" %}
-                  <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }} ({{ status_counts.completed }})</option>
-                {% elif value == "canceled" %}
-                  <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }} ({{ status_counts.canceled }})</option>
-                {% endif %}
-              {% endfor %}
-            </select>
-          </div>
-          <button type="submit" class="btn">絞り込む</button>
-        </form>
-        <a href="{% url 'club:stringing_order_create' %}" class="btn btn-primary">新規依頼</a>
-      </div>
+  .mobile-page-lead{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
+
+  .summary-grid{
+    display:grid;
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    gap:12px;
+  }
+
+  .summary-card{
+    padding:14px;
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+  }
+
+  .summary-card.notice{
+    border-color:#fed7aa;
+    background:#fff7ed;
+  }
+
+  .summary-card.info{
+    border-color:#bfdbfe;
+    background:#eff6ff;
+  }
+
+  .summary-label{
+    color:var(--muted);
+    font-size:12px;
+    font-weight:800;
+  }
+
+  .summary-value{
+    margin-top:4px;
+    font-size:24px;
+    line-height:1.2;
+    font-weight:900;
+  }
+
+  .filter-actions{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+
+  .filter-form{
+    display:flex;
+    align-items:flex-end;
+    gap:10px;
+    flex-wrap:wrap;
+    margin:0;
+  }
+
+  .status-pill{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid #e2e8f0;
+    background:#f8fafc;
+    color:#475569;
+    font-size:12px;
+    font-weight:900;
+    line-height:1.2;
+    white-space:nowrap;
+  }
+
+  .status-pill.pending{
+    border-color:#fed7aa;
+    background:#fff7ed;
+    color:#9a3412;
+  }
+
+  .status-pill.done{
+    border-color:#bbf7d0;
+    background:#ecfdf5;
+    color:#166534;
+  }
+
+  .desktop-table-area{
+    display:block;
+  }
+
+  .mobile-card-area{
+    display:none;
+  }
+
+  .mobile-order-list{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+
+  .mobile-order-card{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    padding:16px;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .mobile-order-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:12px;
+    margin-bottom:10px;
+  }
+
+  .mobile-order-title{
+    font-size:16px;
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .mobile-order-sub{
+    margin-top:3px;
+    color:var(--muted);
+    font-size:12px;
+    line-height:1.4;
+  }
+
+  .mobile-info-list{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:0;
+  }
+
+  .mobile-info-row{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    padding:8px 0;
+    border-top:1px solid #f1f5f9;
+    font-size:13px;
+  }
+
+  .mobile-info-label{
+    flex:0 0 104px;
+    color:var(--muted);
+    font-weight:800;
+  }
+
+  .mobile-info-value{
+    text-align:right;
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+
+  .mobile-update-form{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:8px;
+    margin-top:12px;
+  }
+
+  .mobile-update-form button,
+  .mobile-update-form .btn{
+    width:100%;
+  }
+
+  @media (max-width: 900px){
+    .summary-grid{
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 768px){
+    .mobile-page-title{
+      font-size:23px;
+    }
+
+    .summary-grid{
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:8px;
+    }
+
+    .summary-card{
+      padding:12px;
+      border-radius:14px;
+    }
+
+    .summary-value{
+      font-size:21px;
+    }
+
+    .filter-actions{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:10px;
+    }
+
+    .filter-form{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:8px;
+    }
+
+    .filter-actions .btn,
+    .filter-actions button{
+      width:100%;
+    }
+
+    .desktop-table-area{
+      display:none;
+    }
+
+    .mobile-card-area{
+      display:block;
+    }
+
+    .mobile-order-card{
+      padding:14px;
+      border-radius:15px;
+    }
+
+    .mobile-order-head{
+      display:block;
+    }
+
+    .mobile-order-head .status-pill{
+      margin-top:8px;
+    }
+
+    .mobile-info-row{
+      display:block;
+      padding:8px 0;
+    }
+
+    .mobile-info-label{
+      display:block;
+      margin-bottom:3px;
+      font-size:12px;
+    }
+
+    .mobile-info-value{
+      text-align:left;
+    }
+  }
+</style>
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h1 class="mobile-page-title">ガット張り管理</h1>
+      <p class="mobile-page-lead">
+        未対応の依頼を優先して確認できます。スマホでは1件ずつカードで表示します。
+      </p>
     </div>
+    <a href="{% url 'club:stringing_order_create' %}" class="btn btn-primary">新規依頼</a>
   </div>
+</div>
 
-  <div class="card">
-    {% if order_rows %}
-      <table>
-        <thead>
-          <tr>
-            <th>依頼日時</th>
-            {% if user.role == "coach" or user.is_staff or user.is_superuser %}
-              <th>会員</th>
-              <th>担当コーチ</th>
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="summary-label">すべて</div>
+    <div class="summary-value">{{ status_counts.all }}</div>
+  </div>
+  <div class="summary-card notice">
+    <div class="summary-label">未対応</div>
+    <div class="summary-value">{{ status_counts.pending }}</div>
+  </div>
+  <div class="summary-card info">
+    <div class="summary-label">受付済み</div>
+    <div class="summary-value">{{ status_counts.requested }}</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">完了</div>
+    <div class="summary-value">{{ status_counts.completed }}</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="filter-actions">
+    <div class="muted">
+      基本料金 {{ stringing_base_price }}円 / デリバリー {{ stringing_delivery_fee }}円
+    </div>
+
+    <form method="get" class="filter-form">
+      <div>
+        <label for="status_filter" style="margin-bottom:6px;">絞り込み</label>
+        <select id="status_filter" name="status_filter">
+          <option value="all" {% if status_filter == "all" %}selected{% endif %}>すべて ({{ status_counts.all }})</option>
+          <option value="pending" {% if status_filter == "pending" %}selected{% endif %}>未対応のみ ({{ status_counts.pending }})</option>
+          {% for value, label in stringing_status_choices %}
+            {% if value == "requested" %}
+              <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }} ({{ status_counts.requested }})</option>
+            {% elif value == "in_progress" %}
+              <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }} ({{ status_counts.in_progress }})</option>
+            {% elif value == "completed" %}
+              <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }} ({{ status_counts.completed }})</option>
+            {% elif value == "canceled" %}
+              <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }} ({{ status_counts.canceled }})</option>
             {% endif %}
-            <th>ラケット名</th>
-            <th>ガット名</th>
-            <th>デリバリー</th>
-            <th>届け場所</th>
-            <th>日時指定</th>
-            <th>希望張り上げ納期</th>
-            <th>料金</th>
-            <th>状況</th>
-            {% if is_stringing_manage_mode %}
-              <th>更新</th>
-            {% endif %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in order_rows %}
-            {% with order=row.order %}
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn">絞り込む</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  {% if order_rows %}
+    <div class="desktop-table-area">
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
             <tr>
-              <td>{{ order.created_at|date:"Y-m-d H:i" }}</td>
+              <th>依頼日時</th>
               {% if user.role == "coach" or user.is_staff or user.is_superuser %}
-                <td>{{ order.user.display_name }}</td>
-                <td>
-                  {% if order.assigned_coach %}
-                    {{ order.assigned_coach.display_name }}
-                  {% else %}
-                    <span class="muted">未割当</span>
-                  {% endif %}
-                </td>
+                <th>会員</th>
+                <th>担当コーチ</th>
               {% endif %}
-              <td>{{ order.racket_name|default:"-" }}</td>
-              <td>{{ order.string_name|default:"-" }}</td>
-              <td>{% if order.delivery_requested %}あり{% else %}なし{% endif %}</td>
-              <td>
-                {% if order.delivery_requested %}
-                  {{ order.delivery_location|default:"-" }}
-                {% else %}
-                  <span class="muted">-</span>
-                {% endif %}
-              </td>
-              <td>
-                {% if order.delivery_requested %}
-                  {{ order.preferred_delivery_time|default:"-" }}
-                {% else %}
-                  <span class="muted">-</span>
-                {% endif %}
-              </td>
-              <td>
-                {% if order.delivery_requested %}
-                  <span class="muted">-</span>
-                {% else %}
-                  {{ row.preferred_finish_date|default:"-" }}
-                {% endif %}
-              </td>
-              <td>{{ order.total_price }}円</td>
-              <td>{{ row.status_label }}</td>
+              <th>ラケット名</th>
+              <th>ガット名</th>
+              <th>デリバリー</th>
+              <th>届け場所</th>
+              <th>日時指定</th>
+              <th>希望張り上げ納期</th>
+              <th>料金</th>
+              <th>状況</th>
               {% if is_stringing_manage_mode %}
-                <td>
-                  {% if row.can_manage %}
-                    <form method="post" style="margin:0; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                      {% csrf_token %}
-                      <input type="hidden" name="order_id" value="{{ order.id }}">
-                      <input type="hidden" name="status_filter" value="{{ status_filter }}">
-                      <select name="new_status" style="min-width:130px;">
-                        {% for value, label in stringing_status_choices %}
-                          <option value="{{ value }}" {% if order.status == value %}selected{% endif %}>{{ label }}</option>
-                        {% endfor %}
-                      </select>
-                      <button type="submit" class="btn">更新</button>
-                    </form>
-                  {% else %}
-                    <span class="muted">更新不可</span>
-                  {% endif %}
-                </td>
+                <th>更新</th>
               {% endif %}
             </tr>
-            {% if order.note %}
+          </thead>
+          <tbody>
+            {% for row in order_rows %}
+              {% with order=row.order %}
               <tr>
-                <td colspan="{% if user.role == 'coach' or user.is_staff or user.is_superuser %}{% if is_stringing_manage_mode %}12{% else %}11{% endif %}{% else %}{% if is_stringing_manage_mode %}10{% else %}9{% endif %}{% endif %}">
-                  <strong>備考:</strong> {{ order.note }}
+                <td>{{ order.created_at|date:"Y-m-d H:i" }}</td>
+                {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+                  <td>{{ order.user.display_name }}</td>
+                  <td>
+                    {% if order.assigned_coach %}
+                      {{ order.assigned_coach.display_name }}
+                    {% else %}
+                      <span class="muted">未割当</span>
+                    {% endif %}
+                  </td>
+                {% endif %}
+                <td>{{ order.racket_name|default:"-" }}</td>
+                <td>{{ order.string_name|default:"-" }}</td>
+                <td>{% if order.delivery_requested %}あり{% else %}なし{% endif %}</td>
+                <td>
+                  {% if order.delivery_requested %}
+                    {{ order.delivery_location|default:"-" }}
+                  {% else %}
+                    <span class="muted">-</span>
+                  {% endif %}
                 </td>
+                <td>
+                  {% if order.delivery_requested %}
+                    {{ order.preferred_delivery_time|default:"-" }}
+                  {% else %}
+                    <span class="muted">-</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if order.delivery_requested %}
+                    <span class="muted">-</span>
+                  {% else %}
+                    {{ row.preferred_finish_date|default:"-" }}
+                  {% endif %}
+                </td>
+                <td>{{ order.total_price }}円</td>
+                <td>
+                  {% if order.status == "requested" or order.status == "in_progress" %}
+                    <span class="status-pill pending">{{ row.status_label }}</span>
+                  {% elif order.status == "completed" %}
+                    <span class="status-pill done">{{ row.status_label }}</span>
+                  {% else %}
+                    <span class="status-pill">{{ row.status_label }}</span>
+                  {% endif %}
+                </td>
+                {% if is_stringing_manage_mode %}
+                  <td>
+                    {% if row.can_manage %}
+                      <form method="post" style="margin:0; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                        {% csrf_token %}
+                        <input type="hidden" name="order_id" value="{{ order.id }}">
+                        <input type="hidden" name="status_filter" value="{{ status_filter }}">
+                        <select name="new_status" style="min-width:130px;">
+                          {% for value, label in stringing_status_choices %}
+                            <option value="{{ value }}" {% if order.status == value %}selected{% endif %}>{{ label }}</option>
+                          {% endfor %}
+                        </select>
+                        <button type="submit" class="btn">更新</button>
+                      </form>
+                    {% else %}
+                      <span class="muted">更新不可</span>
+                    {% endif %}
+                  </td>
+                {% endif %}
               </tr>
-            {% endif %}
-            {% endwith %}
-          {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <p class="muted" style="margin:0;">条件に一致するガット張り依頼はありません。</p>
-    {% endif %}
-  </div>
+              {% if order.note %}
+                <tr>
+                  <td colspan="{% if user.role == 'coach' or user.is_staff or user.is_superuser %}{% if is_stringing_manage_mode %}12{% else %}11{% endif %}{% else %}{% if is_stringing_manage_mode %}10{% else %}9{% endif %}{% endif %}">
+                    <strong>備考:</strong> {{ order.note }}
+                  </td>
+                </tr>
+              {% endif %}
+              {% endwith %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="mobile-card-area">
+      <div class="mobile-order-list">
+        {% for row in order_rows %}
+          {% with order=row.order %}
+            <div class="mobile-order-card">
+              <div class="mobile-order-head">
+                <div>
+                  <div class="mobile-order-title">
+                    {{ order.racket_name|default:"ラケット名未入力" }}
+                  </div>
+                  <div class="mobile-order-sub">
+                    {{ order.created_at|date:"Y-m-d H:i" }} / {{ order.string_name|default:"ガット名未入力" }}
+                  </div>
+                </div>
+                {% if order.status == "requested" or order.status == "in_progress" %}
+                  <span class="status-pill pending">{{ row.status_label }}</span>
+                {% elif order.status == "completed" %}
+                  <span class="status-pill done">{{ row.status_label }}</span>
+                {% else %}
+                  <span class="status-pill">{{ row.status_label }}</span>
+                {% endif %}
+              </div>
+
+              <div class="mobile-info-list">
+                {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+                  <div class="mobile-info-row">
+                    <div class="mobile-info-label">会員</div>
+                    <div class="mobile-info-value">{{ order.user.display_name }}</div>
+                  </div>
+                  <div class="mobile-info-row">
+                    <div class="mobile-info-label">担当コーチ</div>
+                    <div class="mobile-info-value">
+                      {% if order.assigned_coach %}
+                        {{ order.assigned_coach.display_name }}
+                      {% else %}
+                        未割当
+                      {% endif %}
+                    </div>
+                  </div>
+                {% endif %}
+
+                <div class="mobile-info-row">
+                  <div class="mobile-info-label">デリバリー</div>
+                  <div class="mobile-info-value">{% if order.delivery_requested %}あり{% else %}なし{% endif %}</div>
+                </div>
+
+                {% if order.delivery_requested %}
+                  <div class="mobile-info-row">
+                    <div class="mobile-info-label">届け場所</div>
+                    <div class="mobile-info-value">{{ order.delivery_location|default:"-" }}</div>
+                  </div>
+                  <div class="mobile-info-row">
+                    <div class="mobile-info-label">日時指定</div>
+                    <div class="mobile-info-value">{{ order.preferred_delivery_time|default:"-" }}</div>
+                  </div>
+                {% else %}
+                  <div class="mobile-info-row">
+                    <div class="mobile-info-label">納期希望</div>
+                    <div class="mobile-info-value">{{ row.preferred_finish_date|default:"-" }}</div>
+                  </div>
+                {% endif %}
+
+                <div class="mobile-info-row">
+                  <div class="mobile-info-label">料金</div>
+                  <div class="mobile-info-value"><strong>{{ order.total_price }}円</strong></div>
+                </div>
+
+                {% if order.note %}
+                  <div class="mobile-info-row">
+                    <div class="mobile-info-label">備考</div>
+                    <div class="mobile-info-value">{{ order.note }}</div>
+                  </div>
+                {% endif %}
+              </div>
+
+              {% if is_stringing_manage_mode %}
+                {% if row.can_manage %}
+                  <form method="post" class="mobile-update-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="order_id" value="{{ order.id }}">
+                    <input type="hidden" name="status_filter" value="{{ status_filter }}">
+                    <select name="new_status">
+                      {% for value, label in stringing_status_choices %}
+                        <option value="{{ value }}" {% if order.status == value %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                    <button type="submit" class="btn btn-primary">状態を更新</button>
+                  </form>
+                {% else %}
+                  <div class="muted" style="margin-top:12px;">更新不可</div>
+                {% endif %}
+              {% endif %}
+            </div>
+          {% endwith %}
+        {% endfor %}
+      </div>
+    </div>
+  {% else %}
+    <p class="muted" style="margin:0;">条件に一致するガット張り依頼はありません。</p>
+  {% endif %}
+</div>
 {% endblock %}
