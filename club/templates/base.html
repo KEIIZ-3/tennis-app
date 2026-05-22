@@ -723,6 +723,57 @@
       }
       .mobile-card-title{ font-size:14px; }
     }
+
+    .bottom-app-nav{
+      display:none;
+    }
+
+    @media (max-width: 768px){
+      body{
+        padding-bottom:70px;
+      }
+
+      .bottom-app-nav{
+        position:fixed;
+        left:0;
+        right:0;
+        bottom:0;
+        z-index:200;
+        display:grid;
+        grid-template-columns:repeat(5, minmax(0, 1fr));
+        gap:0;
+        background:rgba(255,255,255,0.98);
+        border-top:1px solid var(--line);
+        box-shadow:0 -8px 24px rgba(15, 23, 42, 0.08);
+        backdrop-filter:blur(10px);
+      }
+
+      .bottom-app-nav a{
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        min-height:62px;
+        padding:7px 4px 8px;
+        color:#475569;
+        text-decoration:none;
+        font-size:11px;
+        line-height:1.2;
+        font-weight:800;
+      }
+
+      .bottom-app-nav a.is-active{
+        color:#0f172a;
+        background:#f8fafc;
+      }
+
+      .bottom-app-nav .bottom-icon{
+        font-size:17px;
+        line-height:1;
+        margin-bottom:4px;
+      }
+    }
+
   </style>
 </head>
 <body>
@@ -764,16 +815,14 @@
 
             <nav class="nav" id="member-nav">
               <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
-              <a href="{% url 'club:lesson_calendar' %}">レッスンカレンダー</a>
-              <a href="{% url 'club:help' %}">使い方</a>
-              <a href="{% url 'club:terms' %}">利用規約</a>
-              <a href="{% url 'club:reservation_create' %}">予約作成</a>
-              <a href="{% url 'club:reservation_list' %}">予約一覧</a>
+              <a href="{% url 'club:reservation_create' %}">予約</a>
+              <a href="{% url 'club:reservation_list' %}">予約確認</a>
               <a href="{% url 'club:tickets' %}">チケット</a>
-              <a href="{% url 'club:schedule_survey' %}">アンケート</a>
-              <a href="{% url 'club:stringing_order_create' %}">ガット張り依頼</a>
-              <a href="{% url 'club:shop_estimate' %}">Shop</a>
+              <a href="{% url 'club:shop_estimate' %}">Shop・ガット</a>
+              <a href="{% url 'club:stringing_order_create' %}">ガット張りだけ依頼</a>
               <a href="{% url 'club:line_connect' %}">LINE連携</a>
+              <a href="{% url 'club:help' %}">メニュー・使い方</a>
+              <a href="{% url 'club:terms' %}">利用規約</a>
 
               <form method="post" action="{% url 'club:logout' %}" class="logout-form">
                 {% csrf_token %}
@@ -825,25 +874,65 @@
             </div>
 
             <div class="coach-tabs" id="coach-tabs">
-              <a href="{% url 'club:home' %}" class="coach-tab {% if request.resolver_match.url_name == 'home' %}active{% endif %}">コーチホーム</a>
-              <a href="{% url 'club:lesson_calendar' %}" class="coach-tab {% if request.resolver_match.url_name == 'lesson_calendar' %}active{% endif %}">レッスンカレンダー</a>
-              <a href="{% url 'club:reservation_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_list' %}active{% endif %}">予約一覧</a>
-              <a href="{% url 'club:coach_availability_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_availability_list' or request.resolver_match.url_name == 'coach_availability_create' or request.resolver_match.url_name == 'coach_availability_edit' %}active{% endif %}">スケジュール管理</a>
-              <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}active{% endif %}">固定レッスン</a>
-              <a href="{% url 'club:coach_ticket_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_ticket_summary' %}active{% endif %}">チケット集計</a>
-              <a href="{% url 'club:coach_payroll_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_payroll_summary' %}active{% endif %}">給与計算</a>
-              <a href="{% url 'club:coach_expense_manage' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_expense_manage' %}active{% endif %}">経費登録</a>
-              <a href="{% url 'club:schedule_survey_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'schedule_survey_summary' %}active{% endif %}">アンケート集計</a>
-              <a href="{% url 'club:stringing_order_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'stringing_order_list' %}active{% endif %}">ガット張り一覧</a>
-              <a href="{% url 'club:shop_estimate' %}" class="coach-tab {% if request.resolver_match.url_name == 'shop_estimate' %}active{% endif %}">Shop</a>
-              <a href="{% url 'club:reservation_create' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_create' %}active{% endif %}">予約作成</a>
-              <a href="{% url 'club:line_connect' %}" class="coach-tab {% if request.resolver_match.url_name == 'line_connect' %}active{% endif %}">LINE連携</a>
+              <a href="{% url 'club:home' %}" class="coach-tab {% if request.resolver_match.url_name == 'home' %}active{% endif %}">ホーム</a>
+              <a href="{% url 'club:reservation_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_list' %}active{% endif %}">予約・承認</a>
+              <a href="{% url 'club:coach_availability_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_availability_list' or request.resolver_match.url_name == 'coach_availability_create' or request.resolver_match.url_name == 'coach_availability_edit' or request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}active{% endif %}">スケジュール</a>
+              <a href="{% url 'club:stringing_order_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'stringing_order_list' %}active{% endif %}">ガット張り</a>
+              <a href="{% url 'club:coach_payroll_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_payroll_summary' or request.resolver_match.url_name == 'coach_ticket_summary' or request.resolver_match.url_name == 'coach_expense_manage' %}active{% endif %}">給与・経費</a>
+              <a href="{% url 'club:schedule_survey_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'schedule_survey_summary' or request.resolver_match.url_name == 'shop_estimate' or request.resolver_match.url_name == 'line_connect' or request.resolver_match.url_name == 'lesson_calendar' %}active{% endif %}">管理</a>
+
+              <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="coach-tab">固定レッスン</a>
+              <a href="{% url 'club:coach_expense_manage' %}" class="coach-tab">経費登録</a>
+              <a href="{% url 'club:coach_ticket_summary' %}" class="coach-tab">チケット集計</a>
+              <a href="{% url 'club:shop_estimate' %}" class="coach-tab">Shop</a>
+              <a href="{% url 'club:line_connect' %}" class="coach-tab">LINE連携</a>
             </div>
           </div>
         {% endif %}
       {% endif %}
     </div>
   </header>
+
+
+  {% if user.is_authenticated %}
+    {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+      <nav class="bottom-app-nav" aria-label="コーチ用下部ナビ">
+        <a href="{% url 'club:home' %}" class="{% if request.resolver_match.url_name == 'home' %}is-active{% endif %}">
+          <span class="bottom-icon">🏠</span><span>ホーム</span>
+        </a>
+        <a href="{% url 'club:reservation_list' %}" class="{% if request.resolver_match.url_name == 'reservation_list' %}is-active{% endif %}">
+          <span class="bottom-icon">✅</span><span>予約承認</span>
+        </a>
+        <a href="{% url 'club:coach_availability_list' %}" class="{% if request.resolver_match.url_name == 'coach_availability_list' or request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}is-active{% endif %}">
+          <span class="bottom-icon">📅</span><span>予定</span>
+        </a>
+        <a href="{% url 'club:stringing_order_list' %}" class="{% if request.resolver_match.url_name == 'stringing_order_list' %}is-active{% endif %}">
+          <span class="bottom-icon">🎾</span><span>ガット</span>
+        </a>
+        <a href="{% url 'club:coach_payroll_summary' %}" class="{% if request.resolver_match.url_name == 'coach_payroll_summary' or request.resolver_match.url_name == 'coach_expense_manage' or request.resolver_match.url_name == 'coach_ticket_summary' %}is-active{% endif %}">
+          <span class="bottom-icon">¥</span><span>給与経費</span>
+        </a>
+      </nav>
+    {% else %}
+      <nav class="bottom-app-nav" aria-label="会員用下部ナビ">
+        <a href="{% url 'club:home' %}" class="{% if request.resolver_match.url_name == 'home' %}is-active{% endif %}">
+          <span class="bottom-icon">🏠</span><span>ホーム</span>
+        </a>
+        <a href="{% url 'club:reservation_create' %}" class="{% if request.resolver_match.url_name == 'reservation_create' %}is-active{% endif %}">
+          <span class="bottom-icon">📅</span><span>予約</span>
+        </a>
+        <a href="{% url 'club:tickets' %}" class="{% if request.resolver_match.url_name == 'tickets' %}is-active{% endif %}">
+          <span class="bottom-icon">🎫</span><span>チケット</span>
+        </a>
+        <a href="{% url 'club:shop_estimate' %}" class="{% if request.resolver_match.url_name == 'shop_estimate' or request.resolver_match.url_name == 'stringing_order_create' %}is-active{% endif %}">
+          <span class="bottom-icon">🛒</span><span>Shop</span>
+        </a>
+        <a href="{% url 'club:help' %}" class="{% if request.resolver_match.url_name == 'help' or request.resolver_match.url_name == 'line_connect' or request.resolver_match.url_name == 'terms' %}is-active{% endif %}">
+          <span class="bottom-icon">☰</span><span>メニュー</span>
+        </a>
+      </nav>
+    {% endif %}
+  {% endif %}
 
   <main class="main">
     <div class="wrap">
