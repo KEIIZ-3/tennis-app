@@ -22,6 +22,29 @@
   {% endif %}
 
   <style>
+
+    .shop-mobile-shortcuts{
+      display:none;
+      gap:8px;
+      margin-bottom:14px;
+    }
+    .shop-mobile-shortcuts .btn{
+      flex:1 1 0;
+      min-height:40px;
+      padding:8px 10px;
+      font-size:12px;
+    }
+    .shop-compact-note{
+      padding:12px 14px;
+      border:1px solid #bbf7d0;
+      background:#f0fdf4;
+      border-radius:14px;
+      color:#166534;
+      font-size:13px;
+      line-height:1.7;
+      margin-bottom:14px;
+    }
+
     .shop-layout{
       display:grid;
       grid-template-columns:minmax(0, 1.05fr) minmax(360px, 0.95fr);
@@ -527,6 +550,28 @@
     .shop-candidate-panel.has-ready-string .shop-guide-box{display:none;}
 
     @media (max-width: 900px){
+
+      .shop-mobile-shortcuts{
+        display:grid;
+        grid-template-columns:repeat(3, minmax(0, 1fr));
+      }
+      .shop-compact-note{
+        font-size:12px;
+        padding:11px 12px;
+      }
+      .shop-step-grid{
+        display:none;
+      }
+      .shop-progress-item{
+        padding:10px;
+        border-radius:12px;
+      }
+      .shop-progress-value{
+        font-size:12px;
+      }
+      .shop-form-panel{
+        padding-bottom:0;
+      }
       .shop-layout{grid-template-columns:1fr;}
       .shop-form-panel{order:1;}
       .shop-candidate-panel{order:2;}
@@ -631,6 +676,16 @@
       .shop-candidate-panel.is-both-open #shop-string-window{display:block;}
     }
   </style>
+
+  <div class="shop-mobile-shortcuts">
+    <a href="#shop-estimate-form" class="btn">入力</a>
+    <a href="#shop-candidate-panel" class="btn">候補</a>
+    <a href="{% url 'club:shop_estimate_history' %}" class="btn">履歴</a>
+  </div>
+
+  <div class="shop-compact-note">
+    スマホでは「入力 → 候補選択 → 見積もり」の順に進めると分かりやすいです。候補が多い場合は上の「候補」ボタンで移動できます。
+  </div>
 
   <div class="card" style="margin-bottom:16px;">
     <h2 class="card-title">見積もりルール</h2>
