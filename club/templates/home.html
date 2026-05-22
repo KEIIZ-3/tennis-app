@@ -521,7 +521,7 @@
       <div>
         <h1 class="home-title">コーチホーム</h1>
         <p class="home-lead">
-          {{ user.display_name }} さん用のコーチ専用ダッシュボードです。日々使う操作を上にまとめました。
+          {{ user.display_name }} さん用のコーチ専用ダッシュボードです。日常操作を「予約・承認」「スケジュール」「ガット張り」「給与・経費」に統合しました。
         </p>
       </div>
       <div class="home-badge">Coachロール専用表示</div>
@@ -531,37 +531,37 @@
   <div class="quick-grid">
     <div class="quick-card primary">
       <div>
-        <div class="quick-card-title">承認待ちを確認する</div>
+        <div class="quick-card-title">予約・承認</div>
         <div class="quick-card-sub">
-          private / group の申請を承認・却下します。スマホではまずここを確認します。
+          承認待ち、担当予約、キャンセル状況をまとめて確認します。
         </div>
       </div>
       <div class="quick-card-action">
-        <a href="{% url 'club:reservation_list' %}" class="btn">承認待ちを見る</a>
+        <a href="{% url 'club:reservation_list' %}" class="btn">予約・承認へ</a>
       </div>
     </div>
 
     <div class="quick-card info">
       <div>
-        <div class="quick-card-title">今日・今週の予定を見る</div>
+        <div class="quick-card-title">スケジュール</div>
         <div class="quick-card-sub">
-          担当レッスン、固定レッスン、代行状況を確認します。
+          通常スケジュール、固定レッスン、代行、雨天中止をまとめて扱います。
         </div>
       </div>
       <div class="quick-card-action">
-        <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="btn">固定レッスンへ</a>
+        <a href="{% url 'club:coach_availability_list' %}" class="btn">スケジュールへ</a>
       </div>
     </div>
 
     <div class="quick-card notice">
       <div>
-        <div class="quick-card-title">スケジュール管理</div>
+        <div class="quick-card-title">ガット張り</div>
         <div class="quick-card-sub">
-          レッスン枠の編集、雨天中止、空き枠管理を行います。
+          未対応のガット張り依頼を確認し、状態を更新します。
         </div>
       </div>
       <div class="quick-card-action">
-        <a href="{% url 'club:coach_availability_list' %}" class="btn">管理画面へ</a>
+        <a href="{% url 'club:stringing_order_list' %}" class="btn">ガット張りへ</a>
       </div>
     </div>
   </div>
@@ -571,15 +571,15 @@
     <div class="mobile-priority-list">
       <a href="{% url 'club:reservation_list' %}" class="priority-link">
         <div>
-          <strong>予約一覧</strong>
-          <span>承認待ち、担当予約、キャンセル状況を確認します。</span>
+          <strong>予約・承認管理</strong>
+          <span>承認待ち、担当予約、キャンセル状況をまとめて確認します。</span>
         </div>
         <div class="priority-link-arrow">›</div>
       </a>
 
       <a href="{% url 'club:stringing_order_list' %}" class="priority-link">
         <div>
-          <strong>ガット張り一覧</strong>
+          <strong>ガット張り</strong>
           <span>未対応のガット張り依頼を確認します。</span>
         </div>
         <div class="priority-link-arrow">›</div>
@@ -587,16 +587,16 @@
 
       <a href="{% url 'club:coach_expense_manage' %}" class="priority-link">
         <div>
-          <strong>経費登録</strong>
-          <span>コート代・ボール代などの経費を登録します。</span>
+          <strong>給与・経費</strong>
+          <span>給与確認、チケット集計、経費登録をまとめて確認します。</span>
         </div>
         <div class="priority-link-arrow">›</div>
       </a>
 
       <a href="{% url 'club:coach_payroll_summary' %}" class="priority-link">
         <div>
-          <strong>給与計算</strong>
-          <span>月次のチケット売上・ガット張り・経費を確認します。</span>
+          <strong>経費登録</strong>
+          <span>コート代・ボール代などの経費を登録します。</span>
         </div>
         <div class="priority-link-arrow">›</div>
       </a>
@@ -641,7 +641,7 @@
     </div>
 
     <div class="card">
-      <h2 class="home-section-title">管理メニュー</h2>
+      <h2 class="home-section-title">管理・低頻度メニュー</h2>
       <div class="mobile-priority-list">
         <a href="{% url 'club:coach_ticket_summary' %}" class="priority-link">
           <div>
@@ -650,7 +650,7 @@
           </div>
           <div class="priority-link-arrow">›</div>
         </a>
-        <a href="{% url 'club:shop_estimate' %}" class="priority-link">
+        <a href="{% url 'club:stringing_order_create' %}" class="priority-link">
           <div>
             <strong>Shop</strong>
             <span>ラケット・ガット見積を確認します。</span>
@@ -674,7 +674,7 @@
       <div>
         <h1 class="home-title">{{ user.display_name }} さん、こんにちは</h1>
         <p class="home-lead">
-          スマホでよく使う操作を上にまとめました。まずは「レッスンを予約する」または「予約を見る」から進めます。
+          日常操作を「予約」「チケット」「Shop・ガット」に統合しました。まずは予約または次回予定の確認から進めます。
         </p>
       </div>
     </div>
@@ -698,19 +698,19 @@
   <div class="quick-grid">
     <div class="quick-card primary">
       <div>
-        <div class="quick-card-title">レッスンを予約する</div>
+        <div class="quick-card-title">予約</div>
         <div class="quick-card-sub">
-          カレンダーから空き枠を選んで予約します。
+          通常レッスン予約、個別レッスン申請をまとめて行います。
         </div>
       </div>
       <div class="quick-card-action">
-        <a href="#lesson-calendar-area" class="btn">カレンダーへ</a>
+        <a href="{% url 'club:reservation_create' %}" class="btn">予約へ</a>
       </div>
     </div>
 
     <div class="quick-card info">
       <div>
-        <div class="quick-card-title">自分の予約を見る</div>
+        <div class="quick-card-title">予約確認</div>
         <div class="quick-card-sub">
           予約内容・承認状況・キャンセル可否を確認します。
         </div>
@@ -722,7 +722,7 @@
 
     <div class="quick-card notice">
       <div>
-        <div class="quick-card-title">チケットを確認する</div>
+        <div class="quick-card-title">チケット</div>
         <div class="quick-card-sub">
           残数、消費履歴、価格帯別の利用状況を確認します。
         </div>
@@ -734,20 +734,20 @@
   </div>
 
   <div class="card">
-    <h2 class="home-section-title">その他の便利機能</h2>
+    <h2 class="home-section-title">Shop・ガット / その他</h2>
     <div class="mobile-priority-list">
-      <a href="{% url 'club:stringing_order_create' %}" class="priority-link">
+      <a href="{% url 'club:shop_estimate' %}" class="priority-link">
         <div>
-          <strong>ガット張り依頼</strong>
-          <span>ガット張り、デリバリー希望、納期希望を送れます。</span>
+          <strong>Shop・ガット張り</strong>
+          <span>ラケット・ガット見積とガット張り依頼をまとめて扱います。</span>
         </div>
         <div class="priority-link-arrow">›</div>
       </a>
 
       <a href="{% url 'club:shop_estimate' %}" class="priority-link">
         <div>
-          <strong>Shop見積</strong>
-          <span>ラケット・ガットの見積を確認できます。</span>
+          <strong>ガット張りだけ依頼</strong>
+          <span>ガット張りだけ依頼したい場合はこちらです。</span>
         </div>
         <div class="priority-link-arrow">›</div>
       </a>
