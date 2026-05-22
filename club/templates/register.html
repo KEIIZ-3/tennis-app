@@ -1,59 +1,212 @@
 {% extends "base.html" %}
-{% block title %}新規会員登録{% endblock %}
+{% block title %}新規登録{% endblock %}
 
 {% block content %}
-<div class="card" style="max-width:720px; margin:0 auto;">
-  <h1 style="margin-top:0;">新規会員登録</h1>
+<style>
+  .register-layout{
+    display:grid;
+    grid-template-columns:minmax(0, 1fr) 340px;
+    gap:16px;
+    align-items:start;
+  }
 
-  <div style="padding:16px; border:1px solid #d8f0dc; background:#f3fff5; border-radius:10px; margin-bottom:20px;">
-    <p style="margin:0 0 12px 0;">
-      すでにLINEをお使いの場合は、<strong>LINEでログイン</strong>すると会員登録とLINE連携が一度に完了します。
-    </p>
-    <a
-      href="{% url 'club:line_login_start' %}"
-      style="display:inline-block; padding:12px 18px; border-radius:8px; background:#06c755; color:#fff; text-decoration:none; font-weight:bold;"
-    >
-      LINEでログイン
-    </a>
-  </div>
+  .register-title{
+    margin:0;
+    font-size:28px;
+    font-weight:900;
+    line-height:1.25;
+    letter-spacing:-0.02em;
+  }
 
-  <form method="post">
-    {% csrf_token %}
+  .register-lead{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
 
-    {% if form.non_field_errors %}
-      <div class="message error" style="margin-bottom:14px;">
-        {{ form.non_field_errors }}
+  .register-form-card p{
+    margin:0 0 14px;
+  }
+
+  .register-form-card ul.errorlist{
+    margin:6px 0 0;
+    padding-left:18px;
+    color:#991b1b;
+    font-size:13px;
+    line-height:1.7;
+  }
+
+  .register-line-button{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:48px;
+    padding:12px 16px;
+    border-radius:14px;
+    background:#06c755;
+    color:#fff;
+    border:1px solid #06c755;
+    font-weight:900;
+    margin-top:12px;
+  }
+
+  .register-side{
+    position:sticky;
+    top:120px;
+  }
+
+  .register-step{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:14px;
+    padding:14px;
+    margin-bottom:10px;
+  }
+
+  .register-step-number{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:26px;
+    height:26px;
+    border-radius:999px;
+    background:#0f172a;
+    color:#fff;
+    font-size:12px;
+    font-weight:900;
+    margin-bottom:8px;
+  }
+
+  .register-step-title{
+    font-weight:900;
+    margin-bottom:4px;
+  }
+
+  .register-step-text{
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.7;
+  }
+
+  .register-mobile-actions{
+    display:none;
+  }
+
+  @media (max-width: 900px){
+    .register-layout{
+      grid-template-columns:1fr;
+    }
+
+    .register-side{
+      position:static;
+    }
+  }
+
+  @media (max-width: 768px){
+    .register-title{
+      font-size:23px;
+    }
+
+    .register-mobile-actions{
+      display:flex;
+      position:sticky;
+      bottom:0;
+      z-index:40;
+      gap:8px;
+      padding:10px;
+      margin:18px -16px -16px;
+      background:rgba(255,255,255,0.96);
+      backdrop-filter:blur(8px);
+      border-top:1px solid #e5e7eb;
+    }
+
+    .register-mobile-actions button,
+    .register-mobile-actions a{
+      flex:1 1 0;
+      min-height:44px;
+    }
+  }
+</style>
+
+<div class="card">
+  <h1 class="register-title">新規登録</h1>
+  <p class="register-lead">
+    Play Design Tennis の会員登録画面です。スマホ利用ではLINEから始めると、その後の通知連携もスムーズです。
+  </p>
+</div>
+
+<div class="register-layout">
+  <div class="card register-form-card">
+    <h2 style="margin-top:0;">登録フォーム</h2>
+
+    {% if liff_enabled %}
+      <a href="{% url 'club:liff_entry' %}" class="register-line-button">LINEで登録・ログイン</a>
+      <div style="margin:14px 0; display:flex; align-items:center; gap:10px; color:#64748b; font-size:13px;">
+        <div style="height:1px; background:#e5e7eb; flex:1;"></div>
+        <div>または通常登録</div>
+        <div style="height:1px; background:#e5e7eb; flex:1;"></div>
       </div>
     {% endif %}
 
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px;">
-      {% for field in form %}
-        <div>
+    <form method="post" id="register-form">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div class="message error">
+          {{ form.non_field_errors }}
+        </div>
+      {% endif %}
+
+      {% for hidden in form.hidden_fields %}
+        {{ hidden }}
+      {% endfor %}
+
+      {% for field in form.visible_fields %}
+        <p>
           <label for="{{ field.id_for_label }}">{{ field.label }}</label>
           {{ field }}
           {% if field.help_text %}
-            <div style="font-size:13px; color:#666; margin-top:6px;">
-              {{ field.help_text }}
-            </div>
+            <span class="muted" style="display:block; margin-top:6px; font-size:13px;">{{ field.help_text }}</span>
           {% endif %}
-          {% if field.errors %}
-            <div class="message error" style="margin-top:8px;">
-              {{ field.errors }}
-            </div>
-          {% endif %}
-        </div>
+          {{ field.errors }}
+        </p>
       {% endfor %}
-    </div>
 
-    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;">
-      <button type="submit">登録する</button>
-      <a
-        href="{% url 'club:login' %}"
-        style="display:inline-block; padding:10px 14px; border-radius:8px; text-decoration:none; border:1px solid #ddd; background:#fff; color:#111;"
-      >
-        ログイン画面へ戻る
-      </a>
+      <div class="actions">
+        <button type="submit" class="btn btn-primary">登録する</button>
+        <a href="{% url 'club:login' %}" class="btn">ログインへ</a>
+      </div>
+
+      <div class="register-mobile-actions">
+        <a href="{% url 'club:login' %}" class="btn">ログイン</a>
+        <button type="submit" class="btn btn-primary">登録</button>
+      </div>
+    </form>
+  </div>
+
+  <aside class="register-side">
+    <div class="card">
+      <h2 style="margin-top:0;">登録後の流れ</h2>
+
+      <div class="register-step">
+        <div class="register-step-number">1</div>
+        <div class="register-step-title">会員情報登録</div>
+        <div class="register-step-text">名前、メール、電話番号など予約に必要な情報を入力します。</div>
+      </div>
+
+      <div class="register-step">
+        <div class="register-step-number">2</div>
+        <div class="register-step-title">アンケート回答</div>
+        <div class="register-step-text">希望曜日・時間帯を回答すると、今後の開催計画の参考になります。</div>
+      </div>
+
+      <div class="register-step">
+        <div class="register-step-number">3</div>
+        <div class="register-step-title">予約開始</div>
+        <div class="register-step-text">ホームからレッスン予約、チケット確認、ガット張り依頼に進めます。</div>
+      </div>
     </div>
-  </form>
+  </aside>
 </div>
 {% endblock %}
