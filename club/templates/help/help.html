@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}使い方{% endblock %}
+{% block title %}メニュー・使い方{% endblock %}
 
 {% block content %}
 <style>
-  .help-title{
+  .menu-title{
     margin:0;
     font-size:28px;
     font-weight:900;
@@ -11,11 +11,76 @@
     letter-spacing:-0.02em;
   }
 
-  .help-lead{
+  .menu-lead{
     margin:8px 0 0;
     color:var(--muted);
     font-size:14px;
     line-height:1.7;
+  }
+
+  .menu-hub-grid{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:12px;
+  }
+
+  .menu-hub-card{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    min-height:150px;
+    padding:16px;
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .menu-hub-card.primary{
+    background:#0f172a;
+    color:#fff;
+    border-color:#0f172a;
+  }
+
+  .menu-hub-card.primary .menu-hub-text{
+    color:#d1d5db;
+  }
+
+  .menu-hub-card.info{
+    border-color:#bfdbfe;
+    background:#eff6ff;
+  }
+
+  .menu-hub-card.notice{
+    border-color:#fed7aa;
+    background:#fff7ed;
+  }
+
+  .menu-hub-card.success{
+    border-color:#bbf7d0;
+    background:#ecfdf5;
+  }
+
+  .menu-hub-title{
+    font-size:18px;
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .menu-hub-text{
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.7;
+  }
+
+  .menu-hub-action{
+    margin-top:auto;
+  }
+
+  .menu-hub-card.primary .btn{
+    background:#fff;
+    color:#0f172a;
+    border-color:#fff;
   }
 
   .help-grid{
@@ -30,21 +95,6 @@
     border-radius:16px;
     padding:16px;
     box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
-  }
-
-  .help-section-card:nth-child(1){
-    border-color:#bfdbfe;
-    background:#eff6ff;
-  }
-
-  .help-section-card:nth-child(2){
-    border-color:#bbf7d0;
-    background:#ecfdf5;
-  }
-
-  .help-section-card:nth-child(3){
-    border-color:#fed7aa;
-    background:#fff7ed;
   }
 
   .help-section-title{
@@ -62,13 +112,13 @@
     font-size:14px;
   }
 
-  .quick-link-grid{
+  .sub-menu-list{
     display:grid;
-    grid-template-columns:repeat(3, minmax(0, 1fr));
+    grid-template-columns:repeat(2, minmax(0, 1fr));
     gap:10px;
   }
 
-  .quick-link{
+  .sub-menu-link{
     display:flex;
     justify-content:space-between;
     align-items:center;
@@ -80,26 +130,29 @@
     font-weight:900;
   }
 
-  .quick-link span{
+  .sub-menu-link span{
     color:#64748b;
     font-weight:900;
   }
 
   @media (max-width: 900px){
+    .menu-hub-grid,
     .help-grid,
-    .quick-link-grid{
+    .sub-menu-list{
       grid-template-columns:1fr;
     }
   }
 
   @media (max-width: 768px){
-    .help-title{
+    .menu-title{
       font-size:23px;
     }
 
+    .menu-hub-card,
     .help-section-card{
       padding:14px;
       border-radius:15px;
+      min-height:auto;
     }
 
     .help-list{
@@ -109,51 +162,136 @@
 </style>
 
 <div class="card">
-  <h1 class="help-title">使い方</h1>
-  <p class="help-lead">
-    Play Design Tennis の基本的な使い方です。スマホで迷いやすい操作を中心に整理しています。
+  <h1 class="menu-title">メニュー・使い方</h1>
+  <p class="menu-lead">
+    よく使う操作は下部ナビにまとめ、低頻度の画面はこのメニューに整理しています。
   </p>
 </div>
 
 {% if user.is_authenticated %}
-  <div class="card">
-    <h2 style="margin-top:0;">よく使う操作</h2>
-    <div class="quick-link-grid">
-      <a href="{% url 'club:home' %}" class="quick-link">
-        ホーム <span>›</span>
-      </a>
-      <a href="{% url 'club:reservation_create' %}" class="quick-link">
-        予約作成 <span>›</span>
-      </a>
-      <a href="{% url 'club:reservation_list' %}" class="quick-link">
-        予約一覧 <span>›</span>
-      </a>
-      <a href="{% url 'club:tickets' %}" class="quick-link">
-        チケット <span>›</span>
-      </a>
-      <a href="{% url 'club:stringing_order_create' %}" class="quick-link">
-        ガット張り <span>›</span>
-      </a>
-      <a href="{% url 'club:line_connect' %}" class="quick-link">
-        LINE連携 <span>›</span>
-      </a>
+  {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+    <div class="menu-hub-grid">
+      <div class="menu-hub-card primary">
+        <div class="menu-hub-title">予約・承認</div>
+        <div class="menu-hub-text">承認待ち、担当予約、キャンセル状況を確認します。</div>
+        <div class="menu-hub-action">
+          <a href="{% url 'club:reservation_list' %}" class="btn">開く</a>
+        </div>
+      </div>
+
+      <div class="menu-hub-card info">
+        <div class="menu-hub-title">スケジュール</div>
+        <div class="menu-hub-text">通常スケジュール、固定レッスン、雨天中止をまとめて扱います。</div>
+        <div class="menu-hub-action">
+          <a href="{% url 'club:coach_availability_list' %}" class="btn">開く</a>
+        </div>
+      </div>
+
+      <div class="menu-hub-card notice">
+        <div class="menu-hub-title">給与・経費</div>
+        <div class="menu-hub-text">給与計算、チケット集計、経費登録をまとめて確認します。</div>
+        <div class="menu-hub-action">
+          <a href="{% url 'club:coach_payroll_summary' %}" class="btn">開く</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">管理・低頻度メニュー</h2>
+      <div class="sub-menu-list">
+        <a href="{% url 'club:stringing_order_list' %}" class="sub-menu-link">ガット張り <span>›</span></a>
+        <a href="{% url 'club:schedule_survey_summary' %}" class="sub-menu-link">アンケート集計 <span>›</span></a>
+        <a href="{% url 'club:shop_estimate' %}" class="sub-menu-link">Shop <span>›</span></a>
+        <a href="{% url 'club:line_connect' %}" class="sub-menu-link">LINE連携 <span>›</span></a>
+        <a href="{% url 'club:lesson_calendar' %}" class="sub-menu-link">レッスンカレンダー <span>›</span></a>
+        <a href="{% url 'club:terms' %}" class="sub-menu-link">利用規約 <span>›</span></a>
+      </div>
+    </div>
+  {% else %}
+    <div class="menu-hub-grid">
+      <div class="menu-hub-card primary">
+        <div class="menu-hub-title">予約</div>
+        <div class="menu-hub-text">通常レッスン予約、個別レッスン申請へ進みます。</div>
+        <div class="menu-hub-action">
+          <a href="{% url 'club:reservation_create' %}" class="btn">開く</a>
+        </div>
+      </div>
+
+      <div class="menu-hub-card info">
+        <div class="menu-hub-title">予約確認</div>
+        <div class="menu-hub-text">予約状況、承認待ち、キャンセル可否を確認します。</div>
+        <div class="menu-hub-action">
+          <a href="{% url 'club:reservation_list' %}" class="btn">開く</a>
+        </div>
+      </div>
+
+      <div class="menu-hub-card notice">
+        <div class="menu-hub-title">Shop・ガット</div>
+        <div class="menu-hub-text">見積、ガット張り依頼、申込履歴をまとめて確認します。</div>
+        <div class="menu-hub-action">
+          <a href="{% url 'club:shop_estimate' %}" class="btn">開く</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">その他メニュー</h2>
+      <div class="sub-menu-list">
+        <a href="{% url 'club:tickets' %}" class="sub-menu-link">チケット <span>›</span></a>
+        <a href="{% url 'club:stringing_order_create' %}" class="sub-menu-link">ガット張りだけ依頼 <span>›</span></a>
+        <a href="{% url 'club:shop_estimate_history' %}" class="sub-menu-link">Shop申込履歴 <span>›</span></a>
+        <a href="{% url 'club:line_connect' %}" class="sub-menu-link">LINE連携 <span>›</span></a>
+        {% if not schedule_survey_answered %}
+          <a href="{% url 'club:schedule_survey' %}" class="sub-menu-link">アンケート <span>›</span></a>
+        {% endif %}
+        <a href="{% url 'club:terms' %}" class="sub-menu-link">利用規約 <span>›</span></a>
+      </div>
+    </div>
+  {% endif %}
+{% else %}
+  <div class="menu-hub-grid">
+    <div class="menu-hub-card primary">
+      <div class="menu-hub-title">LINEで始める</div>
+      <div class="menu-hub-text">スマホではLINEログインが一番簡単です。</div>
+      <div class="menu-hub-action">
+        <a href="{% url 'club:line_login_start' %}" class="btn">LINEでログイン</a>
+      </div>
+    </div>
+
+    <div class="menu-hub-card info">
+      <div class="menu-hub-title">通常ログイン</div>
+      <div class="menu-hub-text">登録済みの方はこちらからログインします。</div>
+      <div class="menu-hub-action">
+        <a href="{% url 'club:login' %}" class="btn">ログイン</a>
+      </div>
+    </div>
+
+    <div class="menu-hub-card notice">
+      <div class="menu-hub-title">新規登録</div>
+      <div class="menu-hub-text">通常ログイン用の会員登録はこちらです。</div>
+      <div class="menu-hub-action">
+        <a href="{% url 'club:register' %}" class="btn">登録する</a>
+      </div>
     </div>
   </div>
 {% endif %}
 
-<div class="help-grid">
-  {% for section in help_sections %}
-    <section class="help-section-card">
-      <h2 class="help-section-title">{{ section.title }}</h2>
-      {% if section.items %}
-        <ol class="help-list">
-          {% for item in section.items %}
-            <li>{{ item }}</li>
-          {% endfor %}
-        </ol>
-      {% endif %}
-    </section>
-  {% endfor %}
+<div class="card">
+  <h2 style="margin-top:0;">使い方</h2>
+  <div class="help-grid">
+    {% for section in help_sections %}
+      <section class="help-section-card">
+        <h3 class="help-section-title">{{ section.title }}</h3>
+        {% if section.items %}
+          <ol class="help-list">
+            {% for item in section.items %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ol>
+        {% endif %}
+      </section>
+    {% endfor %}
+  </div>
 </div>
 
 <div class="card">
