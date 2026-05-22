@@ -1,102 +1,286 @@
 {% extends "base.html" %}
-{% block title %}物販申込履歴{% endblock %}
+{% block title %}Shop申込履歴{% endblock %}
 
 {% block content %}
+<style>
+  .history-title{
+    margin:0;
+    font-size:28px;
+    font-weight:900;
+    line-height:1.25;
+    letter-spacing:-0.02em;
+  }
+
+  .history-lead{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
+
+  .history-actions{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+
+  .history-list{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+
+  .history-card{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    padding:16px;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .history-card-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:12px;
+    margin-bottom:10px;
+  }
+
+  .history-card-title{
+    font-size:17px;
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .history-card-sub{
+    margin-top:3px;
+    color:var(--muted);
+    font-size:12px;
+    line-height:1.4;
+  }
+
+  .total-pill{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:7px 11px;
+    border-radius:999px;
+    border:1px solid #bfdbfe;
+    background:#eff6ff;
+    color:#1d4ed8;
+    font-size:13px;
+    font-weight:900;
+    white-space:nowrap;
+  }
+
+  .history-info-grid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:8px 14px;
+    margin-top:12px;
+  }
+
+  .history-info-row{
+    padding:9px 0;
+    border-top:1px solid #f1f5f9;
+    font-size:13px;
+  }
+
+  .history-info-label{
+    color:var(--muted);
+    font-weight:800;
+    margin-bottom:3px;
+  }
+
+  .history-info-value{
+    font-weight:700;
+    overflow-wrap:anywhere;
+  }
+
+  .price-breakdown{
+    display:grid;
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    gap:8px;
+    margin-top:12px;
+  }
+
+  .price-box{
+    padding:10px;
+    border:1px solid #e5e7eb;
+    background:#f8fafc;
+    border-radius:12px;
+  }
+
+  .price-label{
+    color:#64748b;
+    font-size:11px;
+    font-weight:800;
+  }
+
+  .price-value{
+    margin-top:4px;
+    font-size:15px;
+    font-weight:900;
+  }
+
+  .history-card-actions{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:14px;
+  }
+
+  @media (max-width: 768px){
+    .history-title{
+      font-size:23px;
+    }
+
+    .history-actions{
+      width:100%;
+      display:grid;
+      grid-template-columns:1fr;
+      gap:8px;
+    }
+
+    .history-actions .btn{
+      width:100%;
+    }
+
+    .history-card{
+      padding:14px;
+      border-radius:15px;
+    }
+
+    .history-card-head{
+      display:block;
+    }
+
+    .total-pill{
+      margin-top:8px;
+    }
+
+    .history-info-grid,
+    .price-breakdown{
+      grid-template-columns:1fr;
+    }
+
+    .history-card-actions{
+      display:grid;
+      grid-template-columns:1fr;
+    }
+
+    .history-card-actions .btn{
+      width:100%;
+    }
+  }
+</style>
+
 <div class="card">
-  <h1 style="margin-top:0;">物販申込履歴</h1>
-  <p style="margin:8px 0 0; color:#555;">
-    これまでの物販申込を確認できます。運用ステータス、見積もり合計、申込日時、詳細画面へのリンクを表示しています。
-  </p>
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h1 class="history-title">Shop申込履歴</h1>
+      <p class="history-lead">
+        過去の見積・購入申込内容を確認できます。同じ内容をフォームへ再読み込みすることもできます。
+      </p>
+    </div>
+
+    <div class="history-actions">
+      <a href="{% url 'club:shop_estimate' %}" class="btn btn-primary">新しい見積</a>
+      <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
+    </div>
+  </div>
 </div>
 
-<div class="card" style="margin-top:16px;">
-  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-    <h2 style="margin:0;">申込一覧</h2>
-    <a href="{% url 'club:shop_estimate' %}" class="btn">新しく申込する</a>
-  </div>
-
+<div class="card">
   {% if history_rows %}
-    <div style="margin-top:16px; overflow-x:auto;">
-      <table style="width:100%; border-collapse:collapse;">
-        <thead>
-          <tr style="border-bottom:1px solid #e5e7eb;">
-            <th style="text-align:left; padding:10px 8px;">申込ID</th>
-            <th style="text-align:left; padding:10px 8px;">商品</th>
-            <th style="text-align:left; padding:10px 8px;">カテゴリ / ブランド</th>
-            <th style="text-align:left; padding:10px 8px;">運用ステータス</th>
-            <th style="text-align:right; padding:10px 8px;">見積もり合計</th>
-            <th style="text-align:left; padding:10px 8px;">申込日時</th>
-            <th style="text-align:left; padding:10px 8px;">詳細</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in history_rows %}
-            <tr style="border-bottom:1px solid #f0f0f0;">
-              <td style="padding:12px 8px; white-space:nowrap;">#{{ row.estimate_request.id }}</td>
-              <td style="padding:12px 8px;">
-                <div style="font-weight:700;">
-                  {% if row.estimate_request.main_product_name %}
-                    {{ row.estimate_request.main_product_name }}
-                  {% elif row.estimate_request.main_keyword %}
-                    {{ row.estimate_request.main_keyword }}
+    <div class="history-list">
+      {% for row in history_rows %}
+        {% with request=row.estimate_request %}
+          <div class="history-card">
+            <div class="history-card-head">
+              <div>
+                <div class="history-card-title">
+                  {{ request.main_product_name|default:"商品名未入力" }}
+                </div>
+                <div class="history-card-sub">
+                  申込ID {{ request.id }} / {{ request.created_at|date:"Y-m-d H:i" }}
+                </div>
+              </div>
+              <div class="total-pill">合計 {{ row.estimated_total }}円</div>
+            </div>
+
+            <div class="history-info-grid">
+              <div class="history-info-row">
+                <div class="history-info-label">カテゴリ</div>
+                <div class="history-info-value">{{ request.get_product_category_display|default:request.product_category }}</div>
+              </div>
+              <div class="history-info-row">
+                <div class="history-info-label">ブランド</div>
+                <div class="history-info-value">{{ request.get_brand_display|default:request.brand }}</div>
+              </div>
+              <div class="history-info-row">
+                <div class="history-info-label">グリップ</div>
+                <div class="history-info-value">{{ request.grip_size|default:"-" }}</div>
+              </div>
+              <div class="history-info-row">
+                <div class="history-info-label">ガット</div>
+                <div class="history-info-value">
+                  {% if request.string_source == string_source_official %}
+                    {{ request.string_product_name|default:"ガット名未入力" }}
+                  {% elif request.string_source == string_source_bring_in %}
+                    持ち込み
+                  {% elif request.string_source == string_source_none %}
+                    不要
                   {% else %}
-                    商品名未入力
+                    {{ request.string_source|default:"-" }}
                   {% endif %}
                 </div>
+              </div>
+              <div class="history-info-row">
+                <div class="history-info-label">ガット張り</div>
+                <div class="history-info-value">{% if request.request_stringing %}依頼あり{% else %}なし{% endif %}</div>
+              </div>
+              <div class="history-info-row">
+                <div class="history-info-label">デリバリー</div>
+                <div class="history-info-value">{% if request.request_delivery %}希望あり{% else %}なし{% endif %}</div>
+              </div>
+            </div>
 
-                {% if row.estimate_request.string_source == string_source_official %}
-                  <div style="font-size:12px; color:#666; margin-top:4px;">
-                    ガット:
-                    {% if row.estimate_request.string_product_name %}
-                      {{ row.estimate_request.string_product_name }}
-                    {% elif row.estimate_request.string_keyword %}
-                      {{ row.estimate_request.string_keyword }}
-                    {% else %}
-                      公式購入あり
-                    {% endif %}
-                  </div>
-                {% elif row.estimate_request.string_source == string_source_bring_in %}
-                  <div style="font-size:12px; color:#666; margin-top:4px;">ガット: 持ち込み</div>
-                {% endif %}
+            <div class="price-breakdown">
+              <div class="price-box">
+                <div class="price-label">メイン</div>
+                <div class="price-value">{{ row.main_sale_price }}円</div>
+              </div>
+              <div class="price-box">
+                <div class="price-label">ガット</div>
+                <div class="price-value">{{ row.string_sale_price }}円</div>
+              </div>
+              <div class="price-box">
+                <div class="price-label">張り代</div>
+                <div class="price-value">{{ row.stringing_fee }}円</div>
+              </div>
+              <div class="price-box">
+                <div class="price-label">配送</div>
+                <div class="price-value">{{ row.delivery_fee|default:0 }}円</div>
+              </div>
+            </div>
 
-                {% if row.estimate_request.request_stringing %}
-                  <div style="font-size:12px; color:#666; margin-top:4px;">
-                    ガット張りあり / {{ row.estimate_request.tension_lbs }} lbs
-                  </div>
-                {% endif %}
-              </td>
-              <td style="padding:12px 8px;">
-                {{ row.estimate_request.get_product_category_display }} / {{ row.estimate_request.get_brand_display }}
-              </td>
-              <td style="padding:12px 8px;">
-                <strong>{{ row.estimate_request.get_handling_status_display }}</strong>
-              </td>
-              <td style="padding:12px 8px; text-align:right; white-space:nowrap;">
-                ¥{{ row.estimated_total }}
-              </td>
-              <td style="padding:12px 8px; white-space:nowrap;">
-                {{ row.estimate_request.created_at|date:"Y-m-d H:i" }}
-              </td>
-              <td style="padding:12px 8px; white-space:nowrap;">
-                <a href="{% url 'club:shop_estimate_complete' row.estimate_request.pk %}">詳細確認</a>
-              </td>
-            </tr>
-            {% if row.estimate_request.admin_note %}
-              <tr style="border-bottom:1px solid #f0f0f0; background:#fafafa;">
-                <td></td>
-                <td colspan="6" style="padding:10px 8px; color:#555;">
-                  <strong>運営メモ:</strong> {{ row.estimate_request.admin_note }}
-                </td>
-              </tr>
+            {% if request.note %}
+              <div style="margin-top:12px; padding:12px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:12px; color:#475569; font-size:13px; line-height:1.7;">
+                <strong>備考:</strong> {{ request.note }}
+              </div>
             {% endif %}
-          {% endfor %}
-        </tbody>
-      </table>
+
+            <div class="history-card-actions">
+              <a href="{% url 'club:shop_estimate_complete' request.id %}" class="btn">詳細を見る</a>
+              <a href="{% url 'club:shop_estimate' %}?reuse={{ request.id }}" class="btn btn-primary">この内容を再読み込み</a>
+            </div>
+          </div>
+        {% endwith %}
+      {% endfor %}
     </div>
   {% else %}
-    <div style="margin-top:16px; padding:16px; border:1px solid #e5e7eb; border-radius:10px; background:#fafafa;">
-      まだ物販申込はありません。
-    </div>
+    <p class="muted" style="margin:0;">Shop申込履歴はまだありません。</p>
   {% endif %}
 </div>
 {% endblock %}
