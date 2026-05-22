@@ -3,10 +3,20 @@
 
 {% block content %}
   <div class="page-head">
-    <h1 class="page-title">Shop</h1>
+    <h1 class="page-title">Shop・ガット</h1>
     <p class="page-subtitle">
-      ラケット・ガット・アクセサリの見積もりを作成できます。販売価格は定価の80％で計算します。
+      ラケット・ガット見積、ガット張り依頼、申込履歴をまとめて扱います。販売価格は定価の80％で計算します。
     </p>
+  </div>
+
+
+  <div class="card" style="margin-bottom:16px;">
+    <h2 class="card-title">Shop・ガット メニュー</h2>
+    <div class="grid-3" style="margin-top:12px;">
+      <a href="{% url 'club:shop_estimate' %}" class="btn btn-primary" style="min-height:54px;">ラケット・ガット見積</a>
+      <a href="{% url 'club:stringing_order_create' %}" class="btn" style="min-height:54px;">ガット張りだけ依頼</a>
+      <a href="{% url 'club:shop_estimate_history' %}" class="btn" style="min-height:54px;">Shop申込履歴</a>
+    </div>
   </div>
 
   {% if page_error %}
