@@ -2825,6 +2825,7 @@ def calendar_events(request):
                     "is_canceled": False,
                     "is_mine": is_mine,
                     "can_cancel": can_cancel,
+                    "detail_url": reverse("club:reservation_detail", kwargs={"pk": obj.pk}),
                     "cancel_url": cancel_url,
                     "cancel_reason": cancel_reason,
                     "status_display": obj.get_status_display(),
