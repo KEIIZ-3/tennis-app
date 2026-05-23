@@ -153,9 +153,21 @@ def coach_rain_cancel_candidate_count(user):
 
 
 @register.simple_tag
-def member_low_ticket_warning(user, threshold=1):
+def member_low_ticket_warning(user, threshold=2):
     try:
         balance = int(getattr(user, "ticket_balance", 0) or 0)
-        return balance <= int(threshold or 1)
+        return balance <= int(threshold or 2)
     except Exception:
         return False
+
+
+
+@register.simple_tag
+def member_next_reservation_status_label(user):
+    try:
+        reservation = member_next_reservation(user)
+        if not reservation:
+            return ""
+        return reservation.get_status_display()
+    except Exception:
+        return ""
