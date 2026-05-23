@@ -952,7 +952,8 @@
                 {% endif %}
               </a>
               <a href="{% url 'club:coach_payroll_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_payroll_summary' or request.resolver_match.url_name == 'coach_ticket_summary' or request.resolver_match.url_name == 'coach_expense_manage' %}active{% endif %}">給与・経費</a>
-              <a href="{% url 'club:schedule_survey_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'schedule_survey_summary' or request.resolver_match.url_name == 'shop_estimate' or request.resolver_match.url_name == 'line_connect' or request.resolver_match.url_name == 'lesson_calendar' %}active{% endif %}">管理</a>
+              <a href="{% url 'club:schedule_survey_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'schedule_survey_summary' or request.resolver_match.url_name == 'shop_estimate' or request.resolver_match.url_name == 'line_connect' or request.resolver_match.url_name == 'lesson_calendar' or request.resolver_match.url_name == 'coach_activity_log' %}active{% endif %}">管理</a>
+              <a href="{% url 'club:coach_activity_log' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_activity_log' %}active{% endif %}">履歴</a>
 
               <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="coach-tab">固定レッスン</a>
               <a href="{% url 'club:coach_expense_manage' %}" class="coach-tab">経費登録</a>
