@@ -814,6 +814,11 @@
         background:#f59e0b;
       }
 
+      .bottom-nav-badge.warning,
+      .nav-count-badge.warning{
+        background:#f59e0b;
+      }
+
 
       .bottom-app-nav .bottom-icon{
         font-size:17px;
@@ -870,7 +875,12 @@
                   <span class="nav-count-badge soft">{{ nav_member_upcoming_count }}</span>
                 {% endif %}
               </a>
-              <a href="{% url 'club:tickets' %}">チケット</a>
+              <a href="{% url 'club:tickets' %}">
+                チケット
+                {% if nav_low_ticket_warning %}
+                  <span class="nav-count-badge">!</span>
+                {% endif %}
+              </a>
               <a href="{% url 'club:shop_estimate' %}">Shop・ガット</a>
               <a href="{% url 'club:stringing_order_create' %}">ガット張りだけ依頼</a>
               <a href="{% url 'club:line_connect' %}">LINE連携</a>
@@ -965,6 +975,7 @@
     {% else %}
       {% member_pending_reservation_count user as nav_member_pending_count %}
       {% member_upcoming_reservation_count user as nav_member_upcoming_count %}
+      {% member_low_ticket_warning user as nav_low_ticket_warning %}
     {% endif %}
   {% endif %}
 
@@ -1014,7 +1025,13 @@
           </span>
         </a>
         <a href="{% url 'club:tickets' %}" class="{% if request.resolver_match.url_name == 'tickets' %}is-active{% endif %}">
-          <span class="bottom-icon">🎫</span><span>チケット</span>
+          <span class="bottom-icon">🎫</span>
+          <span class="bottom-nav-wrap">
+            チケット
+            {% if nav_low_ticket_warning %}
+              <span class="bottom-nav-badge">!</span>
+            {% endif %}
+          </span>
         </a>
         <a href="{% url 'club:shop_estimate' %}" class="{% if request.resolver_match.url_name == 'shop_estimate' or request.resolver_match.url_name == 'stringing_order_create' %}is-active{% endif %}">
           <span class="bottom-icon">🛒</span><span>Shop</span>
