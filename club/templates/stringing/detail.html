@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block title %}ガット張り詳細{% endblock %}
+
+{% block content %}
+<style>
+  .detail-title{
+    margin:0;
+    font-size:28px;
+    font-weight:900;
+    line-height:1.25;
+    letter-spacing:-0.02em;
+  }
+
+  .detail-lead{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
+
+  .status-pill{
+    display:inline-flex;
+    align-items:center;
+    padding:7px 11px;
+    border-radius:999px;
+    border:1px solid #dbeafe;
+    background:#eff6ff;
+    color:#1d4ed8;
+    font-size:13px;
+    font-weight:900;
+  }
+
+  .detail-grid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:14px;
+  }
+
+  .detail-card{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    padding:16px;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .detail-card-title{
+    margin:0 0 10px;
+    font-size:18px;
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .detail-row{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    padding:9px 0;
+    border-top:1px solid #f1f5f9;
+    font-size:13px;
+  }
+
+  .detail-label{
+    color:var(--muted);
+    font-weight:800;
+    flex:0 0 120px;
+  }
+
+  .detail-value{
+    text-align:right;
+    min-width:0;
+    overflow-wrap:anywhere;
+    font-weight:700;
+  }
+
+  .price-panel{
+    padding:16px;
+    border:1px solid #bbf7d0;
+    background:#ecfdf5;
+    border-radius:16px;
+    color:#166534;
+  }
+
+  .price-value{
+    margin-top:6px;
+    font-size:28px;
+    font-weight:900;
+    line-height:1.2;
+  }
+
+  .action-row{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:12px;
+  }
+
+  @media (max-width: 900px){
+    .detail-grid{
+      grid-template-columns:1fr;
+    }
+  }
+
+  @media (max-width: 768px){
+    .detail-title{
+      font-size:23px;
+    }
+
+    .detail-card,
+    .price-panel{
+      padding:14px;
+      border-radius:15px;
+    }
+
+    .detail-row{
+      display:block;
+      padding:8px 0;
+    }
+
+    .detail-label{
+      display:block;
+      margin-bottom:3px;
+      font-size:12px;
+    }
+
+    .detail-value{
+      text-align:left;
+    }
+
+    .action-row{
+      display:grid;
+      grid-template-columns:1fr;
+    }
+
+    .action-row .btn,
+    .action-row button,
+    .action-row select{
+      width:100%;
+    }
+  }
+</style>
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h1 class="detail-title">ガット張り詳細</h1>
+      <p class="detail-lead">
+        依頼ID {{ order.id }} の内容、納期、料金、対応状況を確認できます。
+      </p>
+    </div>
+    <span class="status-pill">{{ status_label }}</span>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <section class="detail-card">
+    <h2 class="detail-card-title">依頼内容</h2>
+
+    <div class="detail-row">
+      <div class="detail-label">会員</div>
+      <div class="detail-value">{{ order.user.display_name }}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">担当コーチ</div>
+      <div class="detail-value">{{ order.assigned_coach_display }}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">ラケット</div>
+      <div class="detail-value">{{ order.racket_name|default:"-" }}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">ガット</div>
+      <div class="detail-value">{{ order.string_name|default:"-" }}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">テンション</div>
+      <div class="detail-value">{{ order.tension_lbs }} lbs</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">依頼日時</div>
+      <div class="detail-value">{{ order.created_at|date:"Y-m-d H:i" }}</div>
+    </div>
+  </section>
+
+  <section class="detail-card">
+    <h2 class="detail-card-title">受け渡し・納期</h2>
+
+    <div class="detail-row">
+      <div class="detail-label">区分</div>
+      <div class="detail-value">{{ delivery_label }}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">届け場所</div>
+      <div class="detail-value">{% if order.delivery_requested %}{{ order.delivery_location|default:"-" }}{% else %}-{% endif %}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">日時指定</div>
+      <div class="detail-value">{% if order.delivery_requested %}{{ order.preferred_delivery_time|default:"-" }}{% else %}-{% endif %}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">納期希望</div>
+      <div class="detail-value">{% if order.delivery_requested %}-{% else %}{{ order.preferred_delivery_time|default:preferred_finish_date }}{% endif %}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">更新日時</div>
+      <div class="detail-value">{{ order.updated_at|date:"Y-m-d H:i" }}</div>
+    </div>
+  </section>
+</div>
+
+<div class="detail-grid">
+  <section class="price-panel">
+    <div style="font-weight:900;">料金</div>
+    <div class="price-value">{{ total_price }}円</div>
+    <div style="margin-top:8px; font-size:13px; line-height:1.7;">
+      基本料金 {{ order.base_price }}円{% if order.delivery_fee %} + デリバリー {{ order.delivery_fee }}円{% endif %}
+    </div>
+  </section>
+
+  <section class="detail-card">
+    <h2 class="detail-card-title">備考</h2>
+    <div style="line-height:1.8; color:#475569;">
+      {{ order.note|default:"備考はありません。" }}
+    </div>
+  </section>
+</div>
+
+{% if can_manage %}
+  <div class="detail-card">
+    <h2 class="detail-card-title">状態更新</h2>
+
+    <form method="post">
+      {% csrf_token %}
+      <div class="action-row">
+        <select name="new_status">
+          {% for value, label in status_choices %}
+            <option value="{{ value }}" {% if order.status == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-primary">状態を更新</button>
+      </div>
+    </form>
+  </div>
+{% endif %}
+
+<div class="detail-card">
+  <h2 class="detail-card-title">操作</h2>
+
+  <div class="action-row">
+    {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+      <a href="{% url 'club:stringing_order_list' %}" class="btn">ガット張り管理へ戻る</a>
+    {% else %}
+      <a href="{% url 'club:stringing_order_create' %}" class="btn">ガット張り依頼へ戻る</a>
+    {% endif %}
+    <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
+  </div>
+</div>
+{% endblock %}
