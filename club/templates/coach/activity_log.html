@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% block title %}操作履歴{% endblock %}
+
+{% block content %}
+<style>
+  .log-title{
+    margin:0;
+    font-size:28px;
+    font-weight:900;
+    line-height:1.25;
+    letter-spacing:-0.02em;
+  }
+
+  .log-lead{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
+
+  .filter-grid{
+    display:grid;
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    gap:8px;
+  }
+
+  .filter-link{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:42px;
+    padding:9px 10px;
+    border:1px solid #dbeafe;
+    background:#eff6ff;
+    color:#1d4ed8;
+    border-radius:12px;
+    font-size:13px;
+    font-weight:900;
+    text-decoration:none;
+  }
+
+  .filter-link.active{
+    background:#0f172a;
+    color:#fff;
+    border-color:#0f172a;
+  }
+
+  .log-list{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:10px;
+  }
+
+  .log-card{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    padding:14px;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .log-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:12px;
+  }
+
+  .log-card-title{
+    font-size:16px;
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .log-card-sub{
+    margin-top:4px;
+    color:var(--muted);
+    font-size:12px;
+    line-height:1.5;
+  }
+
+  .log-pill{
+    display:inline-flex;
+    align-items:center;
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid #dbeafe;
+    background:#eff6ff;
+    color:#1d4ed8;
+    font-size:12px;
+    font-weight:900;
+    white-space:nowrap;
+  }
+
+  .log-message{
+    margin-top:10px;
+    padding:12px;
+    border:1px solid #e5e7eb;
+    background:#f8fafc;
+    border-radius:12px;
+    color:#475569;
+    font-size:13px;
+    line-height:1.7;
+  }
+
+  .log-meta-grid{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:8px;
+    margin-top:10px;
+  }
+
+  .log-meta{
+    padding:9px;
+    border:1px solid #e5e7eb;
+    border-radius:10px;
+    background:#fff;
+    font-size:12px;
+  }
+
+  .log-meta-label{
+    color:#64748b;
+    font-weight:800;
+    margin-bottom:3px;
+  }
+
+  .log-meta-value{
+    font-weight:900;
+    overflow-wrap:anywhere;
+  }
+
+  .log-actions{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:12px;
+  }
+
+  @media (max-width: 900px){
+    .filter-grid,
+    .log-meta-grid{
+      grid-template-columns:1fr;
+    }
+  }
+
+  @media (max-width: 768px){
+    .log-title{
+      font-size:23px;
+    }
+
+    .log-head{
+      display:block;
+    }
+
+    .log-pill{
+      margin-top:8px;
+    }
+
+    .log-actions{
+      display:grid;
+      grid-template-columns:1fr;
+    }
+
+    .log-actions .btn{
+      width:100%;
+    }
+  }
+</style>
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h1 class="log-title">操作履歴</h1>
+      <p class="log-lead">
+        既存の予約、ガット張り、チケット履歴を時系列でまとめて確認できます。
+      </p>
+    </div>
+    <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">表示を切り替える</h2>
+  <div class="filter-grid">
+    <a href="?type=all" class="filter-link {% if type_filter == 'all' %}active{% endif %}">すべて</a>
+    <a href="?type=reservation" class="filter-link {% if type_filter == 'reservation' %}active{% endif %}">予約</a>
+    <a href="?type=stringing" class="filter-link {% if type_filter == 'stringing' %}active{% endif %}">ガット張り</a>
+    <a href="?type=ticket" class="filter-link {% if type_filter == 'ticket' %}active{% endif %}">チケット</a>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">履歴一覧</h2>
+
+  {% if activity_rows %}
+    <div class="log-list">
+      {% for row in activity_rows %}
+        <div class="log-card">
+          <div class="log-head">
+            <div>
+              <div class="log-card-title">{{ row.title }}</div>
+              <div class="log-card-sub">
+                {{ row.created_at|date:"Y-m-d H:i" }} / {{ row.action_label }}
+              </div>
+            </div>
+            <span class="log-pill">{{ row.result_label }}</span>
+          </div>
+
+          {% if row.message %}
+            <div class="log-message">{{ row.message }}</div>
+          {% endif %}
+
+          <div class="log-meta-grid">
+            <div class="log-meta">
+              <div class="log-meta-label">操作・担当</div>
+              <div class="log-meta-value">{{ row.actor_name }}</div>
+            </div>
+            <div class="log-meta">
+              <div class="log-meta-label">対象</div>
+              <div class="log-meta-value">{{ row.target_name }}</div>
+            </div>
+            <div class="log-meta">
+              <div class="log-meta-label">関連</div>
+              <div class="log-meta-value">{{ row.related_label }}</div>
+            </div>
+          </div>
+
+          {% if row.detail_url %}
+            <div class="log-actions">
+              <a href="{{ row.detail_url }}" class="btn btn-primary">関連詳細を見る</a>
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted" style="margin:0;">条件に一致する履歴はありません。</p>
+  {% endif %}
+</div>
+{% endblock %}
