@@ -3,6 +3,51 @@
 
 {% block content %}
 <style>
+
+  .quick-filter-panel{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+
+  .quick-filter-title{
+    font-size:18px;
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .quick-filter-sub{
+    margin-top:4px;
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.7;
+  }
+
+  .quick-filter-actions{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+
+  @media (max-width: 768px){
+    .quick-filter-panel{
+      display:grid;
+      grid-template-columns:1fr;
+    }
+
+    .quick-filter-actions{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:8px;
+    }
+
+    .quick-filter-actions .btn{
+      width:100%;
+    }
+  }
+
   .mobile-page-title{
     margin:0;
     font-size:28px;
@@ -268,6 +313,25 @@
       </p>
     </div>
     <a href="{% url 'club:stringing_order_create' %}" class="btn btn-primary">新規依頼</a>
+  </div>
+</div>
+
+
+<div class="card">
+  <div class="quick-filter-panel">
+    <div>
+      <div class="quick-filter-title">ガット張りクイック確認</div>
+      <div class="quick-filter-sub">
+        未対応を優先して確認し、完了したら状態を更新してください。
+      </div>
+    </div>
+    <div class="quick-filter-actions">
+      <a href="?status_filter=pending" class="btn btn-primary">未対応のみ</a>
+      <a href="?status_filter=requested" class="btn">受付済み</a>
+      <a href="?status_filter=in_progress" class="btn">対応中</a>
+      <a href="?status_filter=completed" class="btn">完了</a>
+      <a href="?status_filter=all" class="btn">すべて</a>
+    </div>
   </div>
 </div>
 
