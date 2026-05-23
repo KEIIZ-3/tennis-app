@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+{% block title %}予約詳細{% endblock %}
+
+{% block content %}
+<style>
+  .detail-title{
+    margin:0;
+    font-size:28px;
+    font-weight:900;
+    line-height:1.25;
+    letter-spacing:-0.02em;
+  }
+
+  .detail-lead{
+    margin:8px 0 0;
+    color:var(--muted);
+    font-size:14px;
+    line-height:1.7;
+  }
+
+  .detail-status{
+    display:inline-flex;
+    align-items:center;
+    padding:7px 11px;
+    border-radius:999px;
+    border:1px solid #dbeafe;
+    background:#eff6ff;
+    color:#1d4ed8;
+    font-size:13px;
+    font-weight:900;
+  }
+
+  .detail-status.pending{
+    border-color:#fed7aa;
+    background:#fff7ed;
+    color:#9a3412;
+  }
+
+  .detail-status.canceled{
+    border-color:#fecaca;
+    background:#fff5f5;
+    color:#991b1b;
+  }
+
+  .detail-grid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:14px;
+  }
+
+  .detail-card{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    padding:16px;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .detail-card-title{
+    margin:0 0 10px;
+    font-size:18px;
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .detail-row{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    padding:9px 0;
+    border-top:1px solid #f1f5f9;
+    font-size:13px;
+  }
+
+  .detail-label{
+    color:var(--muted);
+    font-weight:800;
+    flex:0 0 120px;
+  }
+
+  .detail-value{
+    text-align:right;
+    min-width:0;
+    overflow-wrap:anywhere;
+    font-weight:700;
+  }
+
+  .action-panel{
+    padding:16px;
+    border:1px solid #fed7aa;
+    background:#fff7ed;
+    border-radius:16px;
+  }
+
+  .action-panel-title{
+    font-weight:900;
+    margin-bottom:8px;
+  }
+
+  .action-row{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:12px;
+  }
+
+  .mini-list{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:8px;
+  }
+
+  .mini-item{
+    padding:12px;
+    border:1px solid #e5e7eb;
+    background:#f8fafc;
+    border-radius:12px;
+    font-size:13px;
+    line-height:1.7;
+  }
+
+  @media (max-width: 900px){
+    .detail-grid{
+      grid-template-columns:1fr;
+    }
+  }
+
+  @media (max-width: 768px){
+    .detail-title{
+      font-size:23px;
+    }
+
+    .detail-card,
+    .action-panel{
+      padding:14px;
+      border-radius:15px;
+    }
+
+    .detail-row{
+      display:block;
+      padding:8px 0;
+    }
+
+    .detail-label{
+      display:block;
+      margin-bottom:3px;
+      font-size:12px;
+    }
+
+    .detail-value{
+      text-align:left;
+    }
+
+    .action-row{
+      display:grid;
+      grid-template-columns:1fr;
+    }
+
+    .action-row .btn,
+    .action-row button{
+      width:100%;
+    }
+  }
+</style>
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h1 class="detail-title">予約詳細</h1>
+      <p class="detail-lead">
+        予約ID {{ reservation.id }} の内容、チケット消費、承認・キャンセル操作を確認できます。
+      </p>
+    </div>
+
+    {% if reservation.status == "pending" %}
+      <span class="detail-status pending">{{ reservation.get_status_display }}</span>
+    {% elif reservation.status == "canceled" or reservation.status == "rain_canceled" %}
+      <span class="detail-status canceled">{{ reservation.get_status_display }}</span>
+    {% else %}
+      <span class="detail-status">{{ reservation.get_status_display }}</span>
+    {% endif %}
+  </div>
+</div>
+
+{% if can_manage_request %}
+  <div class="action-panel">
+    <div class="action-panel-title">コーチ確認が必要な申請です</div>
+    <div style="font-size:13px; line-height:1.7; color:#9a3412;">
+      内容を確認し、問題なければ承認してください。却下した場合は会員へ通知されます。
+    </div>
+    <div class="action-row">
+      <form method="post" action="{% url 'club:coach_request_approve' reservation.id %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary">承認する</button>
+      </form>
+      <form method="post" action="{% url 'club:coach_request_reject' reservation.id %}" onsubmit="return confirm('この申請を却下しますか？');">
+        {% csrf_token %}
+        <button type="submit" class="btn" style="border-color:#fecaca; color:#991b1b; background:#fff5f5;">却下する</button>
+      </form>
+    </div>
+  </div>
+{% endif %}
+
+<div class="detail-grid">
+  <section class="detail-card">
+    <h2 class="detail-card-title">予約内容</h2>
+
+    <div class="detail-row">
+      <div class="detail-label">会員</div>
+      <div class="detail-value">{{ reservation.user.display_name }}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">レッスン種別</div>
+      <div class="detail-value">{{ reservation.get_lesson_type_display }}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">対象レベル</div>
+      <div class="detail-value">{{ reservation.get_target_level_display }}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">日時</div>
+      <div class="detail-value">{{ reservation.start_at|date:"Y-m-d H:i" }}〜{{ reservation.end_at|date:"H:i" }}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">コート</div>
+      <div class="detail-value">{{ reservation.court }}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">チケット</div>
+      <div class="detail-value">{{ reservation.tickets_used }}枚</div>
+    </div>
+  </section>
+
+  <section class="detail-card">
+    <h2 class="detail-card-title">コーチ・状態</h2>
+
+    <div class="detail-row">
+      <div class="detail-label">担当コーチ</div>
+      <div class="detail-value">{{ assigned_coach_name }}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">通常担当</div>
+      <div class="detail-value">{{ normal_coach_name }}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">代行</div>
+      <div class="detail-value">{% if has_substitute %}{{ substitute_coach_name }}{% else %}-{% endif %}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">作成日時</div>
+      <div class="detail-value">{{ reservation.created_at|date:"Y-m-d H:i" }}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">キャンセル日時</div>
+      <div class="detail-value">{% if reservation.canceled_at %}{{ reservation.canceled_at|date:"Y-m-d H:i" }}{% else %}-{% endif %}</div>
+    </div>
+    <div class="detail-row">
+      <div class="detail-label">理由</div>
+      <div class="detail-value">{{ reservation.cancellation_reason|default:"-" }}</div>
+    </div>
+  </section>
+</div>
+
+<div class="detail-grid">
+  <section class="detail-card">
+    <h2 class="detail-card-title">チケット消費内訳</h2>
+
+    {% if ticket_consumption_rows %}
+      <div class="mini-list">
+        {% for row in ticket_consumption_rows %}
+          <div class="mini-item">
+            <strong>{{ row.unit_price_label }} / {{ row.consumption.tickets_used }}枚</strong><br>
+            {{ row.consumption.created_at|date:"Y-m-d H:i" }}
+            {% if row.is_refunded %}
+              <br>返却済み: {{ row.consumption.refunded_at|date:"Y-m-d H:i" }}
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted" style="margin:0;">チケット消費内訳はありません。</p>
+    {% endif %}
+  </section>
+
+  <section class="detail-card">
+    <h2 class="detail-card-title">同じ枠の予約者</h2>
+
+    {% if same_slot_reservations %}
+      <div class="mini-list">
+        {% for same_reservation in same_slot_reservations %}
+          <div class="mini-item">
+            <strong>{{ same_reservation.user.display_name }}</strong><br>
+            {{ same_reservation.get_status_display }} / {{ same_reservation.tickets_used }}枚
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted" style="margin:0;">同じ枠の予約者はいません。</p>
+    {% endif %}
+  </section>
+</div>
+
+<div class="detail-card">
+  <h2 class="detail-card-title">操作</h2>
+
+  <div class="action-row">
+    <a href="{% url 'club:reservation_list' %}" class="btn">予約・承認管理へ戻る</a>
+
+    {% if can_cancel %}
+      <form method="post" action="{% url 'club:reservation_cancel' reservation.id %}" onsubmit="return confirm('この予約をキャンセルしますか？');">
+        {% csrf_token %}
+        <button type="submit" class="btn" style="border-color:#fecaca; color:#991b1b; background:#fff5f5;">キャンセルする</button>
+      </form>
+    {% else %}
+      <span class="muted" style="align-self:center;">{{ cancel_reason }}</span>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
