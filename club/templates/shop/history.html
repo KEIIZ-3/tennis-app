@@ -1,8 +1,76 @@
 {% extends "base.html" %}
-{% block title %}Shop申込履歴{% endblock %}
+{% block title %}Shop申込履歴
+<script>
+  (function () {
+    const buttons = Array.from(document.querySelectorAll(".js-history-detail-toggle"));
+    buttons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        const detail = button.nextElementSibling;
+        if (!detail) return;
+        const isOpen = detail.classList.toggle("is-open");
+        button.textContent = isOpen ? "詳細を閉じる" : "詳細を開く";
+      });
+    });
+  })();
+</script>
+
+{% endblock %}
 
 {% block content %}
 <style>
+
+  .history-jump-grid{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:8px;
+  }
+
+  .history-jump-link{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:42px;
+    padding:9px 10px;
+    border:1px solid #dbeafe;
+    background:#eff6ff;
+    color:#1d4ed8;
+    border-radius:12px;
+    font-size:13px;
+    font-weight:900;
+    text-decoration:none;
+  }
+
+  .history-detail-toggle{
+    appearance:none;
+    width:100%;
+    margin-top:10px;
+    min-height:40px;
+    padding:8px 12px;
+    border-radius:12px;
+    border:1px solid #dbeafe;
+    background:#eff6ff;
+    color:#1d4ed8;
+    font-size:13px;
+    font-weight:900;
+    cursor:pointer;
+  }
+
+  .history-collapsible{
+    display:none;
+    margin-top:8px;
+  }
+
+  .history-collapsible.is-open{
+    display:block;
+  }
+
+  @media (max-width: 768px){
+    .history-jump-grid{
+      grid-template-columns:1fr;
+    }
+  }
+
+
   .history-title{
     margin:0;
     font-size:28px;
@@ -191,7 +259,17 @@
   </div>
 </div>
 
+
 <div class="card">
+  <h2 style="margin-top:0;">すぐ使う</h2>
+  <div class="history-jump-grid">
+    <a href="{% url 'club:shop_estimate' %}" class="history-jump-link">新しい見積</a>
+    <a href="{% url 'club:stringing_order_create' %}" class="history-jump-link">ガット張りだけ依頼</a>
+    <a href="{% url 'club:home' %}" class="history-jump-link">ホームへ戻る</a>
+  </div>
+</div>
+
+<div class="card" id="history-list">
   {% if history_rows %}
     <div class="history-list">
       {% for row in history_rows %}
@@ -209,7 +287,9 @@
               <div class="total-pill">合計 {{ row.estimated_total }}円</div>
             </div>
 
-            <div class="history-info-grid">
+            <button type="button" class="history-detail-toggle js-history-detail-toggle">詳細を開く</button>
+            <div class="history-collapsible">
+              <div class="history-info-grid">
               <div class="history-info-row">
                 <div class="history-info-label">カテゴリ</div>
                 <div class="history-info-value">{{ request.get_product_category_display|default:request.product_category }}</div>
@@ -246,7 +326,9 @@
               </div>
             </div>
 
-            <div class="price-breakdown">
+              </div>
+
+              <div class="price-breakdown">
               <div class="price-box">
                 <div class="price-label">メイン</div>
                 <div class="price-value">{{ row.main_sale_price }}円</div>
@@ -262,6 +344,9 @@
               <div class="price-box">
                 <div class="price-label">配送</div>
                 <div class="price-value">{{ row.delivery_fee|default:0 }}円</div>
+              </div>
+            </div>
+
               </div>
             </div>
 
@@ -283,4 +368,19 @@
     <p class="muted" style="margin:0;">Shop申込履歴はまだありません。</p>
   {% endif %}
 </div>
+
+<script>
+  (function () {
+    const buttons = Array.from(document.querySelectorAll(".js-history-detail-toggle"));
+    buttons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        const detail = button.nextElementSibling;
+        if (!detail) return;
+        const isOpen = detail.classList.toggle("is-open");
+        button.textContent = isOpen ? "詳細を閉じる" : "詳細を開く";
+      });
+    });
+  })();
+</script>
+
 {% endblock %}
