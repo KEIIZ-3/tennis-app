@@ -797,58 +797,204 @@ def _fixed_lesson_includes_coach(fixed_lesson, coach):
         return getattr(fixed_lesson, "coach_id", None) == getattr(coach, "pk", None)
 
 
+@require_http_methods(["GET", "POST"])
 def lesson_calendar_view(request):
-    fixed_lessons = list(
-        FixedLesson.objects.filter(is_active=True)
-        .select_related("coach", "coach_2", "coach_3", "court")
-        .prefetch_related("members")
-        .order_by("weekday", "start_hour", "id")
+    _sync_fixed_lessons()
+
+    if request.method == "POST":
+        if not request.user.is_authenticated:
+            messages.info(request, "予約するにはログインしてください。")
+            return redirect("club:line_login_start")
+
+        profile_redirect = _require_profile_completed_for_booking(request)
+        if profile_redirect:
+            return profile_redirect
+
+        survey_redirect = _require_schedule_survey(request)
+        if survey_redirect:
+            return survey_redirect
+
+        if getattr(request.user, "role", None) != "member":
+            messages.error(request, "通常レッスンの予約は会員アカウントで行ってください。")
+            return redirect("club:lesson_calendar")
+
+        availability_id = (request.POST.get("availability_id") or "").strip()
+        availability = get_object_or_404(
+            CoachAvailability.objects.select_related("coach", "substitute_coach", "court"),
+            pk=availability_id,
+            status=CoachAvailability.STATUS_OPEN,
+            lesson_type__in=[Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT],
+            start_at__gte=timezone.now(),
+        )
+
+        try:
+            with transaction.atomic():
+                reservation = Reservation(
+                    user=request.user,
+                    coach=availability.coach,
+                    substitute_coach=availability.substitute_coach,
+                    court=availability.court,
+                    availability=availability,
+                    lesson_type=availability.lesson_type,
+                    target_level=availability.target_level,
+                    start_at=availability.start_at,
+                    end_at=availability.end_at,
+                    status=Reservation.STATUS_ACTIVE,
+                    custom_ticket_price=availability.custom_ticket_price,
+                    custom_duration_hours=availability.custom_duration_hours,
+                )
+                reservation.full_clean()
+                reservation.save()
+                reservation.consume_tickets(
+                    reason=TicketLedger.REASON_RESERVATION_USE,
+                    created_by=request.user,
+                    note=f"通常レッスン予約: {availability.start_at:%Y-%m-%d %H:%M}",
+                )
+
+            messages.success(request, "レッスン予約が完了しました。")
+            return redirect("club:reservation_detail", pk=reservation.pk)
+
+        except ValidationError as e:
+            if hasattr(e, "messages"):
+                for message_text in e.messages:
+                    messages.error(request, message_text)
+            else:
+                messages.error(request, str(e))
+        except Exception as e:
+            messages.error(request, f"予約処理中にエラーが発生しました: {e}")
+
+        return redirect("club:lesson_calendar")
+
+    now = timezone.now()
+    range_end = now + timedelta(days=45)
+
+    availability_qs = (
+        CoachAvailability.objects.filter(
+            status=CoachAvailability.STATUS_OPEN,
+            lesson_type__in=[Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT],
+            start_at__gte=now,
+            start_at__lt=range_end,
+        )
+        .select_related("coach", "substitute_coach", "court")
+        .order_by("start_at", "coach__username", "court__name", "id")
     )
 
-    weekday_choices = list(FixedLesson.WEEKDAY_CHOICES)
-    day_columns = []
+    availability_list = list(availability_qs)
 
-    for weekday_value, weekday_label in weekday_choices:
-        items = []
-        day_lessons = [lesson for lesson in fixed_lessons if int(lesson.weekday) == int(weekday_value)]
-
-        for lesson in day_lessons:
-            duration_hours = _lesson_calendar_duration_hours(lesson)
-            start_hour = int(lesson.start_hour or 0)
-            end_hour = start_hour + duration_hours
-            member_names = [member.display_name() for member in lesson.members.all()]
-
-            items.append(
-                {
-                    "lesson": lesson,
-                    "title": _lesson_calendar_title(lesson),
-                    "time_label": f"{start_hour:02d}:00〜{end_hour:02d}:00",
-                    "coach_name": _fixed_lesson_coach_names(lesson),
-                    "court_name": lesson.court_display() if hasattr(lesson, "court_display") else str(lesson.court),
-                    "lesson_type_label": lesson.get_lesson_type_display(),
-                    "target_level_label": lesson.get_target_level_display(),
-                    "capacity": lesson.effective_capacity(),
-                    "member_names": member_names,
-                    "member_count": len(member_names),
-                }
-            )
-
-        day_columns.append(
-            {
-                "weekday_value": weekday_value,
-                "weekday_label": weekday_label,
-                "items": items,
-            }
+    reservation_qs = (
+        Reservation.objects.filter(
+            status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+            start_at__gte=now,
+            start_at__lt=range_end,
         )
+        .select_related("user", "coach", "substitute_coach", "court", "availability")
+        .order_by("start_at", "id")
+    )
+    reservation_list = list(reservation_qs)
+
+    active_slot_counts = {}
+    user_slot_status_map = {}
+
+    for reservation in reservation_list:
+        slot_key = _slot_key(
+            lesson_type=reservation.lesson_type,
+            coach_id=reservation.coach_id,
+            court_id=reservation.court_id,
+            start_at=reservation.start_at,
+            end_at=reservation.end_at,
+        )
+
+        if reservation.status == Reservation.STATUS_ACTIVE:
+            active_slot_counts.setdefault(slot_key, 0)
+            active_slot_counts[slot_key] += 1
+
+        if request.user.is_authenticated and reservation.user_id == request.user.pk:
+            user_slot_status_map[slot_key] = reservation.status
+
+    day_map = {}
+
+    for availability in availability_list:
+        start_local = timezone.localtime(availability.start_at) if timezone.is_aware(availability.start_at) else availability.start_at
+        end_local = timezone.localtime(availability.end_at) if timezone.is_aware(availability.end_at) else availability.end_at
+        target_date = start_local.date()
+
+        slot_key = _slot_key(
+            lesson_type=availability.lesson_type,
+            coach_id=availability.coach_id,
+            court_id=availability.court_id,
+            start_at=availability.start_at,
+            end_at=availability.end_at,
+        )
+
+        member_count = int(active_slot_counts.get(slot_key, 0))
+        capacity = int(availability.capacity or 0)
+        remaining_count = max(capacity - member_count, 0)
+
+        disabled_reason = ""
+        user_slot_status = user_slot_status_map.get(slot_key, "")
+
+        if not request.user.is_authenticated:
+            can_book = False
+            disabled_reason = "ログインすると予約できます。"
+        elif getattr(request.user, "role", None) != "member":
+            can_book = False
+            disabled_reason = "会員アカウントで予約できます。"
+        elif user_slot_status == Reservation.STATUS_ACTIVE:
+            can_book = False
+            disabled_reason = "予約済みです。"
+        elif user_slot_status == Reservation.STATUS_PENDING:
+            can_book = False
+            disabled_reason = "承認待ちの申請があります。"
+        elif not request.user.can_book_level(availability.target_level):
+            can_book = False
+            disabled_reason = "ご自身のレベルでは予約できません。"
+        elif member_count >= capacity:
+            can_book = False
+            disabled_reason = "満員です。"
+        else:
+            can_book = True
+
+        item = {
+            "id": availability.pk,
+            "availability": availability,
+            "title": "通常レッスン" if availability.lesson_type == Reservation.LESSON_GENERAL else availability.get_lesson_type_display(),
+            "date_label": start_local.strftime("%m/%d"),
+            "time_label": f"{start_local:%H:%M}〜{end_local:%H:%M}",
+            "coach_name": _display_name(availability.assigned_coach()),
+            "normal_coach_name": _display_name(availability.coach),
+            "substitute_coach_name": _display_name(availability.substitute_coach) if availability.substitute_coach else "",
+            "has_substitute": bool(availability.substitute_coach_id),
+            "court_name": str(availability.court),
+            "lesson_type_label": availability.get_lesson_type_display(),
+            "target_level_label": availability.get_target_level_display(),
+            "capacity": capacity,
+            "member_count": member_count,
+            "remaining_count": remaining_count,
+            "can_book": can_book,
+            "disabled_reason": disabled_reason,
+        }
+
+        day_map.setdefault(
+            target_date,
+            {
+                "date": target_date,
+                "weekday_value": target_date.weekday(),
+                "weekday_label": f"{target_date:%m/%d}（{['月', '火', '水', '木', '金', '土', '日'][target_date.weekday()]}）",
+                "items": [],
+            },
+        )
+        day_map[target_date]["items"].append(item)
+
+    day_columns = [day_map[key] for key in sorted(day_map.keys())]
 
     return render(
         request,
         "lesson_calendar.html",
         {
             "day_columns": day_columns,
+            "display_range_days": 45,
         },
     )
-
 
 def home(request):
     if request.user.is_authenticated:
