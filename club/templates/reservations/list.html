@@ -64,6 +64,13 @@
 {% block content %}
 
 <style>
+  .btn-sm{
+    min-height:34px;
+    padding:7px 10px;
+    border-radius:10px;
+    font-size:12px;
+  }
+
   .quick-filter-panel{
     display:flex;
     justify-content:space-between;
@@ -258,7 +265,8 @@
               <th>チケット</th>
               <th>価格帯内訳</th>
               <th>状態</th>
-              <th>操作</th>
+              <th>詳細</th>
+                <th>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -447,6 +455,7 @@
             </div>
 
             <div class="mobile-actions">
+              <a href="{% url 'club:reservation_detail' reservation.id %}" class="btn btn-primary">詳細を見る</a>
               {% if user.role == "coach" and reservation.status == "pending" %}
                 <form method="post" action="{% url 'club:coach_request_approve' reservation.pk %}" style="margin:0;" onsubmit="return confirm('この申請を承認しますか？');">
                   {% csrf_token %}
