@@ -1,265 +1,93 @@
 {% extends "base.html" %}
-{% block title %}レッスンカレンダー{% endblock %}
+{% block title %}予約{% endblock %}
 
 {% block content %}
 <style>
-  .lesson-title{
-    margin:0;
-    font-size:28px;
-    font-weight:900;
-    line-height:1.25;
-    letter-spacing:-0.02em;
-  }
-
-  .lesson-lead{
-    margin:8px 0 0;
-    color:var(--muted);
-    font-size:14px;
-    line-height:1.7;
-  }
-
-  .lesson-action-row{
-    display:flex;
-    gap:10px;
-    flex-wrap:wrap;
-  }
-
-  .lesson-week-grid{
-    display:grid;
-    grid-template-columns:repeat(7, minmax(0, 1fr));
-    gap:10px;
-  }
-
-  .lesson-day-column{
-    min-width:0;
-    border:1px solid var(--line);
-    background:#fff;
-    border-radius:16px;
-    overflow:hidden;
-    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
-  }
-
-  .lesson-day-head{
-    padding:12px;
-    background:#0f172a;
-    color:#fff;
-    font-weight:900;
-    text-align:center;
-    font-size:14px;
-  }
-
-  .lesson-day-body{
-    padding:10px;
-    display:grid;
-    grid-template-columns:1fr;
-    gap:10px;
-  }
-
-  .lesson-card{
-    border:1px solid #dbeafe;
-    background:#f8fbff;
-    border-radius:14px;
-    padding:12px;
-  }
-
-  .lesson-card-title{
-    font-size:15px;
-    font-weight:900;
-    line-height:1.35;
-  }
-
-  .lesson-card-time{
-    margin-top:4px;
-    display:inline-flex;
-    align-items:center;
-    padding:4px 8px;
-    border-radius:999px;
-    background:#eff6ff;
-    border:1px solid #bfdbfe;
-    color:#1d4ed8;
-    font-size:12px;
-    font-weight:900;
-  }
-
-  .lesson-info-list{
-    margin-top:8px;
-    display:grid;
-    gap:5px;
-  }
-
-  .lesson-info-row{
-    display:flex;
-    justify-content:space-between;
-    gap:10px;
-    font-size:12px;
-    line-height:1.45;
-  }
-
-  .lesson-info-label{
-    color:#64748b;
-    font-weight:800;
-    flex:0 0 auto;
-  }
-
-  .lesson-info-value{
-    text-align:right;
-    min-width:0;
-    overflow-wrap:anywhere;
-    color:#0f172a;
-    font-weight:700;
-  }
-
-  .empty-day{
-    padding:12px;
-    color:var(--muted);
-    font-size:12px;
-    text-align:center;
-    border:1px dashed #cbd5e1;
-    border-radius:12px;
-    background:#f8fafc;
-  }
-
-  .mobile-week-list{
-    display:none;
-  }
-
-  .desktop-week-area{
-    display:block;
-  }
-
-  .usage-grid{
-    display:grid;
-    grid-template-columns:repeat(3, minmax(0, 1fr));
-    gap:12px;
-  }
-
-  .usage-card{
-    border:1px solid var(--line);
-    background:#fff;
-    border-radius:16px;
-    padding:14px;
-  }
-
-  .usage-card-title{
-    font-weight:900;
-    margin-bottom:6px;
-  }
-
-  .usage-card-text{
-    color:var(--muted);
-    font-size:13px;
-    line-height:1.7;
-  }
-
-  @media (max-width: 1100px){
-    .lesson-week-grid{
-      grid-template-columns:repeat(4, minmax(0, 1fr));
-    }
-  }
-
-  @media (max-width: 900px){
-    .usage-grid{
-      grid-template-columns:1fr;
-    }
-
-    .lesson-week-grid{
-      grid-template-columns:repeat(2, minmax(0, 1fr));
-    }
-  }
-
-  @media (max-width: 768px){
-    .lesson-title{
-      font-size:23px;
-    }
-
-    .lesson-action-row{
-      width:100%;
-      display:grid;
-      grid-template-columns:1fr;
-      gap:8px;
-    }
-
-    .lesson-action-row .btn{
-      width:100%;
-    }
-
-    .desktop-week-area{
-      display:none;
-    }
-
-    .mobile-week-list{
-      display:grid;
-      grid-template-columns:1fr;
-      gap:12px;
-    }
-
-    .lesson-day-head{
-      text-align:left;
-      border-radius:14px 14px 0 0;
-    }
-
-    .lesson-day-column{
-      border-radius:14px;
-    }
-
-    .lesson-info-row{
-      display:block;
-      padding:6px 0;
-      border-top:1px solid #e2e8f0;
-    }
-
-    .lesson-info-label{
-      display:block;
-      margin-bottom:3px;
-    }
-
-    .lesson-info-value{
-      text-align:left;
-      display:block;
-    }
+  .lesson-title{margin:0;font-size:28px;font-weight:900;line-height:1.25;letter-spacing:-0.02em;}
+  .lesson-lead{margin:8px 0 0;color:var(--muted);font-size:14px;line-height:1.7;}
+  .reservation-hub-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;}
+  .reservation-hub-card{display:flex;flex-direction:column;gap:10px;min-height:150px;padding:16px;border:1px solid var(--line);background:#fff;border-radius:16px;box-shadow:0 6px 18px rgba(15,23,42,.04);}
+  .reservation-hub-card.primary{background:#0f172a;color:#fff;border-color:#0f172a;}
+  .reservation-hub-card.primary .hub-text{color:#d1d5db;}
+  .reservation-hub-card.info{border-color:#bfdbfe;background:#eff6ff;}
+  .reservation-hub-card.notice{border-color:#fed7aa;background:#fff7ed;}
+  .hub-title{font-size:18px;font-weight:900;line-height:1.35;}
+  .hub-text{color:var(--muted);font-size:13px;line-height:1.7;}
+  .hub-action{margin-top:auto;}
+  .reservation-hub-card.primary .btn{background:#fff;color:#0f172a;border-color:#fff;}
+  .lesson-week-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;}
+  .lesson-day-column{min-width:0;border:1px solid var(--line);background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 6px 18px rgba(15,23,42,.04);}
+  .lesson-day-head{padding:12px;background:#0f172a;color:#fff;font-weight:900;text-align:center;font-size:14px;}
+  .lesson-day-body{padding:10px;display:grid;grid-template-columns:1fr;gap:10px;}
+  .lesson-card{border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;padding:12px;}
+  .lesson-card-title{font-size:15px;font-weight:900;line-height:1.35;}
+  .lesson-card-time{margin-top:4px;display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;font-size:12px;font-weight:900;}
+  .lesson-info-list{margin-top:8px;display:grid;gap:5px;}
+  .lesson-info-row{display:flex;justify-content:space-between;gap:10px;font-size:12px;line-height:1.45;}
+  .lesson-info-label{color:#64748b;font-weight:800;flex:0 0 auto;}
+  .lesson-info-value{text-align:right;min-width:0;overflow-wrap:anywhere;color:#0f172a;font-weight:700;}
+  .lesson-card-actions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px;}
+  .empty-day{padding:12px;color:var(--muted);font-size:12px;text-align:center;border:1px dashed #cbd5e1;border-radius:12px;background:#f8fafc;}
+  .mobile-week-list{display:none;}
+  .desktop-week-area{display:block;}
+  .section-title{margin:0 0 12px;font-size:20px;font-weight:900;line-height:1.35;}
+  .section-sub{margin:-4px 0 14px;color:var(--muted);font-size:13px;line-height:1.7;}
+  @media (max-width:1100px){.lesson-week-grid{grid-template-columns:repeat(4,minmax(0,1fr));}}
+  @media (max-width:900px){.reservation-hub-grid{grid-template-columns:1fr;}.lesson-week-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  @media (max-width:768px){
+    .lesson-title{font-size:23px;}
+    .reservation-hub-card{min-height:auto;padding:14px;border-radius:15px;}
+    .desktop-week-area{display:none;}
+    .mobile-week-list{display:grid;grid-template-columns:1fr;gap:12px;}
+    .lesson-day-head{text-align:left;border-radius:14px 14px 0 0;}
+    .lesson-day-column{border-radius:14px;}
+    .lesson-info-row{display:block;padding:6px 0;border-top:1px solid #e2e8f0;}
+    .lesson-info-label{display:block;margin-bottom:3px;}
+    .lesson-info-value{text-align:left;display:block;}
   }
 </style>
 
 <div class="card">
-  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
     <div>
-      <h1 class="lesson-title">レッスンカレンダー</h1>
+      <h1 class="lesson-title">予約</h1>
       <p class="lesson-lead">
-        曜日ごとの固定レッスン予定を確認できます。予約はホームまたは予約作成画面から進めてください。
+        通常レッスンはこの画面から空き枠を選んで予約します。プライベート/グループは「個別レッスン相談」から申請できます。
       </p>
     </div>
-
-    <div class="lesson-action-row">
-      {% if user.is_authenticated %}
-        <a href="{% url 'club:reservation_create' %}" class="btn btn-primary">予約作成へ</a>
-        <a href="{% url 'club:reservation_list' %}" class="btn">予約一覧へ</a>
-      {% else %}
-        <a href="{% url 'club:line_login_start' %}" class="btn btn-primary">LINEでログイン</a>
-        <a href="{% url 'club:login' %}" class="btn">通常ログイン</a>
-      {% endif %}
-    </div>
+    {% if user.is_authenticated %}
+      <a href="{% url 'club:reservation_list' %}" class="btn">予約確認</a>
+    {% else %}
+      <a href="{% url 'club:line_login_start' %}" class="btn btn-primary">LINEでログイン</a>
+    {% endif %}
   </div>
 </div>
 
-<div class="card">
-  <div class="usage-grid">
-    <div class="usage-card">
-      <div class="usage-card-title">見方</div>
-      <div class="usage-card-text">曜日ごとに開催予定の固定レッスンを表示しています。</div>
+{% if user.is_authenticated %}
+  <div class="reservation-hub-grid">
+    <div class="reservation-hub-card primary">
+      <div class="hub-title">通常レッスンを予約</div>
+      <div class="hub-text">下のレッスンカードから日時・レベル・コーチを確認し、空き枠を選んで予約します。</div>
+      <div class="hub-action"><a href="#available-lessons" class="btn">空きレッスンを見る</a></div>
     </div>
-    <div class="usage-card">
-      <div class="usage-card-title">予約方法</div>
-      <div class="usage-card-text">空き枠予約はホームのカレンダー、または予約作成画面から行います。</div>
+    <div class="reservation-hub-card info">
+      <div class="hub-title">予約確認</div>
+      <div class="hub-text">次回予定、承認待ち、予約済み、キャンセル済みを確認します。</div>
+      <div class="hub-action"><a href="{% url 'club:reservation_list' %}" class="btn">予約確認へ</a></div>
     </div>
-    <div class="usage-card">
-      <div class="usage-card-title">確認ポイント</div>
-      <div class="usage-card-text">時間、担当コーチ、対象レベル、定員を確認してください。</div>
+    <div class="reservation-hub-card notice">
+      <div class="hub-title">個別レッスン相談</div>
+      <div class="hub-text">プライベート/グループなど、希望日時をコーチへ相談したい場合はこちらです。</div>
+      <div class="hub-action"><a href="{% url 'club:reservation_create' %}" class="btn">相談する</a></div>
     </div>
   </div>
-</div>
+{% endif %}
 
-<div class="desktop-week-area">
-  <div class="lesson-week-grid">
+<div class="card" id="available-lessons">
+  <h2 class="section-title">予約できるレッスン</h2>
+  <p class="section-sub">スマホでは曜日ごとのカード表示を優先しています。空きがあるレッスンを選んで予約へ進んでください。</p>
+
+  <div class="mobile-week-list">
     {% for day in day_columns %}
       <div class="lesson-day-column">
         <div class="lesson-day-head">{{ day.weekday_label }}</div>
@@ -269,28 +97,22 @@
               <div class="lesson-card">
                 <div class="lesson-card-title">{{ item.title }}</div>
                 <div class="lesson-card-time">{{ item.time_label }}</div>
-
                 <div class="lesson-info-list">
-                  <div class="lesson-info-row">
-                    <div class="lesson-info-label">コーチ</div>
-                    <div class="lesson-info-value">{{ item.coach_name }}</div>
-                  </div>
-                  <div class="lesson-info-row">
-                    <div class="lesson-info-label">コート</div>
-                    <div class="lesson-info-value">{{ item.court_name }}</div>
-                  </div>
-                  <div class="lesson-info-row">
-                    <div class="lesson-info-label">種別</div>
-                    <div class="lesson-info-value">{{ item.lesson_type_label }}</div>
-                  </div>
-                  <div class="lesson-info-row">
-                    <div class="lesson-info-label">対象</div>
-                    <div class="lesson-info-value">{{ item.target_level_label }}</div>
-                  </div>
-                  <div class="lesson-info-row">
-                    <div class="lesson-info-label">定員</div>
-                    <div class="lesson-info-value">{{ item.member_count }} / {{ item.capacity }}名</div>
-                  </div>
+                  <div class="lesson-info-row"><div class="lesson-info-label">コーチ</div><div class="lesson-info-value">{{ item.coach_name }}</div></div>
+                  <div class="lesson-info-row"><div class="lesson-info-label">コート</div><div class="lesson-info-value">{{ item.court_name }}</div></div>
+                  <div class="lesson-info-row"><div class="lesson-info-label">対象レベル</div><div class="lesson-info-value">{{ item.target_level_label }}</div></div>
+                  <div class="lesson-info-row"><div class="lesson-info-label">参加 / 定員</div><div class="lesson-info-value">{{ item.member_count }} / {{ item.capacity }}名</div></div>
+                </div>
+                <div class="lesson-card-actions">
+                  {% if user.is_authenticated %}
+                    {% if item.member_count < item.capacity %}
+                      <a href="{% url 'club:reservation_create' %}?availability={{ item.id }}" class="btn btn-primary">このレッスンを予約</a>
+                    {% else %}
+                      <button type="button" class="btn" disabled>満員</button>
+                    {% endif %}
+                  {% else %}
+                    <a href="{% url 'club:line_login_start' %}" class="btn btn-primary">ログインして予約</a>
+                  {% endif %}
                 </div>
               </div>
             {% endfor %}
@@ -301,54 +123,57 @@
       </div>
     {% endfor %}
   </div>
+
+  <div class="desktop-week-area">
+    <div class="lesson-week-grid">
+      {% for day in day_columns %}
+        <div class="lesson-day-column">
+          <div class="lesson-day-head">{{ day.weekday_label }}</div>
+          <div class="lesson-day-body">
+            {% if day.items %}
+              {% for item in day.items %}
+                <div class="lesson-card">
+                  <div class="lesson-card-title">{{ item.title }}</div>
+                  <div class="lesson-card-time">{{ item.time_label }}</div>
+                  <div class="lesson-info-list">
+                    <div class="lesson-info-row"><div class="lesson-info-label">コーチ</div><div class="lesson-info-value">{{ item.coach_name }}</div></div>
+                    <div class="lesson-info-row"><div class="lesson-info-label">コート</div><div class="lesson-info-value">{{ item.court_name }}</div></div>
+                    <div class="lesson-info-row"><div class="lesson-info-label">対象</div><div class="lesson-info-value">{{ item.target_level_label }}</div></div>
+                    <div class="lesson-info-row"><div class="lesson-info-label">定員</div><div class="lesson-info-value">{{ item.member_count }} / {{ item.capacity }}名</div></div>
+                  </div>
+                  <div class="lesson-card-actions">
+                    {% if user.is_authenticated %}
+                      {% if item.member_count < item.capacity %}
+                        <a href="{% url 'club:reservation_create' %}?availability={{ item.id }}" class="btn btn-primary">予約する</a>
+                      {% else %}
+                        <button type="button" class="btn" disabled>満員</button>
+                      {% endif %}
+                    {% else %}
+                      <a href="{% url 'club:line_login_start' %}" class="btn btn-primary">ログインして予約</a>
+                    {% endif %}
+                  </div>
+                </div>
+              {% endfor %}
+            {% else %}
+              <div class="empty-day">登録レッスンなし</div>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
 </div>
 
-<div class="mobile-week-list">
-  {% for day in day_columns %}
-    <div class="lesson-day-column">
-      <div class="lesson-day-head">{{ day.weekday_label }}</div>
-      <div class="lesson-day-body">
-        {% if day.items %}
-          {% for item in day.items %}
-            <div class="lesson-card">
-              <div class="lesson-card-title">{{ item.title }}</div>
-              <div class="lesson-card-time">{{ item.time_label }}</div>
-
-              <div class="lesson-info-list">
-                <div class="lesson-info-row">
-                  <div class="lesson-info-label">コーチ</div>
-                  <div class="lesson-info-value">{{ item.coach_name }}</div>
-                </div>
-                <div class="lesson-info-row">
-                  <div class="lesson-info-label">コート</div>
-                  <div class="lesson-info-value">{{ item.court_name }}</div>
-                </div>
-                <div class="lesson-info-row">
-                  <div class="lesson-info-label">種別</div>
-                  <div class="lesson-info-value">{{ item.lesson_type_label }}</div>
-                </div>
-                <div class="lesson-info-row">
-                  <div class="lesson-info-label">対象レベル</div>
-                  <div class="lesson-info-value">{{ item.target_level_label }}</div>
-                </div>
-                <div class="lesson-info-row">
-                  <div class="lesson-info-label">参加 / 定員</div>
-                  <div class="lesson-info-value">{{ item.member_count }} / {{ item.capacity }}名</div>
-                </div>
-                {% if item.member_names %}
-                  <div class="lesson-info-row">
-                    <div class="lesson-info-label">登録メンバー</div>
-                    <div class="lesson-info-value">{{ item.member_names|join:"、" }}</div>
-                  </div>
-                {% endif %}
-              </div>
-            </div>
-          {% endfor %}
-        {% else %}
-          <div class="empty-day">登録レッスンなし</div>
-        {% endif %}
-      </div>
-    </div>
-  {% endfor %}
+<div class="card">
+  <h2 class="section-title">個別レッスンを相談したい場合</h2>
+  <p class="section-sub">プライベートレッスンやグループレッスンは、通常レッスンより頻度が低いため、別の相談フォームに分けています。</p>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;">
+    {% if user.is_authenticated %}
+      <a href="{% url 'club:reservation_create' %}" class="btn">個別レッスンを相談する</a>
+      <a href="{% url 'club:reservation_list' %}" class="btn">予約確認</a>
+    {% else %}
+      <a href="{% url 'club:line_login_start' %}" class="btn btn-primary">ログインして相談</a>
+    {% endif %}
+  </div>
 </div>
 {% endblock %}
