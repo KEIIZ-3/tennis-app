@@ -1,3 +1,4 @@
+{% load dashboard_tags %}
 <!doctype html>
 <html lang="ja">
 <head>
@@ -767,6 +768,53 @@
         background:#f8fafc;
       }
 
+      .bottom-nav-wrap{
+        position:relative;
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+      }
+
+      .bottom-nav-badge{
+        position:absolute;
+        top:-9px;
+        right:-14px;
+        min-width:18px;
+        height:18px;
+        padding:0 5px;
+        border-radius:999px;
+        background:#ef4444;
+        color:#fff;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:10px;
+        line-height:1;
+        font-weight:900;
+        border:2px solid #fff;
+      }
+
+      .nav-count-badge{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-width:20px;
+        height:20px;
+        padding:0 6px;
+        border-radius:999px;
+        background:#ef4444;
+        color:#fff;
+        font-size:11px;
+        line-height:1;
+        font-weight:900;
+        margin-left:6px;
+      }
+
+      .nav-count-badge.soft{
+        background:#f59e0b;
+      }
+
+
       .bottom-app-nav .bottom-icon{
         font-size:17px;
         line-height:1;
@@ -816,7 +864,12 @@
             <nav class="nav" id="member-nav">
               <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
               <a href="{% url 'club:reservation_create' %}">予約</a>
-              <a href="{% url 'club:reservation_list' %}">予約確認</a>
+              <a href="{% url 'club:reservation_list' %}">
+                予約確認
+                {% if nav_member_upcoming_count %}
+                  <span class="nav-count-badge soft">{{ nav_member_upcoming_count }}</span>
+                {% endif %}
+              </a>
               <a href="{% url 'club:tickets' %}">チケット</a>
               <a href="{% url 'club:shop_estimate' %}">Shop・ガット</a>
               <a href="{% url 'club:stringing_order_create' %}">ガット張りだけ依頼</a>
@@ -875,9 +928,19 @@
 
             <div class="coach-tabs" id="coach-tabs">
               <a href="{% url 'club:home' %}" class="coach-tab {% if request.resolver_match.url_name == 'home' %}active{% endif %}">ホーム</a>
-              <a href="{% url 'club:reservation_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_list' %}active{% endif %}">予約・承認</a>
+              <a href="{% url 'club:reservation_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_list' %}active{% endif %}">
+                予約・承認
+                {% if nav_pending_count %}
+                  <span class="nav-count-badge">{{ nav_pending_count }}</span>
+                {% endif %}
+              </a>
               <a href="{% url 'club:coach_availability_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_availability_list' or request.resolver_match.url_name == 'coach_availability_create' or request.resolver_match.url_name == 'coach_availability_edit' or request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}active{% endif %}">スケジュール</a>
-              <a href="{% url 'club:stringing_order_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'stringing_order_list' %}active{% endif %}">ガット張り</a>
+              <a href="{% url 'club:stringing_order_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'stringing_order_list' %}active{% endif %}">
+                ガット張り
+                {% if nav_stringing_count %}
+                  <span class="nav-count-badge soft">{{ nav_stringing_count }}</span>
+                {% endif %}
+              </a>
               <a href="{% url 'club:coach_payroll_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_payroll_summary' or request.resolver_match.url_name == 'coach_ticket_summary' or request.resolver_match.url_name == 'coach_expense_manage' %}active{% endif %}">給与・経費</a>
               <a href="{% url 'club:schedule_survey_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'schedule_survey_summary' or request.resolver_match.url_name == 'shop_estimate' or request.resolver_match.url_name == 'line_connect' or request.resolver_match.url_name == 'lesson_calendar' %}active{% endif %}">管理</a>
 
@@ -894,6 +957,17 @@
   </header>
 
 
+
+  {% if user.is_authenticated %}
+    {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+      {% coach_pending_request_count user as nav_pending_count %}
+      {% coach_unhandled_stringing_count user as nav_stringing_count %}
+    {% else %}
+      {% member_pending_reservation_count user as nav_member_pending_count %}
+      {% member_upcoming_reservation_count user as nav_member_upcoming_count %}
+    {% endif %}
+  {% endif %}
+
   {% if user.is_authenticated %}
     {% if user.role == "coach" or user.is_staff or user.is_superuser %}
       <nav class="bottom-app-nav" aria-label="コーチ用下部ナビ">
@@ -901,13 +975,25 @@
           <span class="bottom-icon">🏠</span><span>ホーム</span>
         </a>
         <a href="{% url 'club:reservation_list' %}" class="{% if request.resolver_match.url_name == 'reservation_list' %}is-active{% endif %}">
-          <span class="bottom-icon">✅</span><span>予約承認</span>
+          <span class="bottom-icon">✅</span>
+          <span class="bottom-nav-wrap">
+            予約承認
+            {% if nav_pending_count %}
+              <span class="bottom-nav-badge">{{ nav_pending_count }}</span>
+            {% endif %}
+          </span>
         </a>
         <a href="{% url 'club:coach_availability_list' %}" class="{% if request.resolver_match.url_name == 'coach_availability_list' or request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}is-active{% endif %}">
           <span class="bottom-icon">📅</span><span>予定</span>
         </a>
         <a href="{% url 'club:stringing_order_list' %}" class="{% if request.resolver_match.url_name == 'stringing_order_list' %}is-active{% endif %}">
-          <span class="bottom-icon">🎾</span><span>ガット</span>
+          <span class="bottom-icon">🎾</span>
+          <span class="bottom-nav-wrap">
+            ガット
+            {% if nav_stringing_count %}
+              <span class="bottom-nav-badge">{{ nav_stringing_count }}</span>
+            {% endif %}
+          </span>
         </a>
         <a href="{% url 'club:coach_payroll_summary' %}" class="{% if request.resolver_match.url_name == 'coach_payroll_summary' or request.resolver_match.url_name == 'coach_expense_manage' or request.resolver_match.url_name == 'coach_ticket_summary' %}is-active{% endif %}">
           <span class="bottom-icon">¥</span><span>給与経費</span>
@@ -919,7 +1005,13 @@
           <span class="bottom-icon">🏠</span><span>ホーム</span>
         </a>
         <a href="{% url 'club:reservation_create' %}" class="{% if request.resolver_match.url_name == 'reservation_create' %}is-active{% endif %}">
-          <span class="bottom-icon">📅</span><span>予約</span>
+          <span class="bottom-icon">📅</span>
+          <span class="bottom-nav-wrap">
+            予約
+            {% if nav_member_pending_count %}
+              <span class="bottom-nav-badge">{{ nav_member_pending_count }}</span>
+            {% endif %}
+          </span>
         </a>
         <a href="{% url 'club:tickets' %}" class="{% if request.resolver_match.url_name == 'tickets' %}is-active{% endif %}">
           <span class="bottom-icon">🎫</span><span>チケット</span>
