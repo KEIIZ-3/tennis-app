@@ -1,5 +1,20 @@
 {% extends "base.html" %}
-{% block title %}ガット張り管理{% endblock %}
+{% block title %}ガット張り管理
+<script>
+  (function () {
+    const buttons = Array.from(document.querySelectorAll(".js-mobile-detail-toggle"));
+    buttons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        const detail = button.nextElementSibling;
+        if (!detail) return;
+        const isOpen = detail.classList.toggle("is-open");
+        button.textContent = isOpen ? "詳細を閉じる" : "詳細を開く";
+      });
+    });
+  })();
+</script>
+
+{% endblock %}
 
 {% block content %}
 <style>
@@ -47,6 +62,32 @@
       width:100%;
     }
   }
+
+
+  .mobile-detail-toggle{
+    appearance:none;
+    width:100%;
+    margin-top:10px;
+    min-height:40px;
+    padding:8px 12px;
+    border-radius:12px;
+    border:1px solid #dbeafe;
+    background:#eff6ff;
+    color:#1d4ed8;
+    font-size:13px;
+    font-weight:900;
+    cursor:pointer;
+  }
+
+  .mobile-collapsible-detail{
+    display:none;
+    margin-top:8px;
+  }
+
+  .mobile-collapsible-detail.is-open{
+    display:block;
+  }
+
 
   .mobile-page-title{
     margin:0;
@@ -404,6 +445,9 @@
               <th>希望張り上げ納期</th>
               <th>料金</th>
               <th>状況</th>
+                </div>
+              </div>
+
               {% if is_stringing_manage_mode %}
                 <th>更新</th>
               {% endif %}
@@ -515,8 +559,10 @@
                 {% endif %}
               </div>
 
-              <div class="mobile-info-list">
-                {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+              <button type="button" class="mobile-detail-toggle js-mobile-detail-toggle">詳細を開く</button>
+              <div class="mobile-collapsible-detail">
+                <div class="mobile-info-list">
+                  {% if user.role == "coach" or user.is_staff or user.is_superuser %}
                   <div class="mobile-info-row">
                     <div class="mobile-info-label">会員</div>
                     <div class="mobile-info-value">{{ order.user.display_name }}</div>
@@ -593,4 +639,19 @@
     <p class="muted" style="margin:0;">条件に一致するガット張り依頼はありません。</p>
   {% endif %}
 </div>
+
+<script>
+  (function () {
+    const buttons = Array.from(document.querySelectorAll(".js-mobile-detail-toggle"));
+    buttons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        const detail = button.nextElementSibling;
+        if (!detail) return;
+        const isOpen = detail.classList.toggle("is-open");
+        button.textContent = isOpen ? "詳細を閉じる" : "詳細を開く";
+      });
+    });
+  })();
+</script>
+
 {% endblock %}
