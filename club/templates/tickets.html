@@ -296,6 +296,20 @@
   </div>
 </div>
 
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h2 style="margin:0;">チケットで確認すること</h2>
+      <p class="muted" style="margin:6px 0 0;">残数、保有内訳、消費履歴を確認できます。残数が少ない場合は追加購入をご相談ください。</p>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <a href="{% url 'club:reservation_create' %}" class="btn btn-primary">予約する</a>
+      <a href="{% url 'club:reservation_list' %}" class="btn">予約確認</a>
+    </div>
+  </div>
+</div>
+
 <div class="ticket-stat-grid">
   <div class="ticket-stat primary">
     <div class="ticket-stat-label">現在の残数</div>
@@ -309,6 +323,25 @@
     <div class="ticket-stat-label">おすすめ購入</div>
     <div class="ticket-stat-value" style="font-size:20px;">4枚 14,000円</div>
   </div>
+</div>
+
+
+<div class="card">
+  {% if user.ticket_balance <= 2 %}
+    <div style="padding:14px 16px; border:1px solid #fed7aa; background:#fff7ed; border-radius:14px; color:#9a3412;">
+      <div style="font-weight:900; margin-bottom:6px;">チケット残数が少なくなっています</div>
+      <div style="font-size:13px; line-height:1.7;">
+        現在の残数は {{ user.ticket_balance }}枚です。次回以降の予約前に、追加購入または残数確認をおすすめします。
+      </div>
+    </div>
+  {% else %}
+    <div style="padding:14px 16px; border:1px solid #bbf7d0; background:#ecfdf5; border-radius:14px; color:#166534;">
+      <div style="font-weight:900; margin-bottom:6px;">チケット残数は問題ありません</div>
+      <div style="font-size:13px; line-height:1.7;">
+        現在の残数は {{ user.ticket_balance }}枚です。詳細な消費内訳は下で確認できます。
+      </div>
+    </div>
+  {% endif %}
 </div>
 
 <div class="card">
