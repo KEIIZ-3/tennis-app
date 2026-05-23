@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load dashboard_tags %}
 {% block title %}ホーム{% endblock %}
 
 {% block content %}
@@ -329,6 +330,146 @@
     font-size:13px;
   }
 
+
+  .task-dashboard-grid{
+    display:grid;
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    gap:12px;
+  }
+
+  .task-dashboard-card{
+    padding:16px;
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:16px;
+    box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .task-dashboard-card.primary{
+    background:#0f172a;
+    color:#fff;
+    border-color:#0f172a;
+  }
+
+  .task-dashboard-card.notice{
+    background:#fff7ed;
+    border-color:#fed7aa;
+  }
+
+  .task-dashboard-card.info{
+    background:#eff6ff;
+    border-color:#bfdbfe;
+  }
+
+  .task-dashboard-card.success{
+    background:#ecfdf5;
+    border-color:#bbf7d0;
+  }
+
+  .task-dashboard-label{
+    color:var(--muted);
+    font-size:12px;
+    font-weight:900;
+  }
+
+  .task-dashboard-card.primary .task-dashboard-label{
+    color:#cbd5e1;
+  }
+
+  .task-dashboard-value{
+    margin-top:6px;
+    font-size:26px;
+    line-height:1.2;
+    font-weight:900;
+  }
+
+  .task-dashboard-sub{
+    margin-top:6px;
+    color:var(--muted);
+    font-size:12px;
+    line-height:1.6;
+  }
+
+  .task-dashboard-card.primary .task-dashboard-sub{
+    color:#cbd5e1;
+  }
+
+  .next-reservation-card{
+    border:1px solid #bfdbfe;
+    background:#eff6ff;
+    border-radius:16px;
+    padding:16px;
+    margin-top:14px;
+  }
+
+  .next-reservation-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+
+  .next-reservation-title{
+    font-size:18px;
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .next-reservation-sub{
+    margin-top:5px;
+    color:#475569;
+    font-size:13px;
+    line-height:1.6;
+  }
+
+  .next-reservation-pill{
+    display:inline-flex;
+    align-items:center;
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid #93c5fd;
+    background:#fff;
+    color:#1d4ed8;
+    font-size:12px;
+    font-weight:900;
+  }
+
+  .task-mini-list{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:8px;
+    margin-top:12px;
+  }
+
+  .task-mini-link{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    padding:12px;
+    border:1px solid #e5e7eb;
+    background:#fff;
+    border-radius:14px;
+    text-decoration:none;
+  }
+
+  .task-mini-link strong{
+    display:block;
+    font-size:14px;
+  }
+
+  .task-mini-link span{
+    color:#64748b;
+    font-size:12px;
+  }
+
+  .task-mini-arrow{
+    color:#64748b;
+    font-weight:900;
+  }
+
+
   @media (max-width: 960px){
     .quick-grid,
     .quick-grid.two,
@@ -389,6 +530,25 @@
 
     .quick-card{
       min-height:auto;
+      padding:14px;
+      border-radius:15px;
+    }
+
+    .task-dashboard-grid{
+      grid-template-columns:1fr;
+      gap:8px;
+    }
+
+    .task-dashboard-card{
+      padding:14px;
+      border-radius:15px;
+    }
+
+    .task-dashboard-value{
+      font-size:23px;
+    }
+
+    .next-reservation-card{
       padding:14px;
       border-radius:15px;
     }
@@ -527,6 +687,56 @@
       <div class="home-badge">Coachロール専用表示</div>
     </div>
   </div>
+
+
+  {% coach_pending_request_count user as coach_pending_count %}
+  {% coach_today_reservation_count user as coach_today_count %}
+  {% coach_unhandled_stringing_count user as coach_stringing_count %}
+  {% coach_rain_cancel_candidate_count user as coach_rain_count %}
+  {% coach_pending_requests_preview user as coach_pending_preview %}
+
+  <div class="task-dashboard-grid">
+    <a href="{% url 'club:reservation_list' %}" class="task-dashboard-card primary" style="text-decoration:none;">
+      <div class="task-dashboard-label">承認待ち</div>
+      <div class="task-dashboard-value">{{ coach_pending_count }}件</div>
+      <div class="task-dashboard-sub">個別レッスン申請の確認</div>
+    </a>
+
+    <a href="{% url 'club:coach_availability_list' %}" class="task-dashboard-card info" style="text-decoration:none;">
+      <div class="task-dashboard-label">今日の担当予定</div>
+      <div class="task-dashboard-value">{{ coach_today_count }}件</div>
+      <div class="task-dashboard-sub">本日の予約・担当枠</div>
+    </a>
+
+    <a href="{% url 'club:stringing_order_list' %}" class="task-dashboard-card notice" style="text-decoration:none;">
+      <div class="task-dashboard-label">未対応ガット</div>
+      <div class="task-dashboard-value">{{ coach_stringing_count }}件</div>
+      <div class="task-dashboard-sub">受付済み・対応中</div>
+    </a>
+
+    <a href="{% url 'club:coach_availability_list' %}" class="task-dashboard-card success" style="text-decoration:none;">
+      <div class="task-dashboard-label">雨天中止候補</div>
+      <div class="task-dashboard-value">{{ coach_rain_count }}件</div>
+      <div class="task-dashboard-sub">今後の予約中レッスン</div>
+    </a>
+  </div>
+
+  {% if coach_pending_preview %}
+    <div class="card">
+      <h2 class="home-section-title">すぐ確認する申請</h2>
+      <div class="task-mini-list">
+        {% for reservation in coach_pending_preview %}
+          <a href="{% url 'club:reservation_list' %}" class="task-mini-link">
+            <div>
+              <strong>{{ reservation.user.display_name }} さん / {{ reservation.get_lesson_type_display }}</strong>
+              <span>{{ reservation.start_at|date:"m/d H:i" }}〜{{ reservation.end_at|date:"H:i" }}</span>
+            </div>
+            <div class="task-mini-arrow">›</div>
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
 
   <div class="quick-grid">
     <div class="quick-card primary">
@@ -692,6 +902,65 @@
         <div class="mini-stat-label">おすすめ</div>
         <div class="mini-stat-value" style="font-size:18px;">4枚 14,000円</div>
       </div>
+    </div>
+  </div>
+
+
+  {% member_next_reservation user as next_reservation %}
+  {% member_pending_reservation_count user as member_pending_count %}
+  {% member_upcoming_reservation_count user as member_upcoming_count %}
+
+  <div class="task-dashboard-grid">
+    <a href="{% url 'club:reservation_list' %}" class="task-dashboard-card primary" style="text-decoration:none;">
+      <div class="task-dashboard-label">今後の予約</div>
+      <div class="task-dashboard-value">{{ member_upcoming_count }}件</div>
+      <div class="task-dashboard-sub">予約中・承認待ちを含む</div>
+    </a>
+
+    <a href="{% url 'club:reservation_list' %}" class="task-dashboard-card notice" style="text-decoration:none;">
+      <div class="task-dashboard-label">承認待ち</div>
+      <div class="task-dashboard-value">{{ member_pending_count }}件</div>
+      <div class="task-dashboard-sub">コーチ承認待ちの申請</div>
+    </a>
+
+    <a href="{% url 'club:tickets' %}" class="task-dashboard-card info" style="text-decoration:none;">
+      <div class="task-dashboard-label">チケット残数</div>
+      <div class="task-dashboard-value">{{ user.ticket_balance }}枚</div>
+      <div class="task-dashboard-sub">少ない場合は追加購入を相談</div>
+    </a>
+
+    <a href="{% url 'club:shop_estimate' %}" class="task-dashboard-card success" style="text-decoration:none;">
+      <div class="task-dashboard-label">Shop・ガット</div>
+      <div class="task-dashboard-value">確認</div>
+      <div class="task-dashboard-sub">見積・ガット張り依頼</div>
+    </a>
+  </div>
+
+  <div class="card">
+    <h2 class="home-section-title">次回予定</h2>
+    {% if next_reservation %}
+      <div class="next-reservation-card">
+        <div class="next-reservation-head">
+          <div>
+            <div class="next-reservation-title">
+              {{ next_reservation.start_at|date:"m/d H:i" }}〜{{ next_reservation.end_at|date:"H:i" }}
+            </div>
+            <div class="next-reservation-sub">
+              {{ next_reservation.get_lesson_type_display }} / 担当: {{ next_reservation.coach.display_name }}
+            </div>
+          </div>
+          <div class="next-reservation-pill">{{ next_reservation.get_status_display }}</div>
+        </div>
+      </div>
+    {% else %}
+      <div style="padding:14px 16px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:14px; color:#475569;">
+        今後の予約はまだありません。通常レッスン予約または個別レッスン申請から進めてください。
+      </div>
+    {% endif %}
+
+    <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
+      <a href="{% url 'club:reservation_create' %}" class="btn btn-primary">予約する</a>
+      <a href="{% url 'club:reservation_list' %}" class="btn">予約確認</a>
     </div>
   </div>
 
