@@ -1109,6 +1109,200 @@ def schedule_survey_view(request):
     )
 
 
+
+
+def _activity_item(
+    *,
+    created_at,
+    action_label,
+    result_label,
+    title,
+    message="",
+    actor_name="-",
+    target_name="-",
+    detail_url="",
+    related_label="-",
+):
+    return {
+        "created_at": created_at,
+        "action_label": action_label,
+        "result_label": result_label,
+        "title": title,
+        "message": message,
+        "actor_name": actor_name,
+        "target_name": target_name,
+        "detail_url": detail_url,
+        "related_label": related_label,
+    }
+
+
+@login_required
+@require_GET
+def coach_activity_log(request):
+    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
+        return HttpResponse("Forbidden", status=403)
+
+    type_filter = (request.GET.get("type") or "all").strip()
+    valid_type_filters = {"all", "reservation", "stringing", "ticket"}
+    if type_filter not in valid_type_filters:
+        type_filter = "all"
+
+    rows = []
+
+    include_reservation = type_filter in ("all", "reservation")
+    include_stringing = type_filter in ("all", "stringing")
+    include_ticket = type_filter in ("all", "ticket")
+
+    if include_reservation:
+        reservation_qs = (
+            Reservation.objects.select_related("user", "coach", "substitute_coach", "court")
+            .order_by("-created_at", "-id")[:80]
+        )
+
+        if _is_coach_user(request.user) and not _is_staff_like(request.user):
+            reservation_qs = [
+                reservation for reservation in reservation_qs
+                if reservation.coach_id == request.user.pk
+                or getattr(reservation, "substitute_coach_id", None) == request.user.pk
+            ]
+
+        for reservation in reservation_qs:
+            if reservation.status == Reservation.STATUS_PENDING:
+                action_label = "予約申請"
+                result_label = "承認待ち"
+                title = "予約申請が作成されました"
+            elif reservation.status == Reservation.STATUS_ACTIVE:
+                action_label = "予約"
+                result_label = "予約中"
+                title = "予約が成立しています"
+            elif reservation.status == Reservation.STATUS_RAIN_CANCELED:
+                action_label = "雨天中止"
+                result_label = "中止"
+                title = "予約が雨天中止になりました"
+            elif reservation.status == Reservation.STATUS_CANCELED:
+                action_label = "キャンセル"
+                result_label = "キャンセル"
+                title = "予約がキャンセルされました"
+            else:
+                action_label = "予約"
+                result_label = reservation.get_status_display()
+                title = "予約状態が更新されました"
+
+            rows.append(
+                _activity_item(
+                    created_at=reservation.canceled_at or reservation.created_at,
+                    action_label=action_label,
+                    result_label=result_label,
+                    title=title,
+                    message=(
+                        f"{reservation.start_at:%Y-%m-%d %H:%M}〜{reservation.end_at:%H:%M} / "
+                        f"{reservation.get_lesson_type_display()} / "
+                        f"会員: {_display_name(reservation.user)}"
+                    ),
+                    actor_name=_display_name(reservation.coach),
+                    target_name=_display_name(reservation.user),
+                    detail_url=reverse("club:reservation_detail", kwargs={"pk": reservation.pk}),
+                    related_label=f"予約ID {reservation.pk}",
+                )
+            )
+
+    if include_stringing:
+        stringing_qs = (
+            StringingOrder.objects.select_related("user", "assigned_coach")
+            .order_by("-updated_at", "-created_at", "-id")[:80]
+        )
+
+        if _is_coach_user(request.user) and not _is_staff_like(request.user):
+            stringing_qs = stringing_qs.filter(assigned_coach=request.user)
+
+        for order in stringing_qs:
+            rows.append(
+                _activity_item(
+                    created_at=order.updated_at or order.created_at,
+                    action_label="ガット張り",
+                    result_label=order.get_status_display(),
+                    title="ガット張り依頼の状態",
+                    message=(
+                        f"会員: {_display_name(order.user)} / "
+                        f"ラケット: {order.racket_name or '-'} / "
+                        f"ガット: {order.string_name or '-'} / "
+                        f"料金: {order.total_price()}円"
+                    ),
+                    actor_name=_display_name(order.assigned_coach),
+                    target_name=_display_name(order.user),
+                    detail_url=reverse("club:stringing_order_detail", kwargs={"pk": order.pk}),
+                    related_label=f"ガットID {order.pk}",
+                )
+            )
+
+    if include_ticket:
+        ticket_qs = (
+            TicketLedger.objects.select_related("user", "created_by", "reservation", "fixed_lesson")
+            .order_by("-created_at", "-id")[:80]
+        )
+
+        if _is_coach_user(request.user) and not _is_staff_like(request.user):
+            # コーチは全チケット履歴ではなく、関連予約に紐づくものを中心に確認
+            ticket_qs = ticket_qs.filter(
+                reservation__coach=request.user
+            ) | ticket_qs.filter(
+                reservation__substitute_coach=request.user
+            )
+
+        for ledger in ticket_qs[:80]:
+            detail_url = ""
+            related_label = "-"
+            if ledger.reservation_id:
+                detail_url = reverse("club:reservation_detail", kwargs={"pk": ledger.reservation_id})
+                related_label = f"予約ID {ledger.reservation_id}"
+            elif ledger.fixed_lesson_id:
+                related_label = f"固定レッスンID {ledger.fixed_lesson_id}"
+
+            sign = "+" if int(ledger.change_amount or 0) >= 0 else ""
+            rows.append(
+                _activity_item(
+                    created_at=ledger.created_at,
+                    action_label="チケット",
+                    result_label=ledger.get_reason_display(),
+                    title=f"チケット {sign}{ledger.change_amount}枚",
+                    message=f"残数: {ledger.balance_after}枚 / メモ: {ledger.note or '-'}",
+                    actor_name=_display_name(ledger.created_by),
+                    target_name=_display_name(ledger.user),
+                    detail_url=detail_url,
+                    related_label=related_label,
+                )
+            )
+
+    rows = sorted(
+        [row for row in rows if row.get("created_at")],
+        key=lambda row: row["created_at"],
+        reverse=True,
+    )[:100]
+
+    count_map = {
+        "all": len(rows),
+        "reservation": 0,
+        "stringing": 0,
+        "ticket": 0,
+    }
+    for row in rows:
+        if row["action_label"] in ("予約申請", "予約", "雨天中止", "キャンセル"):
+            count_map["reservation"] += 1
+        elif row["action_label"] == "ガット張り":
+            count_map["stringing"] += 1
+        elif row["action_label"] == "チケット":
+            count_map["ticket"] += 1
+
+    return render(
+        request,
+        "coach/activity_log.html",
+        {
+            "activity_rows": rows,
+            "type_filter": type_filter,
+            "count_map": count_map,
+        },
+    )
+
 @login_required
 @require_GET
 def coach_schedule_survey_summary(request):
