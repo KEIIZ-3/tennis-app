@@ -801,7 +801,31 @@ def _fixed_lesson_includes_coach(fixed_lesson, coach):
 def lesson_calendar_view(request):
     _sync_fixed_lessons()
 
+    today = timezone.localdate()
+
+    def _parse_target_month(raw_year, raw_month):
+        try:
+            year_value = int(raw_year or today.year)
+        except Exception:
+            year_value = today.year
+
+        try:
+            month_value = int(raw_month or today.month)
+        except Exception:
+            month_value = today.month
+
+        if month_value < 1 or month_value > 12:
+            month_value = today.month
+
+        if year_value < today.year - 1 or year_value > today.year + 2:
+            year_value = today.year
+
+        return year_value, month_value
+
     if request.method == "POST":
+        target_year, target_month = _parse_target_month(request.POST.get("year"), request.POST.get("month"))
+        redirect_url = f"{reverse('club:lesson_calendar')}?{urlencode({'year': target_year, 'month': target_month})}"
+
         if not request.user.is_authenticated:
             messages.info(request, "予約するにはログインしてください。")
             return redirect("club:line_login_start")
@@ -816,7 +840,7 @@ def lesson_calendar_view(request):
 
         if getattr(request.user, "role", None) != "member":
             messages.error(request, "通常レッスンの予約は会員アカウントで行ってください。")
-            return redirect("club:lesson_calendar")
+            return redirect(redirect_url)
 
         availability_id = (request.POST.get("availability_id") or "").strip()
         availability = get_object_or_404(
@@ -863,29 +887,40 @@ def lesson_calendar_view(request):
         except Exception as e:
             messages.error(request, f"予約処理中にエラーが発生しました: {e}")
 
-        return redirect("club:lesson_calendar")
+        return redirect(redirect_url)
 
-    now = timezone.now()
-    range_end = now + timedelta(days=45)
+    target_year, target_month = _parse_target_month(request.GET.get("year"), request.GET.get("month"))
+    month_start, next_month = _month_start_end(target_year, target_month)
+
+    prev_year = target_year
+    prev_month = target_month - 1
+    if prev_month == 0:
+        prev_month = 12
+        prev_year -= 1
+
+    next_year = target_year
+    next_month_number = target_month + 1
+    if next_month_number == 13:
+        next_month_number = 1
+        next_year += 1
 
     availability_qs = (
         CoachAvailability.objects.filter(
             status=CoachAvailability.STATUS_OPEN,
             lesson_type__in=[Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT],
-            start_at__gte=now,
-            start_at__lt=range_end,
+            start_at__date__gte=month_start,
+            start_at__date__lt=next_month,
         )
         .select_related("coach", "substitute_coach", "court")
         .order_by("start_at", "coach__username", "court__name", "id")
     )
-
     availability_list = list(availability_qs)
 
     reservation_qs = (
         Reservation.objects.filter(
             status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
-            start_at__gte=now,
-            start_at__lt=range_end,
+            start_at__date__gte=month_start,
+            start_at__date__lt=next_month,
         )
         .select_related("user", "coach", "substitute_coach", "court", "availability")
         .order_by("start_at", "id")
@@ -911,7 +946,36 @@ def lesson_calendar_view(request):
         if request.user.is_authenticated and reservation.user_id == request.user.pk:
             user_slot_status_map[slot_key] = reservation.status
 
-    day_map = {}
+    weekday_short = ["月", "火", "水", "木", "金", "土", "日"]
+
+    def _coach_color_class(availability):
+        names = " ".join(
+            [
+                _display_name(getattr(availability, "coach", None)),
+                _display_name(getattr(availability, "substitute_coach", None)) if getattr(availability, "substitute_coach_id", None) else "",
+            ]
+        )
+        if "清水" in names:
+            return "coach-green"
+        if "井上" in names:
+            return "coach-purple"
+        if "飯塚" in names:
+            return "coach-blue"
+        if getattr(availability, "coach_id", None):
+            color_classes = ["coach-blue", "coach-green", "coach-purple", "coach-orange"]
+            return color_classes[int(availability.coach_id) % len(color_classes)]
+        return "coach-blue"
+
+    def _capacity_for_availability(availability):
+        try:
+            value = int(availability.effective_capacity())
+        except Exception:
+            value = int(availability.capacity or 0)
+        return max(value, int(availability.capacity or 0), 1)
+
+    now = timezone.now()
+    day_event_map = {}
+    schedule_rows = []
 
     for availability in availability_list:
         start_local = timezone.localtime(availability.start_at) if timezone.is_aware(availability.start_at) else availability.start_at
@@ -927,13 +991,15 @@ def lesson_calendar_view(request):
         )
 
         member_count = int(active_slot_counts.get(slot_key, 0))
-        capacity = int(availability.capacity or 0)
+        capacity = _capacity_for_availability(availability)
         remaining_count = max(capacity - member_count, 0)
-
-        disabled_reason = ""
         user_slot_status = user_slot_status_map.get(slot_key, "")
 
-        if not request.user.is_authenticated:
+        disabled_reason = ""
+        if availability.start_at < now:
+            can_book = False
+            disabled_reason = "受付終了"
+        elif not request.user.is_authenticated:
             can_book = False
             disabled_reason = "ログインすると予約できます。"
         elif getattr(request.user, "role", None) != "member":
@@ -954,13 +1020,18 @@ def lesson_calendar_view(request):
         else:
             can_book = True
 
+        weekday_label = weekday_short[target_date.weekday()]
+        assigned_coach = availability.assigned_coach() if hasattr(availability, "assigned_coach") else (availability.substitute_coach or availability.coach)
+
         item = {
             "id": availability.pk,
             "availability": availability,
             "title": "通常レッスン" if availability.lesson_type == Reservation.LESSON_GENERAL else availability.get_lesson_type_display(),
             "date_label": start_local.strftime("%m/%d"),
+            "date_label_jp": f"{target_date.month}/{target_date.day}（{weekday_label}）",
+            "day_number": target_date.day,
             "time_label": f"{start_local:%H:%M}〜{end_local:%H:%M}",
-            "coach_name": _display_name(availability.assigned_coach()),
+            "coach_name": _display_name(assigned_coach),
             "normal_coach_name": _display_name(availability.coach),
             "substitute_coach_name": _display_name(availability.substitute_coach) if availability.substitute_coach else "",
             "has_substitute": bool(availability.substitute_coach_id),
@@ -972,26 +1043,47 @@ def lesson_calendar_view(request):
             "remaining_count": remaining_count,
             "can_book": can_book,
             "disabled_reason": disabled_reason,
+            "color_class": _coach_color_class(availability),
         }
 
-        day_map.setdefault(
-            target_date,
-            {
-                "date": target_date,
-                "weekday_value": target_date.weekday(),
-                "weekday_label": f"{target_date:%m/%d}（{['月', '火', '水', '木', '金', '土', '日'][target_date.weekday()]}）",
-                "items": [],
-            },
-        )
-        day_map[target_date]["items"].append(item)
+        day_event_map.setdefault(target_date, [])
+        day_event_map[target_date].append(item)
+        schedule_rows.append(item)
 
-    day_columns = [day_map[key] for key in sorted(day_map.keys())]
+    calendar_start = month_start - timedelta(days=month_start.weekday())
+    calendar_weeks = []
+    cursor = calendar_start
+    for _week_index in range(6):
+        week = []
+        for _day_index in range(7):
+            week.append(
+                {
+                    "date": cursor,
+                    "day_number": cursor.day,
+                    "is_current_month": cursor.month == target_month,
+                    "is_today": cursor == today,
+                    "is_saturday": cursor.weekday() == 5,
+                    "is_sunday": cursor.weekday() == 6,
+                    "items": day_event_map.get(cursor, []),
+                }
+            )
+            cursor += timedelta(days=1)
+        calendar_weeks.append(week)
 
     return render(
         request,
         "lesson_calendar.html",
         {
-            "day_columns": day_columns,
+            "target_year": target_year,
+            "target_month": target_month,
+            "month_title": f"{target_year}年{target_month}月",
+            "prev_year": prev_year,
+            "prev_month": prev_month,
+            "next_year": next_year,
+            "next_month": next_month_number,
+            "weekday_headers": ["月", "火", "水", "木", "金", "土", "日"],
+            "calendar_weeks": calendar_weeks,
+            "schedule_rows": schedule_rows,
             "display_range_days": 45,
         },
     )
