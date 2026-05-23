@@ -233,6 +233,21 @@
   </p>
 </div>
 
+
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h2 style="margin:0;">給与・経費クイックメニュー</h2>
+      <p class="muted" style="margin:6px 0 0;">給与確認、経費登録、チケット集計をここから切り替えられます。</p>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <a href="{% url 'club:coach_payroll_summary' %}" class="btn">給与計算</a>
+      <a href="{% url 'club:coach_expense_manage' %}" class="btn btn-primary">経費登録</a>
+      <a href="{% url 'club:coach_ticket_summary' %}" class="btn">チケット集計</a>
+    </div>
+  </div>
+</div>
+
 <div class="summary-grid">
   <div class="summary-card notice">
     <div class="summary-label">当月合計</div>
@@ -262,9 +277,13 @@
   <div class="card">
     <h2 class="card-title">新規登録</h2>
 
+
     <div class="expense-note-box">
-      領収書原本は運営LINEノートで管理し、この画面では「領収書あり/なし」と確認状況を管理します。
+      <strong>入力のコツ：</strong><br>
+      スマホでは「日付 → 種別 → カテゴリ → 金額 → メモ」の順に入力してください。
+      領収書はLINEノートで保管し、この画面では確認状態を管理します。
     </div>
+
 
     <form method="post">
       {% csrf_token %}
