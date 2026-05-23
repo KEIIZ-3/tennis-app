@@ -906,8 +906,6 @@ def lesson_calendar_view(request):
 
     availability_qs = (
         CoachAvailability.objects.filter(
-            status=CoachAvailability.STATUS_OPEN,
-            lesson_type__in=[Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT],
             start_at__date__gte=month_start,
             start_at__date__lt=next_month,
         )
@@ -916,18 +914,26 @@ def lesson_calendar_view(request):
     )
     availability_list = list(availability_qs)
 
+    fixed_lesson_list = list(
+        FixedLesson.objects.filter(is_active=True)
+        .select_related("coach", "coach_2", "coach_3", "court")
+        .prefetch_related("members")
+        .order_by("weekday", "start_hour", "id")
+    )
+
     reservation_qs = (
         Reservation.objects.filter(
             status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
             start_at__date__gte=month_start,
             start_at__date__lt=next_month,
         )
-        .select_related("user", "coach", "substitute_coach", "court", "availability")
+        .select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
         .order_by("start_at", "id")
     )
     reservation_list = list(reservation_qs)
 
     active_slot_counts = {}
+    pending_slot_counts = {}
     user_slot_status_map = {}
 
     for reservation in reservation_list:
@@ -942,11 +948,27 @@ def lesson_calendar_view(request):
         if reservation.status == Reservation.STATUS_ACTIVE:
             active_slot_counts.setdefault(slot_key, 0)
             active_slot_counts[slot_key] += 1
+        elif reservation.status == Reservation.STATUS_PENDING:
+            pending_slot_counts.setdefault(slot_key, 0)
+            pending_slot_counts[slot_key] += 1
 
         if request.user.is_authenticated and reservation.user_id == request.user.pk:
             user_slot_status_map[slot_key] = reservation.status
 
     weekday_short = ["月", "火", "水", "木", "金", "土", "日"]
+
+    def _coach_color_from_names(names, coach_id=None):
+        names = names or ""
+        if "清水" in names:
+            return "coach-green"
+        if "井上" in names:
+            return "coach-purple"
+        if "飯塚" in names:
+            return "coach-blue"
+        if coach_id:
+            color_classes = ["coach-blue", "coach-green", "coach-purple", "coach-orange"]
+            return color_classes[int(coach_id) % len(color_classes)]
+        return "coach-blue"
 
     def _coach_color_class(availability):
         names = " ".join(
@@ -955,16 +977,7 @@ def lesson_calendar_view(request):
                 _display_name(getattr(availability, "substitute_coach", None)) if getattr(availability, "substitute_coach_id", None) else "",
             ]
         )
-        if "清水" in names:
-            return "coach-green"
-        if "井上" in names:
-            return "coach-purple"
-        if "飯塚" in names:
-            return "coach-blue"
-        if getattr(availability, "coach_id", None):
-            color_classes = ["coach-blue", "coach-green", "coach-purple", "coach-orange"]
-            return color_classes[int(availability.coach_id) % len(color_classes)]
-        return "coach-blue"
+        return _coach_color_from_names(names, getattr(availability, "coach_id", None))
 
     def _capacity_for_availability(availability):
         try:
@@ -973,13 +986,115 @@ def lesson_calendar_view(request):
             value = int(availability.capacity or 0)
         return max(value, int(availability.capacity or 0), 1)
 
+    def _capacity_for_fixed_lesson(fixed_lesson):
+        try:
+            value = int(fixed_lesson.effective_capacity())
+        except Exception:
+            value = int(fixed_lesson.capacity or 0)
+        return max(value, int(fixed_lesson.capacity or 0), 1)
+
+    def _local_dt(value):
+        if timezone.is_aware(value):
+            return timezone.localtime(value)
+        return value
+
+    def _build_display_item(
+        *,
+        item_id,
+        source_kind,
+        title,
+        lesson_type,
+        lesson_type_label,
+        target_level,
+        target_level_label,
+        start_at,
+        end_at,
+        coach,
+        assigned_coach,
+        substitute_coach=None,
+        court=None,
+        capacity=1,
+        member_count=0,
+        pending_count=0,
+        status=CoachAvailability.STATUS_OPEN,
+        color_class="coach-blue",
+        availability_id="",
+    ):
+        start_local = _local_dt(start_at)
+        end_local = _local_dt(end_at)
+        target_date = start_local.date()
+        weekday_label = weekday_short[target_date.weekday()]
+        remaining_count = max(int(capacity or 0) - int(member_count or 0), 0)
+
+        can_book = False
+        disabled_reason = ""
+        user_slot_status = ""
+
+        slot_key = _slot_key(
+            lesson_type=lesson_type,
+            coach_id=getattr(coach, "pk", None),
+            court_id=getattr(court, "pk", None),
+            start_at=start_at,
+            end_at=end_at,
+        )
+        user_slot_status = user_slot_status_map.get(slot_key, "")
+
+        if start_at < timezone.now():
+            disabled_reason = "受付終了"
+        elif source_kind != "availability":
+            disabled_reason = "受付準備中"
+        elif status != CoachAvailability.STATUS_OPEN:
+            disabled_reason = "受付準備中"
+        elif lesson_type not in (Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT):
+            disabled_reason = "個別相談から申請"
+        elif not request.user.is_authenticated:
+            disabled_reason = "ログインすると予約できます。"
+        elif getattr(request.user, "role", None) != "member":
+            disabled_reason = "会員アカウントで予約できます。"
+        elif user_slot_status == Reservation.STATUS_ACTIVE:
+            disabled_reason = "予約済みです。"
+        elif user_slot_status == Reservation.STATUS_PENDING:
+            disabled_reason = "承認待ちの申請があります。"
+        elif hasattr(request.user, "can_book_level") and not request.user.can_book_level(target_level):
+            disabled_reason = "ご自身のレベルでは予約できません。"
+        elif int(member_count or 0) >= int(capacity or 0):
+            disabled_reason = "満員です。"
+        else:
+            can_book = True
+
+        return {
+            "id": item_id,
+            "availability_id": availability_id,
+            "source_kind": source_kind,
+            "title": title,
+            "date_label": start_local.strftime("%m/%d"),
+            "date_label_jp": f"{target_date.month}/{target_date.day}（{weekday_label}）",
+            "day_number": target_date.day,
+            "time_label": f"{start_local:%H:%M}〜{end_local:%H:%M}",
+            "sort_key": f"{start_local:%Y%m%d%H%M}-{item_id}",
+            "coach_name": _display_name(assigned_coach),
+            "normal_coach_name": _display_name(coach),
+            "substitute_coach_name": _display_name(substitute_coach) if substitute_coach else "",
+            "has_substitute": bool(substitute_coach),
+            "court_name": str(court) if court else "未定",
+            "lesson_type_label": lesson_type_label,
+            "target_level_label": target_level_label,
+            "capacity": capacity,
+            "member_count": int(member_count or 0),
+            "pending_count": int(pending_count or 0),
+            "remaining_count": remaining_count,
+            "can_book": can_book,
+            "disabled_reason": disabled_reason,
+            "color_class": color_class,
+        }
+
     now = timezone.now()
     day_event_map = {}
     schedule_rows = []
+    existing_slot_keys = set()
 
     for availability in availability_list:
-        start_local = timezone.localtime(availability.start_at) if timezone.is_aware(availability.start_at) else availability.start_at
-        end_local = timezone.localtime(availability.end_at) if timezone.is_aware(availability.end_at) else availability.end_at
+        start_local = _local_dt(availability.start_at)
         target_date = start_local.date()
 
         slot_key = _slot_key(
@@ -989,66 +1104,96 @@ def lesson_calendar_view(request):
             start_at=availability.start_at,
             end_at=availability.end_at,
         )
+        existing_slot_keys.add(slot_key)
 
         member_count = int(active_slot_counts.get(slot_key, 0))
+        pending_count = int(pending_slot_counts.get(slot_key, 0))
         capacity = _capacity_for_availability(availability)
-        remaining_count = max(capacity - member_count, 0)
-        user_slot_status = user_slot_status_map.get(slot_key, "")
-
-        disabled_reason = ""
-        if availability.start_at < now:
-            can_book = False
-            disabled_reason = "受付終了"
-        elif not request.user.is_authenticated:
-            can_book = False
-            disabled_reason = "ログインすると予約できます。"
-        elif getattr(request.user, "role", None) != "member":
-            can_book = False
-            disabled_reason = "会員アカウントで予約できます。"
-        elif user_slot_status == Reservation.STATUS_ACTIVE:
-            can_book = False
-            disabled_reason = "予約済みです。"
-        elif user_slot_status == Reservation.STATUS_PENDING:
-            can_book = False
-            disabled_reason = "承認待ちの申請があります。"
-        elif not request.user.can_book_level(availability.target_level):
-            can_book = False
-            disabled_reason = "ご自身のレベルでは予約できません。"
-        elif member_count >= capacity:
-            can_book = False
-            disabled_reason = "満員です。"
-        else:
-            can_book = True
-
-        weekday_label = weekday_short[target_date.weekday()]
         assigned_coach = availability.assigned_coach() if hasattr(availability, "assigned_coach") else (availability.substitute_coach or availability.coach)
 
-        item = {
-            "id": availability.pk,
-            "availability": availability,
-            "title": "通常レッスン" if availability.lesson_type == Reservation.LESSON_GENERAL else availability.get_lesson_type_display(),
-            "date_label": start_local.strftime("%m/%d"),
-            "date_label_jp": f"{target_date.month}/{target_date.day}（{weekday_label}）",
-            "day_number": target_date.day,
-            "time_label": f"{start_local:%H:%M}〜{end_local:%H:%M}",
-            "coach_name": _display_name(assigned_coach),
-            "normal_coach_name": _display_name(availability.coach),
-            "substitute_coach_name": _display_name(availability.substitute_coach) if availability.substitute_coach else "",
-            "has_substitute": bool(availability.substitute_coach_id),
-            "court_name": str(availability.court),
-            "lesson_type_label": availability.get_lesson_type_display(),
-            "target_level_label": availability.get_target_level_display(),
-            "capacity": capacity,
-            "member_count": member_count,
-            "remaining_count": remaining_count,
-            "can_book": can_book,
-            "disabled_reason": disabled_reason,
-            "color_class": _coach_color_class(availability),
-        }
+        item = _build_display_item(
+            item_id=str(availability.pk),
+            availability_id=str(availability.pk),
+            source_kind="availability",
+            title="通常レッスン" if availability.lesson_type == Reservation.LESSON_GENERAL else availability.get_lesson_type_display(),
+            lesson_type=availability.lesson_type,
+            lesson_type_label=availability.get_lesson_type_display(),
+            target_level=availability.target_level,
+            target_level_label=availability.get_target_level_display(),
+            start_at=availability.start_at,
+            end_at=availability.end_at,
+            coach=availability.coach,
+            assigned_coach=assigned_coach,
+            substitute_coach=availability.substitute_coach,
+            court=availability.court,
+            capacity=capacity,
+            member_count=member_count,
+            pending_count=pending_count,
+            status=availability.status,
+            color_class=_coach_color_class(availability),
+        )
 
         day_event_map.setdefault(target_date, [])
         day_event_map[target_date].append(item)
         schedule_rows.append(item)
+
+    cursor_date = month_start
+    while cursor_date < next_month:
+        for fixed_lesson in fixed_lesson_list:
+            if int(fixed_lesson.weekday) != int(cursor_date.weekday()):
+                continue
+            if not fixed_lesson.court_id:
+                continue
+
+            start_at, end_at = fixed_lesson._build_datetimes_for_date(cursor_date)
+            primary_coach = fixed_lesson.primary_coach() if hasattr(fixed_lesson, "primary_coach") else fixed_lesson.coach
+            slot_key = _slot_key(
+                lesson_type=fixed_lesson.lesson_type,
+                coach_id=getattr(primary_coach, "pk", None),
+                court_id=getattr(fixed_lesson.court, "pk", None),
+                start_at=start_at,
+                end_at=end_at,
+            )
+            if slot_key in existing_slot_keys:
+                continue
+
+            capacity = _capacity_for_fixed_lesson(fixed_lesson)
+            member_count = int(active_slot_counts.get(slot_key, 0))
+            pending_count = int(pending_slot_counts.get(slot_key, 0))
+            coach_names = _fixed_lesson_coach_names(fixed_lesson)
+
+            item = _build_display_item(
+                item_id=f"fixed-{fixed_lesson.pk}-{cursor_date:%Y%m%d}",
+                availability_id="",
+                source_kind="fixed_lesson",
+                title=_lesson_calendar_title(fixed_lesson),
+                lesson_type=fixed_lesson.lesson_type,
+                lesson_type_label=fixed_lesson.get_lesson_type_display(),
+                target_level=fixed_lesson.target_level,
+                target_level_label=fixed_lesson.get_target_level_display(),
+                start_at=start_at,
+                end_at=end_at,
+                coach=primary_coach,
+                assigned_coach=primary_coach,
+                substitute_coach=None,
+                court=fixed_lesson.court,
+                capacity=capacity,
+                member_count=member_count,
+                pending_count=pending_count,
+                status=CoachAvailability.STATUS_REQUESTED,
+                color_class=_coach_color_from_names(coach_names, getattr(primary_coach, "pk", None)),
+            )
+
+            day_event_map.setdefault(cursor_date, [])
+            day_event_map[cursor_date].append(item)
+            schedule_rows.append(item)
+
+        cursor_date += timedelta(days=1)
+
+    for target_date, items in day_event_map.items():
+        day_event_map[target_date] = sorted(items, key=lambda row: row.get("sort_key", ""))
+
+    schedule_rows = sorted(schedule_rows, key=lambda row: row.get("sort_key", ""))
 
     calendar_start = month_start - timedelta(days=month_start.weekday())
     calendar_weeks = []
