@@ -47,6 +47,7 @@ urlpatterns = [
     path("coach/payroll-summary/", views.coach_payroll_summary, name="coach_payroll_summary"),
     path("coach/expenses/", views.coach_expense_manage, name="coach_expense_manage"),
     path("coach/survey-summary/", views.coach_schedule_survey_summary, name="schedule_survey_summary"),
+    path("coach/activity-log/", views.coach_activity_log, name="coach_activity_log"),
 
     path("line/", views.line_connect, name="line_connect"),
     path("line/link/", views.line_link, name="line_link"),
