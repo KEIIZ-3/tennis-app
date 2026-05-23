@@ -2,6 +2,19 @@
 {% block title %}予約{% endblock %}
 
 {% block content %}
+
+<div class="card">
+  <h2 style="margin-top:0;">この画面は「個別レッスン相談」用です</h2>
+  <div style="line-height:1.8;color:#475569;">
+    通常レッスンは、予約カレンダーから空き枠を選んで予約してください。<br>
+    この画面では、プライベートレッスンやグループレッスンなど、希望日時をコーチへ相談する内容を送信します。
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
+    <a href="{% url 'club:lesson_calendar' %}" class="btn btn-primary">通常レッスン予約へ</a>
+    <a href="{% url 'club:reservation_list' %}" class="btn">予約確認</a>
+  </div>
+</div>
+
 <style>
   .reserve-title{
     margin:0;
@@ -254,7 +267,7 @@
   </a>
 
   <div class="reserve-mode-card info">
-    <div class="reserve-mode-title">個別レッスンを申請する</div>
+    <div class="reserve-mode-title">個別レッスンを相談する</div>
     <div class="reserve-mode-text">
       プライベート/グループレッスンは、下のフォームから申請します。コーチ承認後に予約成立します。
     </div>
@@ -266,7 +279,7 @@
 
 <div class="reserve-layout" id="individual-request-form" style="margin-top:16px;">
   <div class="card reserve-form-card">
-    <h2 style="margin-top:0;">個別レッスン申請フォーム</h2>
+    <h2 style="margin-top:0;">個別レッスン相談フォーム</h2>
 
     <div class="reserve-summary-box" id="reserve-summary-box">
       レッスン種別、コーチ、開始・終了日時を入力して申請してください。申請後は「予約確認」で承認待ち状態を確認できます。
