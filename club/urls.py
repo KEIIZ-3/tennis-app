@@ -22,6 +22,7 @@ urlpatterns = [
     path("terms/", views.terms_view, name="terms"),
     path("stringing/new/", views.stringing_order_create, name="stringing_order_create"),
     path("stringing/", views.stringing_order_list, name="stringing_order_list"),
+    path("stringing/<int:pk>/", views.stringing_order_detail, name="stringing_order_detail"),
     path("shop/estimate/", views.shop_estimate_view, name="shop_estimate"),
     path("shop/history/", views.shop_estimate_history_view, name="shop_estimate_history"),
     path("shop/estimate/complete/<int:pk>/", views.shop_estimate_complete_view, name="shop_estimate_complete"),
@@ -30,6 +31,7 @@ urlpatterns = [
 
     path("reservations/new/", views.reservation_create, name="reservation_create"),
     path("reservations/", views.reservation_list, name="reservation_list"),
+    path("reservations/<int:pk>/", views.reservation_detail, name="reservation_detail"),
     path("reservations/<int:pk>/cancel/", views.reservation_cancel, name="reservation_cancel"),
 
     path("coach/availability/", views.coach_availability_list, name="coach_availability_list"),
