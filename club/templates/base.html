@@ -868,7 +868,7 @@
 
             <nav class="nav" id="member-nav">
               <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
-              <a href="{% url 'club:lesson_calendar' %}">予約</a>
+              <a href="{% url 'club:lesson_calendar' %}">レッスンカレンダー</a>
               <a href="{% url 'club:reservation_list' %}">
                 予約確認
                 {% if nav_member_upcoming_count %}
@@ -1018,7 +1018,7 @@
         <a href="{% url 'club:lesson_calendar' %}" class="{% if request.resolver_match.url_name == 'lesson_calendar' or request.resolver_match.url_name == 'reservation_create' %}is-active{% endif %}">
           <span class="bottom-icon">📅</span>
           <span class="bottom-nav-wrap">
-            予約
+            レッスンカレンダー
             {% if nav_member_pending_count %}
               <span class="bottom-nav-badge">{{ nav_member_pending_count }}</span>
             {% endif %}
