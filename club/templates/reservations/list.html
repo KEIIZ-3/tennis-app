@@ -1,7 +1,144 @@
 {% extends "base.html" %}
-{% block title %}予約・承認管理{% endblock %}
+{% block title %}予約・承認管理
+<script>
+  (function () {
+    const filterArea = document.getElementById("reservation-filter-actions");
+    const emptyBox = document.getElementById("reservation-filter-empty");
+    if (!filterArea) return;
+
+    const buttons = Array.from(filterArea.querySelectorAll("[data-reservation-filter]"));
+    const items = Array.from(document.querySelectorAll(".js-reservation-item"));
+
+    function normalizeStatus(status) {
+      if (status === "rain_canceled") return "canceled";
+      return status || "";
+    }
+
+    function applyFilter(status) {
+      let visibleCount = 0;
+      const targetStatus = normalizeStatus(status);
+
+      buttons.forEach(function (button) {
+        button.classList.toggle("is-active", button.dataset.reservationFilter === status);
+      });
+
+      items.forEach(function (item) {
+        const itemStatus = normalizeStatus(item.dataset.reservationStatus);
+        const visible = targetStatus === "all" || itemStatus === targetStatus;
+        item.style.display = visible ? "" : "none";
+        if (visible) visibleCount += 1;
+      });
+
+      if (emptyBox) {
+        emptyBox.style.display = visibleCount === 0 ? "block" : "none";
+      }
+    }
+
+    buttons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        applyFilter(button.dataset.reservationFilter);
+      });
+    });
+
+    applyFilter("all");
+  })();
+</script>
+
+{% endblock %}
 
 {% block content %}
+
+<style>
+  .quick-filter-panel{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+
+  .quick-filter-title{
+    font-size:18px;
+    font-weight:900;
+    line-height:1.35;
+  }
+
+  .quick-filter-sub{
+    margin-top:4px;
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.7;
+  }
+
+  .quick-filter-actions{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+
+  .quick-filter-button{
+    appearance:none;
+    border:1px solid var(--line-strong);
+    background:#fff;
+    color:#0f172a;
+    min-height:40px;
+    padding:9px 12px;
+    border-radius:999px;
+    cursor:pointer;
+    font:inherit;
+    font-size:13px;
+    font-weight:900;
+  }
+
+  .quick-filter-button.is-active{
+    background:#0f172a;
+    color:#fff;
+    border-color:#0f172a;
+  }
+
+  .quick-filter-button.pending{
+    border-color:#fed7aa;
+    background:#fff7ed;
+    color:#9a3412;
+  }
+
+  .quick-filter-button.pending.is-active{
+    background:#9a3412;
+    color:#fff;
+    border-color:#9a3412;
+  }
+
+  .quick-filter-empty{
+    display:none;
+    padding:16px;
+    border:1px dashed #cbd5e1;
+    background:#f8fafc;
+    border-radius:14px;
+    color:#64748b;
+    font-weight:800;
+  }
+
+  @media (max-width: 768px){
+    .quick-filter-panel{
+      display:grid;
+      grid-template-columns:1fr;
+    }
+
+    .quick-filter-actions{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:8px;
+    }
+
+    .quick-filter-button{
+      width:100%;
+      border-radius:12px;
+      min-height:40px;
+      font-size:12px;
+    }
+  }
+</style>
+
 <div class="card">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
     <div>
@@ -47,6 +184,24 @@
   </div>
 {% endif %}
 
+
+<div class="card">
+  <div class="quick-filter-panel">
+    <div>
+      <div class="quick-filter-title">表示を絞り込む</div>
+      <div class="quick-filter-sub">
+        画面を移動せずに、承認待ち・予約済み・キャンセル済みを切り替えられます。
+      </div>
+    </div>
+    <div class="quick-filter-actions" id="reservation-filter-actions">
+      <button type="button" class="quick-filter-button is-active" data-reservation-filter="all">すべて</button>
+      <button type="button" class="quick-filter-button pending" data-reservation-filter="pending">承認待ち</button>
+      <button type="button" class="quick-filter-button" data-reservation-filter="active">予約済み</button>
+      <button type="button" class="quick-filter-button" data-reservation-filter="canceled">キャンセル</button>
+    </div>
+  </div>
+</div>
+
 <div class="card">
   {% if reservation_rows %}
     <div class="desktop-only">
@@ -68,7 +223,7 @@
           <tbody>
             {% for row in reservation_rows %}
               {% with reservation=row.reservation %}
-              <tr>
+              <tr class="js-reservation-item" data-reservation-status="{{ reservation.status }}">
                 <td>{{ reservation.user.display_name }}</td>
                 <td>
                   <div>{{ reservation.start_at|date:"Y-m-d H:i" }}</div>
@@ -161,7 +316,7 @@
     <div class="mobile-card-list mobile-only">
       {% for row in reservation_rows %}
         {% with reservation=row.reservation %}
-          <div class="mobile-data-card">
+          <div class="mobile-data-card js-reservation-item" data-reservation-status="{{ reservation.status }}">
             <div class="mobile-card-head">
               <div>
                 <div class="mobile-card-title">{{ reservation.user.display_name }}</div>
@@ -282,4 +437,49 @@
     </a>
   </div>
 </div>
+
+<script>
+  (function () {
+    const filterArea = document.getElementById("reservation-filter-actions");
+    const emptyBox = document.getElementById("reservation-filter-empty");
+    if (!filterArea) return;
+
+    const buttons = Array.from(filterArea.querySelectorAll("[data-reservation-filter]"));
+    const items = Array.from(document.querySelectorAll(".js-reservation-item"));
+
+    function normalizeStatus(status) {
+      if (status === "rain_canceled") return "canceled";
+      return status || "";
+    }
+
+    function applyFilter(status) {
+      let visibleCount = 0;
+      const targetStatus = normalizeStatus(status);
+
+      buttons.forEach(function (button) {
+        button.classList.toggle("is-active", button.dataset.reservationFilter === status);
+      });
+
+      items.forEach(function (item) {
+        const itemStatus = normalizeStatus(item.dataset.reservationStatus);
+        const visible = targetStatus === "all" || itemStatus === targetStatus;
+        item.style.display = visible ? "" : "none";
+        if (visible) visibleCount += 1;
+      });
+
+      if (emptyBox) {
+        emptyBox.style.display = visibleCount === 0 ? "block" : "none";
+      }
+    }
+
+    buttons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        applyFilter(button.dataset.reservationFilter);
+      });
+    });
+
+    applyFilter("all");
+  })();
+</script>
+
 {% endblock %}
