@@ -44,6 +44,21 @@
   })();
 </script>
 
+
+<script>
+  (function () {
+    const buttons = Array.from(document.querySelectorAll(".js-mobile-detail-toggle"));
+    buttons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        const detail = button.nextElementSibling;
+        if (!detail) return;
+        const isOpen = detail.classList.toggle("is-open");
+        button.textContent = isOpen ? "詳細を閉じる" : "詳細を開く";
+      });
+    });
+  })();
+</script>
+
 {% endblock %}
 
 {% block content %}
@@ -117,6 +132,32 @@
     color:#64748b;
     font-weight:800;
   }
+
+
+  .mobile-detail-toggle{
+    appearance:none;
+    width:100%;
+    margin-top:10px;
+    min-height:40px;
+    padding:8px 12px;
+    border-radius:12px;
+    border:1px solid #dbeafe;
+    background:#eff6ff;
+    color:#1d4ed8;
+    font-size:13px;
+    font-weight:900;
+    cursor:pointer;
+  }
+
+  .mobile-collapsible-detail{
+    display:none;
+    margin-top:8px;
+  }
+
+  .mobile-collapsible-detail.is-open{
+    display:block;
+  }
+
 
   @media (max-width: 768px){
     .quick-filter-panel{
@@ -337,8 +378,10 @@
               </div>
             </div>
 
-            <div class="mobile-info-grid">
-              <div class="mobile-info-row">
+            <button type="button" class="mobile-detail-toggle js-mobile-detail-toggle">詳細を開く</button>
+            <div class="mobile-collapsible-detail">
+              <div class="mobile-info-grid">
+                <div class="mobile-info-row">
                 <div class="mobile-info-label">種別</div>
                 <div class="mobile-info-value">{{ reservation.get_lesson_type_display }}</div>
               </div>
@@ -398,6 +441,9 @@
                   <div class="mobile-info-value">{{ reservation.approved_court_note }}</div>
                 </div>
               {% endif %}
+            </div>
+
+              </div>
             </div>
 
             <div class="mobile-actions">
@@ -479,6 +525,21 @@
     });
 
     applyFilter("all");
+  })();
+</script>
+
+
+<script>
+  (function () {
+    const buttons = Array.from(document.querySelectorAll(".js-mobile-detail-toggle"));
+    buttons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        const detail = button.nextElementSibling;
+        if (!detail) return;
+        const isOpen = detail.classList.toggle("is-open");
+        button.textContent = isOpen ? "詳細を閉じる" : "詳細を開く";
+      });
+    });
   })();
 </script>
 
