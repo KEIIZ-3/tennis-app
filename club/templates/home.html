@@ -750,7 +750,7 @@
     <a href="{% url 'club:reservation_list' %}" class="task-dashboard-card primary" style="text-decoration:none;">
       <div class="task-dashboard-label">承認待ち</div>
       <div class="task-dashboard-value">{{ coach_pending_count }}件</div>
-      <div class="task-dashboard-sub">個別レッスン申請の確認</div>
+      <div class="task-dashboard-sub">個別レッスン相談の確認</div>
     </a>
 
     <a href="{% url 'club:coach_availability_list' %}" class="task-dashboard-card info" style="text-decoration:none;">
@@ -1006,12 +1006,12 @@
       </div>
     {% else %}
       <div style="padding:14px 16px; border:1px solid #e5e7eb; background:#f8fafc; border-radius:14px; color:#475569;">
-        今後の予約はまだありません。通常レッスン予約または個別レッスン申請から進めてください。
+        今後の予約はまだありません。通常レッスン予約または個別レッスン相談から進めてください。
       </div>
     {% endif %}
 
     <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
-      <a href="{% url 'club:reservation_create' %}" class="btn btn-primary">予約する</a>
+      <a href="{% url 'club:lesson_calendar' %}" class="btn btn-primary">レッスンを予約する</a>
       <a href="{% url 'club:reservation_list' %}" class="btn">予約確認</a>
     </div>
   </div>
@@ -1061,7 +1061,7 @@
       <div>
         <div class="quick-card-title">予約</div>
         <div class="quick-card-sub">
-          通常レッスン予約、個別レッスン申請をまとめて行います。
+          空きレッスンをカレンダーから選んで予約します。個別レッスン相談は低頻度メニューに移しました。
         </div>
       </div>
       <div class="quick-card-action">
