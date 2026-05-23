@@ -1444,6 +1444,165 @@ def coach_fixed_lesson_weekly(request):
     )
 
 
+
+
+def _user_can_access_stringing_order(user, order):
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if _is_staff_like(user):
+        return True
+    if getattr(order, "user_id", None) == getattr(user, "pk", None):
+        return True
+    if getattr(order, "assigned_coach_id", None) == getattr(user, "pk", None):
+        return True
+    return False
+
+
+def _user_can_manage_stringing_order(user, order):
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if _is_staff_like(user):
+        return True
+    if _is_coach_user(user) and getattr(order, "assigned_coach_id", None) == getattr(user, "pk", None):
+        return True
+    return False
+
+
+@login_required
+@require_GET
+def reservation_detail(request, pk):
+    survey_redirect = _require_schedule_survey(request)
+    if survey_redirect:
+        return survey_redirect
+
+    reservation = get_object_or_404(
+        Reservation.objects.select_related(
+            "user",
+            "coach",
+            "substitute_coach",
+            "court",
+            "availability",
+            "fixed_lesson",
+        ).prefetch_related("ticket_consumptions__purchase", "ticket_ledgers"),
+        pk=pk,
+    )
+
+    if not _user_can_access_reservation(request.user, reservation):
+        return HttpResponse("Forbidden", status=403)
+
+    can_cancel, cancel_reason = _can_user_cancel_reservation(request.user, reservation)
+    can_manage_request = _coach_can_manage_request(request.user, reservation) and reservation.status == Reservation.STATUS_PENDING
+
+    ticket_consumption_rows = []
+    for consumption in reservation.ticket_consumptions.select_related("purchase").order_by("created_at", "id"):
+        ticket_consumption_rows.append(
+            {
+                "consumption": consumption,
+                "unit_price_label": consumption.unit_price_label(),
+                "is_refunded": bool(consumption.refunded_at),
+            }
+        )
+
+    ticket_ledger_rows = list(
+        reservation.ticket_ledgers.select_related("created_by").order_by("-created_at", "-id")[:20]
+    )
+
+    same_slot_reservations = list(
+        Reservation.objects.select_related("user", "coach", "substitute_coach", "court")
+        .filter(
+            coach=reservation.coach,
+            court=reservation.court,
+            lesson_type=reservation.lesson_type,
+            start_at=reservation.start_at,
+            end_at=reservation.end_at,
+            status=Reservation.STATUS_ACTIVE,
+        )
+        .order_by("user__full_name", "user__username", "id")
+    )
+
+    return render(
+        request,
+        "reservations/detail.html",
+        {
+            "reservation": reservation,
+            "can_cancel": can_cancel,
+            "cancel_reason": cancel_reason,
+            "can_manage_request": can_manage_request,
+            "assigned_coach_name": reservation.assigned_coach_display(),
+            "normal_coach_name": reservation.normal_coach_display(),
+            "substitute_coach_name": _display_name(reservation.substitute_coach) if reservation.substitute_coach else "",
+            "has_substitute": reservation.has_substitute_coach(),
+            "ticket_consumption_rows": ticket_consumption_rows,
+            "ticket_ledger_rows": ticket_ledger_rows,
+            "same_slot_reservations": same_slot_reservations,
+        },
+    )
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def stringing_order_detail(request, pk):
+    survey_redirect = _require_schedule_survey(request)
+    if survey_redirect:
+        return survey_redirect
+
+    order = get_object_or_404(
+        StringingOrder.objects.select_related("user", "assigned_coach"),
+        pk=pk,
+    )
+
+    if not _user_can_access_stringing_order(request.user, order):
+        return HttpResponse("Forbidden", status=403)
+
+    can_manage = _user_can_manage_stringing_order(request.user, order)
+
+    if request.method == "POST":
+        if not can_manage:
+            return HttpResponse("Forbidden", status=403)
+
+        new_status = (request.POST.get("new_status") or "").strip()
+        valid_statuses = {value for value, _label in StringingOrder.STATUS_CHOICES}
+
+        if new_status not in valid_statuses:
+            messages.error(request, "更新する状態が不正です。")
+            return redirect("club:stringing_order_detail", pk=order.pk)
+
+        if order.status == new_status:
+            messages.info(request, "状態に変更はありません。")
+            return redirect("club:stringing_order_detail", pk=order.pk)
+
+        try:
+            order.status = new_status
+            order.save(update_fields=["status", "updated_at"])
+            messages.success(request, f"ガット張り依頼の状態を「{order.get_status_display()}」に更新しました。")
+        except Exception as e:
+            messages.error(request, f"ガット張り依頼の状態更新に失敗しました: {e}")
+
+        return redirect("club:stringing_order_detail", pk=order.pk)
+
+    preferred_finish_date = getattr(order, "preferred_finish_date", None)
+    if preferred_finish_date:
+        try:
+            preferred_finish_date_label = preferred_finish_date.strftime("%Y-%m-%d")
+        except Exception:
+            preferred_finish_date_label = str(preferred_finish_date)
+    else:
+        preferred_finish_date_label = "-"
+
+    return render(
+        request,
+        "stringing/detail.html",
+        {
+            "order": order,
+            "can_manage": can_manage,
+            "status_choices": StringingOrder.STATUS_CHOICES,
+            "status_label": _stringing_status_label(order),
+            "delivery_label": _stringing_delivery_label(order),
+            "preferred_finish_date": preferred_finish_date_label,
+            "total_price": order.total_price(),
+        },
+    )
+
 @login_required
 @require_GET
 def coach_ticket_summary(request):
