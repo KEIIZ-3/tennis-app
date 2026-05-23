@@ -331,6 +331,57 @@
   }
 
 
+
+  .priority-alert{
+    padding:16px;
+    border-radius:16px;
+    margin-top:14px;
+    border:1px solid #fed7aa;
+    background:#fff7ed;
+    color:#9a3412;
+  }
+
+  .priority-alert.success{
+    border-color:#bbf7d0;
+    background:#ecfdf5;
+    color:#166534;
+  }
+
+  .priority-alert-title{
+    font-weight:900;
+    font-size:16px;
+    line-height:1.35;
+  }
+
+  .priority-alert-text{
+    margin-top:6px;
+    font-size:13px;
+    line-height:1.7;
+  }
+
+  .priority-alert-actions{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:12px;
+  }
+
+  @media (max-width: 768px){
+    .priority-alert{
+      padding:14px;
+      border-radius:15px;
+    }
+
+    .priority-alert-actions{
+      display:grid;
+      grid-template-columns:1fr;
+    }
+
+    .priority-alert-actions .btn{
+      width:100%;
+    }
+  }
+
   .task-dashboard-grid{
     display:grid;
     grid-template-columns:repeat(4, minmax(0, 1fr));
@@ -909,6 +960,7 @@
   {% member_next_reservation user as next_reservation %}
   {% member_pending_reservation_count user as member_pending_count %}
   {% member_upcoming_reservation_count user as member_upcoming_count %}
+  {% member_low_ticket_warning user as member_low_ticket %}
 
   <div class="task-dashboard-grid">
     <a href="{% url 'club:reservation_list' %}" class="task-dashboard-card primary" style="text-decoration:none;">
@@ -962,6 +1014,46 @@
       <a href="{% url 'club:reservation_create' %}" class="btn btn-primary">予約する</a>
       <a href="{% url 'club:reservation_list' %}" class="btn">予約確認</a>
     </div>
+  </div>
+
+
+  <div class="card">
+    <h2 class="home-section-title">確認しておきたいこと</h2>
+
+    {% if member_low_ticket %}
+      <div class="priority-alert">
+        <div class="priority-alert-title">チケット残数が少なくなっています</div>
+        <div class="priority-alert-text">
+          現在の残数は {{ user.ticket_balance }}枚です。次回以降の予約前に、追加購入や残数確認をおすすめします。
+        </div>
+        <div class="priority-alert-actions">
+          <a href="{% url 'club:tickets' %}" class="btn btn-primary">チケットを確認する</a>
+          <a href="{% url 'club:reservation_list' %}" class="btn">予約確認</a>
+        </div>
+      </div>
+    {% else %}
+      <div class="priority-alert success">
+        <div class="priority-alert-title">チケット残数は問題ありません</div>
+        <div class="priority-alert-text">
+          現在の残数は {{ user.ticket_balance }}枚です。次回予約前に詳細内訳も確認できます。
+        </div>
+        <div class="priority-alert-actions">
+          <a href="{% url 'club:tickets' %}" class="btn">チケット詳細</a>
+        </div>
+      </div>
+    {% endif %}
+
+    {% if not schedule_survey_answered %}
+      <div class="priority-alert" style="margin-top:12px;">
+        <div class="priority-alert-title">アンケートが未回答です</div>
+        <div class="priority-alert-text">
+          今後のレッスン開催曜日・時間帯の参考にするため、1〜2分で回答できます。
+        </div>
+        <div class="priority-alert-actions">
+          <a href="{% url 'club:schedule_survey' %}" class="btn btn-primary">アンケートに回答する</a>
+        </div>
+      </div>
+    {% endif %}
   </div>
 
   <div class="quick-grid">
