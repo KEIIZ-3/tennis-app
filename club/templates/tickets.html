@@ -3,6 +3,35 @@
 
 {% block content %}
 <style>
+
+  .ticket-jump-grid{
+    display:grid;
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    gap:8px;
+  }
+
+  .ticket-jump-link{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:42px;
+    padding:9px 10px;
+    border:1px solid #dbeafe;
+    background:#eff6ff;
+    color:#1d4ed8;
+    border-radius:12px;
+    font-size:13px;
+    font-weight:900;
+    text-decoration:none;
+  }
+
+  @media (max-width: 768px){
+    .ticket-jump-grid{
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+    }
+  }
+
+
   .ticket-title{
     margin:0;
     font-size:28px;
@@ -310,6 +339,17 @@
   </div>
 </div>
 
+
+<div class="card">
+  <h2 style="margin-top:0;">すぐ確認する</h2>
+  <div class="ticket-jump-grid">
+    <a href="#ticket-prices" class="ticket-jump-link">料金</a>
+    <a href="#ticket-purchases" class="ticket-jump-link">保有内訳</a>
+    <a href="#ticket-consumptions" class="ticket-jump-link">消費内訳</a>
+    <a href="#ticket-ledgers" class="ticket-jump-link">履歴</a>
+  </div>
+</div>
+
 <div class="ticket-stat-grid">
   <div class="ticket-stat primary">
     <div class="ticket-stat-label">現在の残数</div>
@@ -344,7 +384,7 @@
   {% endif %}
 </div>
 
-<div class="card">
+<div class="card" id="ticket-prices">
   <h2 style="margin-top:0;">チケット料金</h2>
 
   <div class="price-grid">
@@ -396,7 +436,7 @@
   </div>
 </div>
 
-<div class="card">
+<div class="card" id="ticket-purchases">
   <h2 style="margin-top:0;">保有中のチケット内訳</h2>
 
   {% if ticket_purchases %}
@@ -467,7 +507,7 @@
   {% endif %}
 </div>
 
-<div class="card">
+<div class="card" id="ticket-consumptions">
   <h2 style="margin-top:0;">最近のチケット消費内訳</h2>
 
   {% if ticket_consumptions %}
@@ -567,7 +607,7 @@
   {% endif %}
 </div>
 
-<div class="card">
+<div class="card" id="ticket-ledgers">
   <h2 style="margin-top:0;">チケット履歴</h2>
 
   {% if ticket_ledgers %}
