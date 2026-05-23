@@ -15,7 +15,7 @@
   .hub-text{color:var(--muted);font-size:13px;line-height:1.7;}
   .hub-action{margin-top:auto;}
   .reservation-hub-card.primary .btn{background:#fff;color:#0f172a;border-color:#fff;}
-  .lesson-week-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;}
+  .lesson-week-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
   .lesson-day-column{min-width:0;border:1px solid var(--line);background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 6px 18px rgba(15,23,42,.04);}
   .lesson-day-head{padding:12px;background:#0f172a;color:#fff;font-weight:900;text-align:center;font-size:14px;}
   .lesson-day-body{padding:10px;display:grid;grid-template-columns:1fr;gap:10px;}
@@ -27,12 +27,20 @@
   .lesson-info-label{color:#64748b;font-weight:800;flex:0 0 auto;}
   .lesson-info-value{text-align:right;min-width:0;overflow-wrap:anywhere;color:#0f172a;font-weight:700;}
   .lesson-card-actions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px;}
+  .lesson-card-actions form{margin:0;}
+  .lesson-card-actions .btn,
+  .lesson-card-actions button{width:100%;}
+  .lesson-card-note{margin-top:8px;color:#64748b;font-size:12px;line-height:1.5;}
   .empty-day{padding:12px;color:var(--muted);font-size:12px;text-align:center;border:1px dashed #cbd5e1;border-radius:12px;background:#f8fafc;}
+  .empty-lessons{padding:18px;border:1px dashed #cbd5e1;border-radius:16px;background:#f8fafc;color:#475569;font-size:14px;line-height:1.7;}
   .mobile-week-list{display:none;}
   .desktop-week-area{display:block;}
   .section-title{margin:0 0 12px;font-size:20px;font-weight:900;line-height:1.35;}
   .section-sub{margin:-4px 0 14px;color:var(--muted);font-size:13px;line-height:1.7;}
-  @media (max-width:1100px){.lesson-week-grid{grid-template-columns:repeat(4,minmax(0,1fr));}}
+  .capacity-pill{display:inline-flex;align-items:center;justify-content:center;padding:4px 8px;border-radius:999px;background:#ecfdf5;border:1px solid #bbf7d0;color:#166534;font-size:12px;font-weight:900;}
+  .capacity-pill.full{background:#fef2f2;border-color:#fecaca;color:#991b1b;}
+  .substitute-note{margin-top:6px;padding:7px 9px;border-radius:10px;border:1px solid #fed7aa;background:#fff7ed;color:#9a3412;font-size:12px;font-weight:800;line-height:1.5;}
+  @media (max-width:1100px){.lesson-week-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
   @media (max-width:900px){.reservation-hub-grid{grid-template-columns:1fr;}.lesson-week-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
   @media (max-width:768px){
     .lesson-title{font-size:23px;}
@@ -85,14 +93,14 @@
 
 <div class="card" id="available-lessons">
   <h2 class="section-title">予約できるレッスン</h2>
-  <p class="section-sub">スマホでは曜日ごとのカード表示を優先しています。空きがあるレッスンを選んで予約へ進んでください。</p>
+  <p class="section-sub">今後 {{ display_range_days }} 日以内に公開されている通常レッスンを表示します。スマホでは日付ごとのカード表示を優先しています。</p>
 
-  <div class="mobile-week-list">
-    {% for day in day_columns %}
-      <div class="lesson-day-column">
-        <div class="lesson-day-head">{{ day.weekday_label }}</div>
-        <div class="lesson-day-body">
-          {% if day.items %}
+  {% if day_columns %}
+    <div class="mobile-week-list">
+      {% for day in day_columns %}
+        <div class="lesson-day-column">
+          <div class="lesson-day-head">{{ day.weekday_label }}</div>
+          <div class="lesson-day-body">
             {% for item in day.items %}
               <div class="lesson-card">
                 <div class="lesson-card-title">{{ item.title }}</div>
@@ -101,14 +109,24 @@
                   <div class="lesson-info-row"><div class="lesson-info-label">コーチ</div><div class="lesson-info-value">{{ item.coach_name }}</div></div>
                   <div class="lesson-info-row"><div class="lesson-info-label">コート</div><div class="lesson-info-value">{{ item.court_name }}</div></div>
                   <div class="lesson-info-row"><div class="lesson-info-label">対象レベル</div><div class="lesson-info-value">{{ item.target_level_label }}</div></div>
-                  <div class="lesson-info-row"><div class="lesson-info-label">参加 / 定員</div><div class="lesson-info-value">{{ item.member_count }} / {{ item.capacity }}名</div></div>
+                  <div class="lesson-info-row"><div class="lesson-info-label">参加 / 定員</div><div class="lesson-info-value"><span class="capacity-pill {% if item.member_count >= item.capacity %}full{% endif %}">{{ item.member_count }} / {{ item.capacity }}名</span></div></div>
+                  <div class="lesson-info-row"><div class="lesson-info-label">残り</div><div class="lesson-info-value">{{ item.remaining_count }}名</div></div>
                 </div>
+
+                {% if item.has_substitute %}
+                  <div class="substitute-note">代行: {{ item.substitute_coach_name }} / 通常担当: {{ item.normal_coach_name }}</div>
+                {% endif %}
+
                 <div class="lesson-card-actions">
                   {% if user.is_authenticated %}
-                    {% if item.member_count < item.capacity %}
-                      <a href="{% url 'club:reservation_create' %}?availability={{ item.id }}" class="btn btn-primary">このレッスンを予約</a>
+                    {% if item.can_book %}
+                      <form method="post" action="{% url 'club:lesson_calendar' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="availability_id" value="{{ item.id }}">
+                        <button type="submit" class="btn btn-primary">このレッスンを予約</button>
+                      </form>
                     {% else %}
-                      <button type="button" class="btn" disabled>満員</button>
+                      <button type="button" class="btn" disabled>{{ item.disabled_reason }}</button>
                     {% endif %}
                   {% else %}
                     <a href="{% url 'club:line_login_start' %}" class="btn btn-primary">ログインして予約</a>
@@ -116,21 +134,17 @@
                 </div>
               </div>
             {% endfor %}
-          {% else %}
-            <div class="empty-day">登録レッスンなし</div>
-          {% endif %}
+          </div>
         </div>
-      </div>
-    {% endfor %}
-  </div>
+      {% endfor %}
+    </div>
 
-  <div class="desktop-week-area">
-    <div class="lesson-week-grid">
-      {% for day in day_columns %}
-        <div class="lesson-day-column">
-          <div class="lesson-day-head">{{ day.weekday_label }}</div>
-          <div class="lesson-day-body">
-            {% if day.items %}
+    <div class="desktop-week-area">
+      <div class="lesson-week-grid">
+        {% for day in day_columns %}
+          <div class="lesson-day-column">
+            <div class="lesson-day-head">{{ day.weekday_label }}</div>
+            <div class="lesson-day-body">
               {% for item in day.items %}
                 <div class="lesson-card">
                   <div class="lesson-card-title">{{ item.title }}</div>
@@ -139,14 +153,23 @@
                     <div class="lesson-info-row"><div class="lesson-info-label">コーチ</div><div class="lesson-info-value">{{ item.coach_name }}</div></div>
                     <div class="lesson-info-row"><div class="lesson-info-label">コート</div><div class="lesson-info-value">{{ item.court_name }}</div></div>
                     <div class="lesson-info-row"><div class="lesson-info-label">対象</div><div class="lesson-info-value">{{ item.target_level_label }}</div></div>
-                    <div class="lesson-info-row"><div class="lesson-info-label">定員</div><div class="lesson-info-value">{{ item.member_count }} / {{ item.capacity }}名</div></div>
+                    <div class="lesson-info-row"><div class="lesson-info-label">定員</div><div class="lesson-info-value"><span class="capacity-pill {% if item.member_count >= item.capacity %}full{% endif %}">{{ item.member_count }} / {{ item.capacity }}名</span></div></div>
                   </div>
+
+                  {% if item.has_substitute %}
+                    <div class="substitute-note">代行: {{ item.substitute_coach_name }} / 通常担当: {{ item.normal_coach_name }}</div>
+                  {% endif %}
+
                   <div class="lesson-card-actions">
                     {% if user.is_authenticated %}
-                      {% if item.member_count < item.capacity %}
-                        <a href="{% url 'club:reservation_create' %}?availability={{ item.id }}" class="btn btn-primary">予約する</a>
+                      {% if item.can_book %}
+                        <form method="post" action="{% url 'club:lesson_calendar' %}">
+                          {% csrf_token %}
+                          <input type="hidden" name="availability_id" value="{{ item.id }}">
+                          <button type="submit" class="btn btn-primary">予約する</button>
+                        </form>
                       {% else %}
-                        <button type="button" class="btn" disabled>満員</button>
+                        <button type="button" class="btn" disabled>{{ item.disabled_reason }}</button>
                       {% endif %}
                     {% else %}
                       <a href="{% url 'club:line_login_start' %}" class="btn btn-primary">ログインして予約</a>
@@ -154,14 +177,16 @@
                   </div>
                 </div>
               {% endfor %}
-            {% else %}
-              <div class="empty-day">登録レッスンなし</div>
-            {% endif %}
+            </div>
           </div>
-        </div>
-      {% endfor %}
+        {% endfor %}
+      </div>
     </div>
-  </div>
+  {% else %}
+    <div class="empty-lessons">
+      現在、予約できる通常レッスンはありません。コーチ側のスケジュール管理で公開中の通常レッスン枠を作成すると、この画面に表示されます。
+    </div>
+  {% endif %}
 </div>
 
 <div class="card">
