@@ -149,3 +149,13 @@ def coach_rain_cancel_candidate_count(user):
         )
     except Exception:
         return 0
+
+
+
+@register.simple_tag
+def member_low_ticket_warning(user, threshold=1):
+    try:
+        balance = int(getattr(user, "ticket_balance", 0) or 0)
+        return balance <= int(threshold or 1)
+    except Exception:
+        return False
