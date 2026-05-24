@@ -472,6 +472,52 @@
     flex-wrap:wrap;
   }
 
+  .private-lesson-panel{
+    margin:12px 14px 0;
+    padding:14px 16px;
+    border:2px solid #bfdbfe;
+    background:#eff6ff;
+    border-radius:16px;
+  }
+
+  .private-lesson-panel-title{
+    margin:0;
+    color:#0f172a;
+    font-size:18px;
+    line-height:1.35;
+    font-weight:1000;
+  }
+
+  .private-lesson-panel-text{
+    margin:5px 0 0;
+    color:#475569;
+    font-size:13px;
+    line-height:1.7;
+    font-weight:750;
+  }
+
+  .private-lesson-panel-actions{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:10px;
+  }
+
+  .private-lesson-panel-actions .btn{
+    min-height:38px;
+    border-radius:12px;
+    padding:8px 12px;
+  }
+
+  .price-ribbon.is-standard{
+    background:#0f172a;
+  }
+
+  .price-ribbon.is-standard .price-value{
+    color:#ffffff;
+    font-size:24px;
+  }
+
   .empty-calendar{
     padding:18px;
     border:1px dashed #cbd5e1;
@@ -712,6 +758,29 @@
     .sub-actions .btn{
       width:100%;
     }
+
+    .private-lesson-panel{
+      margin:10px 8px 0;
+      padding:12px;
+      border-radius:14px;
+    }
+
+    .private-lesson-panel-title{
+      font-size:16px;
+    }
+
+    .private-lesson-panel-text{
+      font-size:12px;
+    }
+
+    .private-lesson-panel-actions{
+      display:grid;
+      grid-template-columns:1fr;
+    }
+
+    .private-lesson-panel-actions .btn{
+      width:100%;
+    }
   }
 
   @media (max-width:390px){
@@ -765,11 +834,19 @@
         <span class="month-text">レッスンカレンダー</span>
       </h1>
 
-      <div class="price-ribbon">
-        <span class="price-label">1レッスン：</span>
-        <span class="price-value">2,000円</span>
-        <span class="price-note">（プレオープン価格）</span>
-      </div>
+      {% if target_year == 2026 and target_month == 7 %}
+        <div class="price-ribbon">
+          <span class="price-label">7月限定・1レッスン：</span>
+          <span class="price-value">2,000円</span>
+          <span class="price-note">（プレオープン価格）</span>
+        </div>
+      {% else %}
+        <div class="price-ribbon is-standard">
+          <span class="price-label">レッスン料金：</span>
+          <span class="price-value">7月のみプレオープン価格 2,000円</span>
+          <span class="price-note">この月の料金は別途ご案内します</span>
+        </div>
+      {% endif %}
 
       <div class="calendar-month-nav" aria-label="月移動">
         <a class="btn" href="{% url 'club:lesson_calendar' %}?year={{ prev_year }}&month={{ prev_month }}">← 前月</a>
@@ -777,6 +854,19 @@
         <a class="btn" href="{% url 'club:lesson_calendar' %}?year={{ next_year }}&month={{ next_month }}">次月 →</a>
       </div>
     </div>
+
+    <section class="private-lesson-panel" aria-label="個別レッスン相談">
+      <h2 class="private-lesson-panel-title">個別レッスンを相談したい場合</h2>
+      <p class="private-lesson-panel-text">プライベートレッスンやグループレッスンは、希望日時をコーチへ相談して申請できます。</p>
+      <div class="private-lesson-panel-actions">
+        {% if user.is_authenticated %}
+          <a href="{% url 'club:reservation_create' %}" class="btn btn-primary">個別レッスンを相談する</a>
+          <a href="{% url 'club:reservation_list' %}" class="btn">予約確認</a>
+        {% else %}
+          <a href="{% url 'club:line_login_start' %}" class="btn btn-primary">ログインして相談</a>
+        {% endif %}
+      </div>
+    </section>
 
     <div class="poster-calendar-area">
       <div class="calendar-scroll">
@@ -866,18 +956,5 @@
     <span class="notice-icon">!</span>
     <div>定員に達し次第、受付を終了させていただきます。お早めにご予約ください。</div>
   </div>
-
-  <section class="card">
-    <h2 class="card-title">個別レッスンを相談したい場合</h2>
-    <p class="card-subtitle">プライベートレッスンやグループレッスンは、通常レッスンより頻度が低いため、別の相談フォームに分けています。</p>
-    <div class="sub-actions" style="margin-top:14px;">
-      {% if user.is_authenticated %}
-        <a href="{% url 'club:reservation_create' %}" class="btn">個別レッスンを相談する</a>
-        <a href="{% url 'club:reservation_list' %}" class="btn">予約確認</a>
-      {% else %}
-        <a href="{% url 'club:line_login_start' %}" class="btn btn-primary">ログインして相談</a>
-      {% endif %}
-    </div>
-  </section>
 </div>
 {% endblock %}
