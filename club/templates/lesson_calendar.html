@@ -890,21 +890,24 @@
                             <a href="{{ item.reserve_url }}" class="calendar-event {{ item.color_class }}">
                               <div class="event-date">{{ item.date_label_jp }}</div>
                               <div class="event-time">{{ item.time_label }}</div>
-                              <div class="event-meta">定員：{{ item.capacity }}名</div>
+                              <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
+                              <div class="event-meta">{{ item.target_level_label }}</div>
                               <div class="event-coach">{{ item.coach_name }}</div>
                             </a>
                           {% elif not user.is_authenticated %}
                             <a href="{{ item.login_url }}" class="calendar-event {{ item.color_class }}">
                               <div class="event-date">{{ item.date_label_jp }}</div>
                               <div class="event-time">{{ item.time_label }}</div>
-                              <div class="event-meta">定員：{{ item.capacity }}名</div>
+                              <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
+                              <div class="event-meta">{{ item.target_level_label }}</div>
                               <div class="event-coach">{{ item.coach_name }}</div>
                             </a>
                           {% else %}
                             <a href="#lesson-{{ item.id }}" class="calendar-event {{ item.color_class }}">
                               <div class="event-date">{{ item.date_label_jp }}</div>
                               <div class="event-time">{{ item.time_label }}</div>
-                              <div class="event-meta">定員：{{ item.capacity }}名</div>
+                              <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
+                              <div class="event-meta">{{ item.target_level_label }}</div>
                               <div class="event-coach">{{ item.coach_name }}</div>
                             </a>
                           {% endif %}
@@ -932,8 +935,9 @@
             <div class="schedule-date">{{ item.date_label_jp }}</div>
             <div class="schedule-detail">
               <span>{{ item.time_label }}</span>
+              <span>レベル：{{ item.target_level_label }}</span>
+              <span>参加：{{ item.member_count }}/{{ item.capacity }}名</span>
               <span>定員：{{ item.capacity }}名</span>
-              <span>{{ item.member_count }}/{{ item.capacity }}名</span>
               <span class="schedule-coach">{{ item.coach_name }}</span>
               {% if item.has_substitute %}
                 <span>代行</span>
