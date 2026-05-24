@@ -1276,6 +1276,13 @@ def lesson_calendar_view(request):
         if availability.pk in represented_availability_ids:
             continue
 
+        # レッスンカレンダーは FixedLesson を正とする。
+        # 過去の固定レッスン同期で残った一般レッスンの CoachAvailability をそのまま出すと、
+        # 管理画面の FixedLesson に無い枠まで表示されてしまうため、一般レッスンの単独枠は表示しない。
+        # イベント等を CoachAvailability 単独で登録した場合だけ、追加枠として表示する。
+        if availability.lesson_type == Reservation.LESSON_GENERAL:
+            continue
+
         start_local = _local_dt(availability.start_at)
         target_date = start_local.date()
 
