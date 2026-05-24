@@ -839,7 +839,9 @@
               {% if item.can_book %}
                 <form method="post" action="{% url 'club:lesson_calendar' %}" class="reserve-form">
                   {% csrf_token %}
-                  <input type="hidden" name="availability_id" value="{{ item.id }}">
+                  <input type="hidden" name="availability_id" value="{{ item.availability_id }}">
+                  <input type="hidden" name="fixed_lesson_id" value="{{ item.fixed_lesson_id }}">
+                  <input type="hidden" name="lesson_date" value="{{ item.lesson_date }}">
                   <input type="hidden" name="year" value="{{ target_year }}">
                   <input type="hidden" name="month" value="{{ target_month }}">
                   <button type="submit" class="btn btn-primary reserve-button">このレッスンを予約</button>
