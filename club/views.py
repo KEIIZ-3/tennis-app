@@ -822,6 +822,91 @@ def lesson_calendar_view(request):
 
         return year_value, month_value
 
+    def _local_dt(value):
+        if timezone.is_aware(value):
+            return timezone.localtime(value)
+        return value
+
+    def _first_active_court():
+        return Court.objects.filter(is_active=True).order_by("id").first()
+
+    def _fixed_lesson_datetimes_safely(fixed_lesson, target_date):
+        try:
+            return fixed_lesson._build_datetimes_for_date(target_date)
+        except Exception:
+            try:
+                start_hour = int(getattr(fixed_lesson, "start_hour", 0) or 0)
+                if start_hour < 0 or start_hour > 23:
+                    return None, None
+                start_dt = datetime.combine(target_date, datetime.min.time()).replace(hour=start_hour, minute=0)
+                if timezone.is_naive(start_dt):
+                    start_dt = timezone.make_aware(start_dt)
+                duration_hours = _lesson_calendar_duration_hours(fixed_lesson)
+                return start_dt, start_dt + timedelta(hours=duration_hours)
+            except Exception:
+                return None, None
+
+    def _capacity_for_fixed_lesson(fixed_lesson):
+        try:
+            value = int(fixed_lesson.effective_capacity())
+        except Exception:
+            value = int(getattr(fixed_lesson, "capacity", 0) or 0)
+        return max(value, int(getattr(fixed_lesson, "capacity", 0) or 0), 1)
+
+    def _capacity_for_availability(availability):
+        try:
+            value = int(availability.effective_capacity())
+        except Exception:
+            value = int(getattr(availability, "capacity", 0) or 0)
+        return max(value, int(getattr(availability, "capacity", 0) or 0), 1)
+
+    def _find_matching_availability_for_fixed(fixed_lesson, start_at, end_at):
+        primary_coach = fixed_lesson.primary_coach() if hasattr(fixed_lesson, "primary_coach") else fixed_lesson.coach
+        qs = CoachAvailability.objects.select_related("coach", "substitute_coach", "court").filter(
+            coach=primary_coach,
+            lesson_type=fixed_lesson.lesson_type,
+            start_at=start_at,
+            end_at=end_at,
+        )
+        if getattr(fixed_lesson, "court_id", None):
+            qs = qs.filter(court=fixed_lesson.court)
+        return qs.order_by("id").first()
+
+    def _get_or_create_availability_from_fixed_lesson(fixed_lesson, target_date):
+        start_at, end_at = _fixed_lesson_datetimes_safely(fixed_lesson, target_date)
+        if not start_at or not end_at:
+            raise ValidationError("固定レッスンの日付・時間を作成できませんでした。")
+
+        primary_coach = fixed_lesson.primary_coach() if hasattr(fixed_lesson, "primary_coach") else fixed_lesson.coach
+        court = fixed_lesson.court or _first_active_court()
+        if not court:
+            raise ValidationError("予約に利用できるコートが登録されていません。")
+
+        existing = CoachAvailability.objects.filter(
+            coach=primary_coach,
+            lesson_type=fixed_lesson.lesson_type,
+            start_at=start_at,
+            end_at=end_at,
+        ).order_by("id").first()
+        if existing:
+            return existing
+
+        availability = CoachAvailability(
+            coach=primary_coach,
+            court=court,
+            lesson_type=fixed_lesson.lesson_type,
+            target_level=fixed_lesson.target_level,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=_capacity_for_fixed_lesson(fixed_lesson),
+            coach_count=max(int(getattr(fixed_lesson, "coach_count", 1) or 1), 1),
+            court_count=max(int(getattr(fixed_lesson, "court_count", 1) or 1), 1),
+            status=CoachAvailability.STATUS_OPEN,
+            note=f"固定レッスン: {fixed_lesson.title or fixed_lesson.get_weekday_display()}",
+        )
+        availability.save()
+        return availability
+
     if request.method == "POST":
         target_year, target_month = _parse_target_month(request.POST.get("year"), request.POST.get("month"))
         redirect_url = f"{reverse('club:lesson_calendar')}?{urlencode({'year': target_year, 'month': target_month})}"
@@ -843,15 +928,39 @@ def lesson_calendar_view(request):
             return redirect(redirect_url)
 
         availability_id = (request.POST.get("availability_id") or "").strip()
-        availability = get_object_or_404(
-            CoachAvailability.objects.select_related("coach", "substitute_coach", "court"),
-            pk=availability_id,
-            status=CoachAvailability.STATUS_OPEN,
-            lesson_type__in=[Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT],
-            start_at__gte=timezone.now(),
-        )
+        fixed_lesson_id = (request.POST.get("fixed_lesson_id") or "").strip()
+        lesson_date_text = (request.POST.get("lesson_date") or "").strip()
 
         try:
+            if availability_id:
+                availability = get_object_or_404(
+                    CoachAvailability.objects.select_related("coach", "substitute_coach", "court"),
+                    pk=availability_id,
+                    status=CoachAvailability.STATUS_OPEN,
+                    lesson_type__in=[Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT],
+                    start_at__gte=timezone.now(),
+                )
+                fixed_lesson = None
+            elif fixed_lesson_id and lesson_date_text:
+                fixed_lesson = get_object_or_404(
+                    FixedLesson.objects.select_related("coach", "coach_2", "coach_3", "court"),
+                    pk=fixed_lesson_id,
+                    is_active=True,
+                )
+                try:
+                    target_date = date.fromisoformat(lesson_date_text)
+                except Exception:
+                    raise ValidationError("予約対象日が正しくありません。")
+                availability = _get_or_create_availability_from_fixed_lesson(fixed_lesson, target_date)
+                if availability.status != CoachAvailability.STATUS_OPEN:
+                    raise ValidationError("このレッスンはまだ受付準備中です。")
+                if availability.start_at < timezone.now():
+                    raise ValidationError("このレッスンは受付終了です。")
+                if availability.lesson_type not in (Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT):
+                    raise ValidationError("このレッスンは個別相談フォームから申請してください。")
+            else:
+                raise ValidationError("予約対象のレッスンが見つかりません。")
+
             with transaction.atomic():
                 reservation = Reservation(
                     user=request.user,
@@ -859,6 +968,7 @@ def lesson_calendar_view(request):
                     substitute_coach=availability.substitute_coach,
                     court=availability.court,
                     availability=availability,
+                    fixed_lesson=fixed_lesson,
                     lesson_type=availability.lesson_type,
                     target_level=availability.target_level,
                     start_at=availability.start_at,
@@ -904,23 +1014,6 @@ def lesson_calendar_view(request):
         next_month_number = 1
         next_year += 1
 
-    availability_qs = (
-        CoachAvailability.objects.filter(
-            start_at__date__gte=month_start,
-            start_at__date__lt=next_month,
-        )
-        .select_related("coach", "substitute_coach", "court")
-        .order_by("start_at", "coach__username", "court__name", "id")
-    )
-    availability_list = list(availability_qs)
-
-    fixed_lesson_list = list(
-        FixedLesson.objects.filter(is_active=True)
-        .select_related("coach", "coach_2", "coach_3", "court")
-        .prefetch_related("members")
-        .order_by("weekday", "start_hour", "id")
-    )
-
     reservation_qs = (
         Reservation.objects.filter(
             status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
@@ -959,6 +1052,10 @@ def lesson_calendar_view(request):
 
     def _coach_color_from_names(names, coach_id=None):
         names = names or ""
+        if "清水" in names and "飯塚" not in names:
+            return "coach-green"
+        if "井上" in names and "飯塚" not in names and "清水" not in names:
+            return "coach-purple"
         if "清水" in names:
             return "coach-green"
         if "井上" in names:
@@ -979,25 +1076,6 @@ def lesson_calendar_view(request):
         )
         return _coach_color_from_names(names, getattr(availability, "coach_id", None))
 
-    def _capacity_for_availability(availability):
-        try:
-            value = int(availability.effective_capacity())
-        except Exception:
-            value = int(availability.capacity or 0)
-        return max(value, int(availability.capacity or 0), 1)
-
-    def _capacity_for_fixed_lesson(fixed_lesson):
-        try:
-            value = int(fixed_lesson.effective_capacity())
-        except Exception:
-            value = int(fixed_lesson.capacity or 0)
-        return max(value, int(fixed_lesson.capacity or 0), 1)
-
-    def _local_dt(value):
-        if timezone.is_aware(value):
-            return timezone.localtime(value)
-        return value
-
     def _build_display_item(
         *,
         item_id,
@@ -1010,7 +1088,7 @@ def lesson_calendar_view(request):
         start_at,
         end_at,
         coach,
-        assigned_coach,
+        assigned_coach_name,
         substitute_coach=None,
         court=None,
         capacity=1,
@@ -1019,6 +1097,9 @@ def lesson_calendar_view(request):
         status=CoachAvailability.STATUS_OPEN,
         color_class="coach-blue",
         availability_id="",
+        fixed_lesson_id="",
+        lesson_date="",
+        allow_fixed_booking=False,
     ):
         start_local = _local_dt(start_at)
         end_local = _local_dt(end_at)
@@ -1028,7 +1109,6 @@ def lesson_calendar_view(request):
 
         can_book = False
         disabled_reason = ""
-        user_slot_status = ""
 
         slot_key = _slot_key(
             lesson_type=lesson_type,
@@ -1041,9 +1121,9 @@ def lesson_calendar_view(request):
 
         if start_at < timezone.now():
             disabled_reason = "受付終了"
-        elif source_kind != "availability":
+        elif source_kind != "availability" and not allow_fixed_booking:
             disabled_reason = "受付準備中"
-        elif status != CoachAvailability.STATUS_OPEN:
+        elif status != CoachAvailability.STATUS_OPEN and not allow_fixed_booking:
             disabled_reason = "受付準備中"
         elif lesson_type not in (Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT):
             disabled_reason = "個別相談から申請"
@@ -1059,12 +1139,18 @@ def lesson_calendar_view(request):
             disabled_reason = "ご自身のレベルでは予約できません。"
         elif int(member_count or 0) >= int(capacity or 0):
             disabled_reason = "満員です。"
-        else:
+        elif source_kind == "availability" and availability_id:
             can_book = True
+        elif source_kind == "fixed_lesson" and fixed_lesson_id and lesson_date and allow_fixed_booking:
+            can_book = True
+        else:
+            disabled_reason = "受付準備中"
 
         return {
             "id": item_id,
             "availability_id": availability_id,
+            "fixed_lesson_id": fixed_lesson_id,
+            "lesson_date": lesson_date,
             "source_kind": source_kind,
             "title": title,
             "date_label": start_local.strftime("%m/%d"),
@@ -1072,7 +1158,7 @@ def lesson_calendar_view(request):
             "day_number": target_date.day,
             "time_label": f"{start_local:%H:%M}〜{end_local:%H:%M}",
             "sort_key": f"{start_local:%Y%m%d%H%M}-{item_id}",
-            "coach_name": _display_name(assigned_coach),
+            "coach_name": assigned_coach_name,
             "normal_coach_name": _display_name(coach),
             "substitute_coach_name": _display_name(substitute_coach) if substitute_coach else "",
             "has_substitute": bool(substitute_coach),
@@ -1088,12 +1174,108 @@ def lesson_calendar_view(request):
             "color_class": color_class,
         }
 
-    now = timezone.now()
     day_event_map = {}
     schedule_rows = []
-    existing_slot_keys = set()
+    represented_availability_ids = set()
+
+    fixed_lesson_list = list(
+        FixedLesson.objects.filter(is_active=True)
+        .select_related("coach", "coach_2", "coach_3", "court")
+        .prefetch_related("members")
+        .order_by("weekday", "start_hour", "id")
+    )
+
+    cursor_date = month_start
+    while cursor_date < next_month:
+        for fixed_lesson in fixed_lesson_list:
+            if int(fixed_lesson.weekday) != int(cursor_date.weekday()):
+                continue
+
+            start_at, end_at = _fixed_lesson_datetimes_safely(fixed_lesson, cursor_date)
+            if not start_at or not end_at:
+                continue
+
+            primary_coach = fixed_lesson.primary_coach() if hasattr(fixed_lesson, "primary_coach") else fixed_lesson.coach
+            matching_availability = _find_matching_availability_for_fixed(fixed_lesson, start_at, end_at)
+            if matching_availability:
+                represented_availability_ids.add(matching_availability.pk)
+                court = matching_availability.court
+                capacity = _capacity_for_availability(matching_availability)
+                status = matching_availability.status
+                availability_id = str(matching_availability.pk)
+                substitute_coach = matching_availability.substitute_coach
+                slot_coach = matching_availability.coach
+                slot_key = _slot_key(
+                    lesson_type=matching_availability.lesson_type,
+                    coach_id=matching_availability.coach_id,
+                    court_id=matching_availability.court_id,
+                    start_at=matching_availability.start_at,
+                    end_at=matching_availability.end_at,
+                )
+            else:
+                court = fixed_lesson.court or _first_active_court()
+                capacity = _capacity_for_fixed_lesson(fixed_lesson)
+                status = CoachAvailability.STATUS_OPEN
+                availability_id = ""
+                substitute_coach = None
+                slot_coach = primary_coach
+                slot_key = _slot_key(
+                    lesson_type=fixed_lesson.lesson_type,
+                    coach_id=getattr(primary_coach, "pk", None),
+                    court_id=getattr(court, "pk", None),
+                    start_at=start_at,
+                    end_at=end_at,
+                )
+
+            member_count = int(active_slot_counts.get(slot_key, 0))
+            pending_count = int(pending_slot_counts.get(slot_key, 0))
+            coach_names = _fixed_lesson_coach_names(fixed_lesson)
+
+            item = _build_display_item(
+                item_id=f"fixed-{fixed_lesson.pk}-{cursor_date:%Y%m%d}",
+                availability_id=availability_id,
+                fixed_lesson_id=str(fixed_lesson.pk),
+                lesson_date=cursor_date.isoformat(),
+                source_kind="fixed_lesson",
+                title=_lesson_calendar_title(fixed_lesson),
+                lesson_type=fixed_lesson.lesson_type,
+                lesson_type_label=fixed_lesson.get_lesson_type_display(),
+                target_level=fixed_lesson.target_level,
+                target_level_label=fixed_lesson.get_target_level_display(),
+                start_at=start_at,
+                end_at=end_at,
+                coach=slot_coach,
+                assigned_coach_name=coach_names,
+                substitute_coach=substitute_coach,
+                court=court,
+                capacity=capacity,
+                member_count=member_count,
+                pending_count=pending_count,
+                status=status,
+                color_class=_coach_color_from_names(coach_names, getattr(primary_coach, "pk", None)),
+                allow_fixed_booking=bool(court),
+            )
+
+            day_event_map.setdefault(cursor_date, [])
+            day_event_map[cursor_date].append(item)
+            schedule_rows.append(item)
+
+        cursor_date += timedelta(days=1)
+
+    availability_qs = (
+        CoachAvailability.objects.filter(
+            start_at__date__gte=month_start,
+            start_at__date__lt=next_month,
+        )
+        .select_related("coach", "substitute_coach", "court")
+        .order_by("start_at", "coach__username", "court__name", "id")
+    )
+    availability_list = list(availability_qs)
 
     for availability in availability_list:
+        if availability.pk in represented_availability_ids:
+            continue
+
         start_local = _local_dt(availability.start_at)
         target_date = start_local.date()
 
@@ -1104,7 +1286,6 @@ def lesson_calendar_view(request):
             start_at=availability.start_at,
             end_at=availability.end_at,
         )
-        existing_slot_keys.add(slot_key)
 
         member_count = int(active_slot_counts.get(slot_key, 0))
         pending_count = int(pending_slot_counts.get(slot_key, 0))
@@ -1123,7 +1304,7 @@ def lesson_calendar_view(request):
             start_at=availability.start_at,
             end_at=availability.end_at,
             coach=availability.coach,
-            assigned_coach=assigned_coach,
+            assigned_coach_name=_display_name(assigned_coach),
             substitute_coach=availability.substitute_coach,
             court=availability.court,
             capacity=capacity,
@@ -1136,59 +1317,6 @@ def lesson_calendar_view(request):
         day_event_map.setdefault(target_date, [])
         day_event_map[target_date].append(item)
         schedule_rows.append(item)
-
-    cursor_date = month_start
-    while cursor_date < next_month:
-        for fixed_lesson in fixed_lesson_list:
-            if int(fixed_lesson.weekday) != int(cursor_date.weekday()):
-                continue
-            if not fixed_lesson.court_id:
-                continue
-
-            start_at, end_at = fixed_lesson._build_datetimes_for_date(cursor_date)
-            primary_coach = fixed_lesson.primary_coach() if hasattr(fixed_lesson, "primary_coach") else fixed_lesson.coach
-            slot_key = _slot_key(
-                lesson_type=fixed_lesson.lesson_type,
-                coach_id=getattr(primary_coach, "pk", None),
-                court_id=getattr(fixed_lesson.court, "pk", None),
-                start_at=start_at,
-                end_at=end_at,
-            )
-            if slot_key in existing_slot_keys:
-                continue
-
-            capacity = _capacity_for_fixed_lesson(fixed_lesson)
-            member_count = int(active_slot_counts.get(slot_key, 0))
-            pending_count = int(pending_slot_counts.get(slot_key, 0))
-            coach_names = _fixed_lesson_coach_names(fixed_lesson)
-
-            item = _build_display_item(
-                item_id=f"fixed-{fixed_lesson.pk}-{cursor_date:%Y%m%d}",
-                availability_id="",
-                source_kind="fixed_lesson",
-                title=_lesson_calendar_title(fixed_lesson),
-                lesson_type=fixed_lesson.lesson_type,
-                lesson_type_label=fixed_lesson.get_lesson_type_display(),
-                target_level=fixed_lesson.target_level,
-                target_level_label=fixed_lesson.get_target_level_display(),
-                start_at=start_at,
-                end_at=end_at,
-                coach=primary_coach,
-                assigned_coach=primary_coach,
-                substitute_coach=None,
-                court=fixed_lesson.court,
-                capacity=capacity,
-                member_count=member_count,
-                pending_count=pending_count,
-                status=CoachAvailability.STATUS_REQUESTED,
-                color_class=_coach_color_from_names(coach_names, getattr(primary_coach, "pk", None)),
-            )
-
-            day_event_map.setdefault(cursor_date, [])
-            day_event_map[cursor_date].append(item)
-            schedule_rows.append(item)
-
-        cursor_date += timedelta(days=1)
 
     for target_date, items in day_event_map.items():
         day_event_map[target_date] = sorted(items, key=lambda row: row.get("sort_key", ""))
