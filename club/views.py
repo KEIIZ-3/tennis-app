@@ -128,11 +128,24 @@ def _login_user_with_default_backend(request, user):
 def _normalize_next_url(value):
     if not value:
         return reverse("club:lesson_calendar")
+
     value = str(value).strip()
     if not value.startswith("/"):
         return reverse("club:lesson_calendar")
     if value.startswith("//"):
         return reverse("club:lesson_calendar")
+
+    # LINEログイン後は、通常の戻り先をレッスンカレンダーに統一する。
+    # /line/link/ 経由の「LINEで登録・ログイン」ボタンでも、ログイン完了後にLINE連携タブへ戻さない。
+    standard_redirects = {
+        "/",
+        reverse("club:home"),
+        reverse("club:line_connect"),
+        reverse("club:login"),
+    }
+    if value in standard_redirects:
+        return reverse("club:lesson_calendar")
+
     return value
 
 
@@ -4185,7 +4198,7 @@ def line_login_callback(request):
 
         if result == "linked":
             messages.success(request, "LINEアカウントを自動連携しました。")
-            return redirect("club:line_connect")
+            return redirect("club:lesson_calendar")
 
         if _needs_profile_completion(user):
             messages.info(request, "初回登録のため、会員情報を入力してください。")
@@ -4287,7 +4300,7 @@ def liff_bootstrap(request):
                 {
                     "ok": True,
                     "message": "LINEアカウントを連携しました。",
-                    "redirectUrl": reverse("club:line_connect"),
+                    "redirectUrl": reverse("club:lesson_calendar"),
                 }
             )
 
@@ -4343,7 +4356,7 @@ def line_connect(request):
         "line_link_token": link_token,
         "manual_form": LineAccountLinkForm(),
         "line_login_enabled": _line_login_enabled(),
-        "line_login_url": f"{reverse('club:line_login_start')}?next={urllib.parse.quote(reverse('club:line_connect'))}",
+        "line_login_url": f"{reverse('club:line_login_start')}?next={urllib.parse.quote(reverse('club:lesson_calendar'))}",
         "line_webhook_full_url": request.build_absolute_uri(reverse("club:line_webhook")),
         "liff_enabled": _liff_enabled(),
     }
