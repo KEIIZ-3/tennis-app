@@ -203,6 +203,26 @@
     color:#94a3b8;
   }
 
+  .day-cell-past{
+    background:#f1f5f9!important;
+    color:#94a3b8;
+  }
+
+  .day-cell-past .day-number{
+    color:#94a3b8!important;
+  }
+
+  .day-cell-past .calendar-event{
+    opacity:.48;
+    filter:grayscale(.35);
+    background:#f8fafc;
+    box-shadow:none;
+  }
+
+  .day-cell-past .calendar-event:hover{
+    opacity:.58;
+  }
+
   .day-number{
     font-size:16px;
     line-height:1;
@@ -352,6 +372,14 @@
     align-items:center;
     padding:9px 0;
     border-bottom:1px dotted #cbd5e1;
+  }
+
+  .schedule-row.is-past{
+    opacity:.58;
+    background:#f8fafc;
+    border-radius:12px;
+    padding-left:8px;
+    padding-right:8px;
   }
 
   .schedule-dot{
@@ -881,7 +909,7 @@
             {% for week in calendar_weeks %}
               <tr>
                 {% for day in week %}
-                  <td class="{% if not day.is_current_month %}day-cell-muted{% endif %} {% if day.is_today %}day-cell-today{% endif %} {% if day.is_sunday %}day-cell-sunday{% endif %} {% if day.is_saturday %}day-cell-saturday{% endif %}">
+                  <td class="{% if not day.is_current_month %}day-cell-muted{% endif %} {% if day.is_past %}day-cell-past{% endif %} {% if day.is_today %}day-cell-today{% endif %} {% if day.is_sunday %}day-cell-sunday{% endif %} {% if day.is_saturday %}day-cell-saturday{% endif %}">
                     <div class="day-number">{{ day.day_number }}</div>
                     {% if day.items %}
                       <div class="calendar-event-list">
@@ -930,7 +958,7 @@
     {% if schedule_rows %}
       <div class="schedule-list">
         {% for item in schedule_rows %}
-          <div class="schedule-row {{ item.color_class }}" id="lesson-{{ item.id }}">
+          <div class="schedule-row {{ item.color_class }} {% if item.is_past %}is-past{% endif %}" id="lesson-{{ item.id }}">
             <span class="schedule-dot" aria-hidden="true"></span>
             <div class="schedule-date">{{ item.date_label_jp }}</div>
             <div class="schedule-detail">
