@@ -127,12 +127,12 @@ def _login_user_with_default_backend(request, user):
 
 def _normalize_next_url(value):
     if not value:
-        return reverse("club:home")
+        return reverse("club:lesson_calendar")
     value = str(value).strip()
     if not value.startswith("/"):
-        return reverse("club:home")
+        return reverse("club:lesson_calendar")
     if value.startswith("//"):
-        return reverse("club:home")
+        return reverse("club:lesson_calendar")
     return value
 
 
@@ -3178,7 +3178,7 @@ def login_view(request):
             return redirect("club:profile_complete")
         if _needs_schedule_survey(request.user):
             return redirect("club:schedule_survey")
-        return redirect("club:home")
+        return redirect("club:lesson_calendar")
 
     form = AuthenticationForm(request, data=request.POST or None)
 
@@ -3190,7 +3190,7 @@ def login_view(request):
             if _needs_schedule_survey(request.user):
                 messages.info(request, "ログインありがとうございます。最初にアンケートへご回答ください。")
                 return redirect("club:schedule_survey")
-            return redirect("club:home")
+            return redirect("club:lesson_calendar")
         messages.error(request, "ユーザー名またはパスワードが正しくありません。")
 
     return render(
@@ -3212,7 +3212,7 @@ def register_view(request):
             return redirect("club:profile_complete")
         if _needs_schedule_survey(request.user):
             return redirect("club:schedule_survey")
-        return redirect("club:home")
+        return redirect("club:lesson_calendar")
 
     form = MemberRegistrationForm(request.POST or None)
 
@@ -3226,7 +3226,7 @@ def register_view(request):
             if _needs_schedule_survey(request.user):
                 messages.info(request, "最初にレッスン希望アンケートへご回答ください。")
                 return redirect("club:schedule_survey")
-            return redirect("club:home")
+            return redirect("club:lesson_calendar")
 
         messages.error(request, "新規会員登録できませんでした。入力内容をご確認ください。")
 
@@ -3244,7 +3244,7 @@ def register_view(request):
 @require_http_methods(["GET", "POST"])
 def profile_complete_view(request):
     if request.method == "GET" and not _needs_profile_completion(request.user):
-        return redirect("club:home")
+        return redirect("club:lesson_calendar")
 
     form = LineProfileCompletionForm(request.POST or None, instance=request.user)
 
@@ -3255,7 +3255,7 @@ def profile_complete_view(request):
             if _needs_schedule_survey(request.user):
                 messages.info(request, "続けてアンケートへご回答ください。")
                 return redirect("club:schedule_survey")
-            return redirect("club:home")
+            return redirect("club:lesson_calendar")
         messages.error(request, "会員情報を保存できませんでした。入力内容をご確認ください。")
 
     return render(
@@ -4099,6 +4099,8 @@ def line_login_start(request):
     raw_next = request.GET.get("next")
     if raw_next:
         next_url = _normalize_next_url(raw_next)
+        if next_url in ("/", reverse("club:home")):
+            next_url = reverse("club:lesson_calendar")
     else:
         next_url = reverse("club:lesson_calendar")
 
@@ -4198,7 +4200,7 @@ def line_login_callback(request):
         else:
             messages.success(request, "LINEでログインしました。")
 
-        if next_url == reverse("club:home"):
+        if next_url in ("/", reverse("club:home")):
             next_url = reverse("club:lesson_calendar")
         return redirect(next_url)
 
