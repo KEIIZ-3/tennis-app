@@ -33,6 +33,249 @@ from .models import (
 )
 
 
+admin.site.site_header = "Play Design Tennis 管理サイト"
+admin.site.site_title = "Play Design Tennis 管理サイト"
+admin.site.index_title = "管理メニュー"
+
+
+_MODEL_VERBOSE_NAMES = {
+    User: ("ユーザー", "ユーザー"),
+    Court: ("コート", "コート"),
+    CoachAvailability: ("コーチスケジュール", "コーチスケジュール"),
+    FixedLesson: ("固定レッスン", "固定レッスン"),
+    Reservation: ("予約", "予約"),
+    TicketLedger: ("チケット履歴", "チケット履歴"),
+    TicketPurchase: ("チケット購入", "チケット購入"),
+    TicketConsumption: ("チケット消費", "チケット消費"),
+    CoachExpense: ("経費", "経費"),
+    StringingOrder: ("ガット張り依頼", "ガット張り依頼"),
+    LineAccountLink: ("LINE連携", "LINE連携"),
+    ScheduleSurveyResponse: ("時間帯アンケート回答", "時間帯アンケート回答"),
+    ShopEstimateRequest: ("物販見積もり依頼", "物販見積もり依頼"),
+    ShopProductMaster: ("Shop商品マスタ", "Shop商品マスタ"),
+}
+
+
+_FIELD_VERBOSE_NAMES = {
+    User: {
+        "username": "ログインID",
+        "password": "パスワード",
+        "full_name": "氏名",
+        "email": "メールアドレス",
+        "phone_number": "電話番号",
+        "role": "権限種別",
+        "member_level": "会員レベル",
+        "ticket_balance": "チケット残数",
+        "is_profile_completed": "会員情報入力済み",
+        "is_staff": "管理画面利用可",
+        "is_superuser": "管理者権限",
+        "is_active": "有効",
+        "last_login": "最終ログイン",
+        "date_joined": "登録日時",
+        "first_name": "名",
+        "last_name": "姓",
+        "groups": "グループ",
+        "user_permissions": "ユーザー権限",
+    },
+    Court: {
+        "name": "コート名",
+        "is_active": "有効",
+        "court_type": "コート種別",
+    },
+    CoachAvailability: {
+        "coach": "主担当コーチ",
+        "substitute_coach": "代行コーチ",
+        "court": "コート",
+        "lesson_type": "レッスン種別",
+        "target_level": "対象レベル",
+        "start_at": "開始日時",
+        "end_at": "終了日時",
+        "capacity": "定員",
+        "coach_count": "コーチ人数",
+        "court_count": "必要コート数",
+        "note": "メモ",
+        "status": "公開状態",
+        "custom_ticket_price": "イベント消費チケット",
+        "custom_duration_hours": "イベント時間",
+        "created_at": "作成日時",
+    },
+    FixedLesson: {
+        "title": "レッスン名",
+        "coach": "主担当コーチ",
+        "coach_2": "追加コーチ1",
+        "coach_3": "追加コーチ2",
+        "court": "コート",
+        "members": "固定参加メンバー",
+        "lesson_type": "レッスン種別",
+        "target_level": "対象レベル",
+        "weekday": "曜日",
+        "start_hour": "開始時刻",
+        "capacity": "定員",
+        "coach_count": "コーチ人数",
+        "court_count": "必要コート数",
+        "weeks_ahead": "何週間先まで作成",
+        "is_active": "有効",
+        "note": "メモ",
+        "created_at": "作成日時",
+    },
+    Reservation: {
+        "user": "会員",
+        "coach": "主担当コーチ",
+        "substitute_coach": "代行コーチ",
+        "court": "コート",
+        "availability": "コーチスケジュール",
+        "fixed_lesson": "固定レッスン",
+        "is_fixed_entry": "固定参加",
+        "lesson_type": "レッスン種別",
+        "target_level": "対象レベル",
+        "requested_court_type": "希望コート種別",
+        "requested_court_note": "希望コートメモ",
+        "approved_court_note": "承認コートメモ",
+        "start_at": "開始日時",
+        "end_at": "終了日時",
+        "tickets_used": "消費チケット",
+        "ticket_consumed_at": "チケット消費日時",
+        "ticket_refunded_at": "チケット返却日時",
+        "status": "状態",
+        "canceled_at": "キャンセル日時",
+        "cancellation_reason": "キャンセル理由",
+        "custom_ticket_price": "イベント消費チケット",
+        "custom_duration_hours": "イベント時間",
+        "created_at": "作成日時",
+    },
+    TicketLedger: {
+        "user": "会員",
+        "reservation": "予約",
+        "fixed_lesson": "固定レッスン",
+        "change_amount": "増減枚数",
+        "balance_after": "処理後残数",
+        "reason": "理由",
+        "note": "メモ",
+        "created_by": "処理者",
+        "created_at": "作成日時",
+    },
+    TicketPurchase: {
+        "user": "会員",
+        "purchase_type": "購入種別",
+        "total_tickets": "購入枚数",
+        "remaining_tickets": "残枚数",
+        "unit_price": "単価",
+        "label": "表示名",
+        "note": "メモ",
+        "created_by": "処理者",
+        "purchased_at": "購入日時",
+        "created_at": "作成日時",
+    },
+    TicketConsumption: {
+        "user": "会員",
+        "purchase": "購入チケット",
+        "reservation": "予約",
+        "fixed_lesson": "固定レッスン",
+        "tickets_used": "消費枚数",
+        "unit_price_snapshot": "消費時単価",
+        "refunded_at": "返却日時",
+        "refund_note": "返却メモ",
+        "created_at": "作成日時",
+    },
+    CoachExpense: {
+        "expense_date": "経費日",
+        "category": "カテゴリ",
+        "amount": "金額",
+        "note": "メモ",
+        "created_by": "登録者",
+        "created_at": "作成日時",
+    },
+    StringingOrder: {
+        "user": "会員",
+        "assigned_coach": "担当コーチ",
+        "racket_name": "ラケット名",
+        "string_name": "ガット名",
+        "tension_lbs": "テンション",
+        "delivery_requested": "デリバリー希望",
+        "delivery_location": "デリバリー場所",
+        "preferred_delivery_time": "希望日時",
+        "base_price": "基本料金",
+        "delivery_fee": "デリバリー料金",
+        "status": "状態",
+        "note": "メモ",
+        "created_at": "作成日時",
+        "updated_at": "更新日時",
+    },
+    LineAccountLink: {
+        "user": "ユーザー",
+        "line_user_id": "LINEユーザーID",
+        "is_active": "有効",
+        "linked_at": "連携日時",
+        "last_event_at": "最終イベント日時",
+    },
+    ScheduleSurveyResponse: {
+        "user": "会員",
+        "selected_days": "参加しやすい曜日",
+        "selected_weekday_time_slots": "平日の希望時間帯",
+        "selected_weekend_time_slots": "土日の希望時間帯",
+        "selected_lesson_types": "希望レッスン種別",
+        "preferred_frequency": "希望頻度",
+        "free_comment": "自由記入",
+        "answered_at": "回答日時",
+        "created_at": "作成日時",
+        "updated_at": "更新日時",
+    },
+    ShopProductMaster: {
+        "product_type": "商品種別",
+        "category": "カテゴリ",
+        "brand": "ブランド",
+        "product_name": "商品名",
+        "display_name": "表示名",
+        "product_code": "品番",
+        "official_price": "定価",
+        "sale_price": "販売価格",
+        "image_url": "画像URL",
+        "product_url": "商品URL",
+        "description": "説明",
+        "is_active": "有効",
+        "sort_order": "並び順",
+        "created_at": "作成日時",
+        "updated_at": "更新日時",
+    },
+    ShopEstimateRequest: {
+        "user": "会員",
+        "product_category": "商品カテゴリ",
+        "brand": "ブランド",
+        "main_keyword": "商品キーワード",
+        "main_product_name": "商品名",
+        "main_official_price": "商品定価",
+        "grip_size": "グリップサイズ",
+        "string_source": "ガット種別",
+        "string_keyword": "ガットキーワード",
+        "string_product_name": "ガット名",
+        "string_official_price": "ガット定価",
+        "request_stringing": "ガット張り希望",
+        "request_delivery": "デリバリー希望",
+        "tension_lbs": "テンション",
+        "note": "メモ",
+        "created_at": "作成日時",
+        "updated_at": "更新日時",
+    },
+}
+
+
+def _apply_japanese_admin_labels():
+    for model, names in _MODEL_VERBOSE_NAMES.items():
+        model._meta.verbose_name = names[0]
+        model._meta.verbose_name_plural = names[1]
+
+    for model, field_labels in _FIELD_VERBOSE_NAMES.items():
+        for field_name, label in field_labels.items():
+            try:
+                model._meta.get_field(field_name).verbose_name = label
+            except Exception:
+                continue
+
+
+_apply_japanese_admin_labels()
+
+
+
 DATETIME_INPUT_FORMATS = [
     "%Y-%m-%dT%H:%M",
     "%Y-%m-%d %H:%M",
@@ -69,12 +312,12 @@ class ShopProductMasterImportForm(forms.Form):
 
 class CoachAvailabilityAdminForm(forms.ModelForm):
     start_at = forms.DateTimeField(
-        label="Start at",
+        label="開始日時",
         input_formats=DATETIME_INPUT_FORMATS,
         widget=AdminHourDateTimeInput(attrs={"step": 3600}),
     )
     end_at = forms.DateTimeField(
-        label="End at",
+        label="終了日時",
         input_formats=DATETIME_INPUT_FORMATS,
         widget=AdminHourDateTimeInput(attrs={"step": 3600}),
     )
@@ -95,12 +338,12 @@ class CoachAvailabilityAdminForm(forms.ModelForm):
 
 class ReservationAdminForm(forms.ModelForm):
     start_at = forms.DateTimeField(
-        label="Start at",
+        label="開始日時",
         input_formats=DATETIME_INPUT_FORMATS,
         widget=AdminHourDateTimeInput(attrs={"step": 3600}),
     )
     end_at = forms.DateTimeField(
-        label="End at",
+        label="終了日時",
         input_formats=DATETIME_INPUT_FORMATS,
         widget=AdminHourDateTimeInput(attrs={"step": 3600}),
     )
@@ -131,7 +374,15 @@ class FixedLessonAdminForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["coach"].queryset = User.objects.filter(role="coach").order_by("full_name", "username", "id")
+
+        coach_qs = User.objects.filter(role="coach").order_by("full_name", "username", "id")
+        self.fields["coach"].queryset = coach_qs
+        if "coach_2" in self.fields:
+            self.fields["coach_2"].queryset = coach_qs
+            self.fields["coach_2"].required = False
+        if "coach_3" in self.fields:
+            self.fields["coach_3"].queryset = coach_qs
+            self.fields["coach_3"].required = False
 
 
 class CoachExpenseAdminForm(forms.ModelForm):
@@ -422,6 +673,51 @@ class FixedLessonAdmin(admin.ModelAdmin):
     search_fields = ("title", "coach__username", "coach__full_name", "court__name", "members__username", "members__full_name")
     filter_horizontal = ("members",)
     actions = ("sync_selected_fixed_lessons",)
+    list_per_page = 50
+
+    fieldsets = (
+        ("レッスン基本情報", {
+            "fields": (
+                "title",
+                "is_active",
+                "lesson_type",
+                "target_level",
+            )
+        }),
+        ("開催曜日・時間", {
+            "fields": (
+                "weekday",
+                "start_hour",
+                "weeks_ahead",
+            )
+        }),
+        ("担当コーチ・コート", {
+            "fields": (
+                "coach",
+                "coach_2",
+                "coach_3",
+                "court",
+            )
+        }),
+        ("定員・必要数", {
+            "fields": (
+                "coach_count",
+                "court_count",
+                "capacity",
+            ),
+            "description": "一般レッスンでは、選択したコーチ人数に応じて定員と必要コート数が自動調整されます。",
+        }),
+        ("固定参加メンバー", {
+            "fields": (
+                "members",
+            )
+        }),
+        ("メモ", {
+            "fields": (
+                "note",
+            )
+        }),
+    )
 
     @admin.action(description="選択した固定レッスンの今後予約を生成する")
     def sync_selected_fixed_lessons(self, request, queryset):
