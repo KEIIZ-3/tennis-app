@@ -886,12 +886,28 @@
                     {% if day.items %}
                       <div class="calendar-event-list">
                         {% for item in day.items %}
-                          <a href="#lesson-{{ item.id }}" class="calendar-event {{ item.color_class }}">
-                            <div class="event-date">{{ item.date_label_jp }}</div>
-                            <div class="event-time">{{ item.time_label }}</div>
-                            <div class="event-meta">定員：{{ item.capacity }}名</div>
-                            <div class="event-coach">{{ item.coach_name }}</div>
-                          </a>
+                          {% if item.can_book %}
+                            <a href="{{ item.reserve_url }}" class="calendar-event {{ item.color_class }}">
+                              <div class="event-date">{{ item.date_label_jp }}</div>
+                              <div class="event-time">{{ item.time_label }}</div>
+                              <div class="event-meta">定員：{{ item.capacity }}名</div>
+                              <div class="event-coach">{{ item.coach_name }}</div>
+                            </a>
+                          {% elif not user.is_authenticated %}
+                            <a href="{{ item.login_url }}" class="calendar-event {{ item.color_class }}">
+                              <div class="event-date">{{ item.date_label_jp }}</div>
+                              <div class="event-time">{{ item.time_label }}</div>
+                              <div class="event-meta">定員：{{ item.capacity }}名</div>
+                              <div class="event-coach">{{ item.coach_name }}</div>
+                            </a>
+                          {% else %}
+                            <a href="#lesson-{{ item.id }}" class="calendar-event {{ item.color_class }}">
+                              <div class="event-date">{{ item.date_label_jp }}</div>
+                              <div class="event-time">{{ item.time_label }}</div>
+                              <div class="event-meta">定員：{{ item.capacity }}名</div>
+                              <div class="event-coach">{{ item.coach_name }}</div>
+                            </a>
+                          {% endif %}
                         {% endfor %}
                       </div>
                     {% endif %}
@@ -926,20 +942,14 @@
 
             {% if user.is_authenticated %}
               {% if item.can_book %}
-                <form method="post" action="{% url 'club:lesson_calendar' %}" class="reserve-form">
-                  {% csrf_token %}
-                  <input type="hidden" name="availability_id" value="{{ item.availability_id }}">
-                  <input type="hidden" name="fixed_lesson_id" value="{{ item.fixed_lesson_id }}">
-                  <input type="hidden" name="lesson_date" value="{{ item.lesson_date }}">
-                  <input type="hidden" name="year" value="{{ target_year }}">
-                  <input type="hidden" name="month" value="{{ target_month }}">
-                  <button type="submit" class="btn btn-primary reserve-button">このレッスンを予約</button>
-                </form>
+                <div class="reserve-form">
+                  <a href="{{ item.reserve_url }}" class="btn btn-primary reserve-button">予約画面へ進む</a>
+                </div>
               {% else %}
                 <button type="button" class="btn reserve-button" disabled>{{ item.disabled_reason }}</button>
               {% endif %}
             {% else %}
-              <a href="{% url 'club:line_login_start' %}" class="btn btn-primary reserve-button">ログインして予約</a>
+              <a href="{{ item.login_url }}" class="btn btn-primary reserve-button">ログインして予約</a>
             {% endif %}
           </div>
         {% endfor %}
