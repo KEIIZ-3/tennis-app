@@ -1146,11 +1146,26 @@ def lesson_calendar_view(request):
         else:
             disabled_reason = "受付準備中"
 
+        reserve_params = {
+            "year": target_year,
+            "month": target_month,
+        }
+        if availability_id:
+            reserve_params["availability_id"] = availability_id
+        elif fixed_lesson_id and lesson_date:
+            reserve_params["fixed_lesson_id"] = fixed_lesson_id
+            reserve_params["lesson_date"] = lesson_date
+
+        reserve_url = f"{reverse('club:reservation_create')}?{urlencode(reserve_params)}"
+        login_url = f"{reverse('club:line_login_start')}?{urlencode({'next': reserve_url})}"
+
         return {
             "id": item_id,
             "availability_id": availability_id,
             "fixed_lesson_id": fixed_lesson_id,
             "lesson_date": lesson_date,
+            "reserve_url": reserve_url,
+            "login_url": login_url,
             "source_kind": source_kind,
             "title": title,
             "date_label": start_local.strftime("%m/%d"),
@@ -3564,6 +3579,128 @@ def reservation_create(request):
 
     _sync_fixed_lessons()
 
+    regular_availability_id = (request.GET.get("availability_id") or "").strip()
+    regular_fixed_lesson_id = (request.GET.get("fixed_lesson_id") or "").strip()
+    regular_lesson_date = (request.GET.get("lesson_date") or "").strip()
+
+    if request.method == "GET" and (regular_availability_id or (regular_fixed_lesson_id and regular_lesson_date)):
+        source_year = (request.GET.get("year") or "").strip()
+        source_month = (request.GET.get("month") or "").strip()
+        back_params = {}
+        if source_year and source_month:
+            back_params = {"year": source_year, "month": source_month}
+
+        if back_params:
+            back_url = f"{reverse('club:lesson_calendar')}?{urlencode(back_params)}"
+        else:
+            back_url = reverse("club:lesson_calendar")
+
+        selected_lesson = None
+
+        try:
+            if regular_availability_id:
+                availability = get_object_or_404(
+                    CoachAvailability.objects.select_related("coach", "substitute_coach", "court"),
+                    pk=regular_availability_id,
+                )
+                start_at = timezone.localtime(availability.start_at) if timezone.is_aware(availability.start_at) else availability.start_at
+                end_at = timezone.localtime(availability.end_at) if timezone.is_aware(availability.end_at) else availability.end_at
+                coach_name = _display_name(availability.assigned_coach() if hasattr(availability, "assigned_coach") else (availability.substitute_coach or availability.coach))
+                capacity = int(availability.effective_capacity() if hasattr(availability, "effective_capacity") else availability.capacity or 0)
+                target_level_label = availability.get_target_level_display()
+                lesson_type_label = availability.get_lesson_type_display()
+                can_submit = (
+                    availability.status == CoachAvailability.STATUS_OPEN
+                    and availability.start_at >= timezone.now()
+                    and availability.lesson_type in (Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT)
+                    and getattr(request.user, "role", None) == "member"
+                )
+
+                selected_lesson = {
+                    "mode": "availability",
+                    "availability_id": str(availability.pk),
+                    "fixed_lesson_id": "",
+                    "lesson_date": "",
+                    "title": "通常レッスン" if availability.lesson_type == Reservation.LESSON_GENERAL else lesson_type_label,
+                    "date_label": start_at.strftime("%Y年%-m月%-d日") if hasattr(start_at, "strftime") else str(start_at),
+                    "time_label": f"{start_at:%H:%M}〜{end_at:%H:%M}",
+                    "coach_name": coach_name,
+                    "court_name": str(availability.court) if availability.court else "未定",
+                    "lesson_type_label": lesson_type_label,
+                    "target_level_label": target_level_label,
+                    "capacity": max(capacity, 1),
+                    "can_submit": can_submit,
+                    "disabled_reason": "" if can_submit else "このレッスンは現在予約できません。",
+                }
+            else:
+                fixed_lesson = get_object_or_404(
+                    FixedLesson.objects.select_related("coach", "coach_2", "coach_3", "court"),
+                    pk=regular_fixed_lesson_id,
+                    is_active=True,
+                )
+                try:
+                    target_date = date.fromisoformat(regular_lesson_date)
+                except Exception:
+                    raise ValidationError("予約対象日が正しくありません。")
+
+                try:
+                    start_at, end_at = fixed_lesson._build_datetimes_for_date(target_date)
+                except Exception:
+                    start_hour = int(getattr(fixed_lesson, "start_hour", 0) or 0)
+                    start_at = datetime.combine(target_date, datetime.min.time()).replace(hour=start_hour, minute=0)
+                    if timezone.is_naive(start_at):
+                        start_at = timezone.make_aware(start_at)
+                    end_at = start_at + timedelta(hours=_lesson_calendar_duration_hours(fixed_lesson))
+
+                start_local = timezone.localtime(start_at) if timezone.is_aware(start_at) else start_at
+                end_local = timezone.localtime(end_at) if timezone.is_aware(end_at) else end_at
+                capacity = int(fixed_lesson.effective_capacity() if hasattr(fixed_lesson, "effective_capacity") else fixed_lesson.capacity or 0)
+                court = fixed_lesson.court or Court.objects.filter(is_active=True).order_by("id").first()
+                can_submit = (
+                    start_at >= timezone.now()
+                    and fixed_lesson.lesson_type in (Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT)
+                    and getattr(request.user, "role", None) == "member"
+                    and court is not None
+                )
+
+                selected_lesson = {
+                    "mode": "fixed_lesson",
+                    "availability_id": "",
+                    "fixed_lesson_id": str(fixed_lesson.pk),
+                    "lesson_date": target_date.isoformat(),
+                    "title": _lesson_calendar_title(fixed_lesson),
+                    "date_label": start_local.strftime("%Y年%-m月%-d日") if hasattr(start_local, "strftime") else str(target_date),
+                    "time_label": f"{start_local:%H:%M}〜{end_local:%H:%M}",
+                    "coach_name": _fixed_lesson_coach_names(fixed_lesson),
+                    "court_name": str(court) if court else "未定",
+                    "lesson_type_label": fixed_lesson.get_lesson_type_display(),
+                    "target_level_label": fixed_lesson.get_target_level_display(),
+                    "capacity": max(capacity, 1),
+                    "can_submit": can_submit,
+                    "disabled_reason": "" if can_submit else "このレッスンは現在予約できません。",
+                }
+
+            if hasattr(request.user, "can_book_level") and selected_lesson and regular_fixed_lesson_id:
+                fixed_lesson = FixedLesson.objects.filter(pk=regular_fixed_lesson_id).first()
+                if fixed_lesson and not request.user.can_book_level(fixed_lesson.target_level):
+                    selected_lesson["can_submit"] = False
+                    selected_lesson["disabled_reason"] = "ご自身のレベルでは予約できません。"
+
+        except ValidationError as e:
+            messages.error(request, str(e))
+            return redirect(back_url)
+
+        return render(
+            request,
+            "reservations/regular_lesson_confirm.html",
+            {
+                "selected_lesson": selected_lesson,
+                "back_url": back_url,
+                "target_year": source_year,
+                "target_month": source_month,
+            },
+        )
+
     initial = {}
     coach_id = (request.GET.get("coach") or "").strip()
     lesson_type = request.GET.get("lesson_type") or Reservation.LESSON_PRIVATE
@@ -3958,7 +4095,12 @@ def line_login_start(request):
 
     state = secrets.token_urlsafe(24)
     nonce = secrets.token_urlsafe(24)
-    next_url = _normalize_next_url(request.GET.get("next"))
+
+    raw_next = request.GET.get("next")
+    if raw_next:
+        next_url = _normalize_next_url(raw_next)
+    else:
+        next_url = reverse("club:lesson_calendar")
 
     request.session["line_login_state"] = state
     request.session["line_login_nonce"] = nonce
@@ -3991,7 +4133,7 @@ def line_login_callback(request):
 
     expected_state = request.session.pop("line_login_state", "")
     expected_nonce = request.session.pop("line_login_nonce", "")
-    next_url = _normalize_next_url(request.session.pop("line_login_next", reverse("club:home")))
+    next_url = _normalize_next_url(request.session.pop("line_login_next", reverse("club:lesson_calendar")))
 
     actual_state = (request.GET.get("state") or "").strip()
     code = (request.GET.get("code") or "").strip()
@@ -4055,6 +4197,9 @@ def line_login_callback(request):
             messages.success(request, "LINEで新規登録・ログインしました。")
         else:
             messages.success(request, "LINEでログインしました。")
+
+        if next_url == reverse("club:home"):
+            next_url = reverse("club:lesson_calendar")
         return redirect(next_url)
 
     except Exception as e:
@@ -4070,7 +4215,7 @@ def liff_entry(request):
     context = {
         "liff_id": getattr(settings, "LINE_LIFF_ID", "").strip(),
         "bootstrap_url": reverse("club:liff_bootstrap"),
-        "home_url": reverse("club:home"),
+        "home_url": reverse("club:lesson_calendar"),
     }
     return render(request, "liff_entry.html", context)
 
@@ -4171,7 +4316,7 @@ def liff_bootstrap(request):
             {
                 "ok": True,
                 "message": message,
-                "redirectUrl": reverse("club:home"),
+                "redirectUrl": reverse("club:lesson_calendar"),
             }
         )
     except Exception as e:
