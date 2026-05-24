@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}レッスン予約確認{% endblock %}
+
+{% block content %}
+<style>
+  .lesson-confirm-page{
+    display:grid;
+    gap:14px;
+  }
+
+  .lesson-confirm-hero{
+    padding:18px;
+    border-radius:20px;
+    border:1px solid #bfdbfe;
+    background:linear-gradient(180deg,#eff6ff 0%,#ffffff 100%);
+    box-shadow:0 10px 24px rgba(15,23,42,.08);
+  }
+
+  .lesson-confirm-title{
+    margin:0;
+    color:#0f172a;
+    font-size:26px;
+    line-height:1.25;
+    font-weight:1000;
+    letter-spacing:-.03em;
+  }
+
+  .lesson-confirm-subtitle{
+    margin:8px 0 0;
+    color:#475569;
+    font-size:14px;
+    line-height:1.8;
+    font-weight:750;
+  }
+
+  .lesson-confirm-card{
+    padding:18px;
+    border-radius:20px;
+    border:2px solid #0b55b7;
+    background:#fff;
+    box-shadow:0 12px 28px rgba(15,23,42,.08);
+  }
+
+  .lesson-summary-title{
+    margin:0 0 12px;
+    color:#0750b8;
+    font-size:22px;
+    line-height:1.35;
+    font-weight:1000;
+  }
+
+  .lesson-summary-grid{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:10px;
+  }
+
+  .lesson-summary-item{
+    padding:12px;
+    border-radius:14px;
+    border:1px solid #dbeafe;
+    background:#f8fbff;
+  }
+
+  .lesson-summary-label{
+    color:#64748b;
+    font-size:12px;
+    font-weight:900;
+    line-height:1.3;
+  }
+
+  .lesson-summary-value{
+    margin-top:4px;
+    color:#0f172a;
+    font-size:16px;
+    font-weight:1000;
+    line-height:1.45;
+  }
+
+  .lesson-confirm-actions{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    margin-top:16px;
+  }
+
+  .lesson-confirm-actions .btn{
+    min-height:46px;
+    border-radius:14px;
+  }
+
+  .lesson-confirm-note{
+    margin-top:12px;
+    padding:12px;
+    border-radius:14px;
+    background:#fff7ed;
+    border:1px solid #fed7aa;
+    color:#9a3412;
+    font-size:13px;
+    font-weight:850;
+    line-height:1.7;
+  }
+
+  .lesson-confirm-disabled{
+    margin-top:14px;
+    padding:13px;
+    border-radius:14px;
+    border:1px solid #fecaca;
+    background:#fff5f5;
+    color:#991b1b;
+    font-size:14px;
+    font-weight:900;
+    line-height:1.7;
+  }
+
+  @media (max-width:768px){
+    .lesson-confirm-title{
+      font-size:23px;
+    }
+
+    .lesson-summary-grid{
+      grid-template-columns:1fr;
+    }
+
+    .lesson-confirm-actions{
+      grid-template-columns:1fr;
+    }
+
+    .lesson-confirm-card,
+    .lesson-confirm-hero{
+      padding:15px;
+      border-radius:18px;
+    }
+  }
+</style>
+
+<div class="lesson-confirm-page">
+  <section class="lesson-confirm-hero">
+    <h1 class="lesson-confirm-title">レッスン予約確認</h1>
+    <p class="lesson-confirm-subtitle">
+      選択したレッスン内容を確認して、問題なければ予約を確定してください。
+    </p>
+  </section>
+
+  <section class="lesson-confirm-card">
+    <h2 class="lesson-summary-title">{{ selected_lesson.title }}</h2>
+
+    <div class="lesson-summary-grid">
+      <div class="lesson-summary-item">
+        <div class="lesson-summary-label">日時</div>
+        <div class="lesson-summary-value">{{ selected_lesson.date_label }} {{ selected_lesson.time_label }}</div>
+      </div>
+
+      <div class="lesson-summary-item">
+        <div class="lesson-summary-label">コーチ</div>
+        <div class="lesson-summary-value">{{ selected_lesson.coach_name }}</div>
+      </div>
+
+      <div class="lesson-summary-item">
+        <div class="lesson-summary-label">レッスン種別</div>
+        <div class="lesson-summary-value">{{ selected_lesson.lesson_type_label }}</div>
+      </div>
+
+      <div class="lesson-summary-item">
+        <div class="lesson-summary-label">対象レベル</div>
+        <div class="lesson-summary-value">{{ selected_lesson.target_level_label }}</div>
+      </div>
+
+      <div class="lesson-summary-item">
+        <div class="lesson-summary-label">定員</div>
+        <div class="lesson-summary-value">{{ selected_lesson.capacity }}名</div>
+      </div>
+
+      <div class="lesson-summary-item">
+        <div class="lesson-summary-label">コート</div>
+        <div class="lesson-summary-value">{{ selected_lesson.court_name }}</div>
+      </div>
+    </div>
+
+    {% if selected_lesson.can_submit %}
+      <form method="post" action="{% url 'club:lesson_calendar' %}">
+        {% csrf_token %}
+        <input type="hidden" name="availability_id" value="{{ selected_lesson.availability_id }}">
+        <input type="hidden" name="fixed_lesson_id" value="{{ selected_lesson.fixed_lesson_id }}">
+        <input type="hidden" name="lesson_date" value="{{ selected_lesson.lesson_date }}">
+        <input type="hidden" name="year" value="{{ target_year }}">
+        <input type="hidden" name="month" value="{{ target_month }}">
+
+        <div class="lesson-confirm-actions">
+          <button type="submit" class="btn btn-primary">この内容で予約する</button>
+          <a href="{{ back_url }}" class="btn">カレンダーに戻る</a>
+        </div>
+      </form>
+
+      <div class="lesson-confirm-note">
+        通常レッスンは予約確定時にチケットを消費します。定員に達した場合は受付終了になります。
+      </div>
+    {% else %}
+      <div class="lesson-confirm-disabled">
+        {{ selected_lesson.disabled_reason }}
+      </div>
+
+      <div class="lesson-confirm-actions">
+        <a href="{{ back_url }}" class="btn btn-primary">カレンダーに戻る</a>
+        <a href="{% url 'club:reservation_list' %}" class="btn">予約確認</a>
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
