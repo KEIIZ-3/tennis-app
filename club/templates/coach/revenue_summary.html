@@ -1,0 +1,596 @@
+{% extends "base.html" %}
+{% block title %}収支管理{% endblock %}
+
+{% block content %}
+<style>
+  .revenue-page{
+    display:grid;
+    gap:14px;
+  }
+
+  .revenue-hero{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:14px;
+    flex-wrap:wrap;
+    padding:18px;
+    border-radius:20px;
+    border:1px solid #bfdbfe;
+    background:linear-gradient(180deg,#eff6ff 0%,#ffffff 100%);
+    box-shadow:0 10px 24px rgba(15,23,42,.08);
+  }
+
+  .revenue-title{
+    margin:0;
+    color:#0f172a;
+    font-size:28px;
+    line-height:1.25;
+    font-weight:1000;
+    letter-spacing:-0.02em;
+  }
+
+  .revenue-lead{
+    margin:8px 0 0;
+    color:#475569;
+    font-size:14px;
+    line-height:1.7;
+    font-weight:700;
+  }
+
+  .month-actions{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    justify-content:flex-end;
+  }
+
+  .filter-card{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    align-items:end;
+    padding:14px;
+    border:1px solid #e5e7eb;
+    border-radius:18px;
+    background:#fff;
+  }
+
+  .filter-card label{
+    display:block;
+    margin:0 0 5px;
+    color:#475569;
+    font-size:12px;
+    font-weight:900;
+  }
+
+  .filter-card select,
+  .filter-card input{
+    min-height:40px;
+    border:1px solid #d1d5db;
+    border-radius:12px;
+    padding:8px 10px;
+    background:#fff;
+    font-size:14px;
+  }
+
+  .summary-grid{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:10px;
+  }
+
+  .summary-card{
+    padding:14px;
+    border-radius:18px;
+    background:#fff;
+    border:1px solid #e5e7eb;
+    box-shadow:0 8px 20px rgba(15,23,42,.05);
+  }
+
+  .summary-label{
+    color:#475569;
+    font-size:12px;
+    font-weight:900;
+  }
+
+  .summary-value{
+    margin-top:6px;
+    color:#0f172a;
+    font-size:26px;
+    font-weight:1000;
+    letter-spacing:-.03em;
+  }
+
+  .summary-note{
+    margin-top:6px;
+    color:#64748b;
+    font-size:12px;
+    line-height:1.5;
+    font-weight:700;
+  }
+
+  .revenue-section{
+    padding:16px;
+    border-radius:20px;
+    background:#fff;
+    border:1px solid #e5e7eb;
+    box-shadow:0 8px 20px rgba(15,23,42,.05);
+  }
+
+  .section-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-bottom:12px;
+  }
+
+  .section-title{
+    margin:0;
+    font-size:20px;
+    font-weight:1000;
+    color:#0f172a;
+  }
+
+  .section-total{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:34px;
+    padding:6px 12px;
+    border-radius:999px;
+    background:#eff6ff;
+    color:#1d4ed8;
+    font-size:13px;
+    font-weight:1000;
+  }
+
+  .revenue-table-wrap{
+    width:100%;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  .revenue-table{
+    width:100%;
+    min-width:720px;
+    border-collapse:collapse;
+  }
+
+  .revenue-table th,
+  .revenue-table td{
+    padding:10px 9px;
+    border-bottom:1px solid #e5e7eb;
+    text-align:left;
+    vertical-align:top;
+    font-size:13px;
+    line-height:1.45;
+  }
+
+  .revenue-table th{
+    color:#475569;
+    background:#f8fafc;
+    font-weight:1000;
+    white-space:nowrap;
+  }
+
+  .amount{
+    font-weight:1000;
+    white-space:nowrap;
+    text-align:right!important;
+  }
+
+  .muted{
+    color:#64748b;
+    font-size:12px;
+    line-height:1.5;
+  }
+
+  .warning-box{
+    padding:14px;
+    border:1px solid #fde68a;
+    border-radius:18px;
+    background:#fffbeb;
+    color:#92400e;
+    font-size:13px;
+    line-height:1.7;
+    font-weight:800;
+  }
+
+  .two-column{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+  }
+
+  @media (max-width:768px){
+    .revenue-hero{
+      padding:14px;
+      border-radius:18px;
+    }
+
+    .revenue-title{
+      font-size:24px;
+    }
+
+    .month-actions{
+      width:100%;
+      display:grid;
+      grid-template-columns:1fr 1fr;
+    }
+
+    .month-actions .btn{
+      width:100%;
+    }
+
+    .filter-card{
+      display:grid;
+      grid-template-columns:1fr;
+    }
+
+    .filter-card .btn{
+      width:100%;
+    }
+
+    .summary-grid{
+      grid-template-columns:1fr;
+    }
+
+    .summary-value{
+      font-size:24px;
+    }
+
+    .two-column{
+      grid-template-columns:1fr;
+    }
+
+    .revenue-section{
+      padding:13px;
+      border-radius:18px;
+    }
+
+    .revenue-table{
+      min-width:640px;
+    }
+  }
+</style>
+
+<div class="revenue-page">
+  <section class="revenue-hero">
+    <div>
+      <h1 class="revenue-title">収支管理</h1>
+      <p class="revenue-lead">
+        {{ month_label }} の売上・経費・概算利益を確認できます。7月プレオープンはチケットを使わない参加費として集計しています。
+      </p>
+    </div>
+    <div class="month-actions">
+      <a class="btn" href="{{ prev_url }}">← 前月</a>
+      <a class="btn" href="{{ next_url }}">次月 →</a>
+    </div>
+  </section>
+
+  <form method="get" class="filter-card">
+    <div>
+      <label for="year">年</label>
+      <input id="year" name="year" type="number" value="{{ selected_year }}" min="2024" max="2030">
+    </div>
+    <div>
+      <label for="month">月</label>
+      <input id="month" name="month" type="number" value="{{ selected_month }}" min="1" max="12">
+    </div>
+    <div>
+      <label for="coach_id">コーチ</label>
+      <select id="coach_id" name="coach_id">
+        <option value="">全体</option>
+        {% for coach in coach_options %}
+          <option value="{{ coach.id }}" {% if selected_coach_id|stringformat:"s" == coach.id|stringformat:"s" %}selected{% endif %}>{{ coach.display_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary">表示する</button>
+  </form>
+
+  <div class="summary-grid">
+    {% for card in summary_cards %}
+      <div class="summary-card">
+        <div class="summary-label">{{ card.label }}</div>
+        <div class="summary-value">{{ card.value }}円</div>
+        <div class="summary-note">{{ card.note }}</div>
+      </div>
+    {% endfor %}
+  </div>
+
+  {% if selected_year == 2026 and selected_month == 7 %}
+    <div class="warning-box">
+      2026年7月の通常レッスンはプレオープン期間のため、チケットは使いません。参加費は「当日、受付時に2,000円のお支払いをお願いします」という前提で集計しています。
+      現時点では回収済みチェック機能は未導入のため、下の「7月プレオープン参加費」は回収予定額として確認してください。
+    </div>
+  {% endif %}
+
+  <section class="revenue-section">
+    <div class="section-head">
+      <h2 class="section-title">収支サマリー</h2>
+      <span class="section-total">概算利益：{{ gross_profit_estimate }}円</span>
+    </div>
+    <div class="revenue-table-wrap">
+      <table class="revenue-table">
+        <tbody>
+          <tr>
+            <th>レッスン売上</th>
+            <td class="amount">{{ lesson_sales_total }}円</td>
+            <td>プレオープン参加費 {{ preopen_sales_total }}円 + チケット消化ベース {{ ticket_consumption_total }}円</td>
+          </tr>
+          <tr>
+            <th>ガット張り売上</th>
+            <td class="amount">{{ stringing_total }}円</td>
+            <td>キャンセル以外の依頼を集計</td>
+          </tr>
+          <tr>
+            <th>運用売上合計</th>
+            <td class="amount">{{ operating_sales_total }}円</td>
+            <td>レッスン売上 + ガット張り売上</td>
+          </tr>
+          <tr>
+            <th>承認済み経費</th>
+            <td class="amount">{{ approved_expense_total }}円</td>
+            <td>収支計算に反映する経費</td>
+          </tr>
+          <tr>
+            <th>概算利益</th>
+            <td class="amount">{{ gross_profit_estimate }}円</td>
+            <td>運用売上合計 - 承認済み経費</td>
+          </tr>
+          <tr>
+            <th>物販参考売上を含む場合</th>
+            <td class="amount">{{ reference_profit_estimate }}円</td>
+            <td>物販は見積・対応中を含むため参考値です</td>
+          </tr>
+          <tr>
+            <th>現金ベース参考</th>
+            <td class="amount">{{ cash_basis_total }}円</td>
+            <td>7月参加費 + チケット販売額 + ガット張り売上</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="revenue-section">
+    <div class="section-head">
+      <h2 class="section-title">コーチ別レッスン売上</h2>
+      <span class="section-total">レッスン合計：{{ lesson_sales_total }}円</span>
+    </div>
+    <div class="revenue-table-wrap">
+      <table class="revenue-table">
+        <thead>
+          <tr>
+            <th>コーチ</th>
+            <th>予約数</th>
+            <th>7月参加費</th>
+            <th>チケット消化</th>
+            <th>合計</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in coach_sales_rows %}
+            <tr>
+              <td>{{ row.coach_name }}</td>
+              <td>{{ row.reservation_count }}件</td>
+              <td class="amount">{{ row.preopen_amount }}円</td>
+              <td class="amount">{{ row.ticket_amount }}円</td>
+              <td class="amount">{{ row.total_amount }}円</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5">対象データはありません。</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="two-column">
+    <section class="revenue-section">
+      <div class="section-head">
+        <h2 class="section-title">7月プレオープン参加費</h2>
+        <span class="section-total">{{ preopen_reservation_count }}件 / {{ preopen_sales_total }}円</span>
+      </div>
+      <div class="revenue-table-wrap">
+        <table class="revenue-table">
+          <thead>
+            <tr>
+              <th>日時</th>
+              <th>会員</th>
+              <th>コーチ</th>
+              <th>金額</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in preopen_rows %}
+              <tr>
+                <td>{{ row.reservation.start_at|date:"m/d H:i" }}</td>
+                <td>{{ row.member_name }}</td>
+                <td>{{ row.coach_name }}</td>
+                <td class="amount">{{ row.amount }}円</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="4">対象データはありません。</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="revenue-section">
+      <div class="section-head">
+        <h2 class="section-title">チケット消化ベース売上</h2>
+        <span class="section-total">{{ ticket_consumption_total }}円</span>
+      </div>
+      <div class="revenue-table-wrap">
+        <table class="revenue-table">
+          <thead>
+            <tr>
+              <th>日時</th>
+              <th>会員</th>
+              <th>コーチ</th>
+              <th>金額</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in ticket_lesson_rows %}
+              <tr>
+                <td>{{ row.reservation.start_at|date:"m/d H:i" }}</td>
+                <td>{{ row.member_name }}</td>
+                <td>{{ row.coach_name }}</td>
+                <td class="amount">{{ row.amount }}円</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="4">対象データはありません。</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div class="two-column">
+    <section class="revenue-section">
+      <div class="section-head">
+        <h2 class="section-title">チケット販売額</h2>
+        <span class="section-total">{{ ticket_purchase_total }}円</span>
+      </div>
+      <div class="revenue-table-wrap">
+        <table class="revenue-table">
+          <thead>
+            <tr>
+              <th>購入日</th>
+              <th>会員</th>
+              <th>内容</th>
+              <th>枚数</th>
+              <th>金額</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in ticket_purchase_rows %}
+              <tr>
+                <td>{{ row.purchase.purchased_at|date:"m/d" }}</td>
+                <td>{{ row.member_name }}</td>
+                <td>{{ row.label }}</td>
+                <td>{{ row.tickets }}枚</td>
+                <td class="amount">{{ row.amount }}円</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="5">対象データはありません。</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="revenue-section">
+      <div class="section-head">
+        <h2 class="section-title">ガット張り売上</h2>
+        <span class="section-total">{{ stringing_total }}円</span>
+      </div>
+      <div class="revenue-table-wrap">
+        <table class="revenue-table">
+          <thead>
+            <tr>
+              <th>依頼日</th>
+              <th>会員</th>
+              <th>担当</th>
+              <th>状態</th>
+              <th>金額</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in stringing_rows %}
+              <tr>
+                <td>{{ row.order.created_at|date:"m/d" }}</td>
+                <td>{{ row.member_name }}</td>
+                <td>{{ row.coach_name }}</td>
+                <td>{{ row.status_label }}</td>
+                <td class="amount">{{ row.amount }}円</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="5">対象データはありません。</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div class="two-column">
+    <section class="revenue-section">
+      <div class="section-head">
+        <h2 class="section-title">経費</h2>
+        <span class="section-total">承認済み：{{ approved_expense_total }}円</span>
+      </div>
+      <div class="revenue-table-wrap">
+        <table class="revenue-table">
+          <thead>
+            <tr>
+              <th>日付</th>
+              <th>区分</th>
+              <th>内容</th>
+              <th>承認</th>
+              <th>金額</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in expense_rows %}
+              <tr>
+                <td>{{ row.expense.expense_date|date:"m/d" }}</td>
+                <td>{{ row.category_label }}</td>
+                <td>
+                  {{ row.plain_note|default:"-" }}
+                  <div class="muted">{{ row.expense_type_label }} / 登録: {{ row.created_by_name }}</div>
+                </td>
+                <td>{{ row.approval_status_label }}</td>
+                <td class="amount">{{ row.amount }}円</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="5">対象データはありません。</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="revenue-section">
+      <div class="section-head">
+        <h2 class="section-title">物販参考売上</h2>
+        <span class="section-total">{{ shop_reference_total }}円</span>
+      </div>
+      <div class="revenue-table-wrap">
+        <table class="revenue-table">
+          <thead>
+            <tr>
+              <th>依頼日</th>
+              <th>会員</th>
+              <th>カテゴリ</th>
+              <th>状態</th>
+              <th>参考額</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in shop_rows %}
+              <tr>
+                <td>{{ row.estimate.created_at|date:"m/d" }}</td>
+                <td>{{ row.member_name }}</td>
+                <td>{{ row.category }}</td>
+                <td>{{ row.status_label }}</td>
+                <td class="amount">{{ row.amount }}円</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="5">対象データはありません。</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
