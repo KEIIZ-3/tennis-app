@@ -859,9 +859,13 @@ def _build_waitlist_opening_for_member_message(waitlist):
         f"日時：{label['date']} {label['time']}\n"
         f"レッスン：{label['lesson']}\n"
         f"レベル：{label['level']}\n"
-        f"コーチ：{label['coach']}\n\n"
-        "予約は先着順です。レッスンカレンダー、または予約画面からお手続きください。\n"
-        f"{reserve_url}"
+        f"コーチ：{label['coach']}\n"
+        f"コート：{label['court']}\n\n"
+        "この通知は、キャンセル待ち順の早い方から順にお送りしています。\n"
+        "この時点では、まだ予約は確定していません。\n"
+        "参加できる場合は、下記の予約画面から正式予約をお願いします。\n\n"
+        f"{reserve_url}\n\n"
+        "※他の方が先に予約した場合は満員になることがあります。"
     )
 
 
@@ -901,6 +905,76 @@ def _active_reservation_count_for_slot(*, coach, court, lesson_type, start_at, e
     ).count()
 
 
+def _fixed_lesson_member_count_for_slot(fixed_lesson):
+    if not fixed_lesson:
+        return 0
+    try:
+        return fixed_lesson.members.count()
+    except Exception:
+        return 0
+
+
+def _occupied_count_for_slot(*, coach, court, lesson_type, start_at, end_at, fixed_lesson=None):
+    active_count = _active_reservation_count_for_slot(
+        coach=coach,
+        court=court,
+        lesson_type=lesson_type,
+        start_at=start_at,
+        end_at=end_at,
+    )
+    fixed_member_count = _fixed_lesson_member_count_for_slot(fixed_lesson)
+    return max(int(active_count or 0), int(fixed_member_count or 0))
+
+
+def _waitlist_user_has_same_slot_reservation(waitlist):
+    return Reservation.objects.filter(
+        user=waitlist.user,
+        coach=waitlist.coach,
+        court=waitlist.court,
+        lesson_type=waitlist.lesson_type,
+        start_at=waitlist.start_at,
+        end_at=waitlist.end_at,
+        status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+    ).exists()
+
+
+def _waitlist_user_has_overlapping_reservation(waitlist):
+    return Reservation.objects.filter(
+        user=waitlist.user,
+        status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+        start_at__lt=waitlist.end_at,
+        end_at__gt=waitlist.start_at,
+    ).exists()
+
+
+def _waitlist_user_is_fixed_member(waitlist):
+    fixed_lesson = getattr(waitlist, "fixed_lesson", None)
+    if not fixed_lesson:
+        return False
+    try:
+        return fixed_lesson.members.filter(pk=waitlist.user_id).exists()
+    except Exception:
+        return False
+
+
+def _waitlist_user_can_receive_opening_notice(waitlist):
+    if not waitlist or waitlist.status != LessonWaitlist.STATUS_WAITING:
+        return False
+    if waitlist.start_at < timezone.now():
+        return False
+    if not waitlist.user or getattr(waitlist.user, "role", None) != "member":
+        return False
+    if _waitlist_user_is_fixed_member(waitlist):
+        return False
+    if hasattr(waitlist.user, "can_book_level") and not waitlist.user.can_book_level(waitlist.target_level):
+        return False
+    if _waitlist_user_has_same_slot_reservation(waitlist):
+        return False
+    if _waitlist_user_has_overlapping_reservation(waitlist):
+        return False
+    return True
+
+
 def _capacity_for_reservation_slot(reservation):
     availability = getattr(reservation, "availability", None) or reservation.matching_availability()
     if availability:
@@ -923,31 +997,34 @@ def _notify_first_waitlist_user_if_slot_open(reservation):
     if not reservation:
         return False
 
-    active_count = _active_reservation_count_for_slot(
+    occupied_count = _occupied_count_for_slot(
+        coach=reservation.coach,
+        court=reservation.court,
+        lesson_type=reservation.lesson_type,
+        start_at=reservation.start_at,
+        end_at=reservation.end_at,
+        fixed_lesson=getattr(reservation, "fixed_lesson", None),
+    )
+    capacity = _capacity_for_reservation_slot(reservation)
+
+    if occupied_count >= capacity:
+        return False
+
+    waitlist_qs = _waiting_waitlist_qs_for_slot(
         coach=reservation.coach,
         court=reservation.court,
         lesson_type=reservation.lesson_type,
         start_at=reservation.start_at,
         end_at=reservation.end_at,
     )
-    capacity = _capacity_for_reservation_slot(reservation)
 
-    if active_count >= capacity:
-        return False
+    for waitlist in waitlist_qs:
+        if not _waitlist_user_can_receive_opening_notice(waitlist):
+            continue
+        _send_line_notification_safely(waitlist.user, _build_waitlist_opening_for_member_message(waitlist))
+        return True
 
-    waitlist = _waiting_waitlist_qs_for_slot(
-        coach=reservation.coach,
-        court=reservation.court,
-        lesson_type=reservation.lesson_type,
-        start_at=reservation.start_at,
-        end_at=reservation.end_at,
-    ).first()
-
-    if not waitlist:
-        return False
-
-    _send_line_notification_safely(waitlist.user, _build_waitlist_opening_for_member_message(waitlist))
-    return True
+    return False
 
 
 
@@ -1215,9 +1292,17 @@ def lesson_calendar_view(request):
 
         try:
             fixed_lesson = None
-            # 固定レッスン由来の枠では、固定参加メンバー数を満員判定に含める必要があるため、
-            # availability_id が同時に渡っていても fixed_lesson_id + lesson_date を優先する。
-            if fixed_lesson_id and lesson_date_text:
+            if availability_id:
+                availability = get_object_or_404(
+                    CoachAvailability.objects.select_related("coach", "substitute_coach", "court"),
+                    pk=availability_id,
+                    lesson_type__in=[Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT],
+                )
+                if availability.status != CoachAvailability.STATUS_OPEN:
+                    raise ValidationError("このレッスンはまだ受付準備中です。")
+                if availability.start_at < timezone.now():
+                    raise ValidationError("このレッスンは受付終了です。")
+            elif fixed_lesson_id and lesson_date_text:
                 fixed_lesson = get_object_or_404(
                     FixedLesson.objects.select_related("coach", "coach_2", "coach_3", "court"),
                     pk=fixed_lesson_id,
@@ -1237,16 +1322,6 @@ def lesson_calendar_view(request):
                     raise ValidationError("このレッスンは受付終了です。")
                 if availability.lesson_type not in (Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT):
                     raise ValidationError("このレッスンは個別相談フォームから申請してください。")
-            elif availability_id:
-                availability = get_object_or_404(
-                    CoachAvailability.objects.select_related("coach", "substitute_coach", "court"),
-                    pk=availability_id,
-                    lesson_type__in=[Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT],
-                )
-                if availability.status != CoachAvailability.STATUS_OPEN:
-                    raise ValidationError("このレッスンはまだ受付準備中です。")
-                if availability.start_at < timezone.now():
-                    raise ValidationError("このレッスンは受付終了です。")
             else:
                 raise ValidationError("対象のレッスンが見つかりません。")
 
@@ -1261,15 +1336,6 @@ def lesson_calendar_view(request):
                 end_at=availability.end_at,
                 status=Reservation.STATUS_ACTIVE,
             ).count()
-            # 固定レッスンの固定参加メンバーは、予約レコードが未生成・未同期の場合でも
-            # レッスン枠の参加人数として扱う。これにより、固定参加メンバーだけで満員の場合も
-            # 会員側からキャンセル待ち登録できる。
-            if fixed_lesson is not None:
-                try:
-                    fixed_member_count = fixed_lesson.members.count()
-                except Exception:
-                    fixed_member_count = 0
-                active_count = max(int(active_count or 0), int(fixed_member_count or 0))
             capacity = _capacity_for_availability(availability)
 
             existing_waitlist = LessonWaitlist.objects.filter(
@@ -1547,10 +1613,7 @@ def lesson_calendar_view(request):
             "year": target_year,
             "month": target_month,
         }
-        if source_kind == "fixed_lesson" and fixed_lesson_id and lesson_date:
-            reserve_params["fixed_lesson_id"] = fixed_lesson_id
-            reserve_params["lesson_date"] = lesson_date
-        elif availability_id:
+        if availability_id:
             reserve_params["availability_id"] = availability_id
         elif fixed_lesson_id and lesson_date:
             reserve_params["fixed_lesson_id"] = fixed_lesson_id
@@ -1586,12 +1649,6 @@ def lesson_calendar_view(request):
             "remaining_count": remaining_count,
             "is_past": target_date < today,
             "can_book": can_book,
-            "can_join_waitlist": can_join_waitlist,
-            "can_cancel_waitlist": can_cancel_waitlist,
-            "user_waitlist_id": user_waitlist_id,
-            "waitlist_count": int(waitlist_count or 0),
-            "is_reserved_by_user": user_slot_status == Reservation.STATUS_ACTIVE,
-            "is_waitlisted_by_user": bool(user_waitlist_id),
             "disabled_reason": disabled_reason,
             "color_class": color_class,
         }
@@ -4589,11 +4646,6 @@ def reservation_create(request):
                     start_at=start_at,
                     end_at=end_at,
                 ) if court else (0, 0, None, False)
-                try:
-                    fixed_member_count = fixed_lesson.members.count()
-                except Exception:
-                    fixed_member_count = 0
-                member_count = max(int(member_count or 0), int(fixed_member_count or 0))
                 can_submit = (
                     start_at >= timezone.now()
                     and is_after_repeat_start
