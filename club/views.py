@@ -2478,7 +2478,7 @@ def coach_today_lessons(request):
         display_days = int(request.GET.get("days") or 7)
     except Exception:
         display_days = 7
-    if display_days not in (1, 7, 14):
+    if display_days not in (1, 7, 14, 28):
         display_days = 7
 
     range_start = today
@@ -2492,7 +2492,11 @@ def coach_today_lessons(request):
         is_staff_mode = False
     else:
         selected_coach_id = (request.GET.get("coach_id") or "").strip()
-        selected_coach = coach_queryset.filter(pk=selected_coach_id).first() if selected_coach_id else coach_queryset.first()
+        selected_coach = (
+            coach_queryset.filter(pk=selected_coach_id).first()
+            if selected_coach_id
+            else coach_queryset.first()
+        )
         selected_coach_id = str(selected_coach.pk) if selected_coach else ""
         is_staff_mode = True
 
@@ -2501,11 +2505,58 @@ def coach_today_lessons(request):
     def _slot_key_for_row(*, lesson_type, coach_id, court_id, start_at, end_at):
         return _slot_key(lesson_type, coach_id, court_id, start_at, end_at)
 
-    def _reservation_names(reservations):
-        return [_display_name(reservation.user) for reservation in reservations]
+    def _local(value):
+        if timezone.is_aware(value):
+            return timezone.localtime(value)
+        return value
 
-    def _waitlist_names(waitlists):
-        return [_display_name(waitlist.user) for waitlist in waitlists]
+    def _safe_phone(user):
+        return (getattr(user, "phone_number", "") or "").strip()
+
+    def _safe_level(user):
+        try:
+            return user.get_member_level_display()
+        except Exception:
+            return getattr(user, "member_level", "") or "-"
+
+    def _reservation_person_row(reservation):
+        return {
+            "reservation": reservation,
+            "name": _display_name(reservation.user),
+            "phone": _safe_phone(reservation.user),
+            "level": _safe_level(reservation.user),
+            "status_label": reservation.get_status_display(),
+            "detail_url": reverse("club:reservation_detail", kwargs={"pk": reservation.pk}),
+        }
+
+    def _member_person_row(member):
+        return {
+            "user": member,
+            "name": _display_name(member),
+            "phone": _safe_phone(member),
+            "level": _safe_level(member),
+        }
+
+    def _waitlist_person_row(waitlist):
+        return {
+            "waitlist": waitlist,
+            "name": _display_name(waitlist.user),
+            "phone": _safe_phone(waitlist.user),
+            "level": _safe_level(waitlist.user),
+            "created_at": waitlist.created_at,
+            "can_promote": _coach_can_manage_waitlist(request.user, waitlist),
+        }
+
+    def _fixed_registered_member_rows(fixed_lesson, reservations):
+        if not fixed_lesson:
+            return []
+        reserved_user_ids = {reservation.user_id for reservation in reservations}
+        rows = []
+        for member in fixed_lesson.members.all().order_by("full_name", "username", "id"):
+            if member.pk in reserved_user_ids:
+                continue
+            rows.append(_member_person_row(member))
+        return rows
 
     def _add_slot(
         *,
@@ -2563,28 +2614,48 @@ def coach_today_lessons(request):
             .order_by("created_at", "id")
         )
 
+        start_local = _local(start_at)
+        end_local = _local(end_at)
+        lesson_date = start_local.date()
+        participant_count = len(reservations)
+        remaining_count = max(int(capacity or 0) - participant_count, 0)
+        is_today = lesson_date == today
+        is_past = end_at < timezone.now()
+        is_full = participant_count >= int(capacity or 0)
+        has_waitlist = bool(waitlists)
+        needs_attention = bool(pending_reservations or waitlists or (is_today and remaining_count > 0))
+
         row = {
             "key": "|".join([str(part) for part in key]),
             "start_at": start_at,
             "end_at": end_at,
-            "date": timezone.localtime(start_at).date() if timezone.is_aware(start_at) else start_at.date(),
-            "time_label": f"{timezone.localtime(start_at):%H:%M}〜{timezone.localtime(end_at):%H:%M}" if timezone.is_aware(start_at) else f"{start_at:%H:%M}〜{end_at:%H:%M}",
+            "date": lesson_date,
+            "date_label": f"{lesson_date:%Y/%m/%d}",
+            "weekday_label": ["月", "火", "水", "木", "金", "土", "日"][lesson_date.weekday()],
+            "time_label": f"{start_local:%H:%M}〜{end_local:%H:%M}",
             "title": title,
             "lesson_type_label": lesson_type_label,
             "target_level_label": target_level_label,
             "coach_name": coach_name,
             "court_name": court_name,
-            "capacity": capacity,
+            "capacity": int(capacity or 0),
             "reservations": reservations,
             "pending_reservations": pending_reservations,
             "waitlists": waitlists,
-            "participant_names": _reservation_names(reservations),
-            "pending_names": _reservation_names(pending_reservations),
-            "waitlist_names": _waitlist_names(waitlists),
-            "participant_count": len(reservations),
+            "participant_rows": [_reservation_person_row(reservation) for reservation in reservations],
+            "pending_rows": [_reservation_person_row(reservation) for reservation in pending_reservations],
+            "waitlist_rows": [_waitlist_person_row(waitlist) for waitlist in waitlists],
+            "registered_member_rows": _fixed_registered_member_rows(fixed_lesson, reservations),
+            "participant_count": participant_count,
             "pending_count": len(pending_reservations),
             "waitlist_count": len(waitlists),
-            "remaining_count": max(int(capacity or 0) - len(reservations), 0),
+            "remaining_count": remaining_count,
+            "is_today": is_today,
+            "is_past": is_past,
+            "is_full": is_full,
+            "has_waitlist": has_waitlist,
+            "needs_attention": needs_attention,
+            "status_label": "本日" if is_today else ("終了" if is_past else "予定"),
             "fixed_lesson": fixed_lesson,
             "availability": availability,
         }
@@ -2625,18 +2696,27 @@ def coach_today_lessons(request):
             if not court:
                 continue
 
-            availability = CoachAvailability.objects.filter(
-                coach=primary_coach,
-                court=court,
-                lesson_type=fixed.lesson_type,
-                start_at=start_at,
-                end_at=end_at,
-            ).select_related("coach", "substitute_coach", "court").first()
+            availability = (
+                CoachAvailability.objects.filter(
+                    coach=primary_coach,
+                    court=court,
+                    lesson_type=fixed.lesson_type,
+                    start_at=start_at,
+                    end_at=end_at,
+                )
+                .select_related("coach", "substitute_coach", "court")
+                .first()
+            )
 
             capacity = fixed.effective_capacity() if hasattr(fixed, "effective_capacity") else fixed.capacity
             if availability:
                 try:
-                    capacity = max(int(availability.effective_capacity()), int(availability.capacity or 0), int(capacity or 0), 1)
+                    capacity = max(
+                        int(availability.effective_capacity()),
+                        int(availability.capacity or 0),
+                        int(capacity or 0),
+                        1,
+                    )
                 except Exception:
                     capacity = max(int(availability.capacity or 0), int(capacity or 0), 1)
 
@@ -2692,7 +2772,11 @@ def coach_today_lessons(request):
             continue
 
         capacity = _availability_capacity(availability)
-        assigned_coach = availability.assigned_coach() if hasattr(availability, "assigned_coach") else (availability.substitute_coach or availability.coach)
+        assigned_coach = (
+            availability.assigned_coach()
+            if hasattr(availability, "assigned_coach")
+            else (availability.substitute_coach or availability.coach)
+        )
 
         _add_slot(
             key=key,
@@ -2708,23 +2792,34 @@ def coach_today_lessons(request):
         )
 
     lesson_rows = sorted(slot_map.values(), key=lambda row: (row["start_at"], row["title"], row["key"]))
+    today_rows = [row for row in lesson_rows if row["date"] == today]
+    upcoming_rows = [row for row in lesson_rows if row["date"] != today]
+    attention_rows = [row for row in lesson_rows if row["needs_attention"] and not row["is_past"]]
 
     grouped_days = []
     day_cursor = range_start
     while day_cursor <= range_end:
-        day_rows = [
-            row for row in lesson_rows
-            if (timezone.localtime(row["start_at"]).date() if timezone.is_aware(row["start_at"]) else row["start_at"].date()) == day_cursor
-        ]
+        day_rows = [row for row in lesson_rows if row["date"] == day_cursor]
         grouped_days.append(
             {
                 "date": day_cursor,
                 "date_label": f"{day_cursor:%Y/%m/%d}",
                 "weekday_label": ["月", "火", "水", "木", "金", "土", "日"][day_cursor.weekday()],
+                "is_today": day_cursor == today,
                 "rows": day_rows,
             }
         )
         day_cursor += timedelta(days=1)
+
+    summary = {
+        "lesson_count": len(lesson_rows),
+        "today_lesson_count": len(today_rows),
+        "participant_count": sum(row["participant_count"] for row in lesson_rows),
+        "today_participant_count": sum(row["participant_count"] for row in today_rows),
+        "waitlist_count": sum(row["waitlist_count"] for row in lesson_rows),
+        "pending_count": sum(row["pending_count"] for row in lesson_rows),
+        "attention_count": len(attention_rows),
+    }
 
     return render(
         request,
@@ -2739,6 +2834,10 @@ def coach_today_lessons(request):
             "range_end": range_end,
             "grouped_days": grouped_days,
             "lesson_rows": lesson_rows,
+            "today_rows": today_rows,
+            "upcoming_rows": upcoming_rows,
+            "attention_rows": attention_rows[:10],
+            "summary": summary,
         },
     )
 
