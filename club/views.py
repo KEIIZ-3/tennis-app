@@ -951,6 +951,75 @@ def _notify_first_waitlist_user_if_slot_open(reservation):
 
 
 
+def _capacity_for_waitlist_slot(waitlist):
+    availability = getattr(waitlist, "availability", None)
+    if availability:
+        try:
+            return max(int(availability.effective_capacity()), int(availability.capacity or 0), 1)
+        except Exception:
+            return max(int(getattr(availability, "capacity", 1) or 1), 1)
+
+    fixed_lesson = getattr(waitlist, "fixed_lesson", None)
+    if fixed_lesson:
+        try:
+            return max(int(fixed_lesson.effective_capacity()), int(fixed_lesson.capacity or 0), 1)
+        except Exception:
+            return max(int(getattr(fixed_lesson, "capacity", 1) or 1), 1)
+
+    return 1
+
+
+def _user_can_manage_waitlist(user, waitlist):
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+        return True
+    if getattr(user, "role", None) == "coach":
+        return (
+            waitlist.coach_id == user.pk
+            or getattr(waitlist, "substitute_coach_id", None) == user.pk
+        )
+    return waitlist.user_id == user.pk
+
+
+def _coach_can_manage_waitlist(user, waitlist):
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+        return True
+    if getattr(user, "role", None) != "coach":
+        return False
+    return (
+        waitlist.coach_id == user.pk
+        or getattr(waitlist, "substitute_coach_id", None) == user.pk
+    )
+
+
+def _build_waitlist_promoted_for_member_message(reservation):
+    label = _lesson_waitlist_lesson_label(reservation)
+    return (
+        "キャンセル待ちから予約に繰り上がりました。\n\n"
+        f"日時：{label['date']} {label['time']}\n"
+        f"レッスン：{label['lesson']}\n"
+        f"レベル：{label['level']}\n"
+        f"コーチ：{label['coach']}\n"
+        f"コート：{label['court']}\n\n"
+        "予約内容は予約確認画面からご確認ください。"
+    )
+
+
+def _build_waitlist_promoted_for_coach_message(reservation):
+    label = _lesson_waitlist_lesson_label(reservation)
+    return (
+        "キャンセル待ちから予約へ繰り上げました。\n\n"
+        f"会員：{_display_name(reservation.user)}\n"
+        f"日時：{label['date']} {label['time']}\n"
+        f"レッスン：{label['lesson']}\n"
+        f"レベル：{label['level']}\n"
+        f"コート：{label['court']}"
+    )
+
+
 def _availability_can_manage(user, availability):
     if not user or not getattr(user, "is_authenticated", False):
         return False
@@ -2398,6 +2467,284 @@ def coach_schedule_survey_summary(request):
 
 @login_required
 @require_GET
+def coach_today_lessons(request):
+    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
+        return HttpResponse("Forbidden", status=403)
+
+    User = get_user_model()
+    today = timezone.localdate()
+
+    try:
+        display_days = int(request.GET.get("days") or 7)
+    except Exception:
+        display_days = 7
+    if display_days not in (1, 7, 14):
+        display_days = 7
+
+    range_start = today
+    range_end = today + timedelta(days=display_days - 1)
+
+    coach_queryset = User.objects.filter(role="coach").order_by("full_name", "username", "id")
+
+    if _is_coach_user(request.user):
+        selected_coach = request.user
+        selected_coach_id = str(request.user.pk)
+        is_staff_mode = False
+    else:
+        selected_coach_id = (request.GET.get("coach_id") or "").strip()
+        selected_coach = coach_queryset.filter(pk=selected_coach_id).first() if selected_coach_id else coach_queryset.first()
+        selected_coach_id = str(selected_coach.pk) if selected_coach else ""
+        is_staff_mode = True
+
+    slot_map = {}
+
+    def _slot_key_for_row(*, lesson_type, coach_id, court_id, start_at, end_at):
+        return _slot_key(lesson_type, coach_id, court_id, start_at, end_at)
+
+    def _reservation_names(reservations):
+        return [_display_name(reservation.user) for reservation in reservations]
+
+    def _waitlist_names(waitlists):
+        return [_display_name(waitlist.user) for waitlist in waitlists]
+
+    def _add_slot(
+        *,
+        key,
+        start_at,
+        end_at,
+        lesson_type_label,
+        target_level_label,
+        coach_name,
+        court_name,
+        capacity,
+        title,
+        fixed_lesson=None,
+        availability=None,
+    ):
+        if key in slot_map:
+            return slot_map[key]
+
+        reservations = list(
+            Reservation.objects.select_related("user", "coach", "substitute_coach", "court")
+            .filter(
+                lesson_type=key[0],
+                coach_id=key[1] or None,
+                court_id=key[2] or None,
+                start_at=start_at,
+                end_at=end_at,
+                status=Reservation.STATUS_ACTIVE,
+            )
+            .order_by("user__full_name", "user__username", "id")
+        )
+
+        pending_reservations = list(
+            Reservation.objects.select_related("user", "coach", "substitute_coach", "court")
+            .filter(
+                lesson_type=key[0],
+                coach_id=key[1] or None,
+                court_id=key[2] or None,
+                start_at=start_at,
+                end_at=end_at,
+                status=Reservation.STATUS_PENDING,
+            )
+            .order_by("user__full_name", "user__username", "id")
+        )
+
+        waitlists = list(
+            LessonWaitlist.objects.select_related("user", "coach", "substitute_coach", "court")
+            .filter(
+                lesson_type=key[0],
+                coach_id=key[1] or None,
+                court_id=key[2] or None,
+                start_at=start_at,
+                end_at=end_at,
+                status=LessonWaitlist.STATUS_WAITING,
+            )
+            .order_by("created_at", "id")
+        )
+
+        row = {
+            "key": "|".join([str(part) for part in key]),
+            "start_at": start_at,
+            "end_at": end_at,
+            "date": timezone.localtime(start_at).date() if timezone.is_aware(start_at) else start_at.date(),
+            "time_label": f"{timezone.localtime(start_at):%H:%M}〜{timezone.localtime(end_at):%H:%M}" if timezone.is_aware(start_at) else f"{start_at:%H:%M}〜{end_at:%H:%M}",
+            "title": title,
+            "lesson_type_label": lesson_type_label,
+            "target_level_label": target_level_label,
+            "coach_name": coach_name,
+            "court_name": court_name,
+            "capacity": capacity,
+            "reservations": reservations,
+            "pending_reservations": pending_reservations,
+            "waitlists": waitlists,
+            "participant_names": _reservation_names(reservations),
+            "pending_names": _reservation_names(pending_reservations),
+            "waitlist_names": _waitlist_names(waitlists),
+            "participant_count": len(reservations),
+            "pending_count": len(pending_reservations),
+            "waitlist_count": len(waitlists),
+            "remaining_count": max(int(capacity or 0) - len(reservations), 0),
+            "fixed_lesson": fixed_lesson,
+            "availability": availability,
+        }
+        slot_map[key] = row
+        return row
+
+    def _availability_capacity(availability):
+        try:
+            return max(int(availability.effective_capacity()), int(availability.capacity or 0), 1)
+        except Exception:
+            return max(int(getattr(availability, "capacity", 1) or 1), 1)
+
+    fixed_queryset = (
+        FixedLesson.objects.filter(is_active=True)
+        .select_related("coach", "coach_2", "coach_3", "court")
+        .prefetch_related("members")
+        .order_by("weekday", "start_hour", "id")
+    )
+    if selected_coach is not None:
+        fixed_queryset = [fixed for fixed in fixed_queryset if _fixed_lesson_includes_coach(fixed, selected_coach)]
+
+    cursor = range_start
+    while cursor <= range_end:
+        for fixed in fixed_queryset:
+            if int(fixed.weekday) != int(cursor.weekday()):
+                continue
+            repeat_start = getattr(fixed, "start_date", None)
+            if repeat_start and cursor < repeat_start:
+                continue
+
+            try:
+                start_at, end_at = fixed._build_datetimes_for_date(cursor)
+            except Exception:
+                continue
+
+            primary_coach = fixed.primary_coach() if hasattr(fixed, "primary_coach") else fixed.coach
+            court = fixed.court
+            if not court:
+                continue
+
+            availability = CoachAvailability.objects.filter(
+                coach=primary_coach,
+                court=court,
+                lesson_type=fixed.lesson_type,
+                start_at=start_at,
+                end_at=end_at,
+            ).select_related("coach", "substitute_coach", "court").first()
+
+            capacity = fixed.effective_capacity() if hasattr(fixed, "effective_capacity") else fixed.capacity
+            if availability:
+                try:
+                    capacity = max(int(availability.effective_capacity()), int(availability.capacity or 0), int(capacity or 0), 1)
+                except Exception:
+                    capacity = max(int(availability.capacity or 0), int(capacity or 0), 1)
+
+            key = _slot_key_for_row(
+                lesson_type=fixed.lesson_type,
+                coach_id=getattr(primary_coach, "pk", None),
+                court_id=getattr(court, "pk", None),
+                start_at=start_at,
+                end_at=end_at,
+            )
+
+            _add_slot(
+                key=key,
+                start_at=start_at,
+                end_at=end_at,
+                lesson_type_label=fixed.get_lesson_type_display(),
+                target_level_label=fixed.get_target_level_display(),
+                coach_name=_fixed_lesson_coach_names(fixed),
+                court_name=str(court),
+                capacity=capacity,
+                title=_lesson_calendar_title(fixed),
+                fixed_lesson=fixed,
+                availability=availability,
+            )
+
+        cursor += timedelta(days=1)
+
+    availability_qs = (
+        CoachAvailability.objects.filter(
+            start_at__date__gte=range_start,
+            start_at__date__lte=range_end,
+        )
+        .select_related("coach", "substitute_coach", "court")
+        .order_by("start_at", "id")
+    )
+
+    if selected_coach is not None:
+        availability_qs = [
+            availability for availability in availability_qs
+            if availability.coach_id == selected_coach.pk
+            or getattr(availability, "substitute_coach_id", None) == selected_coach.pk
+        ]
+
+    for availability in availability_qs:
+        key = _slot_key_for_row(
+            lesson_type=availability.lesson_type,
+            coach_id=availability.coach_id,
+            court_id=availability.court_id,
+            start_at=availability.start_at,
+            end_at=availability.end_at,
+        )
+        if key in slot_map:
+            continue
+
+        capacity = _availability_capacity(availability)
+        assigned_coach = availability.assigned_coach() if hasattr(availability, "assigned_coach") else (availability.substitute_coach or availability.coach)
+
+        _add_slot(
+            key=key,
+            start_at=availability.start_at,
+            end_at=availability.end_at,
+            lesson_type_label=availability.get_lesson_type_display(),
+            target_level_label=availability.get_target_level_display(),
+            coach_name=_display_name(assigned_coach),
+            court_name=str(availability.court),
+            capacity=capacity,
+            title=availability.get_lesson_type_display(),
+            availability=availability,
+        )
+
+    lesson_rows = sorted(slot_map.values(), key=lambda row: (row["start_at"], row["title"], row["key"]))
+
+    grouped_days = []
+    day_cursor = range_start
+    while day_cursor <= range_end:
+        day_rows = [
+            row for row in lesson_rows
+            if (timezone.localtime(row["start_at"]).date() if timezone.is_aware(row["start_at"]) else row["start_at"].date()) == day_cursor
+        ]
+        grouped_days.append(
+            {
+                "date": day_cursor,
+                "date_label": f"{day_cursor:%Y/%m/%d}",
+                "weekday_label": ["月", "火", "水", "木", "金", "土", "日"][day_cursor.weekday()],
+                "rows": day_rows,
+            }
+        )
+        day_cursor += timedelta(days=1)
+
+    return render(
+        request,
+        "coach/today_lessons.html",
+        {
+            "coach_options": coach_queryset,
+            "selected_coach": selected_coach,
+            "selected_coach_id": selected_coach_id,
+            "is_staff_mode": is_staff_mode,
+            "display_days": display_days,
+            "range_start": range_start,
+            "range_end": range_end,
+            "grouped_days": grouped_days,
+            "lesson_rows": lesson_rows,
+        },
+    )
+
+
+@login_required
+@require_GET
 def coach_fixed_lesson_weekly(request):
     if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
         return HttpResponse("Forbidden", status=403)
@@ -2563,10 +2910,6 @@ def _user_can_manage_stringing_order(user, order):
 @login_required
 @require_GET
 def reservation_detail(request, pk):
-    survey_redirect = _require_schedule_survey(request)
-    if survey_redirect:
-        return survey_redirect
-
     reservation = get_object_or_404(
         Reservation.objects.select_related(
             "user",
@@ -2612,6 +2955,40 @@ def reservation_detail(request, pk):
         .order_by("user__full_name", "user__username", "id")
     )
 
+    same_slot_waitlists = list(
+        LessonWaitlist.objects.select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
+        .filter(
+            coach=reservation.coach,
+            court=reservation.court,
+            lesson_type=reservation.lesson_type,
+            start_at=reservation.start_at,
+            end_at=reservation.end_at,
+        )
+        .order_by("status", "created_at", "id")
+    )
+
+    capacity = _capacity_for_reservation_slot(reservation)
+    active_count = len(same_slot_reservations)
+    waitlist_rows = []
+    for waitlist in same_slot_waitlists:
+        can_promote = (
+            waitlist.status == LessonWaitlist.STATUS_WAITING
+            and reservation.start_at >= timezone.now()
+            and active_count < capacity
+            and _coach_can_manage_waitlist(request.user, waitlist)
+        )
+        waitlist_rows.append(
+            {
+                "waitlist": waitlist,
+                "can_promote": can_promote,
+                "can_cancel": (
+                    waitlist.status == LessonWaitlist.STATUS_WAITING
+                    and waitlist.start_at >= timezone.now()
+                    and _user_can_manage_waitlist(request.user, waitlist)
+                ),
+            }
+        )
+
     return render(
         request,
         "reservations/detail.html",
@@ -2627,11 +3004,12 @@ def reservation_detail(request, pk):
             "ticket_consumption_rows": ticket_consumption_rows,
             "ticket_ledger_rows": ticket_ledger_rows,
             "same_slot_reservations": same_slot_reservations,
+            "same_slot_waitlist_rows": waitlist_rows,
+            "slot_capacity": capacity,
+            "slot_active_count": active_count,
+            "slot_remaining_count": max(capacity - active_count, 0),
         },
     )
-
-
-@login_required
 @require_http_methods(["GET", "POST"])
 def stringing_order_detail(request, pk):
     survey_redirect = _require_schedule_survey(request)
@@ -4233,14 +4611,12 @@ def reservation_create(request):
 @login_required
 @require_GET
 def reservation_list(request):
-    survey_redirect = _require_schedule_survey(request)
-    if survey_redirect:
-        return survey_redirect
-
     _sync_fixed_lessons()
 
+    now = timezone.now()
+
     qs = (
-        Reservation.objects.select_related("user", "coach", "substitute_coach", "court")
+        Reservation.objects.select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
         .prefetch_related("ticket_consumptions__purchase")
         .all()
     )
@@ -4250,58 +4626,94 @@ def reservation_list(request):
         .all()
     )
 
-    if _is_staff_like(request.user):
-        pass
-    elif _is_coach_user(request.user):
-        filtered_qs = []
+    # _is_staff_like() は coach も True になるため、コーチ判定を先に行う。
+    if _is_coach_user(request.user):
+        reservation_ids = []
         for reservation in qs:
-            if reservation.coach_id == request.user.pk or getattr(reservation, "substitute_coach_id", None) == request.user.pk:
-                filtered_qs.append(reservation.pk)
-        qs = qs.filter(pk__in=filtered_qs)
+            if (
+                reservation.coach_id == request.user.pk
+                or getattr(reservation, "substitute_coach_id", None) == request.user.pk
+            ):
+                reservation_ids.append(reservation.pk)
+        qs = qs.filter(pk__in=reservation_ids)
 
         waitlist_ids = []
         for waitlist in waitlist_qs:
-            if waitlist.coach_id == request.user.pk or getattr(waitlist, "substitute_coach_id", None) == request.user.pk:
+            if (
+                waitlist.coach_id == request.user.pk
+                or getattr(waitlist, "substitute_coach_id", None) == request.user.pk
+            ):
                 waitlist_ids.append(waitlist.pk)
         waitlist_qs = waitlist_qs.filter(pk__in=waitlist_ids)
+    elif _is_staff_like(request.user):
+        pass
     else:
         qs = qs.filter(user=request.user)
         waitlist_qs = waitlist_qs.filter(user=request.user)
 
-    qs = qs.order_by("start_at")
+    qs = qs.order_by("start_at", "id")
     waitlist_qs = waitlist_qs.order_by("start_at", "created_at", "id")
 
-    reservation_rows = []
-    for reservation in qs:
+    def _reservation_row(reservation):
         can_cancel, cancel_reason = _can_user_cancel_reservation(request.user, reservation)
-        reservation_rows.append(
-            {
-                "reservation": reservation,
-                "can_cancel": can_cancel,
-                "cancel_reason": cancel_reason,
-                "assigned_coach_name": reservation.assigned_coach_display(),
-                "normal_coach_name": reservation.normal_coach_display(),
-                "substitute_coach_name": _display_name(reservation.substitute_coach) if reservation.substitute_coach else "",
-                "has_substitute": reservation.has_substitute_coach(),
-            }
-        )
+        return {
+            "reservation": reservation,
+            "can_cancel": can_cancel,
+            "cancel_reason": cancel_reason,
+            "assigned_coach_name": reservation.assigned_coach_display(),
+            "normal_coach_name": reservation.normal_coach_display(),
+            "substitute_coach_name": _display_name(reservation.substitute_coach) if reservation.substitute_coach else "",
+            "has_substitute": reservation.has_substitute_coach(),
+            "is_future": reservation.start_at >= now,
+            "is_canceled": reservation.status in (Reservation.STATUS_CANCELED, Reservation.STATUS_RAIN_CANCELED),
+            "is_pending": reservation.status == Reservation.STATUS_PENDING,
+            "is_active": reservation.status == Reservation.STATUS_ACTIVE,
+        }
+
+    future_reservation_rows = []
+    past_reservation_rows = []
+    canceled_reservation_rows = []
+
+    for reservation in qs:
+        row = _reservation_row(reservation)
+        if row["is_canceled"]:
+            canceled_reservation_rows.append(row)
+        elif reservation.start_at >= now:
+            future_reservation_rows.append(row)
+        else:
+            past_reservation_rows.append(row)
 
     waitlist_rows = []
     for waitlist in waitlist_qs:
         can_cancel_waitlist = (
             waitlist.status == LessonWaitlist.STATUS_WAITING
-            and waitlist.start_at >= timezone.now()
-            and (
-                _is_staff_like(request.user)
-                or (_is_coach_user(request.user) and (waitlist.coach_id == request.user.pk or getattr(waitlist, "substitute_coach_id", None) == request.user.pk))
-                or waitlist.user_id == request.user.pk
-            )
+            and waitlist.start_at >= now
+            and _user_can_manage_waitlist(request.user, waitlist)
+        )
+
+        active_count = _active_reservation_count_for_slot(
+            coach=waitlist.coach,
+            court=waitlist.court,
+            lesson_type=waitlist.lesson_type,
+            start_at=waitlist.start_at,
+            end_at=waitlist.end_at,
+        )
+        capacity = _capacity_for_waitlist_slot(waitlist)
+        can_promote = (
+            waitlist.status == LessonWaitlist.STATUS_WAITING
+            and waitlist.start_at >= now
+            and active_count < capacity
+            and _coach_can_manage_waitlist(request.user, waitlist)
         )
 
         waitlist_rows.append(
             {
                 "waitlist": waitlist,
                 "can_cancel": can_cancel_waitlist,
+                "can_promote": can_promote,
+                "active_count": active_count,
+                "capacity": capacity,
+                "remaining_count": max(capacity - active_count, 0),
                 "assigned_coach_name": waitlist.assigned_coach_display(),
                 "normal_coach_name": _display_name(waitlist.coach),
                 "substitute_coach_name": _display_name(waitlist.substitute_coach) if waitlist.substitute_coach else "",
@@ -4309,17 +4721,23 @@ def reservation_list(request):
             }
         )
 
+    waiting_waitlist_rows = [row for row in waitlist_rows if row["waitlist"].status == LessonWaitlist.STATUS_WAITING]
+    processed_waitlist_rows = [row for row in waitlist_rows if row["waitlist"].status != LessonWaitlist.STATUS_WAITING]
+
     return render(
         request,
         "reservations/list.html",
         {
-            "reservation_rows": reservation_rows,
+            "future_reservation_rows": future_reservation_rows,
+            "past_reservation_rows": past_reservation_rows,
+            "canceled_reservation_rows": canceled_reservation_rows,
+            "waiting_waitlist_rows": waiting_waitlist_rows,
+            "processed_waitlist_rows": processed_waitlist_rows,
+            # 旧テンプレート互換用
+            "reservation_rows": future_reservation_rows + past_reservation_rows + canceled_reservation_rows,
             "waitlist_rows": waitlist_rows,
         },
     )
-
-
-@login_required
 @require_POST
 def reservation_cancel(request, pk):
     reservation = get_object_or_404(Reservation, pk=pk)
@@ -4389,6 +4807,106 @@ def lesson_waitlist_cancel(request, pk):
 
 
 @login_required
+
+@login_required
+@require_POST
+def lesson_waitlist_promote(request, pk):
+    waitlist = get_object_or_404(
+        LessonWaitlist.objects.select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson"),
+        pk=pk,
+    )
+
+    if not _coach_can_manage_waitlist(request.user, waitlist):
+        return HttpResponse("Forbidden", status=403)
+
+    redirect_to = (request.POST.get("next") or "").strip()
+    if not redirect_to.startswith("/"):
+        redirect_to = reverse("club:reservation_list")
+
+    if waitlist.status != LessonWaitlist.STATUS_WAITING:
+        messages.info(request, "このキャンセル待ちはすでに処理済みです。")
+        return redirect(redirect_to)
+
+    if waitlist.start_at < timezone.now():
+        messages.error(request, "開始済み・終了済みのキャンセル待ちは繰り上げできません。")
+        return redirect(redirect_to)
+
+    active_count = _active_reservation_count_for_slot(
+        coach=waitlist.coach,
+        court=waitlist.court,
+        lesson_type=waitlist.lesson_type,
+        start_at=waitlist.start_at,
+        end_at=waitlist.end_at,
+    )
+    capacity = _capacity_for_waitlist_slot(waitlist)
+    if active_count >= capacity:
+        messages.error(request, "このレッスンはまだ満員のため、繰り上げできません。")
+        return redirect(redirect_to)
+
+    existing_reservation = Reservation.objects.filter(
+        user=waitlist.user,
+        coach=waitlist.coach,
+        court=waitlist.court,
+        lesson_type=waitlist.lesson_type,
+        start_at=waitlist.start_at,
+        end_at=waitlist.end_at,
+        status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+    ).first()
+    if existing_reservation:
+        waitlist.mark_converted()
+        messages.info(request, "対象会員はすでに予約済みです。キャンセル待ちを処理済みにしました。")
+        return redirect("club:reservation_detail", pk=existing_reservation.pk)
+
+    try:
+        with transaction.atomic():
+            availability = waitlist.availability or CoachAvailability.objects.filter(
+                coach=waitlist.coach,
+                court=waitlist.court,
+                lesson_type=waitlist.lesson_type,
+                start_at=waitlist.start_at,
+                end_at=waitlist.end_at,
+            ).first()
+
+            reservation = Reservation(
+                user=waitlist.user,
+                coach=waitlist.coach,
+                substitute_coach=waitlist.substitute_coach,
+                court=waitlist.court,
+                availability=availability,
+                fixed_lesson=waitlist.fixed_lesson,
+                lesson_type=waitlist.lesson_type,
+                target_level=waitlist.target_level,
+                start_at=waitlist.start_at,
+                end_at=waitlist.end_at,
+                status=Reservation.STATUS_ACTIVE,
+                custom_ticket_price=getattr(availability, "custom_ticket_price", 0) if availability else 0,
+                custom_duration_hours=getattr(availability, "custom_duration_hours", 0) if availability else 0,
+            )
+            reservation.full_clean()
+            reservation.save()
+            reservation.consume_tickets(
+                reason=TicketLedger.REASON_RESERVATION_USE,
+                created_by=request.user,
+                note=f"キャンセル待ち繰り上げ: {reservation.start_at:%Y-%m-%d %H:%M}",
+            )
+            waitlist.mark_converted()
+
+        _send_line_notification_safely(reservation.user, _build_waitlist_promoted_for_member_message(reservation))
+        _send_line_notification_safely(reservation.assigned_coach(), _build_waitlist_promoted_for_coach_message(reservation))
+        messages.success(request, f"{_display_name(reservation.user)} さんを予約へ繰り上げました。")
+        return redirect("club:reservation_detail", pk=reservation.pk)
+
+    except ValidationError as e:
+        if hasattr(e, "messages"):
+            for message_text in e.messages:
+                messages.error(request, message_text)
+        else:
+            messages.error(request, str(e))
+    except Exception as e:
+        messages.error(request, f"キャンセル待ちの繰り上げに失敗しました: {e}")
+
+    return redirect(redirect_to)
+
 @require_http_methods(["GET", "POST"])
 def coach_availability_list(request):
     _sync_fixed_lessons()
