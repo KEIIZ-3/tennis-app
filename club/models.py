@@ -1593,6 +1593,191 @@ class Reservation(models.Model, LessonTypeMixin):
         return True
 
 
+class LessonWaitlist(models.Model):
+    STATUS_WAITING = "waiting"
+    STATUS_CANCELED = "canceled"
+    STATUS_CONVERTED = "converted"
+
+    STATUS_CHOICES = (
+        (STATUS_WAITING, "キャンセル待ち中"),
+        (STATUS_CANCELED, "キャンセル"),
+        (STATUS_CONVERTED, "予約済みに変更"),
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="lesson_waitlists",
+        verbose_name="会員",
+    )
+    coach = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="coach_lesson_waitlists",
+        limit_choices_to={"role": "coach"},
+        verbose_name="主担当コーチ",
+    )
+    substitute_coach = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="substitute_lesson_waitlists",
+        limit_choices_to={"role": "coach"},
+        verbose_name="代行コーチ",
+    )
+    court = models.ForeignKey(
+        Court,
+        on_delete=models.CASCADE,
+        related_name="lesson_waitlists",
+        verbose_name="コート",
+    )
+    availability = models.ForeignKey(
+        CoachAvailability,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lesson_waitlists",
+        verbose_name="レッスン枠",
+    )
+    fixed_lesson = models.ForeignKey(
+        FixedLesson,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lesson_waitlists",
+        verbose_name="固定レッスン",
+    )
+    lesson_type = models.CharField(
+        max_length=20,
+        choices=LessonTypeMixin.LESSON_TYPE_CHOICES,
+        default=LessonTypeMixin.LESSON_GENERAL,
+        verbose_name="レッスン種別",
+    )
+    target_level = models.CharField(
+        max_length=30,
+        choices=User.LEVEL_CHOICES,
+        default=User.LEVEL_BEGINNER,
+        verbose_name="対象レベル",
+    )
+    start_at = models.DateTimeField(verbose_name="開始日時")
+    end_at = models.DateTimeField(verbose_name="終了日時")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_WAITING, verbose_name="状態")
+    note = models.CharField(max_length=255, blank=True, default="", verbose_name="メモ")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="登録日時")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
+    canceled_at = models.DateTimeField(null=True, blank=True, verbose_name="キャンセル日時")
+    converted_at = models.DateTimeField(null=True, blank=True, verbose_name="予約変更日時")
+
+    class Meta:
+        ordering = ["start_at", "created_at", "id"]
+        verbose_name = "キャンセル待ち"
+        verbose_name_plural = "キャンセル待ち"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "coach", "court", "lesson_type", "start_at", "end_at"],
+                condition=models.Q(status="waiting"),
+                name="unique_waiting_lesson_per_user_slot",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user} / {self.get_lesson_type_display()} / {self.start_at:%Y-%m-%d %H:%M} / {self.get_status_display()}"
+
+    def assigned_coach(self):
+        return self.substitute_coach or self.coach
+
+    def assigned_coach_display(self):
+        coach = self.assigned_coach()
+        if coach:
+            return coach.display_name()
+        return "-"
+
+    def active_slot_reservations_qs(self):
+        return Reservation.objects.filter(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=self.lesson_type,
+            start_at=self.start_at,
+            end_at=self.end_at,
+            status=Reservation.STATUS_ACTIVE,
+        )
+
+    def clean(self):
+        if self.user_id and getattr(self.user, "role", "") != "member":
+            raise ValidationError("キャンセル待ちは会員アカウントのみ登録できます。")
+
+        if self.start_at and self.end_at and self.start_at >= self.end_at:
+            raise ValidationError("開始日時は終了日時より前にしてください。")
+
+        if self.status == self.STATUS_WAITING and self.start_at and self.start_at < timezone.now():
+            raise ValidationError("過去のレッスンにはキャンセル待ち登録できません。")
+
+        if self.lesson_type not in (LessonTypeMixin.LESSON_GENERAL, LessonTypeMixin.LESSON_EVENT):
+            raise ValidationError("キャンセル待ちは通常レッスンまたはイベントのみ登録できます。")
+
+        if self.user_id and self.target_level and hasattr(self.user, "can_book_level"):
+            if not self.user.can_book_level(self.target_level):
+                raise ValidationError("ご自身のレベルでは、このレッスンのキャンセル待ちは登録できません。")
+
+        duplicate_qs = LessonWaitlist.objects.filter(
+            user=self.user,
+            coach=self.coach,
+            court=self.court,
+            lesson_type=self.lesson_type,
+            start_at=self.start_at,
+            end_at=self.end_at,
+            status=self.STATUS_WAITING,
+        )
+        if self.pk:
+            duplicate_qs = duplicate_qs.exclude(pk=self.pk)
+        if duplicate_qs.exists():
+            raise ValidationError("このレッスンはすでにキャンセル待ち登録済みです。")
+
+        active_reservation_exists = Reservation.objects.filter(
+            user=self.user,
+            coach=self.coach,
+            court=self.court,
+            lesson_type=self.lesson_type,
+            start_at=self.start_at,
+            end_at=self.end_at,
+            status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+        ).exists()
+        if active_reservation_exists and self.status == self.STATUS_WAITING:
+            raise ValidationError("このレッスンはすでに予約済み、または申請済みです。")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def cancel(self, reason=""):
+        if self.status != self.STATUS_WAITING:
+            return False
+        now = timezone.now()
+        LessonWaitlist.objects.filter(pk=self.pk, status=self.STATUS_WAITING).update(
+            status=self.STATUS_CANCELED,
+            canceled_at=now,
+            note=reason or self.note,
+        )
+        self.status = self.STATUS_CANCELED
+        self.canceled_at = now
+        if reason:
+            self.note = reason
+        return True
+
+    def mark_converted(self):
+        if self.status != self.STATUS_WAITING:
+            return False
+        now = timezone.now()
+        LessonWaitlist.objects.filter(pk=self.pk, status=self.STATUS_WAITING).update(
+            status=self.STATUS_CONVERTED,
+            converted_at=now,
+        )
+        self.status = self.STATUS_CONVERTED
+        self.converted_at = now
+        return True
+
+
 class StringingOrder(models.Model):
     DEFAULT_ASSIGNED_COACH_USERNAME = "12line_7c39cda5a465"
     DEFAULT_ASSIGNED_COACH_EMAIL = "torekku0713@icloud.com"
