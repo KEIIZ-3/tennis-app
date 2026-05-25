@@ -92,22 +92,12 @@ def _schedule_survey_choice_context():
 
 
 def _needs_schedule_survey(user):
-    if not user or not user.is_authenticated:
-        return False
-    if getattr(user, "role", None) != "member":
-        return False
-    if _needs_profile_completion(user):
-        return False
-    return not ScheduleSurveyResponse.objects.filter(user=user).exists()
+    # アンケート機能は役割を終えたため、画面上は非表示・強制遷移なしにする。
+    # 既存データと集計画面は残し、必要になった場合だけ管理側で再利用できるようにする。
+    return False
 
 
 def _require_schedule_survey(request):
-    if _needs_schedule_survey(request.user):
-        messages.warning(
-            request,
-            "レッスン希望アンケートが未回答です。1〜2分で終わるので、先にご回答をお願いします。回答内容は今後の開催曜日・時間帯の参考になります。"
-        )
-        return redirect("club:schedule_survey")
     return None
 
 
@@ -1574,7 +1564,8 @@ def lesson_calendar_view(request):
                     end_at=end_at,
                 )
 
-            member_count = int(active_slot_counts.get(slot_key, 0))
+            fixed_member_count = len(list(fixed_lesson.members.all()))
+            member_count = max(int(active_slot_counts.get(slot_key, 0)), fixed_member_count)
             pending_count = int(pending_slot_counts.get(slot_key, 0))
             coach_names = _fixed_lesson_coach_names(fixed_lesson)
 
@@ -2412,18 +2403,26 @@ def coach_fixed_lesson_weekly(request):
         return HttpResponse("Forbidden", status=403)
 
     User = get_user_model()
+    today = timezone.localdate()
     coach_queryset = User.objects.filter(role="coach").order_by("full_name", "username", "id")
 
-    if _is_staff_like(request.user) and not _is_coach_user(request.user):
+    # コーチ本人は staff 権限の有無にかかわらず、必ず自分の担当スケジュールを表示する。
+    # 管理者だけが coach_id で表示対象コーチを切り替えられる。
+    if _is_coach_user(request.user):
+        selected_coach = request.user
+        selected_coach_id = str(request.user.pk)
+        is_staff_mode = False
+    else:
         selected_coach_id = (request.GET.get("coach_id") or "").strip()
         selected_coach = (
             coach_queryset.filter(pk=selected_coach_id).first() if selected_coach_id else coach_queryset.first()
         )
-    else:
-        selected_coach = request.user
-        selected_coach_id = str(request.user.pk)
+        selected_coach_id = str(selected_coach.pk) if selected_coach else ""
+        is_staff_mode = True
 
-    week_start, week_end = _week_range_for_display()
+    display_weeks = 12
+    week_start, week_end = _week_range_for_display(today)
+    display_until = today + timedelta(days=display_weeks * 7)
 
     fixed_lessons = []
     fixed_queryset = (
@@ -2440,55 +2439,85 @@ def coach_fixed_lesson_weekly(request):
 
     for fixed in fixed_queryset:
         members = list(fixed.members.all().order_by("full_name", "username", "id"))
-        target_date = week_start + timedelta(days=int(fixed.weekday))
-        start_at, end_at = fixed._build_datetimes_for_date(target_date)
+        repeat_start = getattr(fixed, "start_date", None) or today
+        if repeat_start < today:
+            repeat_start = today
 
-        slot_availability = (
-            CoachAvailability.objects.filter(
-                coach=fixed.primary_coach() if hasattr(fixed, "primary_coach") else fixed.coach,
-                court=fixed.court,
-                lesson_type=fixed.lesson_type,
-                start_at=start_at,
-                end_at=end_at,
+        initial_offset = (int(fixed.weekday) - repeat_start.weekday()) % 7
+
+        for week_index in range(max(int(getattr(fixed, "weeks_ahead", 8) or 8), 1)):
+            target_date = repeat_start + timedelta(days=initial_offset + (7 * week_index))
+            if target_date > display_until:
+                break
+
+            start_at, end_at = fixed._build_datetimes_for_date(target_date)
+
+            slot_availability = (
+                CoachAvailability.objects.filter(
+                    coach=fixed.primary_coach() if hasattr(fixed, "primary_coach") else fixed.coach,
+                    court=fixed.court,
+                    lesson_type=fixed.lesson_type,
+                    start_at=start_at,
+                    end_at=end_at,
+                )
+                .select_related("substitute_coach")
+                .first()
             )
-            .select_related("substitute_coach")
-            .first()
-        )
 
-        week_reservations = list(
-            Reservation.objects.filter(
-                fixed_lesson=fixed,
-                start_at=start_at,
-                end_at=end_at,
+            week_reservations = list(
+                Reservation.objects.filter(
+                    fixed_lesson=fixed,
+                    start_at=start_at,
+                    end_at=end_at,
+                    status=Reservation.STATUS_ACTIVE,
+                )
+                .select_related("user", "coach", "substitute_coach", "court")
+                .order_by("user__full_name", "user__username", "id")
             )
-            .select_related("user", "coach", "substitute_coach", "court")
-            .order_by("user__full_name", "user__username", "id")
-        )
 
-        member_names = [member.display_name() for member in members]
-        reservation_names = [reservation.user.display_name() for reservation in week_reservations]
-        assigned_coach = slot_availability.substitute_coach if slot_availability and slot_availability.substitute_coach else (fixed.primary_coach() if hasattr(fixed, "primary_coach") else fixed.coach)
+            waitlist_count = 0
+            try:
+                waitlist_count = LessonWaitlist.objects.filter(
+                    fixed_lesson=fixed,
+                    start_at=start_at,
+                    end_at=end_at,
+                    status=LessonWaitlist.STATUS_WAITING,
+                ).count()
+            except Exception:
+                waitlist_count = 0
 
-        fixed_lessons.append(
-            {
-                "fixed_lesson": fixed,
-                "weekday_label": weekday_labels.get(fixed.weekday, str(fixed.weekday)),
-                "target_date": target_date,
-                "start_at": start_at,
-                "end_at": end_at,
-                "assigned_coach_name": _display_name(assigned_coach),
-                "normal_coach_name": _fixed_lesson_coach_names(fixed),
-                "substitute_coach_name": _display_name(slot_availability.substitute_coach)
+            member_names = [member.display_name() for member in members]
+            reservation_names = [reservation.user.display_name() for reservation in week_reservations]
+            assigned_coach = (
+                slot_availability.substitute_coach
                 if slot_availability and slot_availability.substitute_coach
-                else "",
-                "has_substitute": bool(slot_availability and slot_availability.substitute_coach),
-                "member_count": len(member_names),
-                "member_names": member_names,
-                "reservation_count": len(reservation_names),
-                "reservation_names": reservation_names,
-                "slot_availability": slot_availability,
-            }
-        )
+                else (fixed.primary_coach() if hasattr(fixed, "primary_coach") else fixed.coach)
+            )
+
+            fixed_lessons.append(
+                {
+                    "fixed_lesson": fixed,
+                    "weekday_label": weekday_labels.get(fixed.weekday, str(fixed.weekday)),
+                    "target_date": target_date,
+                    "start_at": start_at,
+                    "end_at": end_at,
+                    "assigned_coach_name": _display_name(assigned_coach),
+                    "normal_coach_name": _fixed_lesson_coach_names(fixed),
+                    "substitute_coach_name": _display_name(slot_availability.substitute_coach)
+                    if slot_availability and slot_availability.substitute_coach
+                    else "",
+                    "has_substitute": bool(slot_availability and slot_availability.substitute_coach),
+                    "member_count": len(member_names),
+                    "member_names": member_names,
+                    "reservation_count": max(len(reservation_names), len(member_names)),
+                    "reservation_names": reservation_names,
+                    "waitlist_count": waitlist_count,
+                    "capacity": fixed.effective_capacity() if hasattr(fixed, "effective_capacity") else fixed.capacity,
+                    "slot_availability": slot_availability,
+                }
+            )
+
+    fixed_lessons = sorted(fixed_lessons, key=lambda row: (row["target_date"], row["start_at"], row["fixed_lesson"].id))
 
     return render(
         request,
@@ -2498,10 +2527,11 @@ def coach_fixed_lesson_weekly(request):
             "selected_coach": selected_coach,
             "selected_coach_id": selected_coach_id,
             "fixed_lessons": fixed_lessons,
-            "week_start": week_start,
-            "week_end": week_end,
-            "week_label": f"{week_start:%Y-%m-%d} 〜 {week_end:%Y-%m-%d}",
-            "is_staff_mode": _is_staff_like(request.user) and not _is_coach_user(request.user),
+            "week_start": today,
+            "week_end": display_until,
+            "week_label": f"{today:%Y-%m-%d} 〜 {display_until:%Y-%m-%d}",
+            "display_weeks": display_weeks,
+            "is_staff_mode": is_staff_mode,
         },
     )
 
