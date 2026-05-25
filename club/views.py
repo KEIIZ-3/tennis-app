@@ -53,7 +53,10 @@ from .notifications import (
     build_request_rejected_for_member_message,
     build_reservation_rain_canceled_message,
     build_stringing_order_created_for_coach_message,
-    notify_user,
+    build_reservation_created_message,
+    build_waitlist_registered_for_member_email_message,
+    notify_user_email_only,
+    notify_user_line_only,
     verify_line_signature,
 )
 
@@ -757,11 +760,28 @@ def _build_schedule_survey_home_context(user):
 
     return context
 
-def _send_line_notification_safely(user, message_text):
+def _send_line_notification_safely(user, message_text, subject="Play Design Tennis 通知"):
+    """
+    LINE通知専用。
+    月200通の無料枠を節約するため、呼び出し箇所は雨天中止とキャンセル待ち空き通知に限定します。
+    """
     if not user or not message_text:
         return
     try:
-        notify_user(user, message_text)
+        notify_user_line_only(user, message_text, subject=subject)
+    except Exception:
+        pass
+
+
+def _send_email_notification_safely(user, subject, message_text):
+    """
+    メール通知専用。
+    予約完了・予約キャンセル・キャンセル待ち登録・個別レッスン申請系はこちらを使います。
+    """
+    if not user or not message_text:
+        return
+    try:
+        notify_user_email_only(user, message_text, subject=subject)
     except Exception:
         pass
 
@@ -859,13 +879,9 @@ def _build_waitlist_opening_for_member_message(waitlist):
         f"日時：{label['date']} {label['time']}\n"
         f"レッスン：{label['lesson']}\n"
         f"レベル：{label['level']}\n"
-        f"コーチ：{label['coach']}\n"
-        f"コート：{label['court']}\n\n"
-        "この通知は、キャンセル待ち順の早い方から順にお送りしています。\n"
-        "この時点では、まだ予約は確定していません。\n"
-        "参加できる場合は、下記の予約画面から正式予約をお願いします。\n\n"
-        f"{reserve_url}\n\n"
-        "※他の方が先に予約した場合は満員になることがあります。"
+        f"コーチ：{label['coach']}\n\n"
+        "予約は先着順です。レッスンカレンダー、または予約画面からお手続きください。\n"
+        f"{reserve_url}"
     )
 
 
@@ -905,76 +921,6 @@ def _active_reservation_count_for_slot(*, coach, court, lesson_type, start_at, e
     ).count()
 
 
-def _fixed_lesson_member_count_for_slot(fixed_lesson):
-    if not fixed_lesson:
-        return 0
-    try:
-        return fixed_lesson.members.count()
-    except Exception:
-        return 0
-
-
-def _occupied_count_for_slot(*, coach, court, lesson_type, start_at, end_at, fixed_lesson=None):
-    active_count = _active_reservation_count_for_slot(
-        coach=coach,
-        court=court,
-        lesson_type=lesson_type,
-        start_at=start_at,
-        end_at=end_at,
-    )
-    fixed_member_count = _fixed_lesson_member_count_for_slot(fixed_lesson)
-    return max(int(active_count or 0), int(fixed_member_count or 0))
-
-
-def _waitlist_user_has_same_slot_reservation(waitlist):
-    return Reservation.objects.filter(
-        user=waitlist.user,
-        coach=waitlist.coach,
-        court=waitlist.court,
-        lesson_type=waitlist.lesson_type,
-        start_at=waitlist.start_at,
-        end_at=waitlist.end_at,
-        status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
-    ).exists()
-
-
-def _waitlist_user_has_overlapping_reservation(waitlist):
-    return Reservation.objects.filter(
-        user=waitlist.user,
-        status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
-        start_at__lt=waitlist.end_at,
-        end_at__gt=waitlist.start_at,
-    ).exists()
-
-
-def _waitlist_user_is_fixed_member(waitlist):
-    fixed_lesson = getattr(waitlist, "fixed_lesson", None)
-    if not fixed_lesson:
-        return False
-    try:
-        return fixed_lesson.members.filter(pk=waitlist.user_id).exists()
-    except Exception:
-        return False
-
-
-def _waitlist_user_can_receive_opening_notice(waitlist):
-    if not waitlist or waitlist.status != LessonWaitlist.STATUS_WAITING:
-        return False
-    if waitlist.start_at < timezone.now():
-        return False
-    if not waitlist.user or getattr(waitlist.user, "role", None) != "member":
-        return False
-    if _waitlist_user_is_fixed_member(waitlist):
-        return False
-    if hasattr(waitlist.user, "can_book_level") and not waitlist.user.can_book_level(waitlist.target_level):
-        return False
-    if _waitlist_user_has_same_slot_reservation(waitlist):
-        return False
-    if _waitlist_user_has_overlapping_reservation(waitlist):
-        return False
-    return True
-
-
 def _capacity_for_reservation_slot(reservation):
     availability = getattr(reservation, "availability", None) or reservation.matching_availability()
     if availability:
@@ -997,34 +943,31 @@ def _notify_first_waitlist_user_if_slot_open(reservation):
     if not reservation:
         return False
 
-    occupied_count = _occupied_count_for_slot(
+    active_count = _active_reservation_count_for_slot(
         coach=reservation.coach,
         court=reservation.court,
         lesson_type=reservation.lesson_type,
         start_at=reservation.start_at,
         end_at=reservation.end_at,
-        fixed_lesson=getattr(reservation, "fixed_lesson", None),
     )
     capacity = _capacity_for_reservation_slot(reservation)
 
-    if occupied_count >= capacity:
+    if active_count >= capacity:
         return False
 
-    waitlist_qs = _waiting_waitlist_qs_for_slot(
+    waitlist = _waiting_waitlist_qs_for_slot(
         coach=reservation.coach,
         court=reservation.court,
         lesson_type=reservation.lesson_type,
         start_at=reservation.start_at,
         end_at=reservation.end_at,
-    )
+    ).first()
 
-    for waitlist in waitlist_qs:
-        if not _waitlist_user_can_receive_opening_notice(waitlist):
-            continue
-        _send_line_notification_safely(waitlist.user, _build_waitlist_opening_for_member_message(waitlist))
-        return True
+    if not waitlist:
+        return False
 
-    return False
+    _send_line_notification_safely(waitlist.user, _build_waitlist_opening_for_member_message(waitlist))
+    return True
 
 
 
@@ -1292,17 +1235,9 @@ def lesson_calendar_view(request):
 
         try:
             fixed_lesson = None
-            if availability_id:
-                availability = get_object_or_404(
-                    CoachAvailability.objects.select_related("coach", "substitute_coach", "court"),
-                    pk=availability_id,
-                    lesson_type__in=[Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT],
-                )
-                if availability.status != CoachAvailability.STATUS_OPEN:
-                    raise ValidationError("このレッスンはまだ受付準備中です。")
-                if availability.start_at < timezone.now():
-                    raise ValidationError("このレッスンは受付終了です。")
-            elif fixed_lesson_id and lesson_date_text:
+            # 固定レッスン由来の枠では、固定参加メンバー数を満員判定に含める必要があるため、
+            # availability_id が同時に渡っていても fixed_lesson_id + lesson_date を優先する。
+            if fixed_lesson_id and lesson_date_text:
                 fixed_lesson = get_object_or_404(
                     FixedLesson.objects.select_related("coach", "coach_2", "coach_3", "court"),
                     pk=fixed_lesson_id,
@@ -1322,6 +1257,16 @@ def lesson_calendar_view(request):
                     raise ValidationError("このレッスンは受付終了です。")
                 if availability.lesson_type not in (Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT):
                     raise ValidationError("このレッスンは個別相談フォームから申請してください。")
+            elif availability_id:
+                availability = get_object_or_404(
+                    CoachAvailability.objects.select_related("coach", "substitute_coach", "court"),
+                    pk=availability_id,
+                    lesson_type__in=[Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT],
+                )
+                if availability.status != CoachAvailability.STATUS_OPEN:
+                    raise ValidationError("このレッスンはまだ受付準備中です。")
+                if availability.start_at < timezone.now():
+                    raise ValidationError("このレッスンは受付終了です。")
             else:
                 raise ValidationError("対象のレッスンが見つかりません。")
 
@@ -1336,6 +1281,15 @@ def lesson_calendar_view(request):
                 end_at=availability.end_at,
                 status=Reservation.STATUS_ACTIVE,
             ).count()
+            # 固定レッスンの固定参加メンバーは、予約レコードが未生成・未同期の場合でも
+            # レッスン枠の参加人数として扱う。これにより、固定参加メンバーだけで満員の場合も
+            # 会員側からキャンセル待ち登録できる。
+            if fixed_lesson is not None:
+                try:
+                    fixed_member_count = fixed_lesson.members.count()
+                except Exception:
+                    fixed_member_count = 0
+                active_count = max(int(active_count or 0), int(fixed_member_count or 0))
             capacity = _capacity_for_availability(availability)
 
             existing_waitlist = LessonWaitlist.objects.filter(
@@ -1371,8 +1325,11 @@ def lesson_calendar_view(request):
                     note="レッスンカレンダーから登録",
                 )
                 waitlist.save()
-                _send_line_notification_safely(waitlist.user, _build_waitlist_registered_for_member_message(waitlist))
-                _send_line_notification_safely(waitlist.assigned_coach(), _build_waitlist_registered_for_coach_message(waitlist))
+                _send_email_notification_safely(
+                    waitlist.user,
+                    "【Play Design Tennis】キャンセル待ち登録完了",
+                    build_waitlist_registered_for_member_email_message(waitlist),
+                )
                 messages.success(request, "キャンセル待ちに登録しました。空きが出た場合はLINEでご案内します。")
                 return redirect(redirect_url)
 
@@ -1381,7 +1338,6 @@ def lesson_calendar_view(request):
                     messages.info(request, "キャンセル待ち登録は見つかりませんでした。")
                     return redirect(redirect_url)
                 existing_waitlist.cancel(reason="会員がレッスンカレンダーからキャンセル")
-                _send_line_notification_safely(existing_waitlist.user, _build_waitlist_canceled_for_member_message(existing_waitlist))
                 messages.success(request, "キャンセル待ちを取り消しました。")
                 return redirect(redirect_url)
 
@@ -1414,6 +1370,13 @@ def lesson_calendar_view(request):
                 )
                 if existing_waitlist:
                     existing_waitlist.mark_converted()
+
+            member_message = build_reservation_created_message(reservation)
+            _send_email_notification_safely(
+                reservation.user,
+                "【Play Design Tennis】予約完了通知",
+                member_message,
+            )
 
             messages.success(request, "レッスン予約が完了しました。")
             return redirect("club:reservation_detail", pk=reservation.pk)
@@ -1613,7 +1576,10 @@ def lesson_calendar_view(request):
             "year": target_year,
             "month": target_month,
         }
-        if availability_id:
+        if source_kind == "fixed_lesson" and fixed_lesson_id and lesson_date:
+            reserve_params["fixed_lesson_id"] = fixed_lesson_id
+            reserve_params["lesson_date"] = lesson_date
+        elif availability_id:
             reserve_params["availability_id"] = availability_id
         elif fixed_lesson_id and lesson_date:
             reserve_params["fixed_lesson_id"] = fixed_lesson_id
@@ -1649,6 +1615,12 @@ def lesson_calendar_view(request):
             "remaining_count": remaining_count,
             "is_past": target_date < today,
             "can_book": can_book,
+            "can_join_waitlist": can_join_waitlist,
+            "can_cancel_waitlist": can_cancel_waitlist,
+            "user_waitlist_id": user_waitlist_id,
+            "waitlist_count": int(waitlist_count or 0),
+            "is_reserved_by_user": user_slot_status == Reservation.STATUS_ACTIVE,
+            "is_waitlisted_by_user": bool(user_waitlist_id),
             "disabled_reason": disabled_reason,
             "color_class": color_class,
         }
@@ -1905,10 +1877,6 @@ def stringing_order_create(request):
             order.user = request.user
             order.status = StringingOrder.STATUS_REQUESTED
             order.save()
-
-            if getattr(request.user, "role", "") == "member" and order.assigned_coach:
-                coach_message = build_stringing_order_created_for_coach_message(order)
-                _send_line_notification_safely(order.assigned_coach, coach_message)
 
             messages.success(
                 request,
@@ -4646,6 +4614,11 @@ def reservation_create(request):
                     start_at=start_at,
                     end_at=end_at,
                 ) if court else (0, 0, None, False)
+                try:
+                    fixed_member_count = fixed_lesson.members.count()
+                except Exception:
+                    fixed_member_count = 0
+                member_count = max(int(member_count or 0), int(fixed_member_count or 0))
                 can_submit = (
                     start_at >= timezone.now()
                     and is_after_repeat_start
@@ -4753,9 +4726,17 @@ def reservation_create(request):
                     reservation.save()
 
                 coach_message = build_pending_request_for_coach_message(reservation)
-                _send_line_notification_safely(reservation.coach, coach_message)
+                _send_email_notification_safely(
+                    reservation.coach,
+                    "【Play Design Tennis】個別レッスン申請",
+                    coach_message,
+                )
                 if getattr(reservation, "substitute_coach_id", None):
-                    _send_line_notification_safely(reservation.substitute_coach, coach_message)
+                    _send_email_notification_safely(
+                        reservation.substitute_coach,
+                        "【Play Design Tennis】個別レッスン申請",
+                        coach_message,
+                    )
 
                 messages.success(request, "申請を送信しました。コーチ承認後に成立します。")
                 return redirect("club:reservation_list")
@@ -4977,7 +4958,6 @@ def lesson_waitlist_cancel(request, pk):
         reason = "管理者が予約確認画面からキャンセル"
 
     waitlist.cancel(reason=reason)
-    _send_line_notification_safely(waitlist.user, _build_waitlist_canceled_for_member_message(waitlist))
     messages.success(request, "キャンセル待ちを取り消しました。")
     return redirect("club:reservation_list")
 
@@ -5067,8 +5047,6 @@ def lesson_waitlist_promote(request, pk):
             )
             waitlist.mark_converted()
 
-        _send_line_notification_safely(reservation.user, _build_waitlist_promoted_for_member_message(reservation))
-        _send_line_notification_safely(reservation.assigned_coach(), _build_waitlist_promoted_for_coach_message(reservation))
         messages.success(request, f"{_display_name(reservation.user)} さんを予約へ繰り上げました。")
         return redirect("club:reservation_detail", pk=reservation.pk)
 
@@ -5215,7 +5193,11 @@ def coach_request_approve(request, pk):
             reservation.activate_after_approval(created_by=request.user)
 
         member_message = build_request_approved_for_member_message(reservation)
-        _send_line_notification_safely(reservation.user, member_message)
+        _send_email_notification_safely(
+            reservation.user,
+            "【Play Design Tennis】個別レッスン申請 承認通知",
+            member_message,
+        )
 
         messages.success(
             request,
@@ -5256,7 +5238,11 @@ def coach_request_reject(request, pk):
             )
 
         member_message = build_request_rejected_for_member_message(reservation)
-        _send_line_notification_safely(reservation.user, member_message)
+        _send_email_notification_safely(
+            reservation.user,
+            "【Play Design Tennis】個別レッスン申請 却下通知",
+            member_message,
+        )
 
         messages.success(
             request,
