@@ -375,6 +375,7 @@ class FixedLesson(models.Model, LessonTypeMixin):
         choices=User.LEVEL_CHOICES,
         default=User.LEVEL_BEGINNER,
     )
+    start_date = models.DateField(default=timezone.localdate)
     weekday = models.PositiveSmallIntegerField(choices=WEEKDAY_CHOICES)
     start_hour = models.PositiveSmallIntegerField(default=9)
     capacity = models.PositiveIntegerField(default=4)
@@ -386,7 +387,7 @@ class FixedLesson(models.Model, LessonTypeMixin):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["weekday", "start_hour", "id"]
+        ordering = ["start_date", "weekday", "start_hour", "id"]
 
     def all_coaches(self):
         seen = set()
@@ -482,13 +483,16 @@ class FixedLesson(models.Model, LessonTypeMixin):
 
         created_count = 0
         today = timezone.localdate()
-        initial_offset = (self.weekday - today.weekday()) % 7
+        repeat_start = self.start_date or today
+        if repeat_start < today:
+            repeat_start = today
+        initial_offset = (self.weekday - repeat_start.weekday()) % 7
         members = list(self.members.all())
         required_capacity = max(self.effective_capacity(), len(members), 1)
         primary_coach = self.primary_coach()
 
         for week_index in range(self.weeks_ahead):
-            target_date = today + timedelta(days=initial_offset + (7 * week_index))
+            target_date = repeat_start + timedelta(days=initial_offset + (7 * week_index))
             start_at, end_at = self._build_datetimes_for_date(target_date)
 
             availability, _ = CoachAvailability.objects.get_or_create(
