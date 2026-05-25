@@ -12,6 +12,7 @@ from django.db import transaction
 from django.http import HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import path, reverse
+from django.utils import timezone
 
 from .forms import TicketGrantAdminForm
 from .models import (
@@ -386,6 +387,42 @@ class FixedLessonAdminForm(forms.ModelForm):
             self.fields["coach_3"].queryset = coach_qs
             self.fields["coach_3"].required = False
 
+        label_map = {
+            "title": "レッスン名",
+            "is_active": "有効",
+            "lesson_type": "レッスン種別",
+            "target_level": "対象レベル",
+            "start_date": "繰り返し開始日",
+            "weekday": "曜日",
+            "start_hour": "開始時刻",
+            "weeks_ahead": "何週間先まで作成",
+            "coach": "主担当コーチ",
+            "coach_2": "追加コーチ1",
+            "coach_3": "追加コーチ2",
+            "court": "コート",
+            "coach_count": "コーチ人数",
+            "court_count": "必要コート数",
+            "capacity": "定員",
+            "members": "固定参加メンバー",
+            "note": "メモ",
+        }
+        for field_name, label in label_map.items():
+            if field_name in self.fields:
+                self.fields[field_name].label = label
+
+        help_text_map = {
+            "start_date": "この日付以降の最初の該当曜日から、レッスンカレンダーに表示されます。",
+            "weekday": "繰り返し開催する曜日を選択してください。",
+            "weeks_ahead": "開始日から何週間先まで予約枠・固定メンバー予約を作るかを指定します。",
+            "members": "ここに登録した会員は、今後の固定レッスン予約へ反映されます。外した会員の未来予約はキャンセル扱いになります。",
+            "capacity": "一般レッスンはコーチ人数×6名で自動調整されます。",
+            "coach_2": "複数コーチ開催時のみ選択してください。",
+            "coach_3": "複数コーチ開催時のみ選択してください。",
+        }
+        for field_name, help_text in help_text_map.items():
+            if field_name in self.fields:
+                self.fields[field_name].help_text = help_text
+
 
 class CoachExpenseAdminForm(forms.ModelForm):
     class Meta:
@@ -658,29 +695,77 @@ class FixedLessonAdmin(admin.ModelAdmin):
     form = FixedLessonAdminForm
     list_display = (
         "id",
-        "title",
+        "operation_status_admin",
+        "weekday_display_admin",
+        "start_hour_display_admin",
+        "lesson_title_admin",
+        "target_level_admin",
+        "coach_names_admin",
+        "court_display_admin",
+        "member_count_admin",
+        "capacity_status_admin",
+        "start_date",
+        "end_date_admin",
+        "weeks_ahead",
+        "future_reservation_count_admin",
+        "future_waitlist_count_admin",
+        "is_active",
+    )
+    list_display_links = ("id", "lesson_title_admin")
+    list_editable = ("is_active",)
+    list_filter = (
+        "is_active",
+        "weekday",
+        "target_level",
+        "lesson_type",
         "coach",
         "coach_2",
         "coach_3",
         "court",
-        "lesson_type",
-        "target_level",
         "start_date",
-        "weekday",
-        "start_hour",
-        "coach_count",
-        "court_count",
-        "capacity",
-        "weeks_ahead",
-        "is_active",
     )
-    list_filter = ("coach", "court", "lesson_type", "target_level", "start_date", "weekday", "is_active")
-    search_fields = ("title", "coach__username", "coach__full_name", "court__name", "members__username", "members__full_name")
+    search_fields = (
+        "title",
+        "coach__username",
+        "coach__full_name",
+        "coach_2__username",
+        "coach_2__full_name",
+        "coach_3__username",
+        "coach_3__full_name",
+        "court__name",
+        "members__username",
+        "members__full_name",
+    )
     filter_horizontal = ("members",)
-    actions = ("sync_selected_fixed_lessons",)
+    actions = (
+        "sync_selected_fixed_lessons",
+        "activate_selected_fixed_lessons",
+        "deactivate_selected_fixed_lessons",
+    )
     list_per_page = 50
+    save_on_top = True
+
+    readonly_fields = (
+        "operation_help_admin",
+        "member_count_admin",
+        "capacity_status_admin",
+        "end_date_admin",
+        "future_reservation_count_admin",
+        "future_waitlist_count_admin",
+    )
 
     fieldsets = (
+        ("運用確認", {
+            "fields": (
+                "operation_help_admin",
+                "member_count_admin",
+                "capacity_status_admin",
+                "end_date_admin",
+                "future_reservation_count_admin",
+                "future_waitlist_count_admin",
+            ),
+            "description": "保存後、固定参加メンバーの変更は今後の予約へ自動反映されます。",
+        }),
         ("レッスン基本情報", {
             "fields": (
                 "title",
@@ -704,7 +789,8 @@ class FixedLessonAdmin(admin.ModelAdmin):
                 "coach_2",
                 "coach_3",
                 "court",
-            )
+            ),
+            "description": "coach_2 / coach_3 に入っているコーチにも、コーチ用参加者一覧・スケジュールに表示されます。",
         }),
         ("定員・必要数", {
             "fields": (
@@ -717,7 +803,8 @@ class FixedLessonAdmin(admin.ModelAdmin):
         ("固定参加メンバー", {
             "fields": (
                 "members",
-            )
+            ),
+            "description": "固定参加メンバーを追加・削除すると、保存時に今後の固定レッスン予約へ反映されます。",
         }),
         ("メモ", {
             "fields": (
@@ -726,17 +813,127 @@ class FixedLessonAdmin(admin.ModelAdmin):
         }),
     )
 
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("coach", "coach_2", "coach_3", "court")
+            .prefetch_related("members")
+        )
+
+    def _future_start(self):
+        return timezone.now()
+
+    def _end_date_for_obj(self, obj):
+        try:
+            repeat_start = obj.start_date or timezone.localdate()
+            initial_offset = (int(obj.weekday) - repeat_start.weekday()) % 7
+            if int(obj.weeks_ahead or 0) <= 0:
+                return repeat_start + timezone.timedelta(days=initial_offset)
+            return repeat_start + timezone.timedelta(days=initial_offset + (7 * (int(obj.weeks_ahead or 1) - 1)))
+        except Exception:
+            return None
+
+    @admin.display(description="状態", ordering="is_active")
+    def operation_status_admin(self, obj):
+        if not obj.is_active:
+            return "停止中"
+        if not obj.court_id:
+            return "コート未設定"
+        if obj.member_count_for_admin() >= obj.effective_capacity():
+            return "満員"
+        return "運用中"
+
+    @admin.display(description="曜日", ordering="weekday")
+    def weekday_display_admin(self, obj):
+        return obj.get_weekday_display()
+
+    @admin.display(description="開始", ordering="start_hour")
+    def start_hour_display_admin(self, obj):
+        return f"{int(obj.start_hour or 0):02d}:00"
+
+    @admin.display(description="レッスン名", ordering="title")
+    def lesson_title_admin(self, obj):
+        return obj.title or obj.get_lesson_type_display()
+
+    @admin.display(description="対象レベル", ordering="target_level")
+    def target_level_admin(self, obj):
+        return obj.get_target_level_display()
+
+    @admin.display(description="担当コーチ")
+    def coach_names_admin(self, obj):
+        return obj.coach_display_names()
+
+    @admin.display(description="コート")
+    def court_display_admin(self, obj):
+        return obj.court_display()
+
+    @admin.display(description="固定メンバー")
+    def member_count_admin(self, obj):
+        return obj.member_count_for_admin()
+
+    @admin.display(description="定員状況")
+    def capacity_status_admin(self, obj):
+        member_count = obj.member_count_for_admin()
+        capacity = obj.effective_capacity()
+        if member_count >= capacity:
+            return f"{member_count}/{capacity}名（満員）"
+        return f"{member_count}/{capacity}名"
+
+    @admin.display(description="表示終了目安")
+    def end_date_admin(self, obj):
+        end_date = self._end_date_for_obj(obj)
+        if not end_date:
+            return "-"
+        return end_date.strftime("%Y-%m-%d")
+
+    @admin.display(description="今後予約")
+    def future_reservation_count_admin(self, obj):
+        if not obj.pk:
+            return 0
+        return Reservation.objects.filter(
+            fixed_lesson=obj,
+            start_at__gte=self._future_start(),
+            status=Reservation.STATUS_ACTIVE,
+        ).count()
+
+    @admin.display(description="今後キャンセル待ち")
+    def future_waitlist_count_admin(self, obj):
+        if not obj.pk:
+            return 0
+        return LessonWaitlist.objects.filter(
+            fixed_lesson=obj,
+            start_at__gte=self._future_start(),
+            status=LessonWaitlist.STATUS_WAITING,
+        ).count()
+
+    @admin.display(description="運用メモ")
+    def operation_help_admin(self, obj):
+        if not obj or not obj.pk:
+            return "保存後に、固定メンバー数・今後予約数・キャンセル待ち数が表示されます。"
+
+        messages_for_admin = []
+        if not obj.is_active:
+            messages_for_admin.append("この固定レッスンは停止中です。レッスンカレンダーには表示されません。")
+        if not obj.court_id:
+            messages_for_admin.append("コートが未設定です。予約生成・カレンダー表示で問題になる可能性があります。")
+        if obj.member_count_for_admin() > obj.effective_capacity():
+            messages_for_admin.append("固定メンバー数が定員を超えています。定員またはメンバーを確認してください。")
+        if not messages_for_admin:
+            messages_for_admin.append("運用上の大きな警告はありません。")
+
+        return " / ".join(messages_for_admin)
+
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
         fixed_lesson = form.instance
         try:
             changed_count = fixed_lesson.sync_future_reservations(created_by=request.user)
-            if changed_count:
-                self.message_user(
-                    request,
-                    f"固定レッスンのメンバー変更を今後の予約へ反映しました（{changed_count}件）。",
-                    level=messages.SUCCESS,
-                )
+            self.message_user(
+                request,
+                f"固定レッスンを保存しました。今後の予約への反映件数: {changed_count}件。",
+                level=messages.SUCCESS,
+            )
         except Exception as e:
             self.message_user(
                 request,
@@ -744,7 +941,7 @@ class FixedLessonAdmin(admin.ModelAdmin):
                 level=messages.ERROR,
             )
 
-    @admin.action(description="選択した固定レッスンの今後予約を生成する")
+    @admin.action(description="選択した固定レッスンの今後予約を生成・再同期する")
     def sync_selected_fixed_lessons(self, request, queryset):
         total = 0
         for fixed_lesson in queryset:
@@ -752,7 +949,17 @@ class FixedLessonAdmin(admin.ModelAdmin):
                 total += fixed_lesson.sync_future_reservations(created_by=request.user)
             except Exception as e:
                 self.message_user(request, f"{fixed_lesson} の同期に失敗しました: {e}", level=messages.ERROR)
-        self.message_user(request, f"固定レッスン予約を {total} 件生成しました。", level=messages.SUCCESS)
+        self.message_user(request, f"固定レッスン予約を {total} 件生成・更新しました。", level=messages.SUCCESS)
+
+    @admin.action(description="選択した固定レッスンを有効にする")
+    def activate_selected_fixed_lessons(self, request, queryset):
+        updated = queryset.update(is_active=True)
+        self.message_user(request, f"{updated}件の固定レッスンを有効にしました。", level=messages.SUCCESS)
+
+    @admin.action(description="選択した固定レッスンを無効にする")
+    def deactivate_selected_fixed_lessons(self, request, queryset):
+        updated = queryset.update(is_active=False)
+        self.message_user(request, f"{updated}件の固定レッスンを無効にしました。", level=messages.SUCCESS)
 
 
 @admin.register(Reservation)
