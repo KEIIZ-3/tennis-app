@@ -46,6 +46,8 @@ from .models import (
     TicketConsumption,
     TicketLedger,
     TicketPurchase,
+    PREOPEN_CASH_PRICE,
+    is_preopen_cash_lesson_date,
 )
 from .notifications import (
     build_pending_request_for_coach_message,
@@ -479,6 +481,22 @@ def _lesson_type_label(lesson_type):
         Reservation.LESSON_EVENT: "イベント",
     }
     return mapping.get(lesson_type, lesson_type)
+
+
+def _is_preopen_cash_regular_lesson(lesson_type, start_at):
+    return lesson_type == Reservation.LESSON_GENERAL and is_preopen_cash_lesson_date(start_at)
+
+
+def _regular_lesson_payment_label(lesson_type, start_at):
+    if _is_preopen_cash_regular_lesson(lesson_type, start_at):
+        return f"7月プレオープン：当日、受付時に{PREOPEN_CASH_PRICE:,}円のお支払いをお願いします（チケットは使いません）"
+    return "1レッスン＝チケット1枚"
+
+
+def _regular_lesson_confirm_note(lesson_type, start_at):
+    if _is_preopen_cash_regular_lesson(lesson_type, start_at):
+        return "7月のプレオープン期間中は、チケットを使わずにご参加いただけます。当日は受付時に参加費のお支払いをお願いします。"
+    return "通常レッスンは予約確定時にチケットを消費します。定員に達した場合は受付終了になります。"
 
 
 def _month_start_end(target_year: int, target_month: int):
@@ -1363,11 +1381,12 @@ def lesson_calendar_view(request):
                 )
                 reservation.full_clean()
                 reservation.save()
-                reservation.consume_tickets(
-                    reason=TicketLedger.REASON_RESERVATION_USE,
-                    created_by=request.user,
-                    note=f"通常レッスン予約: {availability.start_at:%Y-%m-%d %H:%M}",
-                )
+                if reservation.tickets_used > 0:
+                    reservation.consume_tickets(
+                        reason=TicketLedger.REASON_RESERVATION_USE,
+                        created_by=request.user,
+                        note=f"通常レッスン予約: {availability.start_at:%Y-%m-%d %H:%M}",
+                    )
                 if existing_waitlist:
                     existing_waitlist.mark_converted()
 
@@ -4574,7 +4593,9 @@ def reservation_create(request):
                     "capacity": max(capacity, 1),
                     "member_count": member_count,
                     "waitlist_count": waitlist_count,
-                    "ticket_label": "1レッスン＝チケット1枚",
+                    "ticket_label": _regular_lesson_payment_label(availability.lesson_type, availability.start_at),
+                    "confirm_note": _regular_lesson_confirm_note(availability.lesson_type, availability.start_at),
+                    "is_preopen_cash": _is_preopen_cash_regular_lesson(availability.lesson_type, availability.start_at),
                     "can_submit": can_submit,
                     "can_join_waitlist": can_join_waitlist,
                     "can_cancel_waitlist": can_cancel_waitlist,
@@ -4655,7 +4676,9 @@ def reservation_create(request):
                     "capacity": max(capacity, 1),
                     "member_count": member_count,
                     "waitlist_count": waitlist_count,
-                    "ticket_label": "1レッスン＝チケット1枚",
+                    "ticket_label": _regular_lesson_payment_label(fixed_lesson.lesson_type, start_at),
+                    "confirm_note": _regular_lesson_confirm_note(fixed_lesson.lesson_type, start_at),
+                    "is_preopen_cash": _is_preopen_cash_regular_lesson(fixed_lesson.lesson_type, start_at),
                     "can_submit": can_submit,
                     "can_join_waitlist": can_join_waitlist,
                     "can_cancel_waitlist": can_cancel_waitlist,
