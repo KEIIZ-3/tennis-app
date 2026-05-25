@@ -426,6 +426,20 @@ class FixedLesson(models.Model, LessonTypeMixin):
             return max(int(self.coach_count or 1), 1) * 6
         return int(self.capacity or 0)
 
+    def member_count_for_admin(self):
+        if not self.pk:
+            return 0
+        try:
+            return self.members.count()
+        except Exception:
+            return 0
+
+    def end_date_for_admin(self):
+        repeat_start = self.start_date or timezone.localdate()
+        initial_offset = (self.weekday - repeat_start.weekday()) % 7
+        weeks = max(int(self.weeks_ahead or 1), 1)
+        return repeat_start + timedelta(days=initial_offset + (7 * (weeks - 1)))
+
     def clean(self):
         if self.start_hour < BUSINESS_START_HOUR or self.start_hour >= BUSINESS_END_HOUR:
             raise ValidationError("固定レッスンの開始時刻は 09:00〜20:00 の範囲で指定してください。")
