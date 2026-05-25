@@ -108,6 +108,7 @@ _FIELD_VERBOSE_NAMES = {
         "members": "固定参加メンバー",
         "lesson_type": "レッスン種別",
         "target_level": "対象レベル",
+        "start_date": "繰り返し開始日",
         "weekday": "曜日",
         "start_hour": "開始時刻",
         "capacity": "定員",
@@ -661,6 +662,7 @@ class FixedLessonAdmin(admin.ModelAdmin):
         "court",
         "lesson_type",
         "target_level",
+        "start_date",
         "weekday",
         "start_hour",
         "coach_count",
@@ -669,7 +671,7 @@ class FixedLessonAdmin(admin.ModelAdmin):
         "weeks_ahead",
         "is_active",
     )
-    list_filter = ("coach", "court", "lesson_type", "target_level", "weekday", "is_active")
+    list_filter = ("coach", "court", "lesson_type", "target_level", "start_date", "weekday", "is_active")
     search_fields = ("title", "coach__username", "coach__full_name", "court__name", "members__username", "members__full_name")
     filter_horizontal = ("members",)
     actions = ("sync_selected_fixed_lessons",)
@@ -686,10 +688,12 @@ class FixedLessonAdmin(admin.ModelAdmin):
         }),
         ("開催曜日・時間", {
             "fields": (
+                "start_date",
                 "weekday",
                 "start_hour",
                 "weeks_ahead",
-            )
+            ),
+            "description": "繰り返し開始日以降で、指定曜日に一致する日付からレッスンカレンダーへ表示・予約生成します。",
         }),
         ("担当コーチ・コート", {
             "fields": (
