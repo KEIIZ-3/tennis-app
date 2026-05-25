@@ -125,26 +125,45 @@ def _login_user_with_default_backend(request, user):
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
 
 
+def _lesson_calendar_landing_url():
+    today = timezone.localdate()
+    campaign_start = date(2026, 5, 25)
+    campaign_end = date(2026, 7, 31)
+
+    if campaign_start <= today <= campaign_end:
+        target_year = 2026
+        target_month = 7
+    else:
+        target_year = today.year
+        target_month = today.month
+
+    return f"{reverse('club:lesson_calendar')}?{urlencode({'year': target_year, 'month': target_month})}"
+
+
 def _normalize_next_url(value):
+    default_landing_url = _lesson_calendar_landing_url()
+
     if not value:
-        return reverse("club:lesson_calendar")
+        return default_landing_url
 
     value = str(value).strip()
     if not value.startswith("/"):
-        return reverse("club:lesson_calendar")
+        return default_landing_url
     if value.startswith("//"):
-        return reverse("club:lesson_calendar")
+        return default_landing_url
 
     # LINEログイン後は、通常の戻り先をレッスンカレンダーに統一する。
+    # 2026/5/25〜2026/7/31 は 2026年7月のレッスンカレンダーへ送る。
     # /line/link/ 経由の「LINEで登録・ログイン」ボタンでも、ログイン完了後にLINE連携タブへ戻さない。
     standard_redirects = {
         "/",
         reverse("club:home"),
+        reverse("club:lesson_calendar"),
         reverse("club:line_connect"),
         reverse("club:login"),
     }
     if value in standard_redirects:
-        return reverse("club:lesson_calendar")
+        return default_landing_url
 
     return value
 
@@ -3201,7 +3220,7 @@ def login_view(request):
             return redirect("club:profile_complete")
         if _needs_schedule_survey(request.user):
             return redirect("club:schedule_survey")
-        return redirect("club:lesson_calendar")
+        return redirect(_lesson_calendar_landing_url())
 
     form = AuthenticationForm(request, data=request.POST or None)
 
@@ -3213,7 +3232,7 @@ def login_view(request):
             if _needs_schedule_survey(request.user):
                 messages.info(request, "ログインありがとうございます。最初にアンケートへご回答ください。")
                 return redirect("club:schedule_survey")
-            return redirect("club:lesson_calendar")
+            return redirect(_lesson_calendar_landing_url())
         messages.error(request, "ユーザー名またはパスワードが正しくありません。")
 
     return render(
@@ -3235,7 +3254,7 @@ def register_view(request):
             return redirect("club:profile_complete")
         if _needs_schedule_survey(request.user):
             return redirect("club:schedule_survey")
-        return redirect("club:lesson_calendar")
+        return redirect(_lesson_calendar_landing_url())
 
     form = MemberRegistrationForm(request.POST or None)
 
@@ -3249,7 +3268,7 @@ def register_view(request):
             if _needs_schedule_survey(request.user):
                 messages.info(request, "最初にレッスン希望アンケートへご回答ください。")
                 return redirect("club:schedule_survey")
-            return redirect("club:lesson_calendar")
+            return redirect(_lesson_calendar_landing_url())
 
         messages.error(request, "新規会員登録できませんでした。入力内容をご確認ください。")
 
@@ -3267,7 +3286,7 @@ def register_view(request):
 @require_http_methods(["GET", "POST"])
 def profile_complete_view(request):
     if request.method == "GET" and not _needs_profile_completion(request.user):
-        return redirect("club:lesson_calendar")
+        return redirect(_lesson_calendar_landing_url())
 
     form = LineProfileCompletionForm(request.POST or None, instance=request.user)
 
@@ -3278,7 +3297,7 @@ def profile_complete_view(request):
             if _needs_schedule_survey(request.user):
                 messages.info(request, "続けてアンケートへご回答ください。")
                 return redirect("club:schedule_survey")
-            return redirect("club:lesson_calendar")
+            return redirect(_lesson_calendar_landing_url())
         messages.error(request, "会員情報を保存できませんでした。入力内容をご確認ください。")
 
     return render(
@@ -4126,9 +4145,9 @@ def line_login_start(request):
     if raw_next:
         next_url = _normalize_next_url(raw_next)
         if next_url in ("/", reverse("club:home")):
-            next_url = reverse("club:lesson_calendar")
+            next_url = _lesson_calendar_landing_url()
     else:
-        next_url = reverse("club:lesson_calendar")
+        next_url = _lesson_calendar_landing_url()
 
     request.session["line_login_state"] = state
     request.session["line_login_nonce"] = nonce
@@ -4161,7 +4180,7 @@ def line_login_callback(request):
 
     expected_state = request.session.pop("line_login_state", "")
     expected_nonce = request.session.pop("line_login_nonce", "")
-    next_url = _normalize_next_url(request.session.pop("line_login_next", reverse("club:lesson_calendar")))
+    next_url = _normalize_next_url(request.session.pop("line_login_next", _lesson_calendar_landing_url()))
 
     actual_state = (request.GET.get("state") or "").strip()
     code = (request.GET.get("code") or "").strip()
@@ -4211,7 +4230,7 @@ def line_login_callback(request):
 
         if result == "linked":
             messages.success(request, "LINEアカウントを自動連携しました。")
-            return redirect("club:lesson_calendar")
+            return redirect(_lesson_calendar_landing_url())
 
         if _needs_profile_completion(user):
             messages.info(request, "初回登録のため、会員情報を入力してください。")
@@ -4227,7 +4246,7 @@ def line_login_callback(request):
             messages.success(request, "LINEでログインしました。")
 
         if next_url in ("/", reverse("club:home")):
-            next_url = reverse("club:lesson_calendar")
+            next_url = _lesson_calendar_landing_url()
         return redirect(next_url)
 
     except Exception as e:
@@ -4243,7 +4262,7 @@ def liff_entry(request):
     context = {
         "liff_id": getattr(settings, "LINE_LIFF_ID", "").strip(),
         "bootstrap_url": reverse("club:liff_bootstrap"),
-        "home_url": reverse("club:lesson_calendar"),
+        "home_url": _lesson_calendar_landing_url(),
     }
     return render(request, "liff_entry.html", context)
 
@@ -4313,7 +4332,7 @@ def liff_bootstrap(request):
                 {
                     "ok": True,
                     "message": "LINEアカウントを連携しました。",
-                    "redirectUrl": reverse("club:lesson_calendar"),
+                    "redirectUrl": _lesson_calendar_landing_url(),
                 }
             )
 
@@ -4344,7 +4363,7 @@ def liff_bootstrap(request):
             {
                 "ok": True,
                 "message": message,
-                "redirectUrl": reverse("club:lesson_calendar"),
+                "redirectUrl": _lesson_calendar_landing_url(),
             }
         )
     except Exception as e:
@@ -4369,7 +4388,7 @@ def line_connect(request):
         "line_link_token": link_token,
         "manual_form": LineAccountLinkForm(),
         "line_login_enabled": _line_login_enabled(),
-        "line_login_url": f"{reverse('club:line_login_start')}?next={urllib.parse.quote(reverse('club:lesson_calendar'))}",
+        "line_login_url": f"{reverse('club:line_login_start')}?next={urllib.parse.quote(_lesson_calendar_landing_url())}",
         "line_webhook_full_url": request.build_absolute_uri(reverse("club:line_webhook")),
         "liff_enabled": _liff_enabled(),
     }
