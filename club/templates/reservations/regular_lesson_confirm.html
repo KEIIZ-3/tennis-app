@@ -192,7 +192,7 @@
       </div>
 
       <div class="lesson-summary-item">
-        <div class="lesson-summary-label">消費</div>
+        <div class="lesson-summary-label">お支払い・チケット</div>
         <div class="lesson-summary-value">{{ selected_lesson.ticket_label }}</div>
       </div>
 
@@ -218,7 +218,7 @@
       </form>
 
       <div class="lesson-confirm-note">
-        通常レッスンは予約確定時にチケットを消費します。定員に達した場合は受付終了になります。
+        {{ selected_lesson.confirm_note }}
       </div>
     {% elif selected_lesson.can_join_waitlist %}
       <div class="lesson-confirm-disabled">
