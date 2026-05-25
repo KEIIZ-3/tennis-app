@@ -1,4 +1,4 @@
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
@@ -9,6 +9,19 @@ from django.utils import timezone
 BUSINESS_START_HOUR = 9
 BUSINESS_END_HOUR = 21
 TICKET_BALANCE_MIN = -4
+PREOPEN_CASH_START_DATE = date(2026, 7, 1)
+PREOPEN_CASH_END_DATE = date(2026, 7, 31)
+PREOPEN_CASH_PRICE = 2000
+
+
+def is_preopen_cash_lesson_date(value) -> bool:
+    if not value:
+        return False
+    if hasattr(value, "date"):
+        target_date = value.date()
+    else:
+        target_date = value
+    return PREOPEN_CASH_START_DATE <= target_date <= PREOPEN_CASH_END_DATE
 
 
 class User(AbstractUser):
@@ -1215,8 +1228,24 @@ class Reservation(models.Model, LessonTypeMixin):
         delta = self.end_at - self.start_at
         return int(delta.total_seconds() // 3600)
 
+    def is_preopen_cash_lesson(self):
+        return (
+            self.lesson_type == self.LESSON_GENERAL
+            and is_preopen_cash_lesson_date(self.start_at)
+        )
+
+    def payment_label(self):
+        if self.is_preopen_cash_lesson():
+            return f"7月プレオープン：当日、受付時に{PREOPEN_CASH_PRICE:,}円のお支払いをお願いします（チケットは使いません）"
+        if self.tickets_used == 1:
+            return "チケット1枚"
+        return f"チケット{self.tickets_used}枚"
+
     def calculate_tickets_used(self):
         duration_hours = self.duration_hours()
+
+        if self.is_preopen_cash_lesson():
+            return 0
 
         if self.lesson_type == self.LESSON_PRIVATE:
             return max(duration_hours, 1) * 2
