@@ -6387,3 +6387,356 @@ def shop_estimate_complete_view(request, pk):
             "string_source_none": ShopEstimateRequest.STRING_SOURCE_NONE,
         },
     )
+
+@login_required
+@require_GET
+def coach_revenue_summary(request):
+    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
+        return HttpResponse("Forbidden", status=403)
+
+    User = get_user_model()
+    today = timezone.localdate()
+
+    try:
+        selected_year = int(request.GET.get("year") or today.year)
+    except Exception:
+        selected_year = today.year
+
+    try:
+        selected_month = int(request.GET.get("month") or today.month)
+    except Exception:
+        selected_month = today.month
+
+    if selected_month < 1 or selected_month > 12:
+        selected_month = today.month
+
+    month_start, month_next = _month_start_end(selected_year, selected_month)
+
+    prev_year = selected_year
+    prev_month = selected_month - 1
+    if prev_month == 0:
+        prev_month = 12
+        prev_year -= 1
+
+    next_year = selected_year
+    next_month = selected_month + 1
+    if next_month == 13:
+        next_month = 1
+        next_year += 1
+
+    coach_queryset = User.objects.filter(role="coach").order_by("full_name", "username", "id")
+    is_admin_mode = bool(getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False))
+    selected_coach_id = (request.GET.get("coach_id") or "").strip()
+
+    selected_coach = None
+    if selected_coach_id:
+        selected_coach = coach_queryset.filter(pk=selected_coach_id).first()
+
+    def _money(value):
+        try:
+            return int(value or 0)
+        except Exception:
+            return 0
+
+    def _month_url(year_value, month_value):
+        params = {"year": year_value, "month": month_value}
+        if selected_coach_id:
+            params["coach_id"] = selected_coach_id
+        return f"{reverse('club:coach_revenue_summary')}?{urlencode(params)}"
+
+    def _is_canceled_status(value):
+        return "cancel" in str(value or "").lower() or str(value or "") in {"canceled", "rain_canceled"}
+
+    reservations = list(
+        Reservation.objects.filter(
+            start_at__date__gte=month_start,
+            start_at__date__lt=month_next,
+            status=Reservation.STATUS_ACTIVE,
+        )
+        .select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
+        .prefetch_related("ticket_consumptions__purchase")
+        .order_by("start_at", "id")
+    )
+
+    preopen_rows = []
+    ticket_lesson_rows = []
+    coach_sales_map = {}
+
+    preopen_reservation_count = 0
+    preopen_sales_total = 0
+    ticket_consumption_total = 0
+
+    for reservation in reservations:
+        assigned_coach = _assigned_coach_for_reservation(reservation)
+        if selected_coach and getattr(assigned_coach, "pk", None) != selected_coach.pk:
+            continue
+
+        if (
+            reservation.lesson_type == Reservation.LESSON_GENERAL
+            and is_preopen_cash_lesson_date(reservation.start_at)
+        ):
+            amount = PREOPEN_CASH_PRICE
+            preopen_reservation_count += 1
+            preopen_sales_total += amount
+            preopen_rows.append(
+                {
+                    "reservation": reservation,
+                    "member_name": _display_name(reservation.user),
+                    "coach_name": _display_name(assigned_coach),
+                    "amount": amount,
+                    "payment_label": "7月プレオープン参加費",
+                }
+            )
+
+            coach_key = getattr(assigned_coach, "pk", None) or 0
+            coach_sales_map.setdefault(
+                coach_key,
+                {
+                    "coach_name": _display_name(assigned_coach),
+                    "preopen_amount": 0,
+                    "ticket_amount": 0,
+                    "reservation_count": 0,
+                },
+            )
+            coach_sales_map[coach_key]["preopen_amount"] += amount
+            coach_sales_map[coach_key]["reservation_count"] += 1
+            continue
+
+        row_amount = 0
+        breakdown_items = []
+        active_consumptions = reservation.ticket_consumptions.filter(refunded_at__isnull=True).order_by("created_at", "id")
+        for consumption in active_consumptions:
+            unit_price = _money(consumption.unit_price_snapshot)
+            tickets_used = _money(consumption.tickets_used)
+            amount = unit_price * tickets_used
+            row_amount += amount
+            breakdown_items.append(
+                {
+                    "label": f"{unit_price}円券" if unit_price > 0 else "価格不明券",
+                    "tickets": tickets_used,
+                    "amount": amount,
+                }
+            )
+
+        if row_amount <= 0:
+            continue
+
+        ticket_consumption_total += row_amount
+        ticket_lesson_rows.append(
+            {
+                "reservation": reservation,
+                "member_name": _display_name(reservation.user),
+                "coach_name": _display_name(assigned_coach),
+                "amount": row_amount,
+                "breakdown_items": breakdown_items,
+            }
+        )
+
+        coach_key = getattr(assigned_coach, "pk", None) or 0
+        coach_sales_map.setdefault(
+            coach_key,
+            {
+                "coach_name": _display_name(assigned_coach),
+                "preopen_amount": 0,
+                "ticket_amount": 0,
+                "reservation_count": 0,
+            },
+        )
+        coach_sales_map[coach_key]["ticket_amount"] += row_amount
+        coach_sales_map[coach_key]["reservation_count"] += 1
+
+    ticket_purchase_rows = []
+    ticket_purchase_total = 0
+    ticket_purchase_qs = (
+        TicketPurchase.objects.filter(
+            purchased_at__date__gte=month_start,
+            purchased_at__date__lt=month_next,
+        )
+        .select_related("user", "created_by")
+        .order_by("purchased_at", "id")
+    )
+    for purchase in ticket_purchase_qs:
+        amount = _money(purchase.unit_price) * _money(purchase.total_tickets)
+        ticket_purchase_total += amount
+        ticket_purchase_rows.append(
+            {
+                "purchase": purchase,
+                "member_name": _display_name(purchase.user),
+                "label": purchase.label or purchase.get_purchase_type_display(),
+                "tickets": _money(purchase.total_tickets),
+                "unit_price": _money(purchase.unit_price),
+                "amount": amount,
+            }
+        )
+
+    stringing_rows = []
+    stringing_total = 0
+    stringing_qs = (
+        StringingOrder.objects.filter(
+            created_at__date__gte=month_start,
+            created_at__date__lt=month_next,
+        )
+        .select_related("user", "assigned_coach")
+        .order_by("created_at", "id")
+    )
+    for order in stringing_qs:
+        if _is_canceled_status(getattr(order, "status", "")):
+            continue
+        amount = _money(order.total_price())
+        stringing_total += amount
+        stringing_rows.append(
+            {
+                "order": order,
+                "member_name": _display_name(order.user),
+                "coach_name": _display_name(order.assigned_coach),
+                "status_label": order.get_status_display(),
+                "amount": amount,
+            }
+        )
+
+    shop_rows = []
+    shop_reference_total = 0
+    shop_qs = (
+        ShopEstimateRequest.objects.filter(
+            created_at__date__gte=month_start,
+            created_at__date__lt=month_next,
+        )
+        .select_related("user")
+        .order_by("created_at", "id")
+    )
+    for estimate in shop_qs:
+        if _is_canceled_status(getattr(estimate, "handling_status", "")):
+            continue
+        amount = _money(getattr(estimate, "estimated_total", 0))
+        shop_reference_total += amount
+        shop_rows.append(
+            {
+                "estimate": estimate,
+                "member_name": _display_name(estimate.user),
+                "category": estimate.get_product_category_display(),
+                "status_label": estimate.get_handling_status_display(),
+                "amount": amount,
+            }
+        )
+
+    expense_rows = []
+    approved_expense_total = 0
+    all_expense_total = 0
+    expense_qs = CoachExpense.objects.filter(
+        expense_date__gte=month_start,
+        expense_date__lt=month_next,
+    ).select_related("created_by").order_by("expense_date", "id")
+
+    for expense in expense_qs:
+        amount = _money(expense.amount)
+        all_expense_total += amount
+        meta_row = _expense_meta_row(expense)
+        is_approved = meta_row.get("approval_status") == EXPENSE_APPROVAL_APPROVED
+        if is_approved:
+            approved_expense_total += amount
+
+        expense_rows.append(
+            {
+                "expense": expense,
+                "amount": amount,
+                "category_label": expense.get_category_display(),
+                "created_by_name": _display_name(expense.created_by),
+                "plain_note": meta_row.get("plain_note", ""),
+                "expense_type_label": meta_row.get("expense_type_label", "-"),
+                "approval_status_label": meta_row.get("approval_status_label", "-"),
+                "is_approved": is_approved,
+            }
+        )
+
+    lesson_sales_total = preopen_sales_total + ticket_consumption_total
+    operating_sales_total = lesson_sales_total + stringing_total
+    reference_sales_total = operating_sales_total + shop_reference_total
+    cash_basis_total = preopen_sales_total + ticket_purchase_total + stringing_total
+    gross_profit_estimate = operating_sales_total - approved_expense_total
+    reference_profit_estimate = reference_sales_total - approved_expense_total
+    uncollected_preopen_estimate = preopen_sales_total
+
+    coach_sales_rows = []
+    for values in coach_sales_map.values():
+        total_amount = _money(values.get("preopen_amount")) + _money(values.get("ticket_amount"))
+        coach_sales_rows.append(
+            {
+                **values,
+                "total_amount": total_amount,
+            }
+        )
+    coach_sales_rows = sorted(coach_sales_rows, key=lambda row: (-row["total_amount"], row["coach_name"]))
+
+    summary_cards = [
+        {
+            "label": "レッスン売上",
+            "value": lesson_sales_total,
+            "note": "7月プレオープン参加費 + チケット消化ベース",
+        },
+        {
+            "label": "チケット販売額",
+            "value": ticket_purchase_total,
+            "note": "購入時点の現金売上",
+        },
+        {
+            "label": "ガット張り売上",
+            "value": stringing_total,
+            "note": "キャンセル以外",
+        },
+        {
+            "label": "承認済み経費",
+            "value": approved_expense_total,
+            "note": "収支計算に反映",
+        },
+        {
+            "label": "概算利益",
+            "value": gross_profit_estimate,
+            "note": "レッスン + ガット張り - 承認済み経費",
+        },
+        {
+            "label": "物販参考売上",
+            "value": shop_reference_total,
+            "note": "見積・対応中を含む参考値",
+        },
+    ]
+
+    return render(
+        request,
+        "coach/revenue_summary.html",
+        {
+            "selected_year": selected_year,
+            "selected_month": selected_month,
+            "month_label": f"{selected_year}年{selected_month}月",
+            "prev_url": _month_url(prev_year, prev_month),
+            "next_url": _month_url(next_year, next_month),
+            "coach_options": coach_queryset,
+            "selected_coach": selected_coach,
+            "selected_coach_id": selected_coach_id,
+            "is_admin_mode": is_admin_mode,
+            "summary_cards": summary_cards,
+            "preopen_reservation_count": preopen_reservation_count,
+            "preopen_sales_total": preopen_sales_total,
+            "uncollected_preopen_estimate": uncollected_preopen_estimate,
+            "ticket_consumption_total": ticket_consumption_total,
+            "ticket_purchase_total": ticket_purchase_total,
+            "lesson_sales_total": lesson_sales_total,
+            "stringing_total": stringing_total,
+            "shop_reference_total": shop_reference_total,
+            "operating_sales_total": operating_sales_total,
+            "reference_sales_total": reference_sales_total,
+            "cash_basis_total": cash_basis_total,
+            "approved_expense_total": approved_expense_total,
+            "all_expense_total": all_expense_total,
+            "gross_profit_estimate": gross_profit_estimate,
+            "reference_profit_estimate": reference_profit_estimate,
+            "preopen_rows": preopen_rows,
+            "ticket_lesson_rows": ticket_lesson_rows,
+            "ticket_purchase_rows": ticket_purchase_rows,
+            "stringing_rows": stringing_rows,
+            "shop_rows": shop_rows,
+            "expense_rows": expense_rows,
+            "coach_sales_rows": coach_sales_rows,
+            "preopen_cash_price": PREOPEN_CASH_PRICE,
+        },
+    )
+
