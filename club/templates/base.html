@@ -938,12 +938,13 @@
 
             <div class="coach-tabs" id="coach-tabs">
               <a href="{% url 'club:home' %}" class="coach-tab {% if request.resolver_match.url_name == 'home' %}active{% endif %}">ホーム</a>
-              <a href="{% url 'club:reservation_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_list' %}active{% endif %}">
+              <a href="{% url 'club:reservation_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_list' or request.resolver_match.url_name == 'reservation_detail' %}active{% endif %}">
                 予約・承認
                 {% if nav_pending_count %}
                   <span class="nav-count-badge">{{ nav_pending_count }}</span>
                 {% endif %}
               </a>
+              <a href="{% url 'club:coach_today_lessons' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_today_lessons' %}active{% endif %}">参加者一覧</a>
               <a href="{% url 'club:coach_availability_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_availability_list' or request.resolver_match.url_name == 'coach_availability_create' or request.resolver_match.url_name == 'coach_availability_edit' or request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}active{% endif %}">スケジュール</a>
               <a href="{% url 'club:stringing_order_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'stringing_order_list' %}active{% endif %}">
                 ガット張り
@@ -994,8 +995,8 @@
             {% endif %}
           </span>
         </a>
-        <a href="{% url 'club:coach_availability_list' %}" class="{% if request.resolver_match.url_name == 'coach_availability_list' or request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}is-active{% endif %}">
-          <span class="bottom-icon">📅</span><span>予定</span>
+        <a href="{% url 'club:coach_today_lessons' %}" class="{% if request.resolver_match.url_name == 'coach_today_lessons' %}is-active{% endif %}">
+          <span class="bottom-icon">👥</span><span>参加者</span>
         </a>
         <a href="{% url 'club:stringing_order_list' %}" class="{% if request.resolver_match.url_name == 'stringing_order_list' %}is-active{% endif %}">
           <span class="bottom-icon">🎾</span>
