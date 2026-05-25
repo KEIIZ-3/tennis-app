@@ -19,6 +19,7 @@ from .models import (
     CoachExpense,
     Court,
     FixedLesson,
+    LessonWaitlist,
     LineAccountLink,
     Reservation,
     ScheduleSurveyResponse,
@@ -825,6 +826,66 @@ class CoachExpenseAdmin(admin.ModelAdmin):
     list_display = ("id", "expense_date", "category", "amount", "note", "created_by", "created_at")
     list_filter = ("category", "expense_date")
     search_fields = ("note",)
+
+
+@admin.register(LessonWaitlist)
+class LessonWaitlistAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "user",
+        "start_at",
+        "end_at",
+        "lesson_type",
+        "target_level",
+        "coach",
+        "substitute_coach",
+        "court",
+        "status",
+        "created_at",
+    )
+    list_filter = ("status", "lesson_type", "target_level", "coach", "court", "start_at")
+    search_fields = (
+        "user__username",
+        "user__full_name",
+        "coach__username",
+        "coach__full_name",
+        "substitute_coach__username",
+        "substitute_coach__full_name",
+        "court__name",
+        "note",
+    )
+    autocomplete_fields = ("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
+    readonly_fields = ("created_at", "updated_at", "canceled_at", "converted_at")
+    fieldsets = (
+        ("キャンセル待ち情報", {
+            "fields": (
+                "user",
+                "status",
+                "lesson_type",
+                "target_level",
+                "start_at",
+                "end_at",
+            )
+        }),
+        ("担当・場所", {
+            "fields": (
+                "coach",
+                "substitute_coach",
+                "court",
+                "availability",
+                "fixed_lesson",
+            )
+        }),
+        ("メモ・日時", {
+            "fields": (
+                "note",
+                "created_at",
+                "updated_at",
+                "canceled_at",
+                "converted_at",
+            )
+        }),
+    )
 
 
 @admin.register(StringingOrder)
