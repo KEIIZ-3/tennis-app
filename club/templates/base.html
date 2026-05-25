@@ -952,6 +952,7 @@
                   <span class="nav-count-badge soft">{{ nav_stringing_count }}</span>
                 {% endif %}
               </a>
+              <a href="{% url 'club:coach_revenue_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_revenue_summary' %}active{% endif %}">収支管理</a>
               <a href="{% url 'club:coach_payroll_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_payroll_summary' or request.resolver_match.url_name == 'coach_ticket_summary' or request.resolver_match.url_name == 'coach_expense_manage' %}active{% endif %}">給与・経費</a>
               <a href="{% url 'club:schedule_survey_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'schedule_survey_summary' or request.resolver_match.url_name == 'shop_estimate' or request.resolver_match.url_name == 'line_connect' or request.resolver_match.url_name == 'lesson_calendar' %}active{% endif %}">管理</a>
 
@@ -1007,8 +1008,8 @@
             {% endif %}
           </span>
         </a>
-        <a href="{% url 'club:coach_payroll_summary' %}" class="{% if request.resolver_match.url_name == 'coach_payroll_summary' or request.resolver_match.url_name == 'coach_expense_manage' or request.resolver_match.url_name == 'coach_ticket_summary' %}is-active{% endif %}">
-          <span class="bottom-icon">¥</span><span>給与経費</span>
+        <a href="{% url 'club:coach_revenue_summary' %}" class="{% if request.resolver_match.url_name == 'coach_revenue_summary' or request.resolver_match.url_name == 'coach_payroll_summary' or request.resolver_match.url_name == 'coach_expense_manage' or request.resolver_match.url_name == 'coach_ticket_summary' %}is-active{% endif %}">
+          <span class="bottom-icon">¥</span><span>収支</span>
         </a>
       </nav>
     {% else %}
