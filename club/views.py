@@ -775,6 +775,191 @@ def _send_line_notification_safely(user, message_text):
     except Exception:
         pass
 
+def _lesson_waitlist_lesson_label(waitlist_or_reservation):
+    try:
+        start_local = timezone.localtime(waitlist_or_reservation.start_at)
+    except Exception:
+        start_local = waitlist_or_reservation.start_at
+
+    try:
+        end_local = timezone.localtime(waitlist_or_reservation.end_at)
+    except Exception:
+        end_local = waitlist_or_reservation.end_at
+
+    try:
+        lesson_label = waitlist_or_reservation.get_lesson_type_display()
+    except Exception:
+        lesson_label = _lesson_type_label(getattr(waitlist_or_reservation, "lesson_type", ""))
+
+    try:
+        level_label = waitlist_or_reservation.get_target_level_display()
+    except Exception:
+        level_label = getattr(waitlist_or_reservation, "target_level", "-")
+
+    try:
+        coach_name = waitlist_or_reservation.assigned_coach_display()
+    except Exception:
+        coach_name = _display_name(
+            getattr(waitlist_or_reservation, "substitute_coach", None)
+            or getattr(waitlist_or_reservation, "coach", None)
+        )
+
+    court_name = str(getattr(waitlist_or_reservation, "court", "") or "未定")
+
+    return {
+        "date": f"{start_local:%Y/%m/%d}",
+        "time": f"{start_local:%H:%M}〜{end_local:%H:%M}",
+        "lesson": lesson_label,
+        "level": level_label,
+        "coach": coach_name,
+        "court": court_name,
+    }
+
+
+def _build_waitlist_registered_for_member_message(waitlist):
+    label = _lesson_waitlist_lesson_label(waitlist)
+    return (
+        "キャンセル待ち登録が完了しました。\n\n"
+        f"日時：{label['date']} {label['time']}\n"
+        f"レッスン：{label['lesson']}\n"
+        f"レベル：{label['level']}\n"
+        f"コーチ：{label['coach']}\n"
+        f"コート：{label['court']}\n\n"
+        "空きが出た場合はご案内します。"
+    )
+
+
+def _build_waitlist_registered_for_coach_message(waitlist):
+    label = _lesson_waitlist_lesson_label(waitlist)
+    return (
+        "キャンセル待ちが入りました。\n\n"
+        f"会員：{_display_name(waitlist.user)}\n"
+        f"日時：{label['date']} {label['time']}\n"
+        f"レッスン：{label['lesson']}\n"
+        f"レベル：{label['level']}\n"
+        f"コート：{label['court']}"
+    )
+
+
+def _build_waitlist_canceled_for_member_message(waitlist):
+    label = _lesson_waitlist_lesson_label(waitlist)
+    return (
+        "キャンセル待ちを取り消しました。\n\n"
+        f"日時：{label['date']} {label['time']}\n"
+        f"レッスン：{label['lesson']}\n"
+        f"コーチ：{label['coach']}"
+    )
+
+
+def _build_waitlist_opening_for_member_message(waitlist):
+    label = _lesson_waitlist_lesson_label(waitlist)
+    reserve_url = reverse("club:reservation_create")
+    query = {}
+    if waitlist.availability_id:
+        query["availability_id"] = waitlist.availability_id
+    elif waitlist.fixed_lesson_id:
+        query["fixed_lesson_id"] = waitlist.fixed_lesson_id
+        query["lesson_date"] = waitlist.start_at.date().isoformat()
+
+    if query:
+        reserve_url = f"{reserve_url}?{urlencode(query)}"
+
+    return (
+        "キャンセル待ち中のレッスンに空きが出ました。\n\n"
+        f"日時：{label['date']} {label['time']}\n"
+        f"レッスン：{label['lesson']}\n"
+        f"レベル：{label['level']}\n"
+        f"コーチ：{label['coach']}\n\n"
+        "予約は先着順です。レッスンカレンダー、または予約画面からお手続きください。\n"
+        f"{reserve_url}"
+    )
+
+
+def _waitlist_slot_key_from_obj(obj):
+    return _slot_key(
+        lesson_type=getattr(obj, "lesson_type", ""),
+        coach_id=getattr(obj, "coach_id", None),
+        court_id=getattr(obj, "court_id", None),
+        start_at=getattr(obj, "start_at", None),
+        end_at=getattr(obj, "end_at", None),
+    )
+
+
+def _waiting_waitlist_qs_for_slot(*, coach, court, lesson_type, start_at, end_at):
+    return (
+        LessonWaitlist.objects.select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
+        .filter(
+            coach=coach,
+            court=court,
+            lesson_type=lesson_type,
+            start_at=start_at,
+            end_at=end_at,
+            status=LessonWaitlist.STATUS_WAITING,
+        )
+        .order_by("created_at", "id")
+    )
+
+
+def _active_reservation_count_for_slot(*, coach, court, lesson_type, start_at, end_at):
+    return Reservation.objects.filter(
+        coach=coach,
+        court=court,
+        lesson_type=lesson_type,
+        start_at=start_at,
+        end_at=end_at,
+        status=Reservation.STATUS_ACTIVE,
+    ).count()
+
+
+def _capacity_for_reservation_slot(reservation):
+    availability = getattr(reservation, "availability", None) or reservation.matching_availability()
+    if availability:
+        try:
+            return max(int(availability.effective_capacity()), int(availability.capacity or 0), 1)
+        except Exception:
+            return max(int(getattr(availability, "capacity", 1) or 1), 1)
+
+    fixed_lesson = getattr(reservation, "fixed_lesson", None)
+    if fixed_lesson:
+        try:
+            return max(int(fixed_lesson.effective_capacity()), int(fixed_lesson.capacity or 0), 1)
+        except Exception:
+            return max(int(getattr(fixed_lesson, "capacity", 1) or 1), 1)
+
+    return 1
+
+
+def _notify_first_waitlist_user_if_slot_open(reservation):
+    if not reservation:
+        return False
+
+    active_count = _active_reservation_count_for_slot(
+        coach=reservation.coach,
+        court=reservation.court,
+        lesson_type=reservation.lesson_type,
+        start_at=reservation.start_at,
+        end_at=reservation.end_at,
+    )
+    capacity = _capacity_for_reservation_slot(reservation)
+
+    if active_count >= capacity:
+        return False
+
+    waitlist = _waiting_waitlist_qs_for_slot(
+        coach=reservation.coach,
+        court=reservation.court,
+        lesson_type=reservation.lesson_type,
+        start_at=reservation.start_at,
+        end_at=reservation.end_at,
+    ).first()
+
+    if not waitlist:
+        return False
+
+    _send_line_notification_safely(waitlist.user, _build_waitlist_opening_for_member_message(waitlist))
+    return True
+
+
 
 def _availability_can_manage(user, availability):
     if not user or not getattr(user, "is_authenticated", False):
@@ -1050,7 +1235,9 @@ def lesson_calendar_view(request):
                     note="レッスンカレンダーから登録",
                 )
                 waitlist.save()
-                messages.success(request, "キャンセル待ちに登録しました。空きが出た場合は運営からご案内します。")
+                _send_line_notification_safely(waitlist.user, _build_waitlist_registered_for_member_message(waitlist))
+                _send_line_notification_safely(waitlist.assigned_coach(), _build_waitlist_registered_for_coach_message(waitlist))
+                messages.success(request, "キャンセル待ちに登録しました。空きが出た場合はLINEでご案内します。")
                 return redirect(redirect_url)
 
             if action == "cancel_waitlist":
@@ -1058,6 +1245,7 @@ def lesson_calendar_view(request):
                     messages.info(request, "キャンセル待ち登録は見つかりませんでした。")
                     return redirect(redirect_url)
                 existing_waitlist.cancel(reason="会員がレッスンカレンダーからキャンセル")
+                _send_line_notification_safely(existing_waitlist.user, _build_waitlist_canceled_for_member_message(existing_waitlist))
                 messages.success(request, "キャンセル待ちを取り消しました。")
                 return redirect(redirect_url)
 
@@ -4027,6 +4215,11 @@ def reservation_list(request):
         .all()
     )
 
+    waitlist_qs = (
+        LessonWaitlist.objects.select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
+        .all()
+    )
+
     if _is_staff_like(request.user):
         pass
     elif _is_coach_user(request.user):
@@ -4035,10 +4228,18 @@ def reservation_list(request):
             if reservation.coach_id == request.user.pk or getattr(reservation, "substitute_coach_id", None) == request.user.pk:
                 filtered_qs.append(reservation.pk)
         qs = qs.filter(pk__in=filtered_qs)
+
+        waitlist_ids = []
+        for waitlist in waitlist_qs:
+            if waitlist.coach_id == request.user.pk or getattr(waitlist, "substitute_coach_id", None) == request.user.pk:
+                waitlist_ids.append(waitlist.pk)
+        waitlist_qs = waitlist_qs.filter(pk__in=waitlist_ids)
     else:
         qs = qs.filter(user=request.user)
+        waitlist_qs = waitlist_qs.filter(user=request.user)
 
     qs = qs.order_by("start_at")
+    waitlist_qs = waitlist_qs.order_by("start_at", "created_at", "id")
 
     reservation_rows = []
     for reservation in qs:
@@ -4055,11 +4256,35 @@ def reservation_list(request):
             }
         )
 
+    waitlist_rows = []
+    for waitlist in waitlist_qs:
+        can_cancel_waitlist = (
+            waitlist.status == LessonWaitlist.STATUS_WAITING
+            and waitlist.start_at >= timezone.now()
+            and (
+                _is_staff_like(request.user)
+                or (_is_coach_user(request.user) and (waitlist.coach_id == request.user.pk or getattr(waitlist, "substitute_coach_id", None) == request.user.pk))
+                or waitlist.user_id == request.user.pk
+            )
+        )
+
+        waitlist_rows.append(
+            {
+                "waitlist": waitlist,
+                "can_cancel": can_cancel_waitlist,
+                "assigned_coach_name": waitlist.assigned_coach_display(),
+                "normal_coach_name": _display_name(waitlist.coach),
+                "substitute_coach_name": _display_name(waitlist.substitute_coach) if waitlist.substitute_coach else "",
+                "has_substitute": bool(waitlist.substitute_coach_id),
+            }
+        )
+
     return render(
         request,
         "reservations/list.html",
         {
             "reservation_rows": reservation_rows,
+            "waitlist_rows": waitlist_rows,
         },
     )
 
@@ -4087,7 +4312,49 @@ def reservation_cancel(request, pk):
         messages.error(request, f"予約のキャンセルに失敗しました: {e}")
         return redirect("club:reservation_list")
 
-    messages.success(request, "予約をキャンセルしました。")
+    waitlist_notified = _notify_first_waitlist_user_if_slot_open(reservation)
+    if waitlist_notified:
+        messages.success(request, "予約をキャンセルしました。キャンセル待ちの先頭会員へ空き通知を送信しました。")
+    else:
+        messages.success(request, "予約をキャンセルしました。")
+    return redirect("club:reservation_list")
+
+
+
+@login_required
+@require_POST
+def lesson_waitlist_cancel(request, pk):
+    waitlist = get_object_or_404(
+        LessonWaitlist.objects.select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson"),
+        pk=pk,
+    )
+
+    can_access = (
+        _is_staff_like(request.user)
+        or waitlist.user_id == request.user.pk
+        or (_is_coach_user(request.user) and (waitlist.coach_id == request.user.pk or getattr(waitlist, "substitute_coach_id", None) == request.user.pk))
+    )
+    if not can_access:
+        return HttpResponse("Forbidden", status=403)
+
+    if waitlist.status != LessonWaitlist.STATUS_WAITING:
+        messages.info(request, "このキャンセル待ちはすでに処理済みです。")
+        return redirect("club:reservation_list")
+
+    if waitlist.start_at < timezone.now() and not _is_staff_like(request.user):
+        messages.error(request, "開始済み・終了済みのキャンセル待ちは取り消せません。")
+        return redirect("club:reservation_list")
+
+    if waitlist.user_id == request.user.pk:
+        reason = "会員が予約確認画面からキャンセル"
+    elif _is_coach_user(request.user):
+        reason = "コーチが予約確認画面からキャンセル"
+    else:
+        reason = "管理者が予約確認画面からキャンセル"
+
+    waitlist.cancel(reason=reason)
+    _send_line_notification_safely(waitlist.user, _build_waitlist_canceled_for_member_message(waitlist))
+    messages.success(request, "キャンセル待ちを取り消しました。")
     return redirect("club:reservation_list")
 
 
@@ -4173,10 +4440,19 @@ def coach_availability_list(request):
     availability_rows = []
     for availability in availabilities:
         active_reservations = _active_reservations_for_availability(availability)
+        waiting_count = LessonWaitlist.objects.filter(
+            coach=availability.coach,
+            court=availability.court,
+            lesson_type=availability.lesson_type,
+            start_at=availability.start_at,
+            end_at=availability.end_at,
+            status=LessonWaitlist.STATUS_WAITING,
+        ).count()
         availability_rows.append(
             {
                 "availability": availability,
                 "active_reservation_count": len(active_reservations),
+                "waitlist_count": waiting_count,
                 "can_rain_cancel": len(active_reservations) > 0,
             }
         )
