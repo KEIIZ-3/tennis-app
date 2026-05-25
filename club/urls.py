@@ -33,6 +33,7 @@ urlpatterns = [
     path("reservations/", views.reservation_list, name="reservation_list"),
     path("reservations/<int:pk>/", views.reservation_detail, name="reservation_detail"),
     path("reservations/<int:pk>/cancel/", views.reservation_cancel, name="reservation_cancel"),
+    path("waitlists/<int:pk>/cancel/", views.lesson_waitlist_cancel, name="lesson_waitlist_cancel"),
 
     path("coach/availability/", views.coach_availability_list, name="coach_availability_list"),
     path("coach/availability/new/", views.coach_availability_create, name="coach_availability_create"),
