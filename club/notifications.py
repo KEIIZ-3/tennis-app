@@ -126,6 +126,40 @@ def build_reservation_rain_canceled_message(reservation):
     )
 
 
+def build_reservation_created_message(reservation):
+    return "\n".join(
+        [
+            "【Play Design Tennis】予約が完了しました。",
+            "",
+            *_reservation_common_lines(reservation),
+            "",
+            "予約一覧から内容をご確認ください。",
+        ]
+    )
+
+
+def build_waitlist_registered_for_member_email_message(waitlist):
+    assigned_coach = None
+    try:
+        assigned_coach = waitlist.assigned_coach()
+    except Exception:
+        assigned_coach = getattr(waitlist, "substitute_coach", None) or getattr(waitlist, "coach", None)
+
+    lines = [
+        "【Play Design Tennis】キャンセル待ちに登録しました。",
+        "",
+        f"会員: {_safe_display_name(getattr(waitlist, 'user', None))}",
+        f"コーチ: {_safe_display_name(assigned_coach)}",
+        f"種別: {_lesson_type_label(waitlist)}",
+        f"日時: {_format_datetime_range(getattr(waitlist, 'start_at', None), getattr(waitlist, 'end_at', None))}",
+        f"コート: {_court_label(waitlist)}",
+        "",
+        "空きが出た場合は、LINEでご案内します。",
+        "この時点では予約は確定していません。",
+    ]
+    return "\n".join(lines)
+
+
 def build_reservation_canceled_message(reservation):
     reason = (getattr(reservation, "cancellation_reason", "") or "キャンセル").strip()
     return "\n".join(
@@ -305,28 +339,51 @@ def notify_admins(subject, message_text):
         return False
 
 
-def notify_user(user, message_text, subject="Play Design Tennis 通知"):
-    """
-    ユーザーにLINE通知を送り、メールアドレスが登録されている場合はメール通知も送ります。
-    どちらかが未設定・失敗しても画面処理は止めません。
-    """
+def notify_user_line_only(user, message_text, subject="Play Design Tennis 通知"):
+    """LINEだけ送信します。月200通制限があるため、雨天中止・キャンセル待ち空き通知など即時性が高い用途に限定します。"""
     line_ok = False
-    email_ok = False
-
     try:
         line_ok = notify_line_messaging_api(user, message_text)
     except Exception as e:
-        logger.warning("notify_user LINE failed: %s", e)
-
-    try:
-        email_ok = notify_email(user, subject, message_text)
-    except Exception as e:
-        logger.warning("notify_user email failed: %s", e)
+        logger.warning("notify_user_line_only failed: %s", e)
 
     return {
         "line": line_ok,
+        "email": False,
+    }
+
+
+def notify_user_email_only(user, message_text, subject="Play Design Tennis 通知"):
+    """メールだけ送信します。通常予約・キャンセル・キャンセル待ち登録・個別レッスン申請系に使います。"""
+    email_ok = False
+    try:
+        email_ok = notify_email(user, subject, message_text)
+    except Exception as e:
+        logger.warning("notify_user_email_only failed: %s", e)
+
+    return {
+        "line": False,
         "email": email_ok,
     }
+
+
+def notify_user_both(user, message_text, subject="Play Design Tennis 通知"):
+    """必要時のみLINEとメールの両方を送信する互換用関数です。通常運用では原則使いません。"""
+    line_result = notify_user_line_only(user, message_text, subject=subject)
+    email_result = notify_user_email_only(user, message_text, subject=subject)
+    return {
+        "line": bool(line_result.get("line")),
+        "email": bool(email_result.get("email")),
+    }
+
+
+def notify_user(user, message_text, subject="Play Design Tennis 通知"):
+    """
+    互換用。
+    LINE無料枠を守るため、既存コードが notify_user を呼んだ場合もメールのみ送信します。
+    LINEを送る場合は notify_user_line_only を明示的に使います。
+    """
+    return notify_user_email_only(user, message_text, subject=subject)
 
 
 # 旧実装名が残っていても落ちないようにする互換関数
