@@ -50,6 +50,20 @@ def _court_label(obj):
     return "-"
 
 
+def _payment_label(obj):
+    if not obj:
+        return "-"
+    try:
+        return obj.payment_label()
+    except Exception:
+        tickets = int(getattr(obj, "tickets_used", 0) or 0)
+        if tickets <= 0:
+            return "チケット使用なし"
+        if tickets == 1:
+            return "チケット1枚"
+        return f"チケット{tickets}枚"
+
+
 def _reservation_common_lines(reservation):
     assigned_coach = None
     try:
@@ -63,6 +77,7 @@ def _reservation_common_lines(reservation):
         f"種別: {_lesson_type_label(reservation)}",
         f"日時: {_format_datetime_range(getattr(reservation, 'start_at', None), getattr(reservation, 'end_at', None))}",
         f"コート: {_court_label(reservation)}",
+        f"お支払い・チケット: {_payment_label(reservation)}",
     ]
 
 
