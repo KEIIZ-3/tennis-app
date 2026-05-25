@@ -101,6 +101,21 @@
     line-height:1.7;
   }
 
+  .confirm-badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:26px;
+    padding:4px 10px;
+    border-radius:999px;
+    background:#eff6ff;
+    border:1px solid #bfdbfe;
+    color:#0750b8;
+    font-size:12px;
+    font-weight:1000;
+    line-height:1.2;
+  }
+
   .lesson-confirm-disabled{
     margin-top:14px;
     padding:13px;
@@ -167,8 +182,18 @@
       </div>
 
       <div class="lesson-summary-item">
-        <div class="lesson-summary-label">定員</div>
-        <div class="lesson-summary-value">{{ selected_lesson.capacity }}名</div>
+        <div class="lesson-summary-label">参加人数 / 定員</div>
+        <div class="lesson-summary-value">{{ selected_lesson.member_count }}/{{ selected_lesson.capacity }}名</div>
+      </div>
+
+      <div class="lesson-summary-item">
+        <div class="lesson-summary-label">キャンセル待ち</div>
+        <div class="lesson-summary-value">{{ selected_lesson.waitlist_count }}名</div>
+      </div>
+
+      <div class="lesson-summary-item">
+        <div class="lesson-summary-label">消費</div>
+        <div class="lesson-summary-value">{{ selected_lesson.ticket_label }}</div>
       </div>
 
       <div class="lesson-summary-item">
@@ -195,6 +220,40 @@
       <div class="lesson-confirm-note">
         通常レッスンは予約確定時にチケットを消費します。定員に達した場合は受付終了になります。
       </div>
+    {% elif selected_lesson.can_join_waitlist %}
+      <div class="lesson-confirm-disabled">
+        {{ selected_lesson.disabled_reason }}
+      </div>
+      <form method="post" action="{% url 'club:lesson_calendar' %}">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="join_waitlist">
+        <input type="hidden" name="availability_id" value="{{ selected_lesson.availability_id }}">
+        <input type="hidden" name="fixed_lesson_id" value="{{ selected_lesson.fixed_lesson_id }}">
+        <input type="hidden" name="lesson_date" value="{{ selected_lesson.lesson_date }}">
+        <input type="hidden" name="year" value="{{ target_year }}">
+        <input type="hidden" name="month" value="{{ target_month }}">
+        <div class="lesson-confirm-actions">
+          <button type="submit" class="btn btn-primary">キャンセル待ちに登録する</button>
+          <a href="{{ back_url }}" class="btn">カレンダーに戻る</a>
+        </div>
+      </form>
+    {% elif selected_lesson.can_cancel_waitlist %}
+      <div class="lesson-confirm-disabled">
+        {{ selected_lesson.disabled_reason }}
+      </div>
+      <form method="post" action="{% url 'club:lesson_calendar' %}">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="cancel_waitlist">
+        <input type="hidden" name="availability_id" value="{{ selected_lesson.availability_id }}">
+        <input type="hidden" name="fixed_lesson_id" value="{{ selected_lesson.fixed_lesson_id }}">
+        <input type="hidden" name="lesson_date" value="{{ selected_lesson.lesson_date }}">
+        <input type="hidden" name="year" value="{{ target_year }}">
+        <input type="hidden" name="month" value="{{ target_month }}">
+        <div class="lesson-confirm-actions">
+          <button type="submit" class="btn">キャンセル待ちを取り消す</button>
+          <a href="{{ back_url }}" class="btn btn-primary">カレンダーに戻る</a>
+        </div>
+      </form>
     {% else %}
       <div class="lesson-confirm-disabled">
         {{ selected_lesson.disabled_reason }}
