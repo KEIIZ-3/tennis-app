@@ -890,6 +890,10 @@ def lesson_calendar_view(request):
         if not start_at or not end_at:
             raise ValidationError("固定レッスンの日付・時間を作成できませんでした。")
 
+        repeat_start = getattr(fixed_lesson, "start_date", None)
+        if repeat_start and target_date < repeat_start:
+            raise ValidationError("この固定レッスンは、指定日の時点ではまだ開始前です。")
+
         primary_coach = fixed_lesson.primary_coach() if hasattr(fixed_lesson, "primary_coach") else fixed_lesson.coach
         court = fixed_lesson.court or _first_active_court()
         if not court:
@@ -1218,6 +1222,10 @@ def lesson_calendar_view(request):
     while cursor_date < next_month:
         for fixed_lesson in fixed_lesson_list:
             if int(fixed_lesson.weekday) != int(cursor_date.weekday()):
+                continue
+
+            repeat_start = getattr(fixed_lesson, "start_date", None)
+            if repeat_start and cursor_date < repeat_start:
                 continue
 
             start_at, end_at = _fixed_lesson_datetimes_safely(fixed_lesson, cursor_date)
@@ -3671,8 +3679,11 @@ def reservation_create(request):
                 end_local = timezone.localtime(end_at) if timezone.is_aware(end_at) else end_at
                 capacity = int(fixed_lesson.effective_capacity() if hasattr(fixed_lesson, "effective_capacity") else fixed_lesson.capacity or 0)
                 court = fixed_lesson.court or Court.objects.filter(is_active=True).order_by("id").first()
+                repeat_start = getattr(fixed_lesson, "start_date", None)
+                is_after_repeat_start = not repeat_start or target_date >= repeat_start
                 can_submit = (
                     start_at >= timezone.now()
+                    and is_after_repeat_start
                     and fixed_lesson.lesson_type in (Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT)
                     and getattr(request.user, "role", None) == "member"
                     and court is not None
@@ -3692,7 +3703,7 @@ def reservation_create(request):
                     "target_level_label": fixed_lesson.get_target_level_display(),
                     "capacity": max(capacity, 1),
                     "can_submit": can_submit,
-                    "disabled_reason": "" if can_submit else "このレッスンは現在予約できません。",
+                    "disabled_reason": "" if can_submit else ("この固定レッスンはまだ開始前です。" if not is_after_repeat_start else "このレッスンは現在予約できません。"),
                 }
 
             if hasattr(request.user, "can_book_level") and selected_lesson and regular_fixed_lesson_id:
