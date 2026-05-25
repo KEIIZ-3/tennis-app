@@ -481,13 +481,14 @@ class FixedLesson(models.Model, LessonTypeMixin):
         if not self.court_id:
             return 0
 
-        created_count = 0
+        changed_count = 0
         today = timezone.localdate()
         repeat_start = self.start_date or today
         if repeat_start < today:
             repeat_start = today
         initial_offset = (self.weekday - repeat_start.weekday()) % 7
         members = list(self.members.all())
+        member_ids = {member.pk for member in members}
         required_capacity = max(self.effective_capacity(), len(members), 1)
         primary_coach = self.primary_coach()
 
@@ -495,7 +496,7 @@ class FixedLesson(models.Model, LessonTypeMixin):
             target_date = repeat_start + timedelta(days=initial_offset + (7 * week_index))
             start_at, end_at = self._build_datetimes_for_date(target_date)
 
-            availability, _ = CoachAvailability.objects.get_or_create(
+            availability, _created = CoachAvailability.objects.get_or_create(
                 coach=primary_coach,
                 court=self.court,
                 lesson_type=self.lesson_type,
@@ -529,6 +530,20 @@ class FixedLesson(models.Model, LessonTypeMixin):
             if updated_fields:
                 availability.save(update_fields=updated_fields)
 
+            # 管理サイトで固定メンバーを外した場合、未来の固定レッスン予約も連動してキャンセルする。
+            obsolete_reservations = Reservation.objects.filter(
+                fixed_lesson=self,
+                start_at=start_at,
+                end_at=end_at,
+                status=Reservation.STATUS_ACTIVE,
+            ).exclude(user_id__in=member_ids)
+            for reservation in obsolete_reservations:
+                try:
+                    reservation.cancel(created_by=created_by, reason="固定レッスンメンバー解除")
+                    changed_count += 1
+                except ValidationError:
+                    continue
+
             for member in members:
                 existing = Reservation.objects.filter(
                     user=member,
@@ -537,8 +552,26 @@ class FixedLesson(models.Model, LessonTypeMixin):
                     start_at=start_at,
                     end_at=end_at,
                     fixed_lesson=self,
+                    status=Reservation.STATUS_ACTIVE,
                 ).first()
+
                 if existing:
+                    update_fields = []
+                    if existing.availability_id != availability.pk:
+                        existing.availability = availability
+                        update_fields.append("availability")
+                    if existing.target_level != self.target_level:
+                        existing.target_level = self.target_level
+                        update_fields.append("target_level")
+                    if existing.lesson_type != self.lesson_type:
+                        existing.lesson_type = self.lesson_type
+                        update_fields.append("lesson_type")
+                    if existing.substitute_coach_id != availability.substitute_coach_id:
+                        existing.substitute_coach = availability.substitute_coach
+                        update_fields.append("substitute_coach")
+                    if update_fields:
+                        existing.save(update_fields=update_fields)
+                        changed_count += 1
                     continue
 
                 reservation = Reservation(
@@ -565,11 +598,11 @@ class FixedLesson(models.Model, LessonTypeMixin):
                             created_by=created_by,
                             note=f"固定レッスン自動登録: {self.title or self.get_weekday_display()}",
                         )
-                        created_count += 1
+                        changed_count += 1
                 except ValidationError:
                     continue
 
-        return created_count
+        return changed_count
 
 
 class TicketPurchase(models.Model):
