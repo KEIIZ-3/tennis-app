@@ -557,6 +557,32 @@
     text-align:center;
   }
 
+
+  .calendar-event.is-reserved,
+  .schedule-row.is-reserved{
+    box-shadow:0 0 0 3px rgba(15,23,42,.12) inset;
+  }
+
+  .calendar-event.is-waitlisted,
+  .schedule-row.is-waitlisted{
+    border-style:dashed;
+  }
+
+  .waitlist-badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:22px;
+    padding:3px 8px;
+    border-radius:999px;
+    background:#fff7ed;
+    border:1px solid #fed7aa;
+    color:#9a3412;
+    font-size:12px;
+    font-weight:1000;
+    line-height:1.1;
+  }
+
   @media (max-width:768px){
     .lesson-page{
       gap:10px;
@@ -915,27 +941,33 @@
                       <div class="calendar-event-list">
                         {% for item in day.items %}
                           {% if item.can_book %}
-                            <a href="{{ item.reserve_url }}" class="calendar-event {{ item.color_class }}">
+                            <a href="{{ item.reserve_url }}" class="calendar-event {{ item.color_class }} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}">
                               <div class="event-date">{{ item.date_label_jp }}</div>
                               <div class="event-time">{{ item.time_label }}</div>
                               <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
                               <div class="event-meta">{{ item.target_level_label }}</div>
+                              {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
+                              {% if item.is_reserved_by_user %}<div class="event-meta">予約済み</div>{% elif item.is_waitlisted_by_user %}<div class="event-meta">キャンセル待ち中</div>{% endif %}
                               <div class="event-coach">{{ item.coach_name }}</div>
                             </a>
                           {% elif not user.is_authenticated %}
-                            <a href="{{ item.login_url }}" class="calendar-event {{ item.color_class }}">
+                            <a href="{{ item.login_url }}" class="calendar-event {{ item.color_class }} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}">
                               <div class="event-date">{{ item.date_label_jp }}</div>
                               <div class="event-time">{{ item.time_label }}</div>
                               <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
                               <div class="event-meta">{{ item.target_level_label }}</div>
+                              {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
+                              {% if item.is_reserved_by_user %}<div class="event-meta">予約済み</div>{% elif item.is_waitlisted_by_user %}<div class="event-meta">キャンセル待ち中</div>{% endif %}
                               <div class="event-coach">{{ item.coach_name }}</div>
                             </a>
                           {% else %}
-                            <a href="#lesson-{{ item.id }}" class="calendar-event {{ item.color_class }}">
+                            <a href="#lesson-{{ item.id }}" class="calendar-event {{ item.color_class }} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}">
                               <div class="event-date">{{ item.date_label_jp }}</div>
                               <div class="event-time">{{ item.time_label }}</div>
                               <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
                               <div class="event-meta">{{ item.target_level_label }}</div>
+                              {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
+                              {% if item.is_reserved_by_user %}<div class="event-meta">予約済み</div>{% elif item.is_waitlisted_by_user %}<div class="event-meta">キャンセル待ち中</div>{% endif %}
                               <div class="event-coach">{{ item.coach_name }}</div>
                             </a>
                           {% endif %}
@@ -958,7 +990,7 @@
     {% if schedule_rows %}
       <div class="schedule-list">
         {% for item in schedule_rows %}
-          <div class="schedule-row {{ item.color_class }} {% if item.is_past %}is-past{% endif %}" id="lesson-{{ item.id }}">
+          <div class="schedule-row {{ item.color_class }} {% if item.is_past %}is-past{% endif %} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}" id="lesson-{{ item.id }}">
             <span class="schedule-dot" aria-hidden="true"></span>
             <div class="schedule-date">{{ item.date_label_jp }}</div>
             <div class="schedule-detail">
@@ -966,6 +998,8 @@
               <span>レベル：{{ item.target_level_label }}</span>
               <span>参加：{{ item.member_count }}/{{ item.capacity }}名</span>
               <span>定員：{{ item.capacity }}名</span>
+              {% if item.waitlist_count %}<span class="waitlist-badge">キャンセル待ち {{ item.waitlist_count }}名</span>{% endif %}
+              {% if item.is_reserved_by_user %}<span class="waitlist-badge">予約済み</span>{% elif item.is_waitlisted_by_user %}<span class="waitlist-badge">キャンセル待ち中</span>{% endif %}
               <span class="schedule-coach">{{ item.coach_name }}</span>
               {% if item.has_substitute %}
                 <span>代行</span>
@@ -977,6 +1011,28 @@
                 <div class="reserve-form">
                   <a href="{{ item.reserve_url }}" class="btn btn-primary reserve-button">予約画面へ進む</a>
                 </div>
+              {% elif item.can_join_waitlist %}
+                <form method="post" action="{% url 'club:lesson_calendar' %}" class="reserve-form">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="join_waitlist">
+                  <input type="hidden" name="availability_id" value="{{ item.availability_id }}">
+                  <input type="hidden" name="fixed_lesson_id" value="{{ item.fixed_lesson_id }}">
+                  <input type="hidden" name="lesson_date" value="{{ item.lesson_date }}">
+                  <input type="hidden" name="year" value="{{ target_year }}">
+                  <input type="hidden" name="month" value="{{ target_month }}">
+                  <button type="submit" class="btn btn-primary reserve-button">キャンセル待ちに登録</button>
+                </form>
+              {% elif item.can_cancel_waitlist %}
+                <form method="post" action="{% url 'club:lesson_calendar' %}" class="reserve-form">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="cancel_waitlist">
+                  <input type="hidden" name="availability_id" value="{{ item.availability_id }}">
+                  <input type="hidden" name="fixed_lesson_id" value="{{ item.fixed_lesson_id }}">
+                  <input type="hidden" name="lesson_date" value="{{ item.lesson_date }}">
+                  <input type="hidden" name="year" value="{{ target_year }}">
+                  <input type="hidden" name="month" value="{{ target_month }}">
+                  <button type="submit" class="btn reserve-button">キャンセル待ちを取消</button>
+                </form>
               {% else %}
                 <button type="button" class="btn reserve-button" disabled>{{ item.disabled_reason }}</button>
               {% endif %}
