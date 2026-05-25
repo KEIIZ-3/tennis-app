@@ -660,6 +660,8 @@ class FixedLessonAdmin(admin.ModelAdmin):
         "id",
         "title",
         "coach",
+        "coach_2",
+        "coach_3",
         "court",
         "lesson_type",
         "target_level",
@@ -723,6 +725,24 @@ class FixedLessonAdmin(admin.ModelAdmin):
             )
         }),
     )
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        fixed_lesson = form.instance
+        try:
+            changed_count = fixed_lesson.sync_future_reservations(created_by=request.user)
+            if changed_count:
+                self.message_user(
+                    request,
+                    f"固定レッスンのメンバー変更を今後の予約へ反映しました（{changed_count}件）。",
+                    level=messages.SUCCESS,
+                )
+        except Exception as e:
+            self.message_user(
+                request,
+                f"固定レッスンの今後予約への反映に失敗しました: {e}",
+                level=messages.ERROR,
+            )
 
     @admin.action(description="選択した固定レッスンの今後予約を生成する")
     def sync_selected_fixed_lessons(self, request, queryset):
