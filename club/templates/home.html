@@ -864,42 +864,6 @@
     </div>
   </div>
 
-  <div class="grid-2">
-    <div class="card">
-      <h2 class="home-section-title">アンケートサマリー</h2>
-      <div class="mini-stat-grid">
-        <div class="mini-stat info">
-          <div class="mini-stat-label">回答率</div>
-          <div class="mini-stat-value">{{ schedule_survey_answered_rate }}%</div>
-        </div>
-        <div class="mini-stat notice">
-          <div class="mini-stat-label">未回答者</div>
-          <div class="mini-stat-value">{{ schedule_survey_unanswered_count }}人</div>
-        </div>
-        <div class="mini-stat">
-          <div class="mini-stat-label">回答済み</div>
-          <div class="mini-stat-value">{{ schedule_survey_answered_count }}人</div>
-        </div>
-      </div>
-
-      {% if schedule_survey_top_slots %}
-        <div style="margin-top:16px;">
-          <div style="font-weight:800; margin-bottom:8px;">開催候補TOP3</div>
-          <ol style="margin:0; padding-left:20px; line-height:1.9;">
-            {% for row in schedule_survey_top_slots|slice:":3" %}
-              <li>
-                <strong>{{ row.day_label }}</strong> / {{ row.slot_label }}
-                <span class="muted">（{{ row.count }}票）</span>
-              </li>
-            {% endfor %}
-          </ol>
-        </div>
-      {% endif %}
-
-      <div style="margin-top:16px;">
-        <a href="{% url 'club:schedule_survey_summary' %}" class="btn btn-primary">アンケート集計を見る</a>
-      </div>
-    </div>
 
     <div class="card">
       <h2 class="home-section-title">管理・低頻度メニュー</h2>
@@ -1043,17 +1007,6 @@
       </div>
     {% endif %}
 
-    {% if not schedule_survey_answered %}
-      <div class="priority-alert" style="margin-top:12px;">
-        <div class="priority-alert-title">アンケートが未回答です</div>
-        <div class="priority-alert-text">
-          今後のレッスン開催曜日・時間帯の参考にするため、1〜2分で回答できます。
-        </div>
-        <div class="priority-alert-actions">
-          <a href="{% url 'club:schedule_survey' %}" class="btn btn-primary">アンケートに回答する</a>
-        </div>
-      </div>
-    {% endif %}
   </div>
 
   <div class="quick-grid">
@@ -1123,53 +1076,6 @@
     </div>
   </div>
 
-  <div class="grid-2">
-    <div class="card">
-      <h2 class="home-section-title">おすすめ開催候補</h2>
-      {% if schedule_survey_answered %}
-        <p class="home-section-sub">
-          アンケート回答と全体集計をもとに、参加しやすそうな時間帯を表示しています。
-        </p>
-
-        {% if schedule_survey_top_slots %}
-          <div style="margin-top:12px;">
-            <div style="font-weight:800; margin-bottom:8px;">全体ランキング TOP3</div>
-            <ol style="margin:0; padding-left:20px; line-height:1.9;">
-              {% for row in schedule_survey_top_slots|slice:":3" %}
-                <li>
-                  <strong>{{ row.day_label }}</strong> / {{ row.slot_label }}
-                  <span class="muted">（{{ row.count }}票）</span>
-                </li>
-              {% endfor %}
-            </ol>
-          </div>
-        {% endif %}
-
-        {% if schedule_survey_level_top_slots %}
-          <div style="margin-top:16px;">
-            <div style="font-weight:800; margin-bottom:8px;">{{ user.get_member_level_display }} レベルのおすすめ TOP3</div>
-            <ol style="margin:0; padding-left:20px; line-height:1.9;">
-              {% for row in schedule_survey_level_top_slots|slice:":3" %}
-                <li>
-                  <strong>{{ row.day_label }}</strong> / {{ row.slot_label }}
-                  <span class="muted">（{{ row.count }}票）</span>
-                </li>
-              {% endfor %}
-            </ol>
-          </div>
-        {% endif %}
-      {% else %}
-        <div style="padding:14px 16px; border:1px solid #fcd34d; background:#fffbeb; border-radius:12px; color:#92400e;">
-          <div style="font-weight:900;">アンケート未回答です</div>
-          <div style="margin-top:6px; line-height:1.8;">
-            今後のレッスン時間帯の参考にするため、先にアンケート回答をお願いします。
-          </div>
-        </div>
-        <div style="margin-top:16px;">
-          <a href="{% url 'club:schedule_survey' %}" class="btn btn-primary">アンケートに回答する</a>
-        </div>
-      {% endif %}
-    </div>
 
     <div class="card">
       <h2 class="home-section-title">チケット料金</h2>
