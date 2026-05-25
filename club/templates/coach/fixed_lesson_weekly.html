@@ -202,7 +202,7 @@
     <div>
       <h1 class="fixed-title">固定レッスン</h1>
       <p class="fixed-lead">
-        {{ week_label }} の固定レッスンを確認できます。代行コーチが設定されている枠もここで確認できます。
+        {{ week_label }} の担当固定レッスンを確認できます。主担当・追加コーチに入っているレッスンをすべて表示します。
       </p>
     </div>
 
@@ -241,13 +241,13 @@
     <div class="stat-value">{{ fixed_lessons|length }}件</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">対象週</div>
+    <div class="stat-label">表示期間</div>
     <div class="stat-value" style="font-size:18px;">{{ week_start|date:"m/d" }}〜{{ week_end|date:"m/d" }}</div>
   </div>
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0;">今週の固定レッスン</h2>
+  <h2 style="margin-top:0;">今後の固定レッスン</h2>
 
   {% if fixed_lessons %}
     <div class="fixed-list">
@@ -306,11 +306,19 @@
               {% endif %}
             </div>
           </div>
+          <div class="info-row">
+            <div class="info-label">定員</div>
+            <div class="info-value">{{ row.reservation_count }}/{{ row.capacity }}人</div>
+          </div>
+          <div class="info-row">
+            <div class="info-label">キャンセル待ち</div>
+            <div class="info-value">{{ row.waitlist_count }}人</div>
+          </div>
         </div>
       {% endfor %}
     </div>
   {% else %}
-    <p class="muted" style="margin:0;">対象週の固定レッスンはありません。</p>
+    <p class="muted" style="margin:0;">表示期間の固定レッスンはありません。</p>
   {% endif %}
 </div>
 {% endblock %}
