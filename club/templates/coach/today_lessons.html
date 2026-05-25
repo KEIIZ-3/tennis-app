@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+{% block title %}今日・今週の参加者一覧{% endblock %}
+
+{% block content %}
+<style>
+  .lesson-board{
+    display:grid;
+    gap:14px;
+  }
+
+  .board-hero{
+    padding:18px;
+    border-radius:20px;
+    border:1px solid #bfdbfe;
+    background:linear-gradient(180deg,#eff6ff 0%,#ffffff 100%);
+    box-shadow:0 10px 24px rgba(15,23,42,.08);
+  }
+
+  .board-title{
+    margin:0;
+    font-size:28px;
+    line-height:1.25;
+    font-weight:1000;
+    letter-spacing:-.02em;
+  }
+
+  .board-lead{
+    margin:8px 0 0;
+    color:#475569;
+    font-size:14px;
+    line-height:1.7;
+    font-weight:700;
+  }
+
+  .filter-card{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    align-items:end;
+    padding:14px;
+    border:1px solid #e5e7eb;
+    border-radius:18px;
+    background:#fff;
+  }
+
+  .filter-card label{
+    display:block;
+    margin-bottom:5px;
+    color:#475569;
+    font-size:13px;
+    font-weight:900;
+  }
+
+  .filter-card select{
+    min-height:40px;
+    border-radius:12px;
+    border:1px solid #d1d5db;
+    padding:8px 10px;
+    background:#fff;
+    font:inherit;
+    font-size:14px;
+  }
+
+  .day-card{
+    border:1px solid #e5e7eb;
+    border-radius:18px;
+    background:#fff;
+    padding:14px;
+    box-shadow:0 8px 20px rgba(15,23,42,.05);
+  }
+
+  .day-title{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    margin:0 0 12px;
+    color:#0f172a;
+    font-size:20px;
+    line-height:1.35;
+    font-weight:1000;
+  }
+
+  .day-count{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:28px;
+    height:28px;
+    padding:0 9px;
+    border-radius:999px;
+    background:#eff6ff;
+    color:#1d4ed8;
+    font-size:13px;
+    font-weight:1000;
+  }
+
+  .lesson-list{
+    display:grid;
+    gap:10px;
+  }
+
+  .lesson-row{
+    padding:13px;
+    border:1px solid #dbeafe;
+    border-radius:16px;
+    background:#f8fbff;
+  }
+
+  .lesson-row-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+
+  .lesson-time{
+    color:#0f172a;
+    font-size:18px;
+    line-height:1.35;
+    font-weight:1000;
+  }
+
+  .lesson-badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:28px;
+    padding:5px 10px;
+    border-radius:999px;
+    background:#dbeafe;
+    color:#1d4ed8;
+    font-size:12px;
+    font-weight:1000;
+  }
+
+  .lesson-meta{
+    display:grid;
+    gap:5px;
+    margin-top:10px;
+    color:#334155;
+    font-size:13px;
+    line-height:1.55;
+    font-weight:750;
+  }
+
+  .name-section{
+    display:grid;
+    gap:8px;
+    margin-top:12px;
+  }
+
+  .name-box{
+    padding:10px;
+    border-radius:12px;
+    background:#fff;
+    border:1px solid #e5e7eb;
+  }
+
+  .name-box-title{
+    margin:0 0 6px;
+    color:#0f172a;
+    font-size:13px;
+    font-weight:1000;
+  }
+
+  .name-chips{
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+  }
+
+  .name-chip{
+    display:inline-flex;
+    align-items:center;
+    min-height:28px;
+    padding:5px 9px;
+    border-radius:999px;
+    background:#f1f5f9;
+    color:#334155;
+    font-size:12px;
+    font-weight:850;
+  }
+
+  .name-chip.waiting{
+    background:#fef3c7;
+    color:#92400e;
+  }
+
+  .name-chip.pending{
+    background:#ede9fe;
+    color:#5b21b6;
+  }
+
+  .empty-box{
+    padding:14px;
+    border:1px dashed #cbd5e1;
+    border-radius:14px;
+    background:#f8fafc;
+    color:#64748b;
+    font-size:14px;
+    line-height:1.7;
+    text-align:center;
+  }
+
+  .quick-actions{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:12px;
+  }
+
+  .quick-actions .btn{
+    min-height:38px;
+    border-radius:12px;
+    padding:8px 12px;
+  }
+
+  @media(max-width:768px){
+    .board-title{
+      font-size:23px;
+    }
+
+    .filter-card{
+      display:grid;
+      grid-template-columns:1fr;
+    }
+
+    .filter-card select,
+    .filter-card .btn{
+      width:100%;
+    }
+
+    .lesson-time{
+      font-size:16px;
+    }
+  }
+</style>
+
+<div class="lesson-board">
+  <section class="board-hero">
+    <h1 class="board-title">今日・今週の参加者一覧</h1>
+    <p class="board-lead">
+      担当レッスンごとの参加者、承認待ち、キャンセル待ちを確認できます。
+      表示期間：{{ range_start|date:"Y/m/d" }}〜{{ range_end|date:"Y/m/d" }}
+    </p>
+  </section>
+
+  <form method="get" class="filter-card">
+    {% if is_staff_mode %}
+      <div>
+        <label for="coach_id">表示コーチ</label>
+        <select name="coach_id" id="coach_id">
+          {% for coach in coach_options %}
+            <option value="{{ coach.pk }}" {% if selected_coach_id == coach.pk|stringformat:"s" %}selected{% endif %}>{{ coach.display_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    {% endif %}
+    <div>
+      <label for="days">表示期間</label>
+      <select name="days" id="days">
+        <option value="1" {% if display_days == 1 %}selected{% endif %}>今日のみ</option>
+        <option value="7" {% if display_days == 7 %}selected{% endif %}>今後7日</option>
+        <option value="14" {% if display_days == 14 %}selected{% endif %}>今後14日</option>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary">表示更新</button>
+    <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="btn">固定レッスン管理へ</a>
+  </form>
+
+  {% for day in grouped_days %}
+    <section class="day-card">
+      <h2 class="day-title">
+        <span>{{ day.date_label }}（{{ day.weekday_label }}）</span>
+        <span class="day-count">{{ day.rows|length }}</span>
+      </h2>
+
+      {% if day.rows %}
+        <div class="lesson-list">
+          {% for row in day.rows %}
+            <article class="lesson-row">
+              <div class="lesson-row-top">
+                <div class="lesson-time">{{ row.time_label }} / {{ row.title }}</div>
+                <span class="lesson-badge">{{ row.participant_count }}/{{ row.capacity }}名</span>
+              </div>
+
+              <div class="lesson-meta">
+                <div>レベル：{{ row.target_level_label }} / 種別：{{ row.lesson_type_label }}</div>
+                <div>コーチ：{{ row.coach_name }}</div>
+                <div>コート：{{ row.court_name }}</div>
+                <div>空き：{{ row.remaining_count }}名 / 承認待ち：{{ row.pending_count }}件 / キャンセル待ち：{{ row.waitlist_count }}件</div>
+              </div>
+
+              <div class="name-section">
+                <div class="name-box">
+                  <p class="name-box-title">参加者</p>
+                  {% if row.participant_names %}
+                    <div class="name-chips">
+                      {% for name in row.participant_names %}
+                        <span class="name-chip">{{ name }}</span>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    <div class="empty-box">参加者はまだいません。</div>
+                  {% endif %}
+                </div>
+
+                {% if row.pending_names %}
+                  <div class="name-box">
+                    <p class="name-box-title">承認待ち</p>
+                    <div class="name-chips">
+                      {% for name in row.pending_names %}
+                        <span class="name-chip pending">{{ name }}</span>
+                      {% endfor %}
+                    </div>
+                  </div>
+                {% endif %}
+
+                {% if row.waitlist_names %}
+                  <div class="name-box">
+                    <p class="name-box-title">キャンセル待ち</p>
+                    <div class="name-chips">
+                      {% for name in row.waitlist_names %}
+                        <span class="name-chip waiting">{{ name }}</span>
+                      {% endfor %}
+                    </div>
+                  </div>
+                {% endif %}
+              </div>
+
+              <div class="quick-actions">
+                <a href="{% url 'club:reservation_list' %}" class="btn">予約・キャンセル待ち管理</a>
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-box">この日の担当レッスンはありません。</div>
+      {% endif %}
+    </section>
+  {% endfor %}
+</div>
+{% endblock %}
