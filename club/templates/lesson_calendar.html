@@ -257,61 +257,92 @@
   }
 
   .calendar-event{
-    display:block;
-    padding:7px 4px 6px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    min-height:74px;
+    padding:7px 5px 6px;
     border:2px solid #1d4ed8;
     border-radius:12px;
     background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
     text-align:center;
-    box-shadow:0 3px 8px rgba(15,23,42,.10);
+    text-decoration:none;
+    box-shadow:0 3px 8px rgba(15,23,42,.08);
+    overflow:hidden;
   }
 
   .calendar-event.coach-blue{
     border-color:#1d4ed8;
     color:#1d4ed8;
+    background:linear-gradient(180deg,rgba(29,78,216,.08) 0%,#ffffff 100%);
   }
 
   .calendar-event.coach-green{
     border-color:#16a34a;
     color:#15803d;
+    background:linear-gradient(180deg,rgba(22,163,74,.08) 0%,#ffffff 100%);
   }
 
   .calendar-event.coach-purple{
     border-color:#7e22ce;
     color:#6b21a8;
+    background:linear-gradient(180deg,rgba(126,34,206,.08) 0%,#ffffff 100%);
   }
 
   .calendar-event.coach-orange{
     border-color:#ea580c;
     color:#c2410c;
+    background:linear-gradient(180deg,rgba(234,88,12,.08) 0%,#ffffff 100%);
   }
 
   .calendar-event.coach-split-blue-green,
   .calendar-event.coach-split-green-blue{
-    border-left-color:#1d4ed8;
-    border-right-color:#16a34a;
-    background:linear-gradient(90deg, rgba(29,78,216,.13) 0 50%, rgba(22,163,74,.13) 50% 100%);
-    box-shadow:inset 4px 0 0 #1d4ed8, inset -4px 0 0 #16a34a, 0 3px 8px rgba(15,23,42,.10);
+    border-color:#64748b;
+    background:
+      linear-gradient(90deg,
+        rgba(29,78,216,.12) 0%,
+        rgba(29,78,216,.12) calc(50% - 1px),
+        rgba(148,163,184,.35) calc(50% - 1px),
+        rgba(148,163,184,.35) calc(50% + 1px),
+        rgba(22,163,74,.12) calc(50% + 1px),
+        rgba(22,163,74,.12) 100%),
+      #ffffff;
+    box-shadow:inset 4px 0 0 #1d4ed8, inset -4px 0 0 #16a34a, 0 3px 8px rgba(15,23,42,.08);
   }
 
   .calendar-event.coach-split-blue-purple,
   .calendar-event.coach-split-purple-blue{
-    border-left-color:#1d4ed8;
-    border-right-color:#7e22ce;
-    background:linear-gradient(90deg, rgba(29,78,216,.13) 0 50%, rgba(126,34,206,.13) 50% 100%);
-    box-shadow:inset 4px 0 0 #1d4ed8, inset -4px 0 0 #7e22ce, 0 3px 8px rgba(15,23,42,.10);
+    border-color:#64748b;
+    background:
+      linear-gradient(90deg,
+        rgba(29,78,216,.12) 0%,
+        rgba(29,78,216,.12) calc(50% - 1px),
+        rgba(148,163,184,.35) calc(50% - 1px),
+        rgba(148,163,184,.35) calc(50% + 1px),
+        rgba(126,34,206,.12) calc(50% + 1px),
+        rgba(126,34,206,.12) 100%),
+      #ffffff;
+    box-shadow:inset 4px 0 0 #1d4ed8, inset -4px 0 0 #7e22ce, 0 3px 8px rgba(15,23,42,.08);
   }
 
   .calendar-event.coach-split-green-purple,
   .calendar-event.coach-split-purple-green{
-    border-left-color:#16a34a;
-    border-right-color:#7e22ce;
-    background:linear-gradient(90deg, rgba(22,163,74,.13) 0 50%, rgba(126,34,206,.13) 50% 100%);
-    box-shadow:inset 4px 0 0 #16a34a, inset -4px 0 0 #7e22ce, 0 3px 8px rgba(15,23,42,.10);
+    border-color:#64748b;
+    background:
+      linear-gradient(90deg,
+        rgba(22,163,74,.12) 0%,
+        rgba(22,163,74,.12) calc(50% - 1px),
+        rgba(148,163,184,.35) calc(50% - 1px),
+        rgba(148,163,184,.35) calc(50% + 1px),
+        rgba(126,34,206,.12) calc(50% + 1px),
+        rgba(126,34,206,.12) 100%),
+      #ffffff;
+    box-shadow:inset 4px 0 0 #16a34a, inset -4px 0 0 #7e22ce, 0 3px 8px rgba(15,23,42,.08);
   }
 
   .event-date{
-    font-size:20px;
+    font-size:19px;
     line-height:1;
     font-weight:1000;
     letter-spacing:-.04em;
@@ -320,24 +351,68 @@
   .event-time{
     margin-top:4px;
     color:#111827;
-    font-size:12px;
-    line-height:1.15;
-    font-weight:900;
+    font-size:11px;
+    line-height:1.12;
+    font-weight:950;
   }
 
   .event-meta{
-    margin-top:3px;
+    margin-top:2px;
     color:#111827;
-    font-size:11px;
-    line-height:1.15;
+    font-size:10px;
+    line-height:1.12;
     font-weight:900;
   }
 
   .event-coach{
-    margin-top:3px;
-    font-size:12px;
+    width:100%;
+    margin-top:4px;
+    font-size:11px;
     line-height:1.15;
     font-weight:1000;
+  }
+
+  .event-coach-list{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:2px;
+    flex-wrap:wrap;
+    width:100%;
+  }
+
+  .event-coach-name{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    max-width:48%;
+    padding:1px 2px;
+    border-radius:6px;
+    background:rgba(255,255,255,.72);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+
+  .event-coach-separator{
+    color:#64748b;
+    font-weight:900;
+  }
+
+  .coach-name-blue{
+    color:#1d4ed8;
+  }
+
+  .coach-name-green{
+    color:#15803d;
+  }
+
+  .coach-name-purple{
+    color:#6b21a8;
+  }
+
+  .coach-name-orange{
+    color:#c2410c;
   }
 
   .schedule-panel{
@@ -464,8 +539,20 @@
   }
 
   .schedule-coach{
+    display:inline-flex;
+    align-items:center;
+    gap:3px;
+    flex-wrap:wrap;
     color:#1d4ed8;
     font-weight:1000;
+  }
+
+  .schedule-coach-name{
+    display:inline-flex;
+    align-items:center;
+    padding:1px 5px;
+    border-radius:999px;
+    background:#f8fafc;
   }
 
   .reserve-form{
@@ -736,6 +823,7 @@
     }
 
     .calendar-event{
+      min-height:82px;
       border-width:1.5px;
       border-radius:8px;
       padding:4px 2px 3px;
@@ -750,7 +838,7 @@
     .event-time{
       margin-top:2px;
       font-size:8px;
-      line-height:1.1;
+      line-height:1.08;
     }
 
     .event-meta{
@@ -764,9 +852,19 @@
 
     .event-coach{
       margin-top:2px;
-      font-size:8px;
+      font-size:7.5px;
       line-height:1.05;
       word-break:keep-all;
+    }
+
+    .event-coach-list{
+      gap:1px;
+    }
+
+    .event-coach-name{
+      max-width:46%;
+      padding:1px 1px;
+      border-radius:4px;
     }
 
     .schedule-panel{
@@ -888,9 +986,12 @@
       font-size:12px;
     }
 
-    .event-time,
-    .event-coach{
+    .event-time{
       font-size:7px;
+    }
+
+    .event-coach{
+      font-size:6.6px;
     }
 
     .schedule-row{
@@ -977,7 +1078,17 @@
                               <div class="event-meta">{{ item.target_level_label }}</div>
                               {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
                               {% if item.is_reserved_by_user %}<div class="event-meta">予約済み</div>{% elif item.is_waitlisted_by_user %}<div class="event-meta">キャンセル待ち中</div>{% endif %}
-                              <div class="event-coach">{{ item.coach_name }}</div>
+                              <div class="event-coach">
+                                {% if item.coach_name_parts %}
+                                  <div class="event-coach-list">
+                                    {% for coach_part in item.coach_name_parts %}
+                                      <span class="event-coach-name {{ coach_part.color_class }}">{{ coach_part.name }}</span>{% if not forloop.last %}<span class="event-coach-separator">/</span>{% endif %}
+                                    {% endfor %}
+                                  </div>
+                                {% else %}
+                                  {{ item.coach_name }}
+                                {% endif %}
+                              </div>
                             </a>
                           {% elif not user.is_authenticated %}
                             <a href="{{ item.login_url }}" class="calendar-event {{ item.color_class }} {{ item.color_combo_class }} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}">
@@ -987,7 +1098,17 @@
                               <div class="event-meta">{{ item.target_level_label }}</div>
                               {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
                               {% if item.is_reserved_by_user %}<div class="event-meta">予約済み</div>{% elif item.is_waitlisted_by_user %}<div class="event-meta">キャンセル待ち中</div>{% endif %}
-                              <div class="event-coach">{{ item.coach_name }}</div>
+                              <div class="event-coach">
+                                {% if item.coach_name_parts %}
+                                  <div class="event-coach-list">
+                                    {% for coach_part in item.coach_name_parts %}
+                                      <span class="event-coach-name {{ coach_part.color_class }}">{{ coach_part.name }}</span>{% if not forloop.last %}<span class="event-coach-separator">/</span>{% endif %}
+                                    {% endfor %}
+                                  </div>
+                                {% else %}
+                                  {{ item.coach_name }}
+                                {% endif %}
+                              </div>
                             </a>
                           {% else %}
                             <a href="#lesson-{{ item.id }}" class="calendar-event {{ item.color_class }} {{ item.color_combo_class }} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}">
@@ -997,7 +1118,17 @@
                               <div class="event-meta">{{ item.target_level_label }}</div>
                               {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
                               {% if item.is_reserved_by_user %}<div class="event-meta">予約済み</div>{% elif item.is_waitlisted_by_user %}<div class="event-meta">キャンセル待ち中</div>{% endif %}
-                              <div class="event-coach">{{ item.coach_name }}</div>
+                              <div class="event-coach">
+                                {% if item.coach_name_parts %}
+                                  <div class="event-coach-list">
+                                    {% for coach_part in item.coach_name_parts %}
+                                      <span class="event-coach-name {{ coach_part.color_class }}">{{ coach_part.name }}</span>{% if not forloop.last %}<span class="event-coach-separator">/</span>{% endif %}
+                                    {% endfor %}
+                                  </div>
+                                {% else %}
+                                  {{ item.coach_name }}
+                                {% endif %}
+                              </div>
                             </a>
                           {% endif %}
                         {% endfor %}
@@ -1029,7 +1160,15 @@
               <span>定員：{{ item.capacity }}名</span>
               {% if item.waitlist_count %}<span class="waitlist-badge">キャンセル待ち {{ item.waitlist_count }}名</span>{% endif %}
               {% if item.is_reserved_by_user %}<span class="waitlist-badge">予約済み</span>{% elif item.is_waitlisted_by_user %}<span class="waitlist-badge">キャンセル待ち中</span>{% endif %}
-              <span class="schedule-coach">{{ item.coach_name }}</span>
+              <span class="schedule-coach">
+                {% if item.coach_name_parts %}
+                  {% for coach_part in item.coach_name_parts %}
+                    <span class="schedule-coach-name {{ coach_part.color_class }}">{{ coach_part.name }}</span>{% if not forloop.last %}<span class="event-coach-separator">/</span>{% endif %}
+                  {% endfor %}
+                {% else %}
+                  {{ item.coach_name }}
+                {% endif %}
+              </span>
               {% if item.has_substitute %}
                 <span>代行</span>
               {% endif %}
