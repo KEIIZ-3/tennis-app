@@ -1522,7 +1522,7 @@ def lesson_calendar_view(request):
             return f"coach-split-{unique_colors[0]}-{unique_colors[1]}"
         return ""
 
-        def _coach_name_color_class(name):
+    def _coach_name_color_class(name):
         name = str(name or "")
         if "飯塚" in name:
             return "coach-name-blue"
