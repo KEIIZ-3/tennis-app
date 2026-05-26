@@ -195,6 +195,21 @@ class CoachAvailability(models.Model, LessonTypeMixin):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OPEN)
     custom_ticket_price = models.PositiveIntegerField(default=0)
     custom_duration_hours = models.PositiveIntegerField(default=0)
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PAYMENT_METHOD_CHOICES,
+        default=PAYMENT_METHOD_TICKET,
+        verbose_name="支払方法",
+    )
+    payment_status = models.CharField(
+        max_length=20,
+        choices=PAYMENT_STATUS_CHOICES,
+        default=PAYMENT_STATUS_NOT_REQUIRED,
+        verbose_name="支払状況",
+    )
+    payment_amount = models.PositiveIntegerField(default=0, verbose_name="参加費")
+    payment_received_at = models.DateTimeField(null=True, blank=True, verbose_name="回収日時")
+    payment_note = models.CharField(max_length=255, blank=True, default="", verbose_name="支払メモ")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1123,6 +1138,28 @@ class Reservation(models.Model, LessonTypeMixin):
         (STATUS_PENDING, "承認待ち"),
     )
 
+    PAYMENT_METHOD_TICKET = "ticket"
+    PAYMENT_METHOD_CASH = "cash"
+    PAYMENT_METHOD_OTHER = "other"
+
+    PAYMENT_METHOD_CHOICES = (
+        (PAYMENT_METHOD_TICKET, "チケット"),
+        (PAYMENT_METHOD_CASH, "当日受付"),
+        (PAYMENT_METHOD_OTHER, "その他"),
+    )
+
+    PAYMENT_STATUS_NOT_REQUIRED = "not_required"
+    PAYMENT_STATUS_UNPAID = "unpaid"
+    PAYMENT_STATUS_PAID = "paid"
+    PAYMENT_STATUS_WAIVED = "waived"
+
+    PAYMENT_STATUS_CHOICES = (
+        (PAYMENT_STATUS_NOT_REQUIRED, "対象外"),
+        (PAYMENT_STATUS_UNPAID, "未回収"),
+        (PAYMENT_STATUS_PAID, "回収済み"),
+        (PAYMENT_STATUS_WAIVED, "免除"),
+    )
+
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -1334,6 +1371,7 @@ class Reservation(models.Model, LessonTypeMixin):
                 raise ValidationError("イベントは設定した時間で予約してください。")
 
         self.tickets_used = self.calculate_tickets_used()
+        self.apply_default_payment_fields()
 
         if self.user_id and self.coach_id and self.user_id == self.coach_id:
             raise ValidationError("自分自身を予約することはできません。")
