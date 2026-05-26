@@ -1504,22 +1504,37 @@ def lesson_calendar_view(request):
         return "coach-blue"
 
     def _coach_combo_class_from_names(names):
-        names = names or ""
+        raw_names = str(names or "").strip()
+        if not raw_names:
+            return ""
+
+        normalized = (
+            raw_names
+            .replace("／", "/")
+            .replace("、", "/")
+            .replace(",", "/")
+            .replace("・", "/")
+        )
+
         color_order = []
-        if "飯塚" in names:
-            color_order.append("blue")
-        if "清水" in names:
-            color_order.append("green")
-        if "井上" in names:
-            color_order.append("purple")
+        for part in normalized.split("/"):
+            clean_name = part.strip()
+            if not clean_name:
+                continue
+            if "飯塚" in clean_name:
+                color = "blue"
+            elif "清水" in clean_name:
+                color = "green"
+            elif "井上" in clean_name:
+                color = "purple"
+            else:
+                color = "orange"
 
-        unique_colors = []
-        for color in color_order:
-            if color not in unique_colors:
-                unique_colors.append(color)
+            if color not in color_order:
+                color_order.append(color)
 
-        if len(unique_colors) >= 2:
-            return f"coach-split-{unique_colors[0]}-{unique_colors[1]}"
+        if len(color_order) >= 2:
+            return f"coach-split-{color_order[0]}-{color_order[1]}"
         return ""
 
     def _coach_name_color_class(name):
