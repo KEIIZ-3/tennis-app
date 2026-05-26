@@ -1522,6 +1522,49 @@ def lesson_calendar_view(request):
             return f"coach-split-{unique_colors[0]}-{unique_colors[1]}"
         return ""
 
+        def _coach_name_color_class(name):
+        name = str(name or "")
+        if "飯塚" in name:
+            return "coach-name-blue"
+        if "清水" in name:
+            return "coach-name-green"
+        if "井上" in name:
+            return "coach-name-purple"
+        return "coach-name-orange"
+
+    def _coach_name_parts_from_names(names):
+        raw_names = str(names or "").strip()
+        if not raw_names:
+            return []
+
+        normalized = (
+            raw_names
+            .replace("／", "/")
+            .replace("、", "/")
+            .replace(",", "/")
+            .replace("・", "/")
+        )
+        parts = []
+        for name in normalized.split("/"):
+            clean_name = name.strip()
+            if not clean_name:
+                continue
+            parts.append(
+                {
+                    "name": clean_name,
+                    "color_class": _coach_name_color_class(clean_name),
+                }
+            )
+        if parts:
+            return parts
+
+        return [
+            {
+                "name": raw_names,
+                "color_class": _coach_name_color_class(raw_names),
+            }
+        ]
+
     def _coach_color_class(availability):
         names = " ".join(
             [
@@ -1642,6 +1685,7 @@ def lesson_calendar_view(request):
             "time_label": f"{start_local:%H:%M}〜{end_local:%H:%M}",
             "sort_key": f"{start_local:%Y%m%d%H%M}-{item_id}",
             "coach_name": assigned_coach_name,
+            "coach_name_parts": _coach_name_parts_from_names(assigned_coach_name),
             "normal_coach_name": _display_name(coach),
             "substitute_coach_name": _display_name(substitute_coach) if substitute_coach else "",
             "has_substitute": bool(substitute_coach),
