@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}今日・今週の参加者一覧{% endblock %}
+{% block title %}本日の受付・精算{% endblock %}
 
 {% block content %}
 <style>
@@ -359,6 +359,65 @@
     flex-wrap:wrap;
   }
 
+
+  .payment-box{
+    margin-top:8px;
+    padding:8px;
+    border-radius:12px;
+    border:1px solid #fed7aa;
+    background:#fff7ed;
+  }
+
+  .payment-box.is-paid{
+    border-color:#bbf7d0;
+    background:#f0fdf4;
+  }
+
+  .payment-box.is-waived{
+    border-color:#ddd6fe;
+    background:#f5f3ff;
+  }
+
+  .payment-label{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    color:#0f172a;
+    font-size:12px;
+    line-height:1.4;
+    font-weight:900;
+  }
+
+  .payment-actions{
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+    margin-top:7px;
+  }
+
+  .payment-actions form{
+    margin:0;
+  }
+
+  .payment-actions button{
+    min-height:30px;
+    border-radius:999px;
+    border:1px solid #cbd5e1;
+    background:#fff;
+    color:#0f172a;
+    padding:5px 9px;
+    font-size:12px;
+    font-weight:900;
+    cursor:pointer;
+  }
+
+  .payment-actions button.is-active{
+    background:#0f172a;
+    border-color:#0f172a;
+    color:#fff;
+  }
+
   @media (max-width:768px){
     .ops-hero{
       padding:15px;
@@ -443,7 +502,7 @@
 
 <div class="ops-page">
   <section class="ops-hero">
-    <h1 class="ops-title">今日・今週の参加者一覧</h1>
+    <h1 class="ops-title">本日の受付・精算</h1>
     <p class="ops-lead">
       担当レッスンの参加者・承認待ち・キャンセル待ちを、スマホで確認しやすい形にまとめています。
       当日の連絡や、キャンセル待ちの繰り上げ対応に使ってください。
@@ -485,6 +544,16 @@
     <div class="summary-card">
       <div class="summary-label">要確認</div>
       <div class="summary-value">{{ summary.attention_count }}</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">未回収</div>
+      <div class="summary-value">{{ summary.payment_unpaid_total }}</div>
+      <div class="summary-label">円</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">回収済み</div>
+      <div class="summary-value">{{ summary.payment_paid_total }}</div>
+      <div class="summary-label">円</div>
     </div>
   </section>
 
@@ -564,6 +633,25 @@
                               <span>電話：未登録</span>
                             {% endif %}
                           </div>
+                          {% if person.payment_required %}
+                            <div class="payment-box {% if person.payment_status == 'paid' %}is-paid{% elif person.payment_status == 'waived' %}is-waived{% endif %}">
+                              <div class="payment-label">
+                                <span>参加費 {{ person.payment_amount }}円</span>
+                                <span>{{ person.payment_status_label }}</span>
+                              </div>
+                              <div class="payment-actions">
+                                {% for status_value, status_label in person.payment_status_options %}
+                                  <form method="post">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="update_payment">
+                                    <input type="hidden" name="reservation_id" value="{{ person.reservation.id }}">
+                                    <input type="hidden" name="payment_status" value="{{ status_value }}">
+                                    <button type="submit" class="{% if person.payment_status == status_value %}is-active{% endif %}">{{ status_label }}</button>
+                                  </form>
+                                {% endfor %}
+                              </div>
+                            </div>
+                          {% endif %}
                         </div>
                         <div class="person-actions">
                           {% if person.phone %}
