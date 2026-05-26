@@ -195,21 +195,6 @@ class CoachAvailability(models.Model, LessonTypeMixin):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OPEN)
     custom_ticket_price = models.PositiveIntegerField(default=0)
     custom_duration_hours = models.PositiveIntegerField(default=0)
-    payment_method = models.CharField(
-        max_length=20,
-        choices=PAYMENT_METHOD_CHOICES,
-        default=PAYMENT_METHOD_TICKET,
-        verbose_name="支払方法",
-    )
-    payment_status = models.CharField(
-        max_length=20,
-        choices=PAYMENT_STATUS_CHOICES,
-        default=PAYMENT_STATUS_NOT_REQUIRED,
-        verbose_name="支払状況",
-    )
-    payment_amount = models.PositiveIntegerField(default=0, verbose_name="参加費")
-    payment_received_at = models.DateTimeField(null=True, blank=True, verbose_name="回収日時")
-    payment_note = models.CharField(max_length=255, blank=True, default="", verbose_name="支払メモ")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
