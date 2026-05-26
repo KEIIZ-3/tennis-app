@@ -263,9 +263,9 @@
     justify-content:center;
     min-height:74px;
     padding:7px 5px 6px;
-    border:2px solid #1d4ed8;
+    border:2px solid #cbd5e1;
     border-radius:12px;
-    background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
+    background:#ffffff;
     text-align:center;
     text-decoration:none;
     box-shadow:0 3px 8px rgba(15,23,42,.08);
@@ -275,109 +275,75 @@
   .calendar-event.coach-blue{
     border-color:#1d4ed8;
     color:#1d4ed8;
-    background:linear-gradient(180deg,rgba(29,78,216,.08) 0%,#ffffff 100%);
+    background:#ffffff;
+    box-shadow:inset 0 4px 0 #1d4ed8, 0 3px 8px rgba(15,23,42,.08);
   }
 
   .calendar-event.coach-green{
     border-color:#16a34a;
     color:#15803d;
-    background:linear-gradient(180deg,rgba(22,163,74,.08) 0%,#ffffff 100%);
+    background:#ffffff;
+    box-shadow:inset 0 4px 0 #16a34a, 0 3px 8px rgba(15,23,42,.08);
   }
 
   .calendar-event.coach-purple{
     border-color:#7e22ce;
     color:#6b21a8;
-    background:linear-gradient(180deg,rgba(126,34,206,.08) 0%,#ffffff 100%);
+    background:#ffffff;
+    box-shadow:inset 0 4px 0 #7e22ce, 0 3px 8px rgba(15,23,42,.08);
   }
 
   .calendar-event.coach-orange{
     border-color:#ea580c;
     color:#c2410c;
-    background:linear-gradient(180deg,rgba(234,88,12,.08) 0%,#ffffff 100%);
+    background:#ffffff;
+    box-shadow:inset 0 4px 0 #ea580c, 0 3px 8px rgba(15,23,42,.08);
+  }
+
+  .calendar-event.coach-split-blue-green,
+  .calendar-event.coach-split-green-blue,
+  .calendar-event.coach-split-blue-purple,
+  .calendar-event.coach-split-purple-blue,
+  .calendar-event.coach-split-green-purple,
+  .calendar-event.coach-split-purple-green{
+    background:#ffffff;
+    border-color:#64748b;
   }
 
   .calendar-event.coach-split-blue-green{
-    border-color:#64748b;
-    background:
-      linear-gradient(90deg,
-        rgba(29,78,216,.12) 0%,
-        rgba(29,78,216,.12) calc(50% - 1px),
-        rgba(148,163,184,.35) calc(50% - 1px),
-        rgba(148,163,184,.35) calc(50% + 1px),
-        rgba(22,163,74,.12) calc(50% + 1px),
-        rgba(22,163,74,.12) 100%),
-      #ffffff;
-    box-shadow:inset 4px 0 0 #1d4ed8, inset -4px 0 0 #16a34a, 0 3px 8px rgba(15,23,42,.08);
+    border-left-color:#1d4ed8;
+    border-right-color:#16a34a;
+    box-shadow:inset 0 4px 0 #1d4ed8, inset 0 -4px 0 #16a34a, 0 3px 8px rgba(15,23,42,.08);
   }
 
   .calendar-event.coach-split-green-blue{
-    border-color:#64748b;
-    background:
-      linear-gradient(90deg,
-        rgba(22,163,74,.12) 0%,
-        rgba(22,163,74,.12) calc(50% - 1px),
-        rgba(148,163,184,.35) calc(50% - 1px),
-        rgba(148,163,184,.35) calc(50% + 1px),
-        rgba(29,78,216,.12) calc(50% + 1px),
-        rgba(29,78,216,.12) 100%),
-      #ffffff;
-    box-shadow:inset 4px 0 0 #16a34a, inset -4px 0 0 #1d4ed8, 0 3px 8px rgba(15,23,42,.08);
+    border-left-color:#16a34a;
+    border-right-color:#1d4ed8;
+    box-shadow:inset 0 4px 0 #16a34a, inset 0 -4px 0 #1d4ed8, 0 3px 8px rgba(15,23,42,.08);
   }
 
   .calendar-event.coach-split-blue-purple{
-    border-color:#64748b;
-    background:
-      linear-gradient(90deg,
-        rgba(29,78,216,.12) 0%,
-        rgba(29,78,216,.12) calc(50% - 1px),
-        rgba(148,163,184,.35) calc(50% - 1px),
-        rgba(148,163,184,.35) calc(50% + 1px),
-        rgba(126,34,206,.12) calc(50% + 1px),
-        rgba(126,34,206,.12) 100%),
-      #ffffff;
-    box-shadow:inset 4px 0 0 #1d4ed8, inset -4px 0 0 #7e22ce, 0 3px 8px rgba(15,23,42,.08);
+    border-left-color:#1d4ed8;
+    border-right-color:#7e22ce;
+    box-shadow:inset 0 4px 0 #1d4ed8, inset 0 -4px 0 #7e22ce, 0 3px 8px rgba(15,23,42,.08);
   }
 
   .calendar-event.coach-split-purple-blue{
-    border-color:#64748b;
-    background:
-      linear-gradient(90deg,
-        rgba(126,34,206,.12) 0%,
-        rgba(126,34,206,.12) calc(50% - 1px),
-        rgba(148,163,184,.35) calc(50% - 1px),
-        rgba(148,163,184,.35) calc(50% + 1px),
-        rgba(29,78,216,.12) calc(50% + 1px),
-        rgba(29,78,216,.12) 100%),
-      #ffffff;
-    box-shadow:inset 4px 0 0 #7e22ce, inset -4px 0 0 #1d4ed8, 0 3px 8px rgba(15,23,42,.08);
+    border-left-color:#7e22ce;
+    border-right-color:#1d4ed8;
+    box-shadow:inset 0 4px 0 #7e22ce, inset 0 -4px 0 #1d4ed8, 0 3px 8px rgba(15,23,42,.08);
   }
 
   .calendar-event.coach-split-green-purple{
-    border-color:#64748b;
-    background:
-      linear-gradient(90deg,
-        rgba(22,163,74,.12) 0%,
-        rgba(22,163,74,.12) calc(50% - 1px),
-        rgba(148,163,184,.35) calc(50% - 1px),
-        rgba(148,163,184,.35) calc(50% + 1px),
-        rgba(126,34,206,.12) calc(50% + 1px),
-        rgba(126,34,206,.12) 100%),
-      #ffffff;
-    box-shadow:inset 4px 0 0 #16a34a, inset -4px 0 0 #7e22ce, 0 3px 8px rgba(15,23,42,.08);
+    border-left-color:#16a34a;
+    border-right-color:#7e22ce;
+    box-shadow:inset 0 4px 0 #16a34a, inset 0 -4px 0 #7e22ce, 0 3px 8px rgba(15,23,42,.08);
   }
 
   .calendar-event.coach-split-purple-green{
-    border-color:#64748b;
-    background:
-      linear-gradient(90deg,
-        rgba(126,34,206,.12) 0%,
-        rgba(126,34,206,.12) calc(50% - 1px),
-        rgba(148,163,184,.35) calc(50% - 1px),
-        rgba(148,163,184,.35) calc(50% + 1px),
-        rgba(22,163,74,.12) calc(50% + 1px),
-        rgba(22,163,74,.12) 100%),
-      #ffffff;
-    box-shadow:inset 4px 0 0 #7e22ce, inset -4px 0 0 #16a34a, 0 3px 8px rgba(15,23,42,.08);
+    border-left-color:#7e22ce;
+    border-right-color:#16a34a;
+    box-shadow:inset 0 4px 0 #7e22ce, inset 0 -4px 0 #16a34a, 0 3px 8px rgba(15,23,42,.08);
   }
 
   .event-date{
