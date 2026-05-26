@@ -404,6 +404,25 @@
     font-weight:900;
   }
 
+  .event-level{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:46px;
+    max-width:92%;
+    margin:3px auto 0;
+    padding:2px 7px;
+    border-radius:999px;
+    background:#111827;
+    color:#ffffff;
+    font-size:10.5px;
+    line-height:1.1;
+    font-weight:1000;
+    letter-spacing:.02em;
+    box-shadow:0 1px 3px rgba(15,23,42,.16);
+    white-space:nowrap;
+  }
+
   .event-coach{
     width:100%;
     margin-top:4px;
@@ -576,6 +595,20 @@
     font-size:13px;
     line-height:1.35;
     font-weight:850;
+  }
+
+  .schedule-level{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:3px 10px;
+    border-radius:999px;
+    background:#111827;
+    color:#ffffff;
+    font-size:12px;
+    line-height:1.2;
+    font-weight:1000;
+    white-space:nowrap;
   }
 
   .schedule-coach{
@@ -890,6 +923,16 @@
       font-weight:900;
     }
 
+    .event-level{
+      min-width:38px;
+      max-width:94%;
+      margin-top:2px;
+      padding:1.5px 5px;
+      font-size:8px;
+      line-height:1.05;
+      box-shadow:none;
+    }
+
     .event-coach{
       margin-top:2px;
       font-size:7.5px;
@@ -952,6 +995,11 @@
     .schedule-detail{
       font-size:12px;
       gap:6px;
+    }
+
+    .schedule-level{
+      padding:3px 9px;
+      font-size:11px;
     }
 
     .reserve-form{
@@ -1045,6 +1093,11 @@
     .schedule-detail{
       font-size:11px;
     }
+
+    .schedule-level{
+      font-size:10px;
+      padding:2px 8px;
+    }
   }
 </style>
 
@@ -1115,7 +1168,7 @@
                               <div class="event-date">{{ item.date_label_jp }}</div>
                               <div class="event-time">{{ item.time_label }}</div>
                               <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
-                              <div class="event-meta">{{ item.target_level_label }}</div>
+                              <div class="event-level">{{ item.target_level_label }}</div>
                               {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
                               {% if item.is_reserved_by_user %}<div class="event-meta">予約済み</div>{% elif item.is_waitlisted_by_user %}<div class="event-meta">キャンセル待ち中</div>{% endif %}
                               <div class="event-coach">
@@ -1135,7 +1188,7 @@
                               <div class="event-date">{{ item.date_label_jp }}</div>
                               <div class="event-time">{{ item.time_label }}</div>
                               <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
-                              <div class="event-meta">{{ item.target_level_label }}</div>
+                              <div class="event-level">{{ item.target_level_label }}</div>
                               {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
                               {% if item.is_reserved_by_user %}<div class="event-meta">予約済み</div>{% elif item.is_waitlisted_by_user %}<div class="event-meta">キャンセル待ち中</div>{% endif %}
                               <div class="event-coach">
@@ -1155,7 +1208,7 @@
                               <div class="event-date">{{ item.date_label_jp }}</div>
                               <div class="event-time">{{ item.time_label }}</div>
                               <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
-                              <div class="event-meta">{{ item.target_level_label }}</div>
+                              <div class="event-level">{{ item.target_level_label }}</div>
                               {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
                               {% if item.is_reserved_by_user %}<div class="event-meta">予約済み</div>{% elif item.is_waitlisted_by_user %}<div class="event-meta">キャンセル待ち中</div>{% endif %}
                               <div class="event-coach">
@@ -1195,7 +1248,7 @@
             <div class="schedule-date">{{ item.date_label_jp }}</div>
             <div class="schedule-detail">
               <span>{{ item.time_label }}</span>
-              <span>レベル：{{ item.target_level_label }}</span>
+              <span class="schedule-level">{{ item.target_level_label }}</span>
               <span>参加：{{ item.member_count }}/{{ item.capacity }}名</span>
               <span>定員：{{ item.capacity }}名</span>
               {% if item.waitlist_count %}<span class="waitlist-badge">キャンセル待ち {{ item.waitlist_count }}名</span>{% endif %}
