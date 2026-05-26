@@ -1503,6 +1503,25 @@ def lesson_calendar_view(request):
             return color_classes[int(coach_id) % len(color_classes)]
         return "coach-blue"
 
+    def _coach_combo_class_from_names(names):
+        names = names or ""
+        color_order = []
+        if "飯塚" in names:
+            color_order.append("blue")
+        if "清水" in names:
+            color_order.append("green")
+        if "井上" in names:
+            color_order.append("purple")
+
+        unique_colors = []
+        for color in color_order:
+            if color not in unique_colors:
+                unique_colors.append(color)
+
+        if len(unique_colors) >= 2:
+            return f"coach-split-{unique_colors[0]}-{unique_colors[1]}"
+        return ""
+
     def _coach_color_class(availability):
         names = " ".join(
             [
@@ -1533,6 +1552,7 @@ def lesson_calendar_view(request):
         waitlist_count=0,
         status=CoachAvailability.STATUS_OPEN,
         color_class="coach-blue",
+        color_combo_class="",
         availability_id="",
         fixed_lesson_id="",
         lesson_date="",
@@ -1642,6 +1662,7 @@ def lesson_calendar_view(request):
             "is_waitlisted_by_user": bool(user_waitlist_id),
             "disabled_reason": disabled_reason,
             "color_class": color_class,
+            "color_combo_class": color_combo_class,
         }
 
     day_event_map = {}
@@ -1729,6 +1750,7 @@ def lesson_calendar_view(request):
                 waitlist_count=int(waitlist_counts.get(slot_key, 0)),
                 status=status,
                 color_class=_coach_color_from_names(coach_names, getattr(primary_coach, "pk", None)),
+                color_combo_class=_coach_combo_class_from_names(coach_names),
                 allow_fixed_booking=bool(court),
             )
 
@@ -1796,6 +1818,7 @@ def lesson_calendar_view(request):
             waitlist_count=int(waitlist_counts.get(slot_key, 0)),
             status=availability.status,
             color_class=_coach_color_class(availability),
+            color_combo_class=_coach_combo_class_from_names(_display_name(assigned_coach)),
         )
 
         day_event_map.setdefault(target_date, [])
@@ -2530,7 +2553,7 @@ def coach_schedule_survey_summary(request):
     )
 
 @login_required
-@require_GET
+@require_http_methods(["GET", "POST"])
 def coach_today_lessons(request):
     if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
         return HttpResponse("Forbidden", status=403)
@@ -2564,6 +2587,61 @@ def coach_today_lessons(request):
         selected_coach_id = str(selected_coach.pk) if selected_coach else ""
         is_staff_mode = True
 
+    def _today_lessons_redirect():
+        params = {"days": display_days}
+        if selected_coach_id:
+            params["coach_id"] = selected_coach_id
+        return f"{reverse('club:coach_today_lessons')}?{urlencode(params)}"
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "update_payment":
+            reservation_id = (request.POST.get("reservation_id") or "").strip()
+            payment_status = (request.POST.get("payment_status") or "").strip()
+
+            reservation = get_object_or_404(
+                Reservation.objects.select_related("user", "coach", "substitute_coach", "court"),
+                pk=reservation_id,
+            )
+
+            can_update = (
+                _is_staff_like(request.user)
+                or reservation.coach_id == request.user.pk
+                or getattr(reservation, "substitute_coach_id", None) == request.user.pk
+            )
+            if not can_update:
+                return HttpResponse("Forbidden", status=403)
+
+            allowed_statuses = {
+                Reservation.PAYMENT_STATUS_UNPAID,
+                Reservation.PAYMENT_STATUS_PAID,
+                Reservation.PAYMENT_STATUS_WAIVED,
+            }
+            if payment_status not in allowed_statuses:
+                messages.error(request, "支払状況が不正です。")
+                return redirect(_today_lessons_redirect())
+
+            try:
+                reservation.mark_payment_status(
+                    payment_status,
+                    received_by=request.user,
+                    note="本日の受付・精算画面から更新",
+                )
+                messages.success(
+                    request,
+                    f"{_display_name(reservation.user)}さんの参加費状況を「{reservation.get_payment_status_display()}」に更新しました。",
+                )
+            except ValidationError as e:
+                if hasattr(e, "messages"):
+                    for message_text in e.messages:
+                        messages.error(request, message_text)
+                else:
+                    messages.error(request, str(e))
+            except Exception as e:
+                messages.error(request, f"支払状況の更新に失敗しました: {e}")
+
+            return redirect(_today_lessons_redirect())
+
     slot_map = {}
 
     def _slot_key_for_row(*, lesson_type, coach_id, court_id, start_at, end_at):
@@ -2584,6 +2662,11 @@ def coach_today_lessons(request):
             return getattr(user, "member_level", "") or "-"
 
     def _reservation_person_row(reservation):
+        payment_status_options = [
+            (Reservation.PAYMENT_STATUS_UNPAID, "未回収"),
+            (Reservation.PAYMENT_STATUS_PAID, "回収済み"),
+            (Reservation.PAYMENT_STATUS_WAIVED, "免除"),
+        ]
         return {
             "reservation": reservation,
             "name": _display_name(reservation.user),
@@ -2591,6 +2674,12 @@ def coach_today_lessons(request):
             "level": _safe_level(reservation.user),
             "status_label": reservation.get_status_display(),
             "detail_url": reverse("club:reservation_detail", kwargs={"pk": reservation.pk}),
+            "payment_required": reservation.is_payment_tracking_required(),
+            "payment_status": reservation.payment_status,
+            "payment_status_label": reservation.payment_status_badge_label(),
+            "payment_amount": int(reservation.payment_amount or 0),
+            "payment_received_at": reservation.payment_received_at,
+            "payment_status_options": payment_status_options,
         }
 
     def _member_person_row(member):
@@ -2875,6 +2964,30 @@ def coach_today_lessons(request):
         )
         day_cursor += timedelta(days=1)
 
+    all_active_reservations = []
+    for row in lesson_rows:
+        all_active_reservations.extend(row["reservations"])
+
+    payment_target_reservations = [
+        reservation for reservation in all_active_reservations
+        if reservation.is_payment_tracking_required()
+    ]
+    payment_paid_total = sum(
+        int(reservation.payment_amount or 0)
+        for reservation in payment_target_reservations
+        if reservation.payment_status == Reservation.PAYMENT_STATUS_PAID
+    )
+    payment_unpaid_total = sum(
+        int(reservation.payment_amount or 0)
+        for reservation in payment_target_reservations
+        if reservation.payment_status == Reservation.PAYMENT_STATUS_UNPAID
+    )
+    payment_waived_total = sum(
+        int(reservation.payment_amount or 0)
+        for reservation in payment_target_reservations
+        if reservation.payment_status == Reservation.PAYMENT_STATUS_WAIVED
+    )
+
     summary = {
         "lesson_count": len(lesson_rows),
         "today_lesson_count": len(today_rows),
@@ -2883,6 +2996,10 @@ def coach_today_lessons(request):
         "waitlist_count": sum(row["waitlist_count"] for row in lesson_rows),
         "pending_count": sum(row["pending_count"] for row in lesson_rows),
         "attention_count": len(attention_rows),
+        "payment_target_count": len(payment_target_reservations),
+        "payment_paid_total": payment_paid_total,
+        "payment_unpaid_total": payment_unpaid_total,
+        "payment_waived_total": payment_waived_total,
     }
 
     return render(
@@ -6464,6 +6581,10 @@ def coach_revenue_summary(request):
 
     preopen_reservation_count = 0
     preopen_sales_total = 0
+    preopen_paid_total = 0
+    preopen_unpaid_total = 0
+    preopen_waived_total = 0
+    preopen_unpaid_rows = []
     ticket_consumption_total = 0
 
     for reservation in reservations:
@@ -6475,18 +6596,28 @@ def coach_revenue_summary(request):
             reservation.lesson_type == Reservation.LESSON_GENERAL
             and is_preopen_cash_lesson_date(reservation.start_at)
         ):
-            amount = PREOPEN_CASH_PRICE
+            amount = int(reservation.payment_amount or PREOPEN_CASH_PRICE)
             preopen_reservation_count += 1
             preopen_sales_total += amount
-            preopen_rows.append(
-                {
-                    "reservation": reservation,
-                    "member_name": _display_name(reservation.user),
-                    "coach_name": _display_name(assigned_coach),
-                    "amount": amount,
-                    "payment_label": "7月プレオープン参加費",
-                }
-            )
+
+            if reservation.payment_status == Reservation.PAYMENT_STATUS_PAID:
+                preopen_paid_total += amount
+            elif reservation.payment_status == Reservation.PAYMENT_STATUS_WAIVED:
+                preopen_waived_total += amount
+            else:
+                preopen_unpaid_total += amount
+
+            row = {
+                "reservation": reservation,
+                "member_name": _display_name(reservation.user),
+                "coach_name": _display_name(assigned_coach),
+                "amount": amount,
+                "payment_label": "7月プレオープン参加費",
+                "payment_status_label": reservation.get_payment_status_display(),
+            }
+            preopen_rows.append(row)
+            if reservation.payment_status == Reservation.PAYMENT_STATUS_UNPAID:
+                preopen_unpaid_rows.append(row)
 
             coach_key = getattr(assigned_coach, "pk", None) or 0
             coach_sales_map.setdefault(
@@ -6654,7 +6785,7 @@ def coach_revenue_summary(request):
     cash_basis_total = preopen_sales_total + ticket_purchase_total + stringing_total
     gross_profit_estimate = operating_sales_total - approved_expense_total
     reference_profit_estimate = reference_sales_total - approved_expense_total
-    uncollected_preopen_estimate = preopen_sales_total
+    uncollected_preopen_estimate = preopen_unpaid_total
 
     coach_sales_rows = []
     for values in coach_sales_map.values():
@@ -6672,6 +6803,11 @@ def coach_revenue_summary(request):
             "label": "レッスン売上",
             "value": lesson_sales_total,
             "note": "7月プレオープン参加費 + チケット消化ベース",
+        },
+        {
+            "label": "7月参加費 回収済み",
+            "value": preopen_paid_total,
+            "note": f"未回収 {preopen_unpaid_total}円 / 免除 {preopen_waived_total}円",
         },
         {
             "label": "チケット販売額",
@@ -6716,6 +6852,10 @@ def coach_revenue_summary(request):
             "summary_cards": summary_cards,
             "preopen_reservation_count": preopen_reservation_count,
             "preopen_sales_total": preopen_sales_total,
+            "preopen_paid_total": preopen_paid_total,
+            "preopen_unpaid_total": preopen_unpaid_total,
+            "preopen_waived_total": preopen_waived_total,
+            "preopen_unpaid_rows": preopen_unpaid_rows,
             "uncollected_preopen_estimate": uncollected_preopen_estimate,
             "ticket_consumption_total": ticket_consumption_total,
             "ticket_purchase_total": ticket_purchase_total,
