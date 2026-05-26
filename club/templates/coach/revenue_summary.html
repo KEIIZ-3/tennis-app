@@ -304,8 +304,8 @@
 
   {% if selected_year == 2026 and selected_month == 7 %}
     <div class="warning-box">
-      2026年7月の通常レッスンはプレオープン期間のため、チケットは使いません。参加費は「当日、受付時に2,000円のお支払いをお願いします」という前提で集計しています。
-      現時点では回収済みチェック機能は未導入のため、下の「7月プレオープン参加費」は回収予定額として確認してください。
+      2026年7月の通常レッスンはプレオープン期間のため、チケットは使いません。参加費は本日の受付・精算画面で「未回収 / 回収済み / 免除」を更新します。
+      この画面では月次の回収予定・回収済み・未回収を確認できます。
     </div>
   {% endif %}
 
@@ -351,6 +351,11 @@
             <th>現金ベース参考</th>
             <td class="amount">{{ cash_basis_total }}円</td>
             <td>7月参加費 + チケット販売額 + ガット張り売上</td>
+          </tr>
+          <tr>
+            <th>7月参加費 回収状況</th>
+            <td class="amount">回収済み {{ preopen_paid_total }}円</td>
+            <td>未回収 {{ preopen_unpaid_total }}円 / 免除 {{ preopen_waived_total }}円</td>
           </tr>
         </tbody>
       </table>
@@ -403,6 +408,7 @@
               <th>日時</th>
               <th>会員</th>
               <th>コーチ</th>
+              <th>状況</th>
               <th>金額</th>
             </tr>
           </thead>
@@ -412,10 +418,42 @@
                 <td>{{ row.reservation.start_at|date:"m/d H:i" }}</td>
                 <td>{{ row.member_name }}</td>
                 <td>{{ row.coach_name }}</td>
+                <td>{{ row.payment_status_label }}</td>
                 <td class="amount">{{ row.amount }}円</td>
               </tr>
             {% empty %}
-              <tr><td colspan="4">対象データはありません。</td></tr>
+              <tr><td colspan="5">対象データはありません。</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="revenue-section">
+      <div class="section-head">
+        <h2 class="section-title">7月プレオープン 未回収一覧</h2>
+        <span class="section-total">{{ preopen_unpaid_rows|length }}件 / {{ preopen_unpaid_total }}円</span>
+      </div>
+      <div class="revenue-table-wrap">
+        <table class="revenue-table">
+          <thead>
+            <tr>
+              <th>日時</th>
+              <th>会員</th>
+              <th>コーチ</th>
+              <th>金額</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in preopen_unpaid_rows %}
+              <tr>
+                <td>{{ row.reservation.start_at|date:"m/d H:i" }}</td>
+                <td>{{ row.member_name }}</td>
+                <td>{{ row.coach_name }}</td>
+                <td class="amount">{{ row.amount }}円</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="4">未回収の予約はありません。</td></tr>
             {% endfor %}
           </tbody>
         </table>
