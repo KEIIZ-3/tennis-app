@@ -3786,6 +3786,39 @@ def coach_payroll_summary(request):
         except Exception:
             return 0
 
+    is_selected_contractor_coach = bool(
+        selected_coach and getattr(selected_coach, "role", "") == "contractor_coach"
+    )
+    contractor_hourly_wage = _money(getattr(selected_coach, "contractor_hourly_wage", 0)) if selected_coach else 0
+    contractor_work_minutes = 0
+    contractor_work_slot_count = 0
+    contractor_work_slot_keys = set()
+
+    def _reservation_duration_minutes(reservation):
+        try:
+            return max(int((reservation.end_at - reservation.start_at).total_seconds() // 60), 0)
+        except Exception:
+            return 0
+
+    def _add_contractor_work_slot(reservation):
+        nonlocal contractor_work_minutes, contractor_work_slot_count
+        if not is_selected_contractor_coach or not selected_coach:
+            return
+        if reservation.status != Reservation.STATUS_ACTIVE:
+            return
+        key = (
+            str(reservation.lesson_type or ""),
+            str(getattr(reservation, "court_id", "") or ""),
+            _to_event_datetime_str(reservation.start_at) or "",
+            _to_event_datetime_str(reservation.end_at) or "",
+            str(selected_coach.pk),
+        )
+        if key in contractor_work_slot_keys:
+            return
+        contractor_work_slot_keys.add(key)
+        contractor_work_slot_count += 1
+        contractor_work_minutes += _reservation_duration_minutes(reservation)
+
     def _reservation_coaches_for_split(reservation):
         """
         方式A：売上金額ベース配分。
@@ -3882,6 +3915,8 @@ def coach_payroll_summary(request):
             share_numerator, share_denominator = _selected_coach_share(reservation)
             if share_numerator <= 0 or share_denominator <= 0:
                 continue
+
+            _add_contractor_work_slot(reservation)
 
             active_consumptions = (
                 reservation.ticket_consumptions.filter(refunded_at__isnull=True)
@@ -4090,7 +4125,14 @@ def coach_payroll_summary(request):
     personal_reimbursement_amount = sum(_money(row["expense"].amount) for row in approved_personal_expense_rows)
     per_coach_common_expense = int(approved_common_expense_total / active_coach_count) if active_coach_count > 0 else 0
 
-    settlement_before_common = lesson_total_amount + assigned_stringing_amount + personal_reimbursement_amount
+    contractor_hourly_pay_amount = int(contractor_work_minutes * contractor_hourly_wage / 60) if is_selected_contractor_coach else 0
+    contractor_work_hours_text = f"{contractor_work_minutes // 60}時間{contractor_work_minutes % 60:02d}分"
+    if is_selected_contractor_coach:
+        lesson_compensation_amount = contractor_hourly_pay_amount
+    else:
+        lesson_compensation_amount = lesson_total_amount
+
+    settlement_before_common = lesson_compensation_amount + assigned_stringing_amount + personal_reimbursement_amount
     estimated_salary = settlement_before_common - per_coach_common_expense
     salary_before_common = settlement_before_common
     total_amount = settlement_before_common
@@ -4169,6 +4211,13 @@ def coach_payroll_summary(request):
             "preopen_unpaid_count": preopen_unpaid_count,
             "preopen_waived_count": preopen_waived_count,
             "lesson_total_amount": lesson_total_amount,
+            "lesson_compensation_amount": lesson_compensation_amount,
+            "is_selected_contractor_coach": is_selected_contractor_coach,
+            "contractor_hourly_wage": contractor_hourly_wage,
+            "contractor_work_minutes": contractor_work_minutes,
+            "contractor_work_hours_text": contractor_work_hours_text,
+            "contractor_work_slot_count": contractor_work_slot_count,
+            "contractor_hourly_pay_amount": contractor_hourly_pay_amount,
             "assigned_stringing_amount": assigned_stringing_amount,
             "total_stringing_amount": total_stringing_amount,
             "personal_reimbursement_amount": personal_reimbursement_amount,
@@ -4318,6 +4367,12 @@ def coach_admin_settlement(request):
             return [assigned]
         return []
 
+    def _reservation_duration_minutes(reservation):
+        try:
+            return max(int((reservation.end_at - reservation.start_at).total_seconds() // 60), 0)
+        except Exception:
+            return 0
+
     active_coach_ids = set()
     for reservation in reservations:
         for coach in _reservation_coaches_for_split(reservation):
@@ -4367,6 +4422,13 @@ def coach_admin_settlement(request):
             "preopen_unpaid_amount": 0,
             "preopen_waived_amount": 0,
             "stringing_amount": 0,
+            "is_contractor_coach": getattr(coach, "role", "") == "contractor_coach",
+            "contractor_hourly_wage": _money(getattr(coach, "contractor_hourly_wage", 0)),
+            "contractor_work_minutes": 0,
+            "contractor_work_slot_count": 0,
+            "_contractor_work_slot_keys": set(),
+            "contractor_hourly_pay_amount": 0,
+            "lesson_compensation_amount": 0,
             "personal_reimbursement_due": 0,
             "salary_paid": 0,
             "reimbursement_paid": 0,
@@ -4396,6 +4458,18 @@ def coach_admin_settlement(request):
             if not row:
                 continue
             row["reservation_count"] += 1
+            if row.get("is_contractor_coach"):
+                work_key = (
+                    str(reservation.lesson_type or ""),
+                    str(getattr(reservation, "court_id", "") or ""),
+                    _to_event_datetime_str(reservation.start_at) or "",
+                    _to_event_datetime_str(reservation.end_at) or "",
+                    str(coach.pk),
+                )
+                if work_key not in row["_contractor_work_slot_keys"]:
+                    row["_contractor_work_slot_keys"].add(work_key)
+                    row["contractor_work_slot_count"] += 1
+                    row["contractor_work_minutes"] += _reservation_duration_minutes(reservation)
             if ticket_total > 0:
                 row["ticket_amount"] += int(ticket_total / denominator)
             if is_preopen:
@@ -4440,7 +4514,17 @@ def coach_admin_settlement(request):
 
     coach_rows = []
     for row in coach_map.values():
-        lesson_and_work_amount = row["ticket_amount"] + row["preopen_paid_amount"] + row["stringing_amount"]
+        row["contractor_hourly_pay_amount"] = int(
+            row["contractor_work_minutes"] * row["contractor_hourly_wage"] / 60
+        ) if row.get("is_contractor_coach") else 0
+        row["contractor_work_hours_text"] = f"{row['contractor_work_minutes'] // 60}時間{row['contractor_work_minutes'] % 60:02d}分"
+        lesson_revenue_amount = row["ticket_amount"] + row["preopen_paid_amount"]
+        if row.get("is_contractor_coach"):
+            lesson_compensation_amount = row["contractor_hourly_pay_amount"]
+        else:
+            lesson_compensation_amount = lesson_revenue_amount
+        row["lesson_compensation_amount"] = lesson_compensation_amount
+        lesson_and_work_amount = lesson_compensation_amount + row["stringing_amount"]
         salary_due = lesson_and_work_amount - row["common_expense_share"]
         reimbursement_due = row["personal_reimbursement_due"]
         unpaid_salary = salary_due - row["salary_paid"]
@@ -4448,6 +4532,7 @@ def coach_admin_settlement(request):
         total_unpaid = unpaid_salary + unpaid_reimbursement
         row.update(
             {
+                "lesson_revenue_amount": lesson_revenue_amount,
                 "lesson_and_work_amount": lesson_and_work_amount,
                 "salary_due": salary_due,
                 "reimbursement_due": reimbursement_due,
@@ -4457,6 +4542,7 @@ def coach_admin_settlement(request):
                 "total_paid": row["salary_paid"] + row["reimbursement_paid"],
             }
         )
+        row.pop("_contractor_work_slot_keys", None)
         coach_rows.append(row)
 
     coach_rows = sorted(coach_rows, key=lambda row: row["coach_name"])
@@ -4468,6 +4554,7 @@ def coach_admin_settlement(request):
         _money(purchase.total_tickets) * _money(purchase.unit_price)
         for purchase in TicketPurchase.objects.filter(purchased_at__date__gte=month_start, purchased_at__date__lt=next_month)
     )
+    contractor_hourly_pay_total = sum(row["contractor_hourly_pay_amount"] for row in coach_rows)
     salary_due_total = sum(row["salary_due"] for row in coach_rows)
     reimbursement_due_total = sum(row["reimbursement_due"] for row in coach_rows)
     salary_paid_total = sum(row["salary_paid"] for row in coach_rows)
@@ -4533,6 +4620,7 @@ def coach_admin_settlement(request):
             "stringing_total": stringing_total,
             "cash_in_total": cash_in_total,
             "approved_common_expense_total": approved_common_expense_total,
+            "contractor_hourly_pay_total": contractor_hourly_pay_total,
             "salary_due_total": salary_due_total,
             "reimbursement_due_total": reimbursement_due_total,
             "salary_paid_total": salary_paid_total,
