@@ -91,6 +91,7 @@ _FIELD_VERBOSE_NAMES = {
         "court": "コート",
         "lesson_type": "レッスン種別",
         "target_level": "対象レベル",
+        "target_level_2": "対象レベル2",
         "start_at": "開始日時",
         "end_at": "終了日時",
         "capacity": "定員",
@@ -111,6 +112,7 @@ _FIELD_VERBOSE_NAMES = {
         "members": "固定参加メンバー",
         "lesson_type": "レッスン種別",
         "target_level": "対象レベル",
+        "target_level_2": "対象レベル2",
         "start_date": "繰り返し開始日",
         "weekday": "曜日",
         "start_hour": "開始時刻",
@@ -132,6 +134,7 @@ _FIELD_VERBOSE_NAMES = {
         "is_fixed_entry": "固定参加",
         "lesson_type": "レッスン種別",
         "target_level": "対象レベル",
+        "target_level_2": "対象レベル2",
         "requested_court_type": "希望コート種別",
         "requested_court_note": "希望コートメモ",
         "approved_court_note": "承認コートメモ",
@@ -398,7 +401,8 @@ class FixedLessonAdminForm(forms.ModelForm):
             "title": "レッスン名",
             "is_active": "有効",
             "lesson_type": "レッスン種別",
-            "target_level": "対象レベル",
+            "target_level": "対象レベル1",
+            "target_level_2": "対象レベル2",
             "start_date": "繰り返し開始日",
             "weekday": "曜日",
             "start_hour": "開始時刻",
@@ -421,6 +425,7 @@ class FixedLessonAdminForm(forms.ModelForm):
             "start_date": "この日付以降の最初の該当曜日から、レッスンカレンダーに表示されます。",
             "weekday": "繰り返し開催する曜日を選択してください。",
             "weeks_ahead": "繰り返し開始日以降、何回分のレッスンをカレンダーに表示・予約作成するかを指定します。例：1 = 初回のみ、4 = 4回分。",
+            "target_level_2": "2つ目の対象レベルがある場合のみ選択してください。例：対象レベル1=初級、対象レベル2=初中級。",
             "members": "ここに登録した会員は、今後の固定レッスン予約へ反映されます。外した会員の未来予約はキャンセル扱いになります。",
             "capacity": "一般レッスンはコーチ人数×6名で自動調整されます。",
             "coach_2": "複数コーチ開催時のみ選択してください。",
@@ -695,15 +700,21 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
         "coach",
         "court",
         "lesson_type",
-        "target_level",
+        "target_level_admin",
         "coach_count",
         "court_count",
         "capacity",
         "start_at",
         "end_at",
     )
-    list_filter = ("coach", "court", "lesson_type", "target_level")
+    list_filter = ("coach", "court", "lesson_type", "target_level", "target_level_2")
     search_fields = ("coach__username", "coach__full_name", "court__name")
+
+    @admin.display(description="対象レベル", ordering="target_level")
+    def target_level_admin(self, obj):
+        if hasattr(obj, "target_level_display_label"):
+            return obj.target_level_display_label()
+        return obj.get_target_level_display()
 
 
 @admin.register(FixedLesson)
@@ -733,6 +744,7 @@ class FixedLessonAdmin(admin.ModelAdmin):
         "is_active",
         "weekday",
         "target_level",
+        "target_level_2",
         "lesson_type",
         "coach",
         "coach_2",
@@ -788,6 +800,7 @@ class FixedLessonAdmin(admin.ModelAdmin):
                 "is_active",
                 "lesson_type",
                 "target_level",
+                "target_level_2",
             )
         }),
         ("開催曜日・時間", {
@@ -874,6 +887,8 @@ class FixedLessonAdmin(admin.ModelAdmin):
 
     @admin.display(description="対象レベル", ordering="target_level")
     def target_level_admin(self, obj):
+        if hasattr(obj, "target_level_display_label"):
+            return obj.target_level_display_label()
         return obj.get_target_level_display()
 
     @admin.display(description="担当コーチ")
@@ -996,14 +1011,20 @@ class ReservationAdmin(admin.ModelAdmin):
         "substitute_coach",
         "court",
         "lesson_type",
-        "target_level",
+        "target_level_admin",
         "tickets_used",
         "start_at",
         "end_at",
         "status",
         "is_fixed_entry",
     )
-    list_filter = ("status", "lesson_type", "target_level", "coach", "substitute_coach", "court", "is_fixed_entry")
+    list_filter = ("status", "lesson_type", "target_level", "target_level_2", "coach", "substitute_coach", "court", "is_fixed_entry")
+    @admin.display(description="対象レベル", ordering="target_level")
+    def target_level_admin(self, obj):
+        if hasattr(obj, "target_level_display_label"):
+            return obj.target_level_display_label()
+        return obj.get_target_level_display()
+
     search_fields = (
         "user__username",
         "user__full_name",
@@ -1087,14 +1108,21 @@ class LessonWaitlistAdmin(admin.ModelAdmin):
         "start_at",
         "end_at",
         "lesson_type",
-        "target_level",
+        "target_level_admin",
         "coach",
         "substitute_coach",
         "court",
         "status",
         "created_at",
     )
-    list_filter = ("status", "lesson_type", "target_level", "coach", "court", "start_at")
+    list_filter = ("status", "lesson_type", "target_level", "target_level_2", "coach", "court", "start_at")
+
+    @admin.display(description="対象レベル", ordering="target_level")
+    def target_level_admin(self, obj):
+        if hasattr(obj, "target_level_display_label"):
+            return obj.target_level_display_label()
+        return obj.get_target_level_display()
+
     search_fields = (
         "user__username",
         "user__full_name",
@@ -1114,6 +1142,7 @@ class LessonWaitlistAdmin(admin.ModelAdmin):
                 "status",
                 "lesson_type",
                 "target_level",
+                "target_level_2",
                 "start_at",
                 "end_at",
             )
