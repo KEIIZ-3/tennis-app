@@ -157,7 +157,7 @@
   </section>
 
   <div class="notice-box">
-    チケット販売入金とチケット消化売上は同時に足すと二重計上になります。この画面では会社残高は「実際の入金」に寄せ、コーチ別支払予定は「実売上ベース精算」に寄せて分けて表示しています。
+    チケット販売入金とチケット消化売上は同時に足すと二重計上になります。この画面では会社残高は「実際の入金」に寄せ、コーチ別支払予定は「実売上ベース精算」に寄せて分けて表示しています。業務委託コーチは、設定時給がある場合「時給 × 担当時間」をレッスン報酬として給与予定に反映します。
   </div>
 
   <section class="section">
@@ -173,6 +173,9 @@
             <th>担当件数</th>
             <th>チケット実売上</th>
             <th>7月回収済み</th>
+            <th>時給</th>
+            <th>担当時間</th>
+            <th>レッスン報酬</th>
             <th>ガット張り</th>
             <th>共通経費按分</th>
             <th>給与予定</th>
@@ -190,6 +193,22 @@
               <td>{{ row.reservation_count }}件</td>
               <td class="amount">{{ row.ticket_amount }}円</td>
               <td class="amount">{{ row.preopen_paid_amount }}円</td>
+              <td class="amount">
+                {% if row.is_contractor_coach %}
+                  {{ row.contractor_hourly_wage }}円/時
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td>
+                {% if row.is_contractor_coach %}
+                  {{ row.contractor_work_hours_text }}<br>
+                  <span class="muted">{{ row.contractor_work_slot_count }}枠</span>
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td class="amount">{{ row.lesson_compensation_amount }}円</td>
               <td class="amount">{{ row.stringing_amount }}円</td>
               <td class="amount">-{{ row.common_expense_share }}円</td>
               <td class="amount">{{ row.salary_due }}円</td>
@@ -200,7 +219,7 @@
               <td class="amount">{{ row.unpaid_reimbursement }}円</td>
             </tr>
           {% empty %}
-            <tr><td colspan="12">対象データはありません。</td></tr>
+            <tr><td colspan="15">対象データはありません。</td></tr>
           {% endfor %}
         </tbody>
       </table>
