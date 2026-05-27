@@ -395,6 +395,7 @@
     font-size:11px;
     line-height:1.15;
     font-weight:1000;
+    white-space:nowrap;
   }
 
   .event-coach-list{
@@ -402,26 +403,32 @@
     align-items:center;
     justify-content:center;
     gap:2px;
-    flex-wrap:wrap;
+    flex-wrap:nowrap;
     width:100%;
+    min-width:0;
+    white-space:nowrap;
   }
 
   .event-coach-name{
     display:inline-flex;
     align-items:center;
     justify-content:center;
-    max-width:48%;
+    flex:0 0 auto;
+    max-width:none;
+    min-width:0;
     padding:1px 2px;
     border-radius:6px;
     background:rgba(255,255,255,.72);
     white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
+    overflow:visible;
+    text-overflow:clip;
   }
 
   .event-coach-separator{
+    flex:0 0 auto;
     color:#64748b;
     font-weight:900;
+    padding:0 1px;
   }
 
   .coach-name-blue{
@@ -862,7 +869,7 @@
     }
 
     .calendar-event{
-      min-height:82px;
+      min-height:84px;
       border-width:1.5px;
       border-radius:8px;
       padding:4px 2px 3px;
@@ -891,7 +898,7 @@
 
     .event-level{
       min-width:38px;
-      max-width:94%;
+      max-width:96%;
       margin-top:2px;
       padding:1.5px 5px;
       font-size:8px;
@@ -901,19 +908,33 @@
 
     .event-coach{
       margin-top:2px;
-      font-size:7.5px;
+      font-size:7.2px;
       line-height:1.05;
+      width:100%;
       word-break:keep-all;
+      overflow:visible;
     }
 
     .event-coach-list{
-      gap:1px;
+      gap:0;
+      flex-wrap:nowrap;
+      transform:scale(.94);
+      transform-origin:center center;
     }
 
     .event-coach-name{
-      max-width:46%;
-      padding:1px 1px;
-      border-radius:4px;
+      max-width:none;
+      flex:0 0 auto;
+      padding:0 1px;
+      border-radius:3px;
+      background:transparent;
+      overflow:visible;
+      text-overflow:clip;
+    }
+
+    .event-coach-separator{
+      padding:0 1px;
+      font-size:.92em;
     }
 
     .schedule-panel{
@@ -1045,7 +1066,19 @@
     }
 
     .event-coach{
-      font-size:6.6px;
+      font-size:6.4px;
+    }
+
+    .event-coach-list{
+      transform:scale(.90);
+    }
+
+    .event-coach-name{
+      padding:0;
+    }
+
+    .event-coach-separator{
+      padding:0 1px;
     }
 
     .schedule-row{
