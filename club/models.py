@@ -502,6 +502,30 @@ class FixedLesson(models.Model, LessonTypeMixin):
 
         return start_dt, end_dt
 
+    def first_occurrence_date(self):
+        """
+        繰り返し開始日以降で、最初にこの固定レッスンの曜日に当たる日付を返します。
+
+        管理画面の「何週間先まで作成」は、実運用では「何回分作成」として扱います。
+        例：1 = 最初の1回だけ、4 = 4回分。
+        """
+        repeat_start = self.start_date or timezone.localdate()
+        initial_offset = (self.weekday - repeat_start.weekday()) % 7
+        return repeat_start + timedelta(days=initial_offset)
+
+    def occurrence_count(self):
+        try:
+            return max(int(self.weeks_ahead or 1), 1)
+        except Exception:
+            return 1
+
+    def scheduled_occurrence_dates(self):
+        first_date = self.first_occurrence_date()
+        return [
+            first_date + timedelta(days=7 * index)
+            for index in range(self.occurrence_count())
+        ]
+
     def sync_future_reservations(self, created_by=None):
         if not self.is_active:
             return 0
@@ -510,17 +534,41 @@ class FixedLesson(models.Model, LessonTypeMixin):
 
         changed_count = 0
         today = timezone.localdate()
-        repeat_start = self.start_date or today
-        if repeat_start < today:
-            repeat_start = today
-        initial_offset = (self.weekday - repeat_start.weekday()) % 7
+        target_dates = self.scheduled_occurrence_dates()
+        target_datetimes = {
+            self._build_datetimes_for_date(target_date)
+            for target_date in target_dates
+        }
+
         members = list(self.members.all())
         member_ids = {member.pk for member in members}
         required_capacity = max(self.effective_capacity(), len(members), 1)
         primary_coach = self.primary_coach()
 
-        for week_index in range(self.weeks_ahead):
-            target_date = repeat_start + timedelta(days=initial_offset + (7 * week_index))
+        # 以前の「1=1週間先まで」解釈などで作られた余分な未来の固定参加予約は、
+        # 今後分に限ってキャンセル扱いにし、管理画面の固定レッスン設定と表示数を合わせます。
+        extra_fixed_reservations = Reservation.objects.filter(
+            fixed_lesson=self,
+            is_fixed_entry=True,
+            start_at__date__gte=today,
+            status=Reservation.STATUS_ACTIVE,
+        )
+        for reservation in extra_fixed_reservations:
+            if (reservation.start_at, reservation.end_at) in target_datetimes:
+                continue
+            try:
+                reservation.cancel(
+                    created_by=created_by,
+                    reason="固定レッスンの開催回数変更による自動整理",
+                )
+                changed_count += 1
+            except ValidationError:
+                continue
+
+        for target_date in target_dates:
+            if target_date < today:
+                continue
+
             start_at, end_at = self._build_datetimes_for_date(target_date)
 
             availability, _created = CoachAvailability.objects.get_or_create(
