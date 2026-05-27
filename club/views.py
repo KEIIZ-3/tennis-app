@@ -3443,7 +3443,8 @@ def coach_ticket_summary(request):
         selected_month = today.month
 
     coach_queryset = User.objects.filter(role="coach").order_by("full_name", "username", "id")
-    if _is_staff_like(request.user) and not _is_coach_user(request.user):
+    is_admin_mode = bool(getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False))
+    if is_admin_mode:
         selected_coach_id = (request.GET.get("coach_id") or "").strip()
         selected_coach = (
             coach_queryset.filter(pk=selected_coach_id).first() if selected_coach_id else coach_queryset.first()
@@ -3587,7 +3588,8 @@ def coach_ticket_summary(request):
             "reservation_rows": reservations,
             "total_tickets": total_tickets,
             "total_amount": total_amount,
-            "is_staff_mode": _is_staff_like(request.user) and not _is_coach_user(request.user),
+            "is_staff_mode": is_admin_mode,
+            "is_admin_mode": is_admin_mode,
         },
     )
 
@@ -3595,6 +3597,8 @@ def coach_ticket_summary(request):
 
 EXPENSE_TYPE_PERSONAL = "personal"
 EXPENSE_TYPE_COMMON = "common"
+EXPENSE_TYPE_SALARY_PAYOUT = "salary_payout"
+EXPENSE_TYPE_REIMBURSEMENT_PAYOUT = "reimbursement_payout"
 
 EXPENSE_RECEIPT_NONE = "none"
 EXPENSE_RECEIPT_HAS = "has"
@@ -3611,6 +3615,18 @@ EXPENSE_TYPE_CHOICES = (
     (EXPENSE_TYPE_PERSONAL, "本人立替"),
     (EXPENSE_TYPE_COMMON, "共通経費"),
 )
+
+EXPENSE_TYPE_LABELS = {
+    EXPENSE_TYPE_PERSONAL: "本人立替",
+    EXPENSE_TYPE_COMMON: "共通経費",
+    EXPENSE_TYPE_SALARY_PAYOUT: "給与支払い",
+    EXPENSE_TYPE_REIMBURSEMENT_PAYOUT: "本人立替精算支払い",
+}
+
+EXPENSE_PAYOUT_TYPES = {
+    EXPENSE_TYPE_SALARY_PAYOUT,
+    EXPENSE_TYPE_REIMBURSEMENT_PAYOUT,
+}
 
 EXPENSE_RECEIPT_CHOICES = (
     (EXPENSE_RECEIPT_NONE, "なし"),
@@ -3645,13 +3661,15 @@ def _expense_default_meta():
     }
 
 
-def _expense_build_note(raw_note, *, expense_type, receipt_status, receipt_check_status, approval_status):
+def _expense_build_note(raw_note, *, expense_type, receipt_status, receipt_check_status, approval_status, extra_meta=None):
     payload = {
         "expense_type": expense_type,
         "receipt_status": receipt_status,
         "receipt_check_status": receipt_check_status,
         "approval_status": approval_status,
     }
+    if extra_meta:
+        payload.update(extra_meta)
     clean_note = (raw_note or "").strip()
     return f"{EXPENSE_NOTE_META_PREFIX}{json.dumps(payload, ensure_ascii=False)}\\n{clean_note}"
 
@@ -3691,7 +3709,9 @@ def _expense_meta_row(expense):
         "expense": expense,
         "plain_note": meta["plain_note"],
         "expense_type": meta["expense_type"],
-        "expense_type_label": _choice_label(EXPENSE_TYPE_CHOICES, meta["expense_type"]),
+        "expense_type_label": EXPENSE_TYPE_LABELS.get(meta["expense_type"], meta["expense_type"]),
+        "is_payout": meta["expense_type"] in EXPENSE_PAYOUT_TYPES,
+        "meta": meta,
         "receipt_status": meta["receipt_status"],
         "receipt_status_label": _choice_label(EXPENSE_RECEIPT_CHOICES, meta["receipt_status"]),
         "receipt_check_status": meta["receipt_check_status"],
@@ -3750,7 +3770,8 @@ def coach_payroll_summary(request):
         selected_month = today.month
 
     coach_queryset = User.objects.filter(role="coach").order_by("full_name", "username", "id")
-    if _is_staff_like(request.user) and not _is_coach_user(request.user):
+    is_admin_mode = bool(getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False))
+    if is_admin_mode:
         selected_coach_id = (request.GET.get("coach_id") or "").strip()
         selected_coach = (
             coach_queryset.filter(pk=selected_coach_id).first() if selected_coach_id else coach_queryset.first()
@@ -4057,6 +4078,8 @@ def coach_payroll_summary(request):
     approved_common_expense_rows = []
     approved_personal_expense_rows = []
     for row in expense_meta_rows:
+        if row["is_payout"]:
+            continue
         if row["approval_status"] != EXPENSE_APPROVAL_APPROVED:
             continue
         if row["expense_type"] == EXPENSE_TYPE_COMMON:
@@ -4123,7 +4146,8 @@ def coach_payroll_summary(request):
             "prev_month": prev_month,
             "next_year": next_year,
             "next_month": next_month,
-            "is_staff_mode": _is_staff_like(request.user) and not _is_coach_user(request.user),
+            "is_staff_mode": is_admin_mode,
+            "is_admin_mode": is_admin_mode,
             "breakdown_rows": breakdown_rows,
             "reservation_rows": reservation_rows,
             "preopen_rows": preopen_rows,
@@ -4160,6 +4184,371 @@ def coach_payroll_summary(request):
             "estimated_salary": estimated_salary,
         },
     )
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def coach_admin_settlement(request):
+    """
+    admin専用の月次精算画面。
+    新しいDBテーブルを増やさず、既存の CoachExpense に給与支払い履歴をメタ情報付きで保存します。
+    created_by は「支払先コーチ」として扱います。
+    """
+    is_admin_mode = bool(getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False))
+    if not is_admin_mode:
+        return HttpResponse("Forbidden", status=403)
+
+    User = get_user_model()
+    today = timezone.localdate()
+
+    try:
+        selected_year = int(request.GET.get("year") or request.POST.get("year") or today.year)
+    except Exception:
+        selected_year = today.year
+
+    try:
+        selected_month = int(request.GET.get("month") or request.POST.get("month") or today.month)
+    except Exception:
+        selected_month = today.month
+
+    if selected_month < 1 or selected_month > 12:
+        selected_month = today.month
+
+    month_start, next_month = _month_start_end(selected_year, selected_month)
+    coach_queryset = User.objects.filter(role="coach").order_by("full_name", "username", "id")
+
+    def _money(value):
+        try:
+            return int(value or 0)
+        except Exception:
+            return 0
+
+    def _month_url(year_value, month_value):
+        return f"{reverse('club:coach_admin_settlement')}?{urlencode({'year': year_value, 'month': month_value})}"
+
+    def _payout_redirect():
+        return _month_url(selected_year, selected_month)
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "create_payout":
+            coach_id = (request.POST.get("coach_id") or "").strip()
+            payout_type = (request.POST.get("payout_type") or "").strip()
+            raw_amount = (request.POST.get("amount") or "").strip()
+            raw_paid_date = (request.POST.get("paid_date") or "").strip()
+            note = (request.POST.get("note") or "").strip()
+
+            target_coach = coach_queryset.filter(pk=coach_id).first()
+            if not target_coach:
+                messages.error(request, "支払先コーチを選択してください。")
+                return redirect(_payout_redirect())
+
+            if payout_type not in EXPENSE_PAYOUT_TYPES:
+                messages.error(request, "支払種別が不正です。")
+                return redirect(_payout_redirect())
+
+            try:
+                amount_value = int(raw_amount or "0")
+            except Exception:
+                messages.error(request, "金額は整数で入力してください。")
+                return redirect(_payout_redirect())
+
+            if amount_value <= 0:
+                messages.error(request, "金額は1円以上で入力してください。")
+                return redirect(_payout_redirect())
+
+            try:
+                paid_date = date.fromisoformat(raw_paid_date) if raw_paid_date else timezone.localdate()
+            except Exception:
+                messages.error(request, "支払日の形式が正しくありません。")
+                return redirect(_payout_redirect())
+
+            try:
+                CoachExpense.objects.create(
+                    expense_date=paid_date,
+                    category=CoachExpense.CATEGORY_OTHER,
+                    amount=amount_value,
+                    note=_expense_build_note(
+                        note,
+                        expense_type=payout_type,
+                        receipt_status=EXPENSE_RECEIPT_NONE,
+                        receipt_check_status=EXPENSE_RECEIPT_CHECK_CHECKED,
+                        approval_status=EXPENSE_APPROVAL_APPROVED,
+                        extra_meta={
+                            "record_kind": "coach_payout",
+                            "recorded_by_id": getattr(request.user, "pk", None),
+                            "recorded_by_name": _display_name(request.user),
+                        },
+                    ),
+                    created_by=target_coach,
+                )
+                messages.success(
+                    request,
+                    f"{_display_name(target_coach)}さんへの{EXPENSE_TYPE_LABELS.get(payout_type, payout_type)} {amount_value:,}円を記録しました。",
+                )
+            except Exception as e:
+                messages.error(request, f"支払い履歴を保存できませんでした: {e}")
+
+            return redirect(_payout_redirect())
+
+    reservations = list(
+        Reservation.objects.filter(
+            start_at__date__gte=month_start,
+            start_at__date__lt=next_month,
+            status=Reservation.STATUS_ACTIVE,
+        )
+        .select_related("user", "coach", "substitute_coach", "court", "fixed_lesson")
+        .prefetch_related("ticket_consumptions__purchase")
+        .order_by("start_at", "id")
+    )
+
+    def _reservation_coaches_for_split(reservation):
+        substitute = getattr(reservation, "substitute_coach", None)
+        if substitute and getattr(substitute, "role", "") == "coach":
+            return [substitute]
+
+        fixed_lesson = getattr(reservation, "fixed_lesson", None)
+        if fixed_lesson:
+            try:
+                coaches = [coach for coach in fixed_lesson.all_coaches() if coach and getattr(coach, "role", "") == "coach"]
+                if coaches:
+                    return coaches
+            except Exception:
+                pass
+
+        assigned = _assigned_coach_for_reservation(reservation)
+        if assigned and getattr(assigned, "role", "") == "coach":
+            return [assigned]
+        return []
+
+    active_coach_ids = set()
+    for reservation in reservations:
+        for coach in _reservation_coaches_for_split(reservation):
+            active_coach_ids.add(coach.pk)
+    if not active_coach_ids:
+        active_coach_ids = set(coach_queryset.values_list("pk", flat=True))
+    active_coach_count = len(active_coach_ids)
+
+    monthly_expenses = list(
+        CoachExpense.objects.filter(
+            expense_date__gte=month_start,
+            expense_date__lt=next_month,
+        ).select_related("created_by").order_by("expense_date", "id")
+    )
+    expense_meta_rows = [_expense_meta_row(expense) for expense in monthly_expenses]
+
+    approved_common_expense_rows = [
+        row for row in expense_meta_rows
+        if not row["is_payout"]
+        and row["approval_status"] == EXPENSE_APPROVAL_APPROVED
+        and row["expense_type"] == EXPENSE_TYPE_COMMON
+    ]
+    approved_personal_expense_rows = [
+        row for row in expense_meta_rows
+        if not row["is_payout"]
+        and row["approval_status"] == EXPENSE_APPROVAL_APPROVED
+        and row["expense_type"] == EXPENSE_TYPE_PERSONAL
+    ]
+    submitted_personal_expense_rows = [
+        row for row in expense_meta_rows
+        if not row["is_payout"]
+        and row["expense_type"] == EXPENSE_TYPE_PERSONAL
+        and row["approval_status"] in (EXPENSE_APPROVAL_SUBMITTED, EXPENSE_APPROVAL_APPROVED)
+    ]
+    payout_rows = [row for row in expense_meta_rows if row["is_payout"]]
+
+    approved_common_expense_total = sum(_money(row["expense"].amount) for row in approved_common_expense_rows)
+    per_coach_common_expense = int(approved_common_expense_total / active_coach_count) if active_coach_count > 0 else 0
+
+    coach_map = {}
+    for coach in coach_queryset:
+        coach_map[coach.pk] = {
+            "coach": coach,
+            "coach_name": _display_name(coach),
+            "ticket_amount": 0,
+            "preopen_paid_amount": 0,
+            "preopen_unpaid_amount": 0,
+            "preopen_waived_amount": 0,
+            "stringing_amount": 0,
+            "personal_reimbursement_due": 0,
+            "salary_paid": 0,
+            "reimbursement_paid": 0,
+            "common_expense_share": per_coach_common_expense if coach.pk in active_coach_ids else 0,
+            "reservation_count": 0,
+        }
+
+    for reservation in reservations:
+        coaches = _reservation_coaches_for_split(reservation)
+        if not coaches:
+            continue
+
+        ticket_total = 0
+        for consumption in reservation.ticket_consumptions.filter(refunded_at__isnull=True):
+            ticket_total += _money(consumption.unit_price_snapshot) * _money(consumption.tickets_used)
+
+        payment_amount = _money(getattr(reservation, "payment_amount", 0) or PREOPEN_CASH_PRICE)
+        is_preopen = (
+            reservation.lesson_type == Reservation.LESSON_GENERAL
+            and is_preopen_cash_lesson_date(reservation.start_at)
+            and reservation.is_payment_tracking_required()
+        )
+
+        denominator = max(len(coaches), 1)
+        for coach in coaches:
+            row = coach_map.get(coach.pk)
+            if not row:
+                continue
+            row["reservation_count"] += 1
+            if ticket_total > 0:
+                row["ticket_amount"] += int(ticket_total / denominator)
+            if is_preopen:
+                split_payment = int(payment_amount / denominator)
+                if reservation.payment_status == Reservation.PAYMENT_STATUS_PAID:
+                    row["preopen_paid_amount"] += split_payment
+                elif reservation.payment_status == Reservation.PAYMENT_STATUS_WAIVED:
+                    row["preopen_waived_amount"] += split_payment
+                else:
+                    row["preopen_unpaid_amount"] += split_payment
+
+    stringing_orders = list(
+        StringingOrder.objects.filter(
+            created_at__date__gte=month_start,
+            created_at__date__lt=next_month,
+        ).select_related("assigned_coach", "user")
+    )
+    stringing_total = 0
+    for order in stringing_orders:
+        status_key = _stringing_status_key(order).lower()
+        if "cancel" in status_key:
+            continue
+        amount = _money(order.total_price())
+        stringing_total += amount
+        if getattr(order, "assigned_coach_id", None) in coach_map:
+            coach_map[order.assigned_coach_id]["stringing_amount"] += amount
+
+    for row in approved_personal_expense_rows:
+        coach_id = getattr(row["expense"].created_by, "pk", None)
+        if coach_id in coach_map:
+            coach_map[coach_id]["personal_reimbursement_due"] += _money(row["expense"].amount)
+
+    for row in payout_rows:
+        coach_id = getattr(row["expense"].created_by, "pk", None)
+        if coach_id not in coach_map:
+            continue
+        amount = _money(row["expense"].amount)
+        if row["expense_type"] == EXPENSE_TYPE_SALARY_PAYOUT:
+            coach_map[coach_id]["salary_paid"] += amount
+        elif row["expense_type"] == EXPENSE_TYPE_REIMBURSEMENT_PAYOUT:
+            coach_map[coach_id]["reimbursement_paid"] += amount
+
+    coach_rows = []
+    for row in coach_map.values():
+        lesson_and_work_amount = row["ticket_amount"] + row["preopen_paid_amount"] + row["stringing_amount"]
+        salary_due = lesson_and_work_amount - row["common_expense_share"]
+        reimbursement_due = row["personal_reimbursement_due"]
+        unpaid_salary = salary_due - row["salary_paid"]
+        unpaid_reimbursement = reimbursement_due - row["reimbursement_paid"]
+        total_unpaid = unpaid_salary + unpaid_reimbursement
+        row.update(
+            {
+                "lesson_and_work_amount": lesson_and_work_amount,
+                "salary_due": salary_due,
+                "reimbursement_due": reimbursement_due,
+                "unpaid_salary": unpaid_salary,
+                "unpaid_reimbursement": unpaid_reimbursement,
+                "total_unpaid": total_unpaid,
+                "total_paid": row["salary_paid"] + row["reimbursement_paid"],
+            }
+        )
+        coach_rows.append(row)
+
+    coach_rows = sorted(coach_rows, key=lambda row: row["coach_name"])
+
+    preopen_paid_total = sum(row["preopen_paid_amount"] for row in coach_rows)
+    preopen_unpaid_total = sum(row["preopen_unpaid_amount"] for row in coach_rows)
+    ticket_amount_total = sum(row["ticket_amount"] for row in coach_rows)
+    ticket_purchase_total = sum(
+        _money(purchase.total_tickets) * _money(purchase.unit_price)
+        for purchase in TicketPurchase.objects.filter(purchased_at__date__gte=month_start, purchased_at__date__lt=next_month)
+    )
+    salary_due_total = sum(row["salary_due"] for row in coach_rows)
+    reimbursement_due_total = sum(row["reimbursement_due"] for row in coach_rows)
+    salary_paid_total = sum(row["salary_paid"] for row in coach_rows)
+    reimbursement_paid_total = sum(row["reimbursement_paid"] for row in coach_rows)
+    unpaid_salary_total = sum(row["unpaid_salary"] for row in coach_rows)
+    unpaid_reimbursement_total = sum(row["unpaid_reimbursement"] for row in coach_rows)
+
+    cash_in_total = preopen_paid_total + ticket_purchase_total + stringing_total
+    cash_out_total = salary_paid_total + reimbursement_paid_total + approved_common_expense_total
+    company_balance = cash_in_total - cash_out_total
+
+    pending_personal_reimbursement_total = sum(_money(row["expense"].amount) for row in submitted_personal_expense_rows)
+
+    payout_history_rows = []
+    for row in sorted(payout_rows, key=lambda item: (item["expense"].expense_date, item["expense"].id), reverse=True):
+        payout_history_rows.append(
+            {
+                "expense": row["expense"],
+                "coach_name": _display_name(row["expense"].created_by),
+                "payout_type_label": row["expense_type_label"],
+                "amount": _money(row["expense"].amount),
+                "plain_note": row["plain_note"],
+                "recorded_by_name": row.get("meta", {}).get("recorded_by_name", "-"),
+            }
+        )
+
+    prev_year = selected_year
+    prev_month = selected_month - 1
+    if prev_month == 0:
+        prev_month = 12
+        prev_year -= 1
+
+    next_year_value = selected_year
+    next_month_value = selected_month + 1
+    if next_month_value == 13:
+        next_month_value = 1
+        next_year_value += 1
+
+    return render(
+        request,
+        "coach/admin_settlement.html",
+        {
+            "selected_year": selected_year,
+            "selected_month": selected_month,
+            "month_label": f"{selected_year}年{selected_month}月",
+            "prev_url": _month_url(prev_year, prev_month),
+            "next_url": _month_url(next_year_value, next_month_value),
+            "coach_options": coach_queryset,
+            "today_value": timezone.localdate().isoformat(),
+            "payout_type_choices": [
+                (EXPENSE_TYPE_SALARY_PAYOUT, "給与支払い"),
+                (EXPENSE_TYPE_REIMBURSEMENT_PAYOUT, "本人立替精算支払い"),
+            ],
+            "coach_rows": coach_rows,
+            "payout_history_rows": payout_history_rows,
+            "approved_common_expense_rows": approved_common_expense_rows,
+            "approved_personal_expense_rows": approved_personal_expense_rows,
+            "submitted_personal_expense_rows": submitted_personal_expense_rows,
+            "preopen_paid_total": preopen_paid_total,
+            "preopen_unpaid_total": preopen_unpaid_total,
+            "ticket_amount_total": ticket_amount_total,
+            "ticket_purchase_total": ticket_purchase_total,
+            "stringing_total": stringing_total,
+            "cash_in_total": cash_in_total,
+            "approved_common_expense_total": approved_common_expense_total,
+            "salary_due_total": salary_due_total,
+            "reimbursement_due_total": reimbursement_due_total,
+            "salary_paid_total": salary_paid_total,
+            "reimbursement_paid_total": reimbursement_paid_total,
+            "unpaid_salary_total": unpaid_salary_total,
+            "unpaid_reimbursement_total": unpaid_reimbursement_total,
+            "pending_personal_reimbursement_total": pending_personal_reimbursement_total,
+            "cash_out_total": cash_out_total,
+            "company_balance": company_balance,
+            "active_coach_count": active_coach_count,
+            "per_coach_common_expense": per_coach_common_expense,
+        },
+    )
+
 
 @login_required
 @require_http_methods(["GET", "POST"])
