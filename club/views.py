@@ -524,6 +524,62 @@ def _assigned_coach_id_for_reservation(reservation):
     return getattr(coach, "pk", None)
 
 
+def _lesson_level_values(obj):
+    if not obj:
+        return []
+    first_level = getattr(obj, "target_level", "") or ""
+    second_level = getattr(obj, "target_level_2", "") or ""
+    values = []
+    if first_level:
+        values.append(first_level)
+    if second_level and second_level != first_level:
+        values.append(second_level)
+    return values
+
+
+def _lesson_level_label(obj):
+    if hasattr(obj, "target_level_display_label"):
+        try:
+            return obj.target_level_display_label()
+        except Exception:
+            pass
+
+    labels = []
+    UserModel = get_user_model()
+    level_map = dict(getattr(UserModel, "LEVEL_CHOICES", []))
+    for level_value in _lesson_level_values(obj):
+        label = level_map.get(level_value, level_value)
+        if label and label not in labels:
+            labels.append(label)
+    return "・".join(labels)
+
+
+def _user_can_book_lesson_levels(user, obj):
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    levels = _lesson_level_values(obj)
+    if not levels:
+        return True
+    if hasattr(user, "can_book_any_level"):
+        return user.can_book_any_level(*levels)
+    if hasattr(user, "can_book_level"):
+        return any(user.can_book_level(level) for level in levels)
+    return True
+
+
+def _slot_level_allowed(user, target_level, target_level_2=""):
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if hasattr(user, "can_book_any_level"):
+        return user.can_book_any_level(target_level, target_level_2)
+    if hasattr(user, "can_book_level"):
+        levels = [level for level in [target_level, target_level_2] if level]
+        if not levels:
+            return True
+        return any(user.can_book_level(level) for level in levels)
+    return True
+
+
 def _slot_key(lesson_type, coach_id, court_id, start_at, end_at):
     return (
         str(lesson_type or ""),
@@ -574,6 +630,7 @@ def _assign_pending_request_targets(reservation, selected_coach_id):
         reservation.court = matched_slot.court
         reservation.availability = matched_slot
         reservation.target_level = matched_slot.target_level
+        reservation.target_level_2 = getattr(matched_slot, "target_level_2", "") or ""
         reservation.custom_ticket_price = matched_slot.custom_ticket_price
         reservation.custom_duration_hours = matched_slot.custom_duration_hours
     else:
@@ -820,7 +877,7 @@ def _lesson_waitlist_lesson_label(waitlist_or_reservation):
         lesson_label = _lesson_type_label(getattr(waitlist_or_reservation, "lesson_type", ""))
 
     try:
-        level_label = waitlist_or_reservation.get_target_level_display()
+        level_label = _lesson_level_label(waitlist_or_reservation) or waitlist_or_reservation.get_target_level_display()
     except Exception:
         level_label = getattr(waitlist_or_reservation, "target_level", "-")
 
@@ -1215,6 +1272,7 @@ def lesson_calendar_view(request):
             court=court,
             lesson_type=fixed_lesson.lesson_type,
             target_level=fixed_lesson.target_level,
+            target_level_2=getattr(fixed_lesson, "target_level_2", "") or "",
             start_at=start_at,
             end_at=end_at,
             capacity=_capacity_for_fixed_lesson(fixed_lesson),
@@ -1288,7 +1346,7 @@ def lesson_calendar_view(request):
             else:
                 raise ValidationError("対象のレッスンが見つかりません。")
 
-            if hasattr(request.user, "can_book_level") and not request.user.can_book_level(availability.target_level):
+            if not _user_can_book_lesson_levels(request.user, availability):
                 raise ValidationError("ご自身のレベルでは、このレッスンは予約できません。")
 
             active_count = Reservation.objects.filter(
@@ -1337,6 +1395,7 @@ def lesson_calendar_view(request):
                     fixed_lesson=fixed_lesson,
                     lesson_type=availability.lesson_type,
                     target_level=availability.target_level,
+                    target_level_2=getattr(availability, "target_level_2", "") or "",
                     start_at=availability.start_at,
                     end_at=availability.end_at,
                     status=LessonWaitlist.STATUS_WAITING,
@@ -1373,6 +1432,7 @@ def lesson_calendar_view(request):
                     fixed_lesson=fixed_lesson,
                     lesson_type=availability.lesson_type,
                     target_level=availability.target_level,
+                    target_level_2=getattr(availability, "target_level_2", "") or "",
                     start_at=availability.start_at,
                     end_at=availability.end_at,
                     status=Reservation.STATUS_ACTIVE,
@@ -1598,6 +1658,7 @@ def lesson_calendar_view(request):
         lesson_type_label,
         target_level,
         target_level_label,
+        target_level_2,
         start_at,
         end_at,
         coach,
@@ -1653,7 +1714,7 @@ def lesson_calendar_view(request):
             disabled_reason = "予約済みです。"
         elif user_slot_status == Reservation.STATUS_PENDING:
             disabled_reason = "承認待ちの申請があります。"
-        elif hasattr(request.user, "can_book_level") and not request.user.can_book_level(target_level):
+        elif not _slot_level_allowed(request.user, target_level, target_level_2):
             disabled_reason = "ご自身のレベルでは予約できません。"
         elif int(member_count or 0) >= int(capacity or 0):
             if user_waitlist_id:
@@ -1707,6 +1768,7 @@ def lesson_calendar_view(request):
             "court_name": str(court) if court else "未定",
             "lesson_type_label": lesson_type_label,
             "target_level_label": target_level_label,
+            "target_level_2": target_level_2,
             "capacity": capacity,
             "member_count": int(member_count or 0),
             "pending_count": int(pending_count or 0),
@@ -1806,7 +1868,8 @@ def lesson_calendar_view(request):
                 lesson_type=fixed_lesson.lesson_type,
                 lesson_type_label=fixed_lesson.get_lesson_type_display(),
                 target_level=fixed_lesson.target_level,
-                target_level_label=fixed_lesson.get_target_level_display(),
+                target_level_label=_lesson_level_label(fixed_lesson) or fixed_lesson.get_target_level_display(),
+                target_level_2=getattr(fixed_lesson, "target_level_2", "") or "",
                 start_at=start_at,
                 end_at=end_at,
                 coach=slot_coach,
@@ -1872,7 +1935,8 @@ def lesson_calendar_view(request):
             lesson_type=availability.lesson_type,
             lesson_type_label=availability.get_lesson_type_display(),
             target_level=availability.target_level,
-            target_level_label=availability.get_target_level_display(),
+            target_level_label=_lesson_level_label(availability) or availability.get_target_level_display(),
+            target_level_2=getattr(availability, "target_level_2", "") or "",
             start_at=availability.start_at,
             end_at=availability.end_at,
             coach=availability.coach,
@@ -2953,7 +3017,7 @@ def coach_today_lessons(request):
                 start_at=start_at,
                 end_at=end_at,
                 lesson_type_label=fixed.get_lesson_type_display(),
-                target_level_label=fixed.get_target_level_display(),
+                target_level_label=_lesson_level_label(fixed) or fixed.get_target_level_display(),
                 coach_name=_fixed_lesson_coach_names(fixed),
                 court_name=str(court),
                 capacity=capacity,
@@ -3003,7 +3067,7 @@ def coach_today_lessons(request):
             start_at=availability.start_at,
             end_at=availability.end_at,
             lesson_type_label=availability.get_lesson_type_display(),
-            target_level_label=availability.get_target_level_display(),
+            target_level_label=_lesson_level_label(availability) or availability.get_target_level_display(),
             coach_name=_display_name(assigned_coach),
             court_name=str(availability.court),
             capacity=capacity,
@@ -5160,7 +5224,7 @@ def calendar_events(request):
                     "capacity": obj.capacity,
                     "coach_count": obj.coach_count,
                     "court_count": obj.court_count,
-                    "target_level_display": obj.get_target_level_display(),
+                    "target_level_display": _lesson_level_label(obj) or obj.get_target_level_display(),
                     "reserve_url": f"{reverse('club:reservation_create')}?{query}",
                 },
             }
@@ -5440,7 +5504,7 @@ def reservation_create(request):
                     "coach_name": _fixed_lesson_coach_names(fixed_lesson),
                     "court_name": str(court) if court else "未定",
                     "lesson_type_label": fixed_lesson.get_lesson_type_display(),
-                    "target_level_label": fixed_lesson.get_target_level_display(),
+                    "target_level_label": _lesson_level_label(fixed_lesson) or fixed_lesson.get_target_level_display(),
                     "capacity": max(capacity, 1),
                     "member_count": member_count,
                     "waitlist_count": waitlist_count,
@@ -5455,7 +5519,7 @@ def reservation_create(request):
 
             if hasattr(request.user, "can_book_level") and selected_lesson and regular_fixed_lesson_id:
                 fixed_lesson = FixedLesson.objects.filter(pk=regular_fixed_lesson_id).first()
-                if fixed_lesson and not request.user.can_book_level(fixed_lesson.target_level):
+                if fixed_lesson and not _user_can_book_lesson_levels(request.user, fixed_lesson):
                     selected_lesson["can_submit"] = False
                     selected_lesson["can_join_waitlist"] = False
                     selected_lesson["disabled_reason"] = "ご自身のレベルでは予約できません。"
@@ -5823,6 +5887,7 @@ def lesson_waitlist_promote(request, pk):
                 fixed_lesson=waitlist.fixed_lesson,
                 lesson_type=waitlist.lesson_type,
                 target_level=waitlist.target_level,
+                target_level_2=getattr(waitlist, "target_level_2", "") or "",
                 start_at=waitlist.start_at,
                 end_at=waitlist.end_at,
                 status=Reservation.STATUS_ACTIVE,
