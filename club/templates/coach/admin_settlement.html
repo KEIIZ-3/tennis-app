@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+{% block title %}admin月次精算{% endblock %}
+
+{% block content %}
+<style>
+  .settlement-page{display:grid;gap:14px;}
+  .settlement-hero{padding:18px;border-radius:22px;border:1px solid #bfdbfe;background:linear-gradient(180deg,#eff6ff 0%,#fff 100%);box-shadow:0 10px 24px rgba(15,23,42,.08);}
+  .settlement-title{margin:0;color:#0f172a;font-size:28px;line-height:1.25;font-weight:1000;letter-spacing:-.02em;}
+  .settlement-lead{margin:8px 0 0;color:#475569;font-size:14px;line-height:1.7;font-weight:750;}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+  .filter-card{display:flex;gap:10px;flex-wrap:wrap;align-items:end;padding:14px;border:1px solid #e5e7eb;border-radius:18px;background:#fff;}
+  .filter-card label{display:block;margin:0 0 5px;color:#475569;font-size:12px;font-weight:900;}
+  .filter-card input,.filter-card select{min-height:40px;border:1px solid #d1d5db;border-radius:12px;padding:8px 10px;background:#fff;font-size:14px;}
+  .summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;}
+  .summary-card{padding:14px;border-radius:18px;background:#fff;border:1px solid #e5e7eb;box-shadow:0 8px 20px rgba(15,23,42,.05);}
+  .summary-card.primary{background:#0f172a;color:#fff;border-color:#0f172a;}
+  .summary-card.warn{background:#fff7ed;border-color:#fed7aa;}
+  .summary-card.info{background:#eff6ff;border-color:#bfdbfe;}
+  .summary-card.success{background:#f0fdf4;border-color:#bbf7d0;}
+  .summary-label{color:#64748b;font-size:12px;font-weight:900;}
+  .summary-card.primary .summary-label{color:#cbd5e1;}
+  .summary-value{margin-top:6px;color:#0f172a;font-size:24px;line-height:1.15;font-weight:1000;letter-spacing:-.03em;}
+  .summary-card.primary .summary-value{color:#fff;}
+  .summary-note{margin-top:5px;color:#64748b;font-size:12px;line-height:1.5;font-weight:750;}
+  .section{padding:16px;border-radius:20px;background:#fff;border:1px solid #e5e7eb;box-shadow:0 8px 20px rgba(15,23,42,.05);}
+  .section-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
+  .section-title{margin:0;font-size:20px;font-weight:1000;color:#0f172a;}
+  .section-pill{display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:5px 11px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:1000;}
+  .table-wrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .settlement-table{width:100%;min-width:920px;border-collapse:collapse;}
+  .settlement-table th,.settlement-table td{padding:10px 9px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top;font-size:13px;line-height:1.45;}
+  .settlement-table th{color:#475569;background:#f8fafc;font-weight:1000;white-space:nowrap;}
+  .amount{text-align:right!important;white-space:nowrap;font-weight:1000;}
+  .muted{color:#64748b;font-size:12px;line-height:1.5;}
+  .form-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;align-items:end;}
+  .form-grid label{display:block;margin:0 0 5px;color:#475569;font-size:12px;font-weight:900;}
+  .form-grid input,.form-grid select{width:100%;min-height:40px;border:1px solid #d1d5db;border-radius:12px;padding:8px 10px;background:#fff;font-size:14px;box-sizing:border-box;}
+  .form-grid .wide{grid-column:span 2;}
+  .notice-box{padding:12px 14px;border-radius:16px;border:1px solid #fde68a;background:#fffbeb;color:#92400e;font-size:13px;line-height:1.7;font-weight:800;}
+  @media (max-width: 900px){.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.form-grid{grid-template-columns:1fr 1fr;}.form-grid .wide{grid-column:span 2;}}
+  @media (max-width: 768px){.settlement-title{font-size:24px;}.summary-grid{grid-template-columns:1fr;}.filter-card{display:grid;grid-template-columns:1fr 1fr;}.filter-card button{grid-column:span 2;width:100%;}.form-grid{grid-template-columns:1fr;}.form-grid .wide{grid-column:span 1;}.form-grid button{width:100%;}.settlement-table{min-width:820px;}}
+</style>
+
+<div class="settlement-page">
+  <section class="settlement-hero">
+    <h1 class="settlement-title">admin月次精算</h1>
+    <p class="settlement-lead">
+      {{ month_label }} の売上入金、給与支払い、本人立替精算、未払い、会社残高をadmin専用で確認します。
+      給与支払い履歴はこの画面から記録できます。
+    </p>
+    <div class="actions">
+      <a href="{% url 'club:coach_payroll_summary' %}?year={{ selected_year }}&month={{ selected_month }}" class="btn">実売上ベース精算へ</a>
+      <a href="{% url 'club:coach_revenue_summary' %}?year={{ selected_year }}&month={{ selected_month }}" class="btn">収支管理へ</a>
+      <a href="{% url 'club:coach_expense_manage' %}" class="btn">経費登録へ</a>
+      <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
+    </div>
+  </section>
+
+  <form method="get" class="filter-card">
+    <div>
+      <label for="year">年</label>
+      <input id="year" name="year" type="number" min="2024" max="2030" value="{{ selected_year }}">
+    </div>
+    <div>
+      <label for="month">月</label>
+      <input id="month" name="month" type="number" min="1" max="12" value="{{ selected_month }}">
+    </div>
+    <button type="submit" class="btn btn-primary">表示する</button>
+    <a href="{{ prev_url }}" class="btn">前の月</a>
+    <a href="{{ next_url }}" class="btn">次の月</a>
+  </form>
+
+  <div class="summary-grid">
+    <div class="summary-card primary">
+      <div class="summary-label">会社残高目安</div>
+      <div class="summary-value">{{ company_balance }}円</div>
+      <div class="summary-note">入金 - 支払済み給与 - 支払済み立替精算 - 承認済み共通経費</div>
+    </div>
+    <div class="summary-card info">
+      <div class="summary-label">現金入金合計</div>
+      <div class="summary-value">{{ cash_in_total }}円</div>
+      <div class="summary-note">7月回収済み + チケット販売 + ガット張り</div>
+    </div>
+    <div class="summary-card success">
+      <div class="summary-label">支払い済み給与</div>
+      <div class="summary-value">{{ salary_paid_total }}円</div>
+      <div class="summary-note">この画面で記録した給与支払い</div>
+    </div>
+    <div class="summary-card warn">
+      <div class="summary-label">未払い合計</div>
+      <div class="summary-value">{{ unpaid_salary_total|add:unpaid_reimbursement_total }}円</div>
+      <div class="summary-note">未払い給与 + 未払い本人立替精算</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">チケット販売入金</div>
+      <div class="summary-value">{{ ticket_purchase_total }}円</div>
+      <div class="summary-note">現金入金ベース。チケット消化売上とは合算注意</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">7月参加費 回収済み</div>
+      <div class="summary-value">{{ preopen_paid_total }}円</div>
+      <div class="summary-note">未回収 {{ preopen_unpaid_total }}円</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">承認済み共通経費</div>
+      <div class="summary-value">{{ approved_common_expense_total }}円</div>
+      <div class="summary-note">按分対象 {{ active_coach_count }}人 / 1人 {{ per_coach_common_expense }}円</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">未払い本人立替</div>
+      <div class="summary-value">{{ unpaid_reimbursement_total }}円</div>
+      <div class="summary-note">承認済み本人立替 - 立替精算支払い済み</div>
+    </div>
+  </div>
+
+  <section class="section">
+    <div class="section-head">
+      <h2 class="section-title">支払い履歴を記録</h2>
+      <span class="section-pill">admin専用</span>
+    </div>
+    <form method="post" class="form-grid">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="create_payout">
+      <input type="hidden" name="year" value="{{ selected_year }}">
+      <input type="hidden" name="month" value="{{ selected_month }}">
+      <div>
+        <label for="coach_id">支払先コーチ</label>
+        <select id="coach_id" name="coach_id" required>
+          <option value="">選択してください</option>
+          {% for coach in coach_options %}
+            <option value="{{ coach.id }}">{{ coach.display_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="payout_type">支払種別</label>
+        <select id="payout_type" name="payout_type" required>
+          {% for value,label in payout_type_choices %}
+            <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="amount">金額</label>
+        <input id="amount" name="amount" type="number" min="1" step="1" required>
+      </div>
+      <div>
+        <label for="paid_date">支払日</label>
+        <input id="paid_date" name="paid_date" type="date" value="{{ today_value }}" required>
+      </div>
+      <div class="wide">
+        <label for="note">メモ</label>
+        <input id="note" name="note" type="text" placeholder="例：7月分給与、現金手渡し、振込など">
+      </div>
+      <button type="submit" class="btn btn-primary">支払いを記録</button>
+    </form>
+  </section>
+
+  <div class="notice-box">
+    チケット販売入金とチケット消化売上は同時に足すと二重計上になります。この画面では会社残高は「実際の入金」に寄せ、コーチ別支払予定は「実売上ベース精算」に寄せて分けて表示しています。
+  </div>
+
+  <section class="section">
+    <div class="section-head">
+      <h2 class="section-title">コーチ別 精算・未払い</h2>
+      <span class="section-pill">給与未払い {{ unpaid_salary_total }}円 / 立替未払い {{ unpaid_reimbursement_total }}円</span>
+    </div>
+    <div class="table-wrap">
+      <table class="settlement-table">
+        <thead>
+          <tr>
+            <th>コーチ</th>
+            <th>担当件数</th>
+            <th>チケット実売上</th>
+            <th>7月回収済み</th>
+            <th>ガット張り</th>
+            <th>共通経費按分</th>
+            <th>給与予定</th>
+            <th>給与支払済み</th>
+            <th>給与未払い</th>
+            <th>本人立替予定</th>
+            <th>立替支払済み</th>
+            <th>立替未払い</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in coach_rows %}
+            <tr>
+              <td>{{ row.coach_name }}</td>
+              <td>{{ row.reservation_count }}件</td>
+              <td class="amount">{{ row.ticket_amount }}円</td>
+              <td class="amount">{{ row.preopen_paid_amount }}円</td>
+              <td class="amount">{{ row.stringing_amount }}円</td>
+              <td class="amount">-{{ row.common_expense_share }}円</td>
+              <td class="amount">{{ row.salary_due }}円</td>
+              <td class="amount">{{ row.salary_paid }}円</td>
+              <td class="amount">{{ row.unpaid_salary }}円</td>
+              <td class="amount">{{ row.reimbursement_due }}円</td>
+              <td class="amount">{{ row.reimbursement_paid }}円</td>
+              <td class="amount">{{ row.unpaid_reimbursement }}円</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="12">対象データはありません。</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <h2 class="section-title">支払い履歴</h2>
+      <span class="section-pill">{{ payout_history_rows|length }}件</span>
+    </div>
+    <div class="table-wrap">
+      <table class="settlement-table">
+        <thead>
+          <tr>
+            <th>支払日</th>
+            <th>支払先</th>
+            <th>種別</th>
+            <th>金額</th>
+            <th>登録者</th>
+            <th>メモ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in payout_history_rows %}
+            <tr>
+              <td>{{ row.expense.expense_date|date:"Y-m-d" }}</td>
+              <td>{{ row.coach_name }}</td>
+              <td>{{ row.payout_type_label }}</td>
+              <td class="amount">{{ row.amount }}円</td>
+              <td>{{ row.recorded_by_name }}</td>
+              <td>{{ row.plain_note|default:"-" }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6">この月の支払い履歴はありません。</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <h2 class="section-title">未払い・要確認の個人立替</h2>
+      <span class="section-pill">提出/承認済み合計 {{ pending_personal_reimbursement_total }}円</span>
+    </div>
+    <div class="table-wrap">
+      <table class="settlement-table">
+        <thead>
+          <tr>
+            <th>日付</th>
+            <th>コーチ</th>
+            <th>カテゴリ</th>
+            <th>状態</th>
+            <th>領収書</th>
+            <th>金額</th>
+            <th>メモ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in submitted_personal_expense_rows %}
+            <tr>
+              <td>{{ row.expense.expense_date|date:"Y-m-d" }}</td>
+              <td>{{ row.expense.created_by.display_name }}</td>
+              <td>{{ row.expense.get_category_display }}</td>
+              <td>{{ row.approval_status_label }}</td>
+              <td>{{ row.receipt_status_label }} / {{ row.receipt_check_status_label }}</td>
+              <td class="amount">{{ row.expense.amount }}円</td>
+              <td>{{ row.plain_note|default:"-" }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="7">対象の本人立替経費はありません。</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}
