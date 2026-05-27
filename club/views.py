@@ -1735,14 +1735,24 @@ def lesson_calendar_view(request):
         .order_by("weekday", "start_hour", "id")
     )
 
-    cursor_date = month_start
-    while cursor_date < next_month:
-        for fixed_lesson in fixed_lesson_list:
-            if int(fixed_lesson.weekday) != int(cursor_date.weekday()):
-                continue
+    for fixed_lesson in fixed_lesson_list:
+        if hasattr(fixed_lesson, "scheduled_occurrence_dates"):
+            occurrence_dates = fixed_lesson.scheduled_occurrence_dates()
+        else:
+            repeat_start = getattr(fixed_lesson, "start_date", None) or month_start
+            first_offset = (int(fixed_lesson.weekday) - repeat_start.weekday()) % 7
+            first_date = repeat_start + timedelta(days=first_offset)
+            try:
+                occurrence_count = max(int(getattr(fixed_lesson, "weeks_ahead", 1) or 1), 1)
+            except Exception:
+                occurrence_count = 1
+            occurrence_dates = [
+                first_date + timedelta(days=7 * index)
+                for index in range(occurrence_count)
+            ]
 
-            repeat_start = getattr(fixed_lesson, "start_date", None)
-            if repeat_start and cursor_date < repeat_start:
+        for cursor_date in occurrence_dates:
+            if cursor_date < month_start or cursor_date >= next_month:
                 continue
 
             start_at, end_at = _fixed_lesson_datetimes_safely(fixed_lesson, cursor_date)
@@ -1816,8 +1826,6 @@ def lesson_calendar_view(request):
             day_event_map.setdefault(cursor_date, [])
             day_event_map[cursor_date].append(item)
             schedule_rows.append(item)
-
-        cursor_date += timedelta(days=1)
 
     availability_qs = (
         CoachAvailability.objects.filter(
