@@ -278,6 +278,12 @@ def _apply_japanese_admin_labels():
 _apply_japanese_admin_labels()
 
 
+COACH_ROLE_VALUES = ("coach", "contractor_coach")
+
+
+def coach_user_queryset():
+    return User.objects.filter(role__in=COACH_ROLE_VALUES).order_by("full_name", "username", "id")
+
 
 DATETIME_INPUT_FORMATS = [
     "%Y-%m-%dT%H:%M",
@@ -358,7 +364,7 @@ class ReservationAdminForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        coach_qs = User.objects.filter(role="coach").order_by("full_name", "username", "id")
+        coach_qs = coach_user_queryset()
         self.fields["coach"].queryset = coach_qs
         self.fields["substitute_coach"].queryset = coach_qs
         self.fields["substitute_coach"].required = False
@@ -378,7 +384,7 @@ class FixedLessonAdminForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        coach_qs = User.objects.filter(role="coach").order_by("full_name", "username", "id")
+        coach_qs = coach_user_queryset()
         self.fields["coach"].queryset = coach_qs
         if "coach_2" in self.fields:
             self.fields["coach_2"].queryset = coach_qs
@@ -431,7 +437,7 @@ class CoachExpenseAdminForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["created_by"].queryset = User.objects.filter(role="coach").order_by("full_name", "username", "id")
+        self.fields["created_by"].queryset = coach_user_queryset()
         self.fields["created_by"].required = False
 
 
@@ -443,9 +449,7 @@ class StringingOrderAdminForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if "assigned_coach" in self.fields:
-            self.fields["assigned_coach"].queryset = User.objects.filter(role="coach").order_by(
-                "full_name", "username", "id"
-            )
+            self.fields["assigned_coach"].queryset = coach_user_queryset()
             self.fields["assigned_coach"].required = False
             self.fields["assigned_coach"].label = "担当コーチ"
 
