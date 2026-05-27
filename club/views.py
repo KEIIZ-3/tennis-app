@@ -3761,6 +3761,58 @@ def coach_payroll_summary(request):
 
     month_start, next_month = _month_start_end(selected_year, selected_month)
 
+    def _money(value):
+        try:
+            return int(value or 0)
+        except Exception:
+            return 0
+
+    def _reservation_coaches_for_split(reservation):
+        """
+        方式A：売上金額ベース配分。
+        1人コーチは100%、複数コーチの固定レッスンは人数で均等按分。
+        代行コーチが入っている予約は、実施者である代行コーチへ100%帰属させます。
+        """
+        if not reservation:
+            return []
+
+        substitute = getattr(reservation, "substitute_coach", None)
+        if substitute and getattr(substitute, "role", "") == "coach":
+            return [substitute]
+
+        fixed_lesson = getattr(reservation, "fixed_lesson", None)
+        if fixed_lesson:
+            try:
+                coaches = [
+                    coach
+                    for coach in fixed_lesson.all_coaches()
+                    if coach and getattr(coach, "role", "") == "coach"
+                ]
+                if coaches:
+                    return coaches
+            except Exception:
+                pass
+
+        assigned = _assigned_coach_for_reservation(reservation)
+        if assigned and getattr(assigned, "role", "") == "coach":
+            return [assigned]
+
+        return []
+
+    def _selected_coach_share(reservation):
+        coaches = _reservation_coaches_for_split(reservation)
+        if not selected_coach or not coaches:
+            return 0, 0
+        if selected_coach.pk not in {coach.pk for coach in coaches}:
+            return 0, len(coaches)
+        return 1, len(coaches)
+
+    def _split_amount_for_selected_coach(amount, reservation):
+        numerator, denominator = _selected_coach_share(reservation)
+        if numerator <= 0 or denominator <= 0:
+            return 0
+        return int(_money(amount) * numerator / denominator)
+
     monthly_expenses = list(
         CoachExpense.objects.filter(
             expense_date__gte=month_start,
@@ -3769,23 +3821,22 @@ def coach_payroll_summary(request):
     )
     expense_meta_rows = [_expense_meta_row(expense) for expense in monthly_expenses]
 
-    monthly_consumptions = (
-        TicketConsumption.objects.filter(
-            refunded_at__isnull=True,
-            reservation__start_at__date__gte=month_start,
-            reservation__start_at__date__lt=next_month,
+    reservation_qs = (
+        Reservation.objects.filter(
+            start_at__date__gte=month_start,
+            start_at__date__lt=next_month,
         )
-        .select_related("reservation__coach", "reservation__substitute_coach")
+        .select_related("user", "coach", "substitute_coach", "court", "fixed_lesson")
+        .prefetch_related("ticket_consumptions__purchase")
+        .order_by("start_at", "id")
     )
 
     active_coach_ids = set()
-    for consumption in monthly_consumptions:
-        reservation = consumption.reservation
-        if not reservation:
+    for reservation in reservation_qs:
+        if reservation.status != Reservation.STATUS_ACTIVE:
             continue
-        assigned_coach = _assigned_coach_for_reservation(reservation)
-        if assigned_coach and getattr(assigned_coach, "role", "") == "coach":
-            active_coach_ids.add(assigned_coach.pk)
+        for coach in _reservation_coaches_for_split(reservation):
+            active_coach_ids.add(coach.pk)
 
     if not active_coach_ids:
         active_coach_ids = set(coach_queryset.values_list("pk", flat=True))
@@ -3793,28 +3844,26 @@ def coach_payroll_summary(request):
     active_coach_count = len(active_coach_ids)
 
     total_tickets = 0
-    lesson_total_amount = 0
+    ticket_lesson_amount = 0
+    preopen_paid_amount = 0
+    preopen_unpaid_amount = 0
+    preopen_waived_amount = 0
+    preopen_target_count = 0
+    preopen_paid_count = 0
+    preopen_unpaid_count = 0
+    preopen_waived_count = 0
+
     breakdown_rows = []
     reservation_rows = []
-
-    reservation_qs = (
-        Reservation.objects.filter(
-            start_at__date__gte=month_start,
-            start_at__date__lt=next_month,
-        )
-        .select_related("user", "coach", "substitute_coach", "court")
-        .prefetch_related("ticket_consumptions__purchase")
-        .order_by("start_at", "id")
-    )
+    preopen_rows = []
+    breakdown_map = {}
 
     if selected_coach:
-        filtered_reservations = []
         for reservation in reservation_qs:
-            if _assigned_coach_id_for_reservation(reservation) == selected_coach.pk:
-                filtered_reservations.append(reservation)
+            share_numerator, share_denominator = _selected_coach_share(reservation)
+            if share_numerator <= 0 or share_denominator <= 0:
+                continue
 
-        breakdown_map = {}
-        for reservation in filtered_reservations:
             active_consumptions = (
                 reservation.ticket_consumptions.filter(refunded_at__isnull=True)
                 .select_related("purchase")
@@ -3824,59 +3873,108 @@ def coach_payroll_summary(request):
             row_breakdown_items = []
             row_breakdown_map = {}
             row_tickets = 0
-            row_amount = 0
+            row_gross_amount = 0
 
             for consumption in active_consumptions:
-                unit_price = int(consumption.unit_price_snapshot or 0)
-                tickets_used = int(consumption.tickets_used or 0)
-
-                breakdown_map.setdefault(unit_price, 0)
-                breakdown_map[unit_price] += tickets_used
+                unit_price = _money(consumption.unit_price_snapshot)
+                tickets_used = _money(consumption.tickets_used)
 
                 row_breakdown_map.setdefault(unit_price, 0)
                 row_breakdown_map[unit_price] += tickets_used
 
                 row_tickets += tickets_used
-                row_amount += unit_price * tickets_used
+                row_gross_amount += unit_price * tickets_used
 
-            if row_tickets <= 0:
-                continue
+            row_share_amount = _split_amount_for_selected_coach(row_gross_amount, reservation)
+            if row_tickets > 0 and row_share_amount > 0:
+                total_tickets += row_tickets
+                ticket_lesson_amount += row_share_amount
 
-            total_tickets += row_tickets
-            lesson_total_amount += row_amount
+                for unit_price, tickets in sorted(row_breakdown_map.items(), key=lambda x: x[0]):
+                    split_amount = int((unit_price * tickets) * share_numerator / share_denominator)
+                    breakdown_map.setdefault(unit_price, {"tickets": 0, "amount": 0})
+                    breakdown_map[unit_price]["tickets"] += tickets
+                    breakdown_map[unit_price]["amount"] += split_amount
 
-            for unit_price, tickets in sorted(row_breakdown_map.items(), key=lambda x: x[0]):
-                row_breakdown_items.append(
+                    row_breakdown_items.append(
+                        {
+                            "label": f"{unit_price}円券" if unit_price > 0 else "価格不明券",
+                            "tickets": tickets,
+                            "amount": split_amount,
+                        }
+                    )
+
+                reservation_rows.append(
                     {
-                        "label": f"{unit_price}円券" if unit_price > 0 else "価格不明券",
-                        "tickets": tickets,
-                        "amount": unit_price * tickets,
+                        "reservation": reservation,
+                        "tickets": row_tickets,
+                        "gross_amount": row_gross_amount,
+                        "amount": row_share_amount,
+                        "split_denominator": share_denominator,
+                        "is_split": share_denominator > 1,
+                        "breakdown_items": row_breakdown_items,
+                        "assigned_coach_name": reservation.assigned_coach_display(),
+                        "normal_coach_name": reservation.normal_coach_display(),
+                        "substitute_coach_name": _display_name(reservation.substitute_coach)
+                        if reservation.substitute_coach
+                        else "",
+                        "has_substitute": reservation.has_substitute_coach(),
+                        "revenue_kind": "チケット消化",
                     }
                 )
 
-            reservation_rows.append(
-                {
-                    "reservation": reservation,
-                    "tickets": row_tickets,
-                    "amount": row_amount,
-                    "breakdown_items": row_breakdown_items,
-                    "assigned_coach_name": reservation.assigned_coach_display(),
-                    "normal_coach_name": reservation.normal_coach_display(),
-                    "substitute_coach_name": _display_name(reservation.substitute_coach)
-                    if reservation.substitute_coach
-                    else "",
-                    "has_substitute": reservation.has_substitute_coach(),
-                }
-            )
+            if (
+                reservation.status == Reservation.STATUS_ACTIVE
+                and _is_preopen_cash_regular_lesson(reservation.lesson_type, reservation.start_at)
+                and reservation.is_payment_tracking_required()
+            ):
+                payment_amount = _money(reservation.payment_amount or PREOPEN_CASH_PRICE)
+                split_payment_amount = _split_amount_for_selected_coach(payment_amount, reservation)
+                if split_payment_amount <= 0:
+                    continue
 
-        for unit_price, tickets in sorted(breakdown_map.items(), key=lambda x: x[0]):
+                preopen_target_count += 1
+                if reservation.payment_status == Reservation.PAYMENT_STATUS_PAID:
+                    preopen_paid_count += 1
+                    preopen_paid_amount += split_payment_amount
+                elif reservation.payment_status == Reservation.PAYMENT_STATUS_WAIVED:
+                    preopen_waived_count += 1
+                    preopen_waived_amount += split_payment_amount
+                else:
+                    preopen_unpaid_count += 1
+                    preopen_unpaid_amount += split_payment_amount
+
+                preopen_rows.append(
+                    {
+                        "reservation": reservation,
+                        "amount": split_payment_amount,
+                        "gross_amount": payment_amount,
+                        "split_denominator": share_denominator,
+                        "is_split": share_denominator > 1,
+                        "payment_status": reservation.payment_status,
+                        "payment_status_label": reservation.payment_status_badge_label(),
+                        "is_paid": reservation.payment_status == Reservation.PAYMENT_STATUS_PAID,
+                        "is_unpaid": reservation.payment_status == Reservation.PAYMENT_STATUS_UNPAID,
+                        "is_waived": reservation.payment_status == Reservation.PAYMENT_STATUS_WAIVED,
+                        "assigned_coach_name": reservation.assigned_coach_display(),
+                        "normal_coach_name": reservation.normal_coach_display(),
+                        "substitute_coach_name": _display_name(reservation.substitute_coach)
+                        if reservation.substitute_coach
+                        else "",
+                        "has_substitute": reservation.has_substitute_coach(),
+                    }
+                )
+
+        for unit_price, values in sorted(breakdown_map.items(), key=lambda x: x[0]):
             breakdown_rows.append(
                 {
                     "label": f"{unit_price}円券" if unit_price > 0 else "価格不明券",
-                    "tickets": tickets,
-                    "amount": unit_price * tickets,
+                    "tickets": values["tickets"],
+                    "amount": values["amount"],
                 }
             )
+
+    lesson_total_amount = ticket_lesson_amount + preopen_paid_amount
 
     stringing_order_qs = StringingOrder.objects.filter(
         created_at__date__gte=month_start,
@@ -3891,7 +3989,7 @@ def coach_payroll_summary(request):
     unassigned_stringing_count = 0
 
     for order in stringing_order_qs:
-        order_total = int(order.total_price() or 0)
+        order_total = _money(order.total_price())
         status_key = _stringing_status_key(order).lower()
 
         if "cancel" not in status_key:
@@ -3932,6 +4030,7 @@ def coach_payroll_summary(request):
         assigned_stringing_rows.append(
             {
                 "order": order,
+                "total_price": order_total,
                 "status_label": status_label,
                 "delivery_label": delivery_label,
                 "preferred_label": preferred_label,
@@ -3966,20 +4065,21 @@ def coach_payroll_summary(request):
             if selected_coach and getattr(row["expense"].created_by, "pk", None) == selected_coach.pk:
                 approved_personal_expense_rows.append(row)
 
-    approved_common_expense_total = sum(int(row["expense"].amount or 0) for row in approved_common_expense_rows)
-    personal_reimbursement_amount = sum(int(row["expense"].amount or 0) for row in approved_personal_expense_rows)
+    approved_common_expense_total = sum(_money(row["expense"].amount) for row in approved_common_expense_rows)
+    personal_reimbursement_amount = sum(_money(row["expense"].amount) for row in approved_personal_expense_rows)
     per_coach_common_expense = int(approved_common_expense_total / active_coach_count) if active_coach_count > 0 else 0
 
-    salary_before_common = lesson_total_amount + assigned_stringing_amount + personal_reimbursement_amount
-    estimated_salary = salary_before_common - per_coach_common_expense
-    total_amount = salary_before_common
-    total_expense_amount = sum(int(row["expense"].amount or 0) for row in expense_meta_rows)
+    settlement_before_common = lesson_total_amount + assigned_stringing_amount + personal_reimbursement_amount
+    estimated_salary = settlement_before_common - per_coach_common_expense
+    salary_before_common = settlement_before_common
+    total_amount = settlement_before_common
+    total_expense_amount = sum(_money(row["expense"].amount) for row in expense_meta_rows)
 
     common_category_totals = {}
     for row in approved_common_expense_rows:
         label = row["expense"].get_category_display()
         common_category_totals.setdefault(label, 0)
-        common_category_totals[label] += int(row["expense"].amount or 0)
+        common_category_totals[label] += _money(row["expense"].amount)
 
     common_category_rows = [
         {"label": label, "amount": amount}
@@ -3990,7 +4090,7 @@ def coach_payroll_summary(request):
     for row in approved_personal_expense_rows:
         label = row["expense"].get_category_display()
         personal_category_totals.setdefault(label, 0)
-        personal_category_totals[label] += int(row["expense"].amount or 0)
+        personal_category_totals[label] += _money(row["expense"].amount)
 
     personal_category_rows = [
         {"label": label, "amount": amount}
@@ -4026,6 +4126,7 @@ def coach_payroll_summary(request):
             "is_staff_mode": _is_staff_like(request.user) and not _is_coach_user(request.user),
             "breakdown_rows": breakdown_rows,
             "reservation_rows": reservation_rows,
+            "preopen_rows": preopen_rows,
             "expense_rows": [row["expense"] for row in expense_meta_rows],
             "expense_meta_rows": expense_meta_rows,
             "approved_common_expense_rows": approved_common_expense_rows,
@@ -4037,11 +4138,20 @@ def coach_payroll_summary(request):
             "stringing_delivery_rows": stringing_delivery_rows,
             "unassigned_stringing_count": unassigned_stringing_count,
             "total_tickets": total_tickets,
+            "ticket_lesson_amount": ticket_lesson_amount,
+            "preopen_paid_amount": preopen_paid_amount,
+            "preopen_unpaid_amount": preopen_unpaid_amount,
+            "preopen_waived_amount": preopen_waived_amount,
+            "preopen_target_count": preopen_target_count,
+            "preopen_paid_count": preopen_paid_count,
+            "preopen_unpaid_count": preopen_unpaid_count,
+            "preopen_waived_count": preopen_waived_count,
             "lesson_total_amount": lesson_total_amount,
             "assigned_stringing_amount": assigned_stringing_amount,
             "total_stringing_amount": total_stringing_amount,
             "personal_reimbursement_amount": personal_reimbursement_amount,
             "salary_before_common": salary_before_common,
+            "settlement_before_common": settlement_before_common,
             "total_amount": total_amount,
             "total_expense_amount": total_expense_amount,
             "approved_common_expense_total": approved_common_expense_total,
@@ -4050,7 +4160,6 @@ def coach_payroll_summary(request):
             "estimated_salary": estimated_salary,
         },
     )
-
 
 @login_required
 @require_http_methods(["GET", "POST"])
@@ -6946,4 +7055,3 @@ def coach_revenue_summary(request):
             "preopen_cash_price": PREOPEN_CASH_PRICE,
         },
     )
-
