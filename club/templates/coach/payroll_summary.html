@@ -353,6 +353,7 @@
 
 <div class="warning-box">
   方式A：売上金額ベース配分で計算しています。4,000円券、3,500円券、その他単価チケットは消費時単価で集計します。
+  業務委託コーチの場合は、レッスン実売上ではなく「設定時給 × 担当時間」をレッスン報酬として支払予定額に反映します。
   7月プレオープン参加費は、回収済み分のみ支払予定額に含め、未回収・免除は別表示にしています。
 </div>
 
@@ -360,13 +361,20 @@
   <div class="payroll-stat primary">
     <div class="payroll-stat-label">支払予定額</div>
     <div class="payroll-stat-value">{{ estimated_salary }}円</div>
-    <div class="payroll-stat-note">実売上 + 本人立替 - 共通経費按分</div>
+    <div class="payroll-stat-note">レッスン報酬 + ガット張り + 本人立替 - 共通経費按分</div>
   </div>
   <div class="payroll-stat info">
     <div class="payroll-stat-label">レッスン実売上</div>
     <div class="payroll-stat-value">{{ lesson_total_amount }}円</div>
     <div class="payroll-stat-note">チケット {{ ticket_lesson_amount }}円 / 7月回収済み {{ preopen_paid_amount }}円</div>
   </div>
+  {% if is_selected_contractor_coach %}
+    <div class="payroll-stat notice">
+      <div class="payroll-stat-label">業務委託レッスン報酬</div>
+      <div class="payroll-stat-value">{{ contractor_hourly_pay_amount }}円</div>
+      <div class="payroll-stat-note">時給 {{ contractor_hourly_wage }}円 × {{ contractor_work_hours_text }} / {{ contractor_work_slot_count }}枠</div>
+    </div>
+  {% endif %}
   <div class="payroll-stat success">
     <div class="payroll-stat-label">担当ガット張り</div>
     <div class="payroll-stat-value">{{ assigned_stringing_amount }}円</div>
@@ -401,6 +409,25 @@
             <th>レッスン実売上</th>
             <td>{{ lesson_total_amount }}円</td>
           </tr>
+          {% if is_selected_contractor_coach %}
+            <tr>
+              <th>業務委託コーチ時給</th>
+              <td>{{ contractor_hourly_wage }}円/時</td>
+            </tr>
+            <tr>
+              <th>担当時間</th>
+              <td>{{ contractor_work_hours_text }} / {{ contractor_work_slot_count }}枠</td>
+            </tr>
+            <tr>
+              <th>業務委託レッスン報酬</th>
+              <td>{{ contractor_hourly_pay_amount }}円</td>
+            </tr>
+          {% else %}
+            <tr>
+              <th>レッスン報酬</th>
+              <td>{{ lesson_compensation_amount }}円</td>
+            </tr>
+          {% endif %}
           <tr>
             <th>担当ガット張り</th>
             <td>{{ assigned_stringing_amount }}円</td>
