@@ -116,7 +116,7 @@ _FIELD_VERBOSE_NAMES = {
         "capacity": "定員",
         "coach_count": "コーチ人数",
         "court_count": "必要コート数",
-        "weeks_ahead": "何週間先まで作成",
+        "weeks_ahead": "作成する開催回数",
         "is_active": "有効",
         "note": "メモ",
         "created_at": "作成日時",
@@ -395,7 +395,7 @@ class FixedLessonAdminForm(forms.ModelForm):
             "start_date": "繰り返し開始日",
             "weekday": "曜日",
             "start_hour": "開始時刻",
-            "weeks_ahead": "何週間先まで作成",
+            "weeks_ahead": "作成する開催回数",
             "coach": "主担当コーチ",
             "coach_2": "追加コーチ1",
             "coach_3": "追加コーチ2",
@@ -413,7 +413,7 @@ class FixedLessonAdminForm(forms.ModelForm):
         help_text_map = {
             "start_date": "この日付以降の最初の該当曜日から、レッスンカレンダーに表示されます。",
             "weekday": "繰り返し開催する曜日を選択してください。",
-            "weeks_ahead": "開始日から何週間先まで予約枠・固定メンバー予約を作るかを指定します。",
+            "weeks_ahead": "繰り返し開始日以降、何回分のレッスンをカレンダーに表示・予約作成するかを指定します。例：1 = 初回のみ、4 = 4回分。",
             "members": "ここに登録した会員は、今後の固定レッスン予約へ反映されます。外した会員の未来予約はキャンセル扱いになります。",
             "capacity": "一般レッスンはコーチ人数×6名で自動調整されます。",
             "coach_2": "複数コーチ開催時のみ選択してください。",
@@ -706,7 +706,7 @@ class FixedLessonAdmin(admin.ModelAdmin):
         "capacity_status_admin",
         "start_date",
         "end_date_admin",
-        "weeks_ahead",
+        "occurrence_count_admin",
         "future_reservation_count_admin",
         "future_waitlist_count_admin",
         "is_active",
@@ -781,7 +781,7 @@ class FixedLessonAdmin(admin.ModelAdmin):
                 "start_hour",
                 "weeks_ahead",
             ),
-            "description": "繰り返し開始日以降で、指定曜日に一致する日付からレッスンカレンダーへ表示・予約生成します。",
+            "description": "繰り返し開始日以降、指定曜日に一致する日付から、指定した開催回数分だけレッスンカレンダーへ表示・予約生成します。例：作成する開催回数が1なら初回のみ、4なら4回分です。",
         }),
         ("担当コーチ・コート", {
             "fields": (
@@ -886,6 +886,14 @@ class FixedLessonAdmin(admin.ModelAdmin):
         if not end_date:
             return "-"
         return end_date.strftime("%Y-%m-%d")
+
+    @admin.display(description="作成する開催回数", ordering="weeks_ahead")
+    def occurrence_count_admin(self, obj):
+        try:
+            count = max(int(obj.weeks_ahead or 1), 1)
+        except Exception:
+            count = 1
+        return f"{count}回分"
 
     @admin.display(description="今後予約")
     def future_reservation_count_admin(self, obj):
