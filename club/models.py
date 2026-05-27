@@ -25,10 +25,17 @@ def is_preopen_cash_lesson_date(value) -> bool:
 
 
 class User(AbstractUser):
+    ROLE_MEMBER = "member"
+    ROLE_COACH = "coach"
+    ROLE_CONTRACTOR_COACH = "contractor_coach"
+
     ROLE_CHOICES = (
-        ("member", "member"),
-        ("coach", "coach"),
+        (ROLE_MEMBER, "会員"),
+        (ROLE_COACH, "コーチ"),
+        (ROLE_CONTRACTOR_COACH, "業務委託コーチ"),
     )
+
+    COACH_ROLE_VALUES = (ROLE_COACH, ROLE_CONTRACTOR_COACH)
 
     LEVEL_FAMILY = "family"
     LEVEL_BEGINNER = "beginner"
@@ -67,7 +74,7 @@ class User(AbstractUser):
     )
 
     def is_coach(self):
-        return self.role == "coach"
+        return self.role in self.COACH_ROLE_VALUES
 
     def display_name(self):
         if self.full_name:
@@ -161,7 +168,7 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         User,
         on_delete=models.CASCADE,
         related_name="coach_availabilities",
-        limit_choices_to={"role": "coach"},
+        limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
     )
     substitute_coach = models.ForeignKey(
         User,
@@ -169,7 +176,7 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         null=True,
         blank=True,
         related_name="substitute_coach_availabilities",
-        limit_choices_to={"role": "coach"},
+        limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
     )
     court = models.ForeignKey(
         Court,
@@ -347,7 +354,7 @@ class FixedLesson(models.Model, LessonTypeMixin):
         User,
         on_delete=models.CASCADE,
         related_name="fixed_lessons_as_coach",
-        limit_choices_to={"role": "coach"},
+        limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
     )
     coach_2 = models.ForeignKey(
         User,
@@ -355,7 +362,7 @@ class FixedLesson(models.Model, LessonTypeMixin):
         null=True,
         blank=True,
         related_name="fixed_lessons_as_coach_2",
-        limit_choices_to={"role": "coach"},
+        limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
     )
     coach_3 = models.ForeignKey(
         User,
@@ -363,7 +370,7 @@ class FixedLesson(models.Model, LessonTypeMixin):
         null=True,
         blank=True,
         related_name="fixed_lessons_as_coach_3",
-        limit_choices_to={"role": "coach"},
+        limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
     )
     court = models.ForeignKey(
         Court,
@@ -1202,7 +1209,7 @@ class Reservation(models.Model, LessonTypeMixin):
         User,
         on_delete=models.CASCADE,
         related_name="coach_reservations",
-        limit_choices_to={"role": "coach"},
+        limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
     )
     substitute_coach = models.ForeignKey(
         User,
@@ -1210,7 +1217,7 @@ class Reservation(models.Model, LessonTypeMixin):
         null=True,
         blank=True,
         related_name="substitute_reservations",
-        limit_choices_to={"role": "coach"},
+        limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
     )
     court = models.ForeignKey(
         Court,
@@ -1259,6 +1266,19 @@ class Reservation(models.Model, LessonTypeMixin):
     cancellation_reason = models.CharField(max_length=255, blank=True, default="")
     custom_ticket_price = models.PositiveIntegerField(default=0)
     custom_duration_hours = models.PositiveIntegerField(default=0)
+    payment_status = models.CharField(
+        max_length=20,
+        choices=PAYMENT_STATUS_CHOICES,
+        default=PAYMENT_STATUS_NOT_REQUIRED,
+    )
+    payment_amount = models.PositiveIntegerField(default=0)
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PAYMENT_METHOD_CHOICES,
+        default=PAYMENT_METHOD_TICKET,
+    )
+    payment_received_at = models.DateTimeField(null=True, blank=True)
+    payment_note = models.CharField(max_length=255, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1310,6 +1330,77 @@ class Reservation(models.Model, LessonTypeMixin):
         if self.tickets_used == 1:
             return "チケット1枚"
         return f"チケット{self.tickets_used}枚"
+
+
+    def is_payment_tracking_required(self):
+        return self.is_preopen_cash_lesson()
+
+    def apply_default_payment_fields(self):
+        if self.is_payment_tracking_required():
+            if not self.payment_amount:
+                self.payment_amount = PREOPEN_CASH_PRICE
+            self.payment_method = self.PAYMENT_METHOD_CASH
+            if not self.payment_status or self.payment_status == self.PAYMENT_STATUS_NOT_REQUIRED:
+                self.payment_status = self.PAYMENT_STATUS_UNPAID
+            return
+
+        self.payment_status = self.PAYMENT_STATUS_NOT_REQUIRED
+        self.payment_amount = 0
+        self.payment_method = self.PAYMENT_METHOD_TICKET
+        self.payment_received_at = None
+        self.payment_note = ""
+
+    def payment_status_badge_label(self):
+        if not self.is_payment_tracking_required():
+            return "対象外"
+        if self.payment_status == self.PAYMENT_STATUS_PAID:
+            return "回収済み"
+        if self.payment_status == self.PAYMENT_STATUS_WAIVED:
+            return "免除"
+        return "未回収"
+
+    def mark_payment_status(self, payment_status, received_by=None, note=""):
+        if not self.is_payment_tracking_required():
+            raise ValidationError("この予約は参加費回収管理の対象外です。")
+
+        allowed_statuses = {
+            self.PAYMENT_STATUS_UNPAID,
+            self.PAYMENT_STATUS_PAID,
+            self.PAYMENT_STATUS_WAIVED,
+        }
+        if payment_status not in allowed_statuses:
+            raise ValidationError("支払状況が不正です。")
+
+        received_at = self.payment_received_at
+        if payment_status == self.PAYMENT_STATUS_PAID:
+            received_at = timezone.now()
+        elif payment_status == self.PAYMENT_STATUS_UNPAID:
+            received_at = None
+        elif payment_status == self.PAYMENT_STATUS_WAIVED and received_at is None:
+            received_at = timezone.now()
+
+        payment_amount = int(self.payment_amount or PREOPEN_CASH_PRICE)
+        payment_note = (note or "").strip()
+        if payment_status == self.PAYMENT_STATUS_PAID and received_by:
+            payment_note = payment_note or f"{received_by} が受付・精算画面から回収済みに更新"
+        elif payment_status == self.PAYMENT_STATUS_WAIVED and received_by:
+            payment_note = payment_note or f"{received_by} が受付・精算画面から免除に更新"
+        elif payment_status == self.PAYMENT_STATUS_UNPAID:
+            payment_note = payment_note or "受付・精算画面から未回収に更新"
+
+        Reservation.objects.filter(pk=self.pk).update(
+            payment_status=payment_status,
+            payment_amount=payment_amount,
+            payment_method=self.PAYMENT_METHOD_CASH,
+            payment_received_at=received_at,
+            payment_note=payment_note,
+        )
+
+        self.payment_status = payment_status
+        self.payment_amount = payment_amount
+        self.payment_method = self.PAYMENT_METHOD_CASH
+        self.payment_received_at = received_at
+        self.payment_note = payment_note
 
     def calculate_tickets_used(self):
         duration_hours = self.duration_hours()
@@ -1761,7 +1852,7 @@ class LessonWaitlist(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="coach_lesson_waitlists",
-        limit_choices_to={"role": "coach"},
+        limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
         verbose_name="主担当コーチ",
     )
     substitute_coach = models.ForeignKey(
@@ -1770,7 +1861,7 @@ class LessonWaitlist(models.Model):
         null=True,
         blank=True,
         related_name="substitute_lesson_waitlists",
-        limit_choices_to={"role": "coach"},
+        limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
         verbose_name="代行コーチ",
     )
     court = models.ForeignKey(
@@ -1952,7 +2043,7 @@ class StringingOrder(models.Model):
         null=True,
         blank=True,
         related_name="assigned_stringing_orders",
-        limit_choices_to={"role": "coach"},
+        limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
     )
     racket_name = models.CharField(max_length=120, blank=True, default="")
     string_name = models.CharField(max_length=120, blank=True, default="")
@@ -1978,14 +2069,14 @@ class StringingOrder(models.Model):
     @classmethod
     def default_assigned_coach(cls):
         coach = User.objects.filter(
-            role="coach",
+            role__in=User.COACH_ROLE_VALUES,
             username=cls.DEFAULT_ASSIGNED_COACH_USERNAME,
         ).first()
         if coach:
             return coach
 
         coach = User.objects.filter(
-            role="coach",
+            role__in=User.COACH_ROLE_VALUES,
             email__iexact=cls.DEFAULT_ASSIGNED_COACH_EMAIL,
         ).first()
         if coach:
@@ -2010,8 +2101,8 @@ class StringingOrder(models.Model):
             if default_coach:
                 self.assigned_coach = default_coach
 
-        if self.assigned_coach and getattr(self.assigned_coach, "role", "") != "coach":
-            raise ValidationError("担当コーチには coach ロールのユーザーを指定してください。")
+        if self.assigned_coach and getattr(self.assigned_coach, "role", "") not in User.COACH_ROLE_VALUES:
+            raise ValidationError("担当コーチにはコーチまたは業務委託コーチのユーザーを指定してください。")
 
         if self.base_price < 0:
             raise ValidationError("基本料金は0円以上にしてください。")
