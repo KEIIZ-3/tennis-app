@@ -98,7 +98,19 @@ class User(AbstractUser):
         return self.LEVEL_ORDER.get(self.member_level, 0)
 
     def can_book_level(self, target_level: str) -> bool:
+        if not target_level:
+            return True
         return self.level_rank() >= self.LEVEL_ORDER.get(target_level, 999)
+
+    def can_book_any_level(self, *target_levels: str) -> bool:
+        levels = [level for level in target_levels if level]
+        if not levels:
+            return True
+        return any(self.can_book_level(level) for level in levels)
+
+    @classmethod
+    def level_label(cls, level_value: str) -> str:
+        return dict(cls.LEVEL_CHOICES).get(level_value, level_value or "")
 
     def __str__(self):
         return self.display_name()
@@ -204,6 +216,12 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         choices=User.LEVEL_CHOICES,
         default=User.LEVEL_BEGINNER,
     )
+    target_level_2 = models.CharField(
+        max_length=30,
+        choices=(("", "指定なし"),) + User.LEVEL_CHOICES,
+        blank=True,
+        default="",
+    )
     start_at = models.DateTimeField()
     end_at = models.DateTimeField()
     capacity = models.PositiveIntegerField(default=1)
@@ -234,6 +252,16 @@ class CoachAvailability(models.Model, LessonTypeMixin):
 
     def assigned_coach(self):
         return self.substitute_coach or self.coach
+
+    def target_level_values(self):
+        values = [self.target_level]
+        if self.target_level_2 and self.target_level_2 != self.target_level:
+            values.append(self.target_level_2)
+        return values
+
+    def target_level_display_label(self):
+        labels = [User.level_label(value) for value in self.target_level_values()]
+        return "・".join([label for label in labels if label])
 
     def apply_substitute_to_reservations(self):
         reservation_qs = Reservation.objects.filter(
@@ -323,6 +351,9 @@ class CoachAvailability(models.Model, LessonTypeMixin):
             if self.capacity < 1:
                 raise ValidationError("イベントの定員は1以上にしてください。")
 
+        if self.target_level_2 == self.target_level:
+            self.target_level_2 = ""
+
         overlap_qs = CoachAvailability.objects.filter(
             coach=self.coach,
             start_at__lt=self.end_at,
@@ -406,6 +437,12 @@ class FixedLesson(models.Model, LessonTypeMixin):
         choices=User.LEVEL_CHOICES,
         default=User.LEVEL_BEGINNER,
     )
+    target_level_2 = models.CharField(
+        max_length=30,
+        choices=(("", "指定なし"),) + User.LEVEL_CHOICES,
+        blank=True,
+        default="",
+    )
     start_date = models.DateField(default=timezone.localdate)
     weekday = models.PositiveSmallIntegerField(choices=WEEKDAY_CHOICES)
     start_hour = models.PositiveSmallIntegerField(default=9)
@@ -434,6 +471,16 @@ class FixedLesson(models.Model, LessonTypeMixin):
         if not coaches:
             return "-"
         return " / ".join(coach.display_name() for coach in coaches)
+
+    def target_level_values(self):
+        values = [self.target_level]
+        if self.target_level_2 and self.target_level_2 != self.target_level:
+            values.append(self.target_level_2)
+        return values
+
+    def target_level_display_label(self):
+        labels = [User.level_label(value) for value in self.target_level_values()]
+        return "・".join([label for label in labels if label])
 
     def includes_coach(self, user):
         if not user or not getattr(user, "pk", None):
@@ -482,6 +529,9 @@ class FixedLesson(models.Model, LessonTypeMixin):
         coach_ids = [coach.pk for coach in self.all_coaches()]
         if len(coach_ids) != len(set(coach_ids)):
             raise ValidationError("同じコーチを重複して指定することはできません。")
+
+        if self.target_level_2 == self.target_level:
+            self.target_level_2 = ""
 
         selected_coach_count = max(len(self.all_coaches()), 1)
 
@@ -600,6 +650,7 @@ class FixedLesson(models.Model, LessonTypeMixin):
                     "coach_count": self.coach_count,
                     "court_count": self.court_count,
                     "target_level": self.target_level,
+                    "target_level_2": self.target_level_2,
                     "note": f"固定レッスン: {self.title or self.get_weekday_display()}",
                 },
             )
@@ -617,6 +668,9 @@ class FixedLesson(models.Model, LessonTypeMixin):
             if availability.target_level != self.target_level:
                 availability.target_level = self.target_level
                 updated_fields.append("target_level")
+            if availability.target_level_2 != self.target_level_2:
+                availability.target_level_2 = self.target_level_2
+                updated_fields.append("target_level_2")
             if not availability.note:
                 availability.note = f"固定レッスン: {self.title or self.get_weekday_display()}"
                 updated_fields.append("note")
@@ -656,6 +710,9 @@ class FixedLesson(models.Model, LessonTypeMixin):
                     if existing.target_level != self.target_level:
                         existing.target_level = self.target_level
                         update_fields.append("target_level")
+                    if existing.target_level_2 != self.target_level_2:
+                        existing.target_level_2 = self.target_level_2
+                        update_fields.append("target_level_2")
                     if existing.lesson_type != self.lesson_type:
                         existing.lesson_type = self.lesson_type
                         update_fields.append("lesson_type")
@@ -677,6 +734,7 @@ class FixedLesson(models.Model, LessonTypeMixin):
                     is_fixed_entry=True,
                     lesson_type=self.lesson_type,
                     target_level=self.target_level,
+                    target_level_2=self.target_level_2,
                     start_at=start_at,
                     end_at=end_at,
                     status=Reservation.STATUS_ACTIVE,
@@ -1260,6 +1318,12 @@ class Reservation(models.Model, LessonTypeMixin):
         choices=User.LEVEL_CHOICES,
         default=User.LEVEL_BEGINNER,
     )
+    target_level_2 = models.CharField(
+        max_length=30,
+        choices=(("", "指定なし"),) + User.LEVEL_CHOICES,
+        blank=True,
+        default="",
+    )
     requested_court_type = models.CharField(
         max_length=20,
         choices=Court.COURT_TYPE_CHOICES,
@@ -1322,6 +1386,16 @@ class Reservation(models.Model, LessonTypeMixin):
         if self.coach:
             return self.coach.display_name()
         return "-"
+
+    def target_level_values(self):
+        values = [self.target_level]
+        if self.target_level_2 and self.target_level_2 != self.target_level:
+            values.append(self.target_level_2)
+        return values
+
+    def target_level_display_label(self):
+        labels = [User.level_label(value) for value in self.target_level_values()]
+        return "・".join([label for label in labels if label])
 
     def duration_hours(self):
         if not self.start_at or not self.end_at:
@@ -1517,8 +1591,11 @@ class Reservation(models.Model, LessonTypeMixin):
         if self.substitute_coach_id and self.substitute_coach_id == self.coach_id:
             self.substitute_coach = None
 
+        if self.target_level_2 == self.target_level:
+            self.target_level_2 = ""
+
         if self.user and self.user.role == "member":
-            if not self.user.can_book_level(self.target_level):
+            if not self.user.can_book_any_level(self.target_level, self.target_level_2):
                 raise ValidationError("ご自身のレベルでは、このレベルのレッスンは予約できません。")
 
         if self.status not in (self.STATUS_ACTIVE, self.STATUS_PENDING):
@@ -1542,6 +1619,7 @@ class Reservation(models.Model, LessonTypeMixin):
                 raise ValidationError("該当するレッスン枠がありません。")
             self.availability = availability
             self.target_level = availability.target_level
+            self.target_level_2 = availability.target_level_2
             self.custom_ticket_price = availability.custom_ticket_price
             self.custom_duration_hours = availability.custom_duration_hours
             if availability.substitute_coach_id:
@@ -1558,6 +1636,7 @@ class Reservation(models.Model, LessonTypeMixin):
             if availability:
                 self.availability = availability
                 self.target_level = availability.target_level
+                self.target_level_2 = availability.target_level_2
                 self.custom_ticket_price = availability.custom_ticket_price
                 self.custom_duration_hours = availability.custom_duration_hours
                 if availability.substitute_coach_id:
@@ -1586,6 +1665,7 @@ class Reservation(models.Model, LessonTypeMixin):
             if availability:
                 self.availability = availability
                 self.target_level = availability.target_level
+                self.target_level_2 = availability.target_level_2
                 self.custom_ticket_price = availability.custom_ticket_price
                 self.custom_duration_hours = availability.custom_duration_hours
                 if availability.substitute_coach_id:
@@ -1777,6 +1857,7 @@ class Reservation(models.Model, LessonTypeMixin):
             self.cancellation_reason = locked_self.cancellation_reason
             self.approved_court_note = locked_self.approved_court_note
             self.availability = locked_self.availability
+            self.target_level_2 = locked_self.target_level_2
             self.substitute_coach = locked_self.substitute_coach
             self.custom_ticket_price = locked_self.custom_ticket_price
             self.custom_duration_hours = locked_self.custom_duration_hours
@@ -1909,6 +1990,13 @@ class LessonWaitlist(models.Model):
         default=User.LEVEL_BEGINNER,
         verbose_name="対象レベル",
     )
+    target_level_2 = models.CharField(
+        max_length=30,
+        choices=(("", "指定なし"),) + User.LEVEL_CHOICES,
+        blank=True,
+        default="",
+        verbose_name="対象レベル2",
+    )
     start_at = models.DateTimeField(verbose_name="開始日時")
     end_at = models.DateTimeField(verbose_name="終了日時")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_WAITING, verbose_name="状態")
@@ -1942,6 +2030,16 @@ class LessonWaitlist(models.Model):
             return coach.display_name()
         return "-"
 
+    def target_level_values(self):
+        values = [self.target_level]
+        if self.target_level_2 and self.target_level_2 != self.target_level:
+            values.append(self.target_level_2)
+        return values
+
+    def target_level_display_label(self):
+        labels = [User.level_label(value) for value in self.target_level_values()]
+        return "・".join([label for label in labels if label])
+
     def active_slot_reservations_qs(self):
         return Reservation.objects.filter(
             coach=self.coach,
@@ -1965,8 +2063,11 @@ class LessonWaitlist(models.Model):
         if self.lesson_type not in (LessonTypeMixin.LESSON_GENERAL, LessonTypeMixin.LESSON_EVENT):
             raise ValidationError("キャンセル待ちは通常レッスンまたはイベントのみ登録できます。")
 
-        if self.user_id and self.target_level and hasattr(self.user, "can_book_level"):
-            if not self.user.can_book_level(self.target_level):
+        if self.target_level_2 == self.target_level:
+            self.target_level_2 = ""
+
+        if self.user_id and self.target_level and hasattr(self.user, "can_book_any_level"):
+            if not self.user.can_book_any_level(self.target_level, self.target_level_2):
                 raise ValidationError("ご自身のレベルでは、このレッスンのキャンセル待ちは登録できません。")
 
         duplicate_qs = LessonWaitlist.objects.filter(
