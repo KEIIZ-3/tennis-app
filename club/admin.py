@@ -1,1788 +1,2352 @@
-import csv
-import io
-from pathlib import Path
+from datetime import date, datetime, time, timedelta
 
-from openpyxl import load_workbook
-from django import forms
-from django.contrib import admin, messages
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from django.contrib.auth.forms import UserChangeForm, UserCreationForm
+from django.conf import settings
+from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
-from django.db import transaction
-from django.http import HttpResponseRedirect
-from django.shortcuts import redirect, render
-from django.urls import path, reverse
+from django.db import models, transaction
 from django.utils import timezone
 
-from .forms import TicketGrantAdminForm
-from .models import (
-    CoachAvailability,
-    CoachExpense,
-    Court,
-    FixedLesson,
-    LessonWaitlist,
-    LineAccountLink,
-    Reservation,
-    ScheduleSurveyResponse,
-    ShopEstimateRequest,
-    ShopProductMaster,
-    StringingOrder,
-    TicketConsumption,
-    TicketLedger,
-    TicketPurchase,
-    User,
-    purchase_tickets,
-)
+BUSINESS_START_HOUR = 9
+BUSINESS_END_HOUR = 21
+TICKET_BALANCE_MIN = -4
+PREOPEN_CASH_START_DATE = date(2026, 7, 1)
+PREOPEN_CASH_END_DATE = date(2026, 7, 31)
+PREOPEN_CASH_PRICE = 2000
 
 
-admin.site.site_header = "Play Design Tennis 管理サイト"
-admin.site.site_title = "Play Design Tennis 管理サイト"
-admin.site.index_title = "管理メニュー"
+def is_preopen_cash_lesson_date(value) -> bool:
+    if not value:
+        return False
+    if hasattr(value, "date"):
+        target_date = value.date()
+    else:
+        target_date = value
+    return PREOPEN_CASH_START_DATE <= target_date <= PREOPEN_CASH_END_DATE
 
 
-_MODEL_VERBOSE_NAMES = {
-    User: ("ユーザー", "ユーザー"),
-    Court: ("コート", "コート"),
-    CoachAvailability: ("コーチスケジュール", "コーチスケジュール"),
-    FixedLesson: ("固定レッスン", "固定レッスン"),
-    Reservation: ("予約", "予約"),
-    TicketLedger: ("チケット履歴", "チケット履歴"),
-    TicketPurchase: ("チケット購入", "チケット購入"),
-    TicketConsumption: ("チケット消費", "チケット消費"),
-    CoachExpense: ("経費", "経費"),
-    StringingOrder: ("ガット張り依頼", "ガット張り依頼"),
-    LineAccountLink: ("LINE連携", "LINE連携"),
-    ScheduleSurveyResponse: ("時間帯アンケート回答", "時間帯アンケート回答"),
-    ShopEstimateRequest: ("物販見積もり依頼", "物販見積もり依頼"),
-    ShopProductMaster: ("Shop商品マスタ", "Shop商品マスタ"),
-}
+class User(AbstractUser):
+    ROLE_MEMBER = "member"
+    ROLE_COACH = "coach"
+    ROLE_CONTRACTOR_COACH = "contractor_coach"
+    COACH_ROLE_VALUES = (ROLE_COACH, ROLE_CONTRACTOR_COACH)
 
-
-_FIELD_VERBOSE_NAMES = {
-    User: {
-        "username": "ログインID",
-        "password": "パスワード",
-        "full_name": "氏名",
-        "email": "メールアドレス",
-        "phone_number": "電話番号",
-        "role": "権限種別",
-        "member_level": "会員レベル",
-        "ticket_balance": "チケット残数",
-        "is_profile_completed": "会員情報入力済み",
-        "is_staff": "管理画面利用可",
-        "is_superuser": "管理者権限",
-        "is_active": "有効",
-        "last_login": "最終ログイン",
-        "date_joined": "登録日時",
-        "first_name": "名",
-        "last_name": "姓",
-        "groups": "グループ",
-        "user_permissions": "ユーザー権限",
-    },
-    Court: {
-        "name": "コート名",
-        "is_active": "有効",
-        "court_type": "コート種別",
-    },
-    CoachAvailability: {
-        "coach": "主担当コーチ",
-        "substitute_coach": "代行コーチ",
-        "court": "コート",
-        "lesson_type": "レッスン種別",
-        "target_level": "対象レベル",
-        "start_at": "開始日時",
-        "end_at": "終了日時",
-        "capacity": "定員",
-        "coach_count": "コーチ人数",
-        "court_count": "必要コート数",
-        "note": "メモ",
-        "status": "公開状態",
-        "custom_ticket_price": "イベント消費チケット",
-        "custom_duration_hours": "イベント時間",
-        "created_at": "作成日時",
-    },
-    FixedLesson: {
-        "title": "レッスン名",
-        "coach": "主担当コーチ",
-        "coach_2": "追加コーチ1",
-        "coach_3": "追加コーチ2",
-        "court": "コート",
-        "members": "固定参加メンバー",
-        "lesson_type": "レッスン種別",
-        "target_level": "対象レベル",
-        "start_date": "繰り返し開始日",
-        "weekday": "曜日",
-        "start_hour": "開始時刻",
-        "capacity": "定員",
-        "coach_count": "コーチ人数",
-        "court_count": "必要コート数",
-        "weeks_ahead": "作成する開催回数",
-        "is_active": "有効",
-        "note": "メモ",
-        "created_at": "作成日時",
-    },
-    Reservation: {
-        "user": "会員",
-        "coach": "主担当コーチ",
-        "substitute_coach": "代行コーチ",
-        "court": "コート",
-        "availability": "コーチスケジュール",
-        "fixed_lesson": "固定レッスン",
-        "is_fixed_entry": "固定参加",
-        "lesson_type": "レッスン種別",
-        "target_level": "対象レベル",
-        "requested_court_type": "希望コート種別",
-        "requested_court_note": "希望コートメモ",
-        "approved_court_note": "承認コートメモ",
-        "start_at": "開始日時",
-        "end_at": "終了日時",
-        "tickets_used": "消費チケット",
-        "ticket_consumed_at": "チケット消費日時",
-        "ticket_refunded_at": "チケット返却日時",
-        "status": "状態",
-        "canceled_at": "キャンセル日時",
-        "cancellation_reason": "キャンセル理由",
-        "custom_ticket_price": "イベント消費チケット",
-        "custom_duration_hours": "イベント時間",
-        "created_at": "作成日時",
-    },
-    TicketLedger: {
-        "user": "会員",
-        "reservation": "予約",
-        "fixed_lesson": "固定レッスン",
-        "change_amount": "増減枚数",
-        "balance_after": "処理後残数",
-        "reason": "理由",
-        "note": "メモ",
-        "created_by": "処理者",
-        "created_at": "作成日時",
-    },
-    TicketPurchase: {
-        "user": "会員",
-        "purchase_type": "購入種別",
-        "total_tickets": "購入枚数",
-        "remaining_tickets": "残枚数",
-        "unit_price": "単価",
-        "label": "表示名",
-        "note": "メモ",
-        "created_by": "処理者",
-        "purchased_at": "購入日時",
-        "created_at": "作成日時",
-    },
-    TicketConsumption: {
-        "user": "会員",
-        "purchase": "購入チケット",
-        "reservation": "予約",
-        "fixed_lesson": "固定レッスン",
-        "tickets_used": "消費枚数",
-        "unit_price_snapshot": "消費時単価",
-        "refunded_at": "返却日時",
-        "refund_note": "返却メモ",
-        "created_at": "作成日時",
-    },
-    CoachExpense: {
-        "expense_date": "経費日",
-        "category": "カテゴリ",
-        "amount": "金額",
-        "note": "メモ",
-        "created_by": "登録者",
-        "created_at": "作成日時",
-    },
-    StringingOrder: {
-        "user": "会員",
-        "assigned_coach": "担当コーチ",
-        "racket_name": "ラケット名",
-        "string_name": "ガット名",
-        "tension_lbs": "テンション",
-        "delivery_requested": "デリバリー希望",
-        "delivery_location": "デリバリー場所",
-        "preferred_delivery_time": "希望日時",
-        "base_price": "基本料金",
-        "delivery_fee": "デリバリー料金",
-        "status": "状態",
-        "note": "メモ",
-        "created_at": "作成日時",
-        "updated_at": "更新日時",
-    },
-    LineAccountLink: {
-        "user": "ユーザー",
-        "line_user_id": "LINEユーザーID",
-        "is_active": "有効",
-        "linked_at": "連携日時",
-        "last_event_at": "最終イベント日時",
-    },
-    ScheduleSurveyResponse: {
-        "user": "会員",
-        "selected_days": "参加しやすい曜日",
-        "selected_weekday_time_slots": "平日の希望時間帯",
-        "selected_weekend_time_slots": "土日の希望時間帯",
-        "selected_lesson_types": "希望レッスン種別",
-        "preferred_frequency": "希望頻度",
-        "free_comment": "自由記入",
-        "answered_at": "回答日時",
-        "created_at": "作成日時",
-        "updated_at": "更新日時",
-    },
-    ShopProductMaster: {
-        "product_type": "商品種別",
-        "category": "カテゴリ",
-        "brand": "ブランド",
-        "product_name": "商品名",
-        "display_name": "表示名",
-        "product_code": "品番",
-        "official_price": "定価",
-        "sale_price": "販売価格",
-        "image_url": "画像URL",
-        "product_url": "商品URL",
-        "description": "説明",
-        "is_active": "有効",
-        "sort_order": "並び順",
-        "created_at": "作成日時",
-        "updated_at": "更新日時",
-    },
-    ShopEstimateRequest: {
-        "user": "会員",
-        "product_category": "商品カテゴリ",
-        "brand": "ブランド",
-        "main_keyword": "商品キーワード",
-        "main_product_name": "商品名",
-        "main_official_price": "商品定価",
-        "grip_size": "グリップサイズ",
-        "string_source": "ガット種別",
-        "string_keyword": "ガットキーワード",
-        "string_product_name": "ガット名",
-        "string_official_price": "ガット定価",
-        "request_stringing": "ガット張り希望",
-        "request_delivery": "デリバリー希望",
-        "tension_lbs": "テンション",
-        "note": "メモ",
-        "created_at": "作成日時",
-        "updated_at": "更新日時",
-    },
-}
-
-
-def _apply_japanese_admin_labels():
-    for model, names in _MODEL_VERBOSE_NAMES.items():
-        model._meta.verbose_name = names[0]
-        model._meta.verbose_name_plural = names[1]
-
-    for model, field_labels in _FIELD_VERBOSE_NAMES.items():
-        for field_name, label in field_labels.items():
-            try:
-                model._meta.get_field(field_name).verbose_name = label
-            except Exception:
-                continue
-
-
-_apply_japanese_admin_labels()
-
-
-COACH_ROLE_VALUES = ("coach", "contractor_coach")
-
-
-def coach_user_queryset():
-    return User.objects.filter(role__in=COACH_ROLE_VALUES).order_by("full_name", "username", "id")
-
-
-DATETIME_INPUT_FORMATS = [
-    "%Y-%m-%dT%H:%M",
-    "%Y-%m-%d %H:%M",
-    "%Y/%m/%d %H:%M",
-]
-
-
-class AdminHourDateTimeInput(forms.DateTimeInput):
-    input_type = "datetime-local"
-    format = "%Y-%m-%dT%H:%M"
-
-
-class ShopProductMasterImportForm(forms.Form):
-    IMPORT_MODE_UPDATE = "update"
-    IMPORT_MODE_REPLACE = "replace"
-
-    IMPORT_MODE_CHOICES = (
-        (IMPORT_MODE_UPDATE, "既存を残して更新 / 追加"),
-        (IMPORT_MODE_REPLACE, "既存を全削除して入れ替え"),
+    ROLE_CHOICES = (
+        (ROLE_MEMBER, "会員"),
+        (ROLE_COACH, "コーチ"),
+        (ROLE_CONTRACTOR_COACH, "業務委託コーチ"),
     )
 
-    upload_file = forms.FileField(label="取込ファイル")
-    import_mode = forms.ChoiceField(
-        label="取込方法",
-        choices=IMPORT_MODE_CHOICES,
-        initial=IMPORT_MODE_UPDATE,
-    )
-    default_is_active = forms.BooleanField(
-        label="is_active が空欄の行は有効にする",
-        required=False,
-        initial=True,
+    LEVEL_FAMILY = "family"
+    LEVEL_BEGINNER = "beginner"
+    LEVEL_BEGINNER_PLUS = "beginner_plus"
+    LEVEL_INTERMEDIATE = "intermediate"
+    LEVEL_INTERMEDIATE_PLUS = "intermediate_plus"
+    LEVEL_ADVANCED = "advanced"
+
+    LEVEL_CHOICES = (
+        (LEVEL_FAMILY, "ファミリー"),
+        (LEVEL_BEGINNER, "初級"),
+        (LEVEL_BEGINNER_PLUS, "初中級"),
+        (LEVEL_INTERMEDIATE, "中級"),
+        (LEVEL_INTERMEDIATE_PLUS, "中上級"),
+        (LEVEL_ADVANCED, "上級"),
     )
 
+    LEVEL_ORDER = {
+        LEVEL_FAMILY: 1,
+        LEVEL_BEGINNER: 2,
+        LEVEL_BEGINNER_PLUS: 3,
+        LEVEL_INTERMEDIATE: 4,
+        LEVEL_INTERMEDIATE_PLUS: 5,
+        LEVEL_ADVANCED: 6,
+    }
 
-class CoachAvailabilityAdminForm(forms.ModelForm):
-    start_at = forms.DateTimeField(
-        label="開始日時",
-        input_formats=DATETIME_INPUT_FORMATS,
-        widget=AdminHourDateTimeInput(attrs={"step": 3600}),
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="member")
+    full_name = models.CharField(max_length=150, blank=True, default="")
+    phone_number = models.CharField(max_length=30, blank=True, default="")
+    is_profile_completed = models.BooleanField(default=False)
+    ticket_balance = models.IntegerField(default=0)
+    member_level = models.CharField(
+        max_length=30,
+        choices=LEVEL_CHOICES,
+        default=LEVEL_BEGINNER,
     )
-    end_at = forms.DateTimeField(
-        label="終了日時",
-        input_formats=DATETIME_INPUT_FORMATS,
-        widget=AdminHourDateTimeInput(attrs={"step": 3600}),
+
+    def is_coach(self):
+        return self.role in self.COACH_ROLE_VALUES
+
+    def display_name(self):
+        if self.full_name:
+            return self.full_name
+        if self.first_name:
+            return self.first_name
+        return self.username
+
+    def level_rank(self):
+        return self.LEVEL_ORDER.get(self.member_level, 0)
+
+    def can_book_level(self, target_level: str) -> bool:
+        return self.level_rank() >= self.LEVEL_ORDER.get(target_level, 999)
+
+    def __str__(self):
+        return self.display_name()
+
+
+class Court(models.Model):
+    COURT_SONO = "sono"
+    COURT_OTHER = "other"
+
+    COURT_TYPE_CHOICES = (
+        (COURT_SONO, "西猪名公園テニスコート"),
+        (COURT_OTHER, "それ以外のコート"),
+    )
+
+    name = models.CharField(max_length=100, unique=True)
+    is_active = models.BooleanField(default=True)
+    court_type = models.CharField(
+        max_length=20,
+        choices=COURT_TYPE_CHOICES,
+        default=COURT_SONO,
     )
 
     class Meta:
-        model = CoachAvailability
-        fields = "__all__"
+        ordering = ["id"]
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        if self.instance and self.instance.pk:
-            if getattr(self.instance, "start_at", None):
-                self.initial["start_at"] = self.instance.start_at
-            if getattr(self.instance, "end_at", None):
-                self.initial["end_at"] = self.instance.end_at
+    def __str__(self):
+        return self.name
 
 
-class ReservationAdminForm(forms.ModelForm):
-    start_at = forms.DateTimeField(
-        label="開始日時",
-        input_formats=DATETIME_INPUT_FORMATS,
-        widget=AdminHourDateTimeInput(attrs={"step": 3600}),
+class LessonTypeMixin:
+    LESSON_GENERAL = "general"
+    LESSON_PRIVATE = "private"
+    LESSON_GROUP = "group"
+    LESSON_EVENT = "event"
+
+    LESSON_TYPE_CHOICES = (
+        (LESSON_GENERAL, "一般レッスン"),
+        (LESSON_PRIVATE, "プライベートレッスン"),
+        (LESSON_GROUP, "グループレッスン"),
+        (LESSON_EVENT, "イベント"),
     )
-    end_at = forms.DateTimeField(
-        label="終了日時",
-        input_formats=DATETIME_INPUT_FORMATS,
-        widget=AdminHourDateTimeInput(attrs={"step": 3600}),
+
+    @classmethod
+    def minimum_duration_hours_for_lesson_type(cls, lesson_type: str, custom_duration_hours=None) -> int:
+        if lesson_type == cls.LESSON_GENERAL:
+            return 2
+        if lesson_type == cls.LESSON_EVENT:
+            return int(custom_duration_hours or 1)
+        return 1
+
+    @classmethod
+    def is_flexible_duration_lesson_type(cls, lesson_type: str) -> bool:
+        return lesson_type in (cls.LESSON_PRIVATE, cls.LESSON_GROUP)
+
+    @classmethod
+    def default_tickets_for_lesson_type(cls, lesson_type: str, custom_ticket_price=None) -> int:
+        if lesson_type == cls.LESSON_PRIVATE:
+            return 2
+        if lesson_type == cls.LESSON_GROUP:
+            return 0
+        if lesson_type == cls.LESSON_EVENT:
+            return int(custom_ticket_price or 0)
+        return 1
+
+
+class CoachAvailability(models.Model, LessonTypeMixin):
+    STATUS_OPEN = "open"
+    STATUS_REQUESTED = "requested"
+    STATUS_APPROVED = "approved"
+
+    STATUS_CHOICES = (
+        (STATUS_OPEN, "公開中"),
+        (STATUS_REQUESTED, "申請中"),
+        (STATUS_APPROVED, "承認済み"),
     )
+
+    coach = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="coach_availabilities",
+        limit_choices_to={"role__in": ["coach", "contractor_coach"]},
+    )
+    substitute_coach = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="substitute_coach_availabilities",
+        limit_choices_to={"role__in": ["coach", "contractor_coach"]},
+    )
+    court = models.ForeignKey(
+        Court,
+        on_delete=models.CASCADE,
+        related_name="coach_availabilities",
+    )
+    lesson_type = models.CharField(
+        max_length=20,
+        choices=LessonTypeMixin.LESSON_TYPE_CHOICES,
+        default=LessonTypeMixin.LESSON_GENERAL,
+    )
+    target_level = models.CharField(
+        max_length=30,
+        choices=User.LEVEL_CHOICES,
+        default=User.LEVEL_BEGINNER,
+    )
+    start_at = models.DateTimeField()
+    end_at = models.DateTimeField()
+    capacity = models.PositiveIntegerField(default=1)
+    coach_count = models.PositiveIntegerField(default=1)
+    court_count = models.PositiveIntegerField(default=1)
+    note = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OPEN)
+    custom_ticket_price = models.PositiveIntegerField(default=0)
+    custom_duration_hours = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        model = Reservation
-        fields = "__all__"
+        ordering = ["start_at", "coach_id", "court_id"]
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __str__(self):
+        return f"{self.coach} / {self.court} / {self.get_lesson_type_display()} / {self.start_at:%Y-%m-%d %H:%M}"
 
-        coach_qs = coach_user_queryset()
-        self.fields["coach"].queryset = coach_qs
-        self.fields["substitute_coach"].queryset = coach_qs
-        self.fields["substitute_coach"].required = False
+    def duration_hours(self):
+        if not self.start_at or not self.end_at:
+            return 0
+        delta = self.end_at - self.start_at
+        return int(delta.total_seconds() // 3600)
 
-        if self.instance and self.instance.pk:
-            if getattr(self.instance, "start_at", None):
-                self.initial["start_at"] = self.instance.start_at
-            if getattr(self.instance, "end_at", None):
-                self.initial["end_at"] = self.instance.end_at
+    def effective_capacity(self):
+        if self.lesson_type == self.LESSON_GENERAL:
+            return max(int(self.coach_count or 1), 1) * 6
+        return int(self.capacity or 0)
 
+    def assigned_coach(self):
+        return self.substitute_coach or self.coach
 
-class FixedLessonAdminForm(forms.ModelForm):
-    class Meta:
-        model = FixedLesson
-        fields = "__all__"
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        coach_qs = coach_user_queryset()
-        self.fields["coach"].queryset = coach_qs
-        if "coach_2" in self.fields:
-            self.fields["coach_2"].queryset = coach_qs
-            self.fields["coach_2"].required = False
-        if "coach_3" in self.fields:
-            self.fields["coach_3"].queryset = coach_qs
-            self.fields["coach_3"].required = False
-
-        label_map = {
-            "title": "レッスン名",
-            "is_active": "有効",
-            "lesson_type": "レッスン種別",
-            "target_level": "対象レベル",
-            "start_date": "繰り返し開始日",
-            "weekday": "曜日",
-            "start_hour": "開始時刻",
-            "weeks_ahead": "作成する開催回数",
-            "coach": "主担当コーチ",
-            "coach_2": "追加コーチ1",
-            "coach_3": "追加コーチ2",
-            "court": "コート",
-            "coach_count": "コーチ人数",
-            "court_count": "必要コート数",
-            "capacity": "定員",
-            "members": "固定参加メンバー",
-            "note": "メモ",
-        }
-        for field_name, label in label_map.items():
-            if field_name in self.fields:
-                self.fields[field_name].label = label
-
-        help_text_map = {
-            "start_date": "この日付以降の最初の該当曜日から、レッスンカレンダーに表示されます。",
-            "weekday": "繰り返し開催する曜日を選択してください。",
-            "weeks_ahead": "繰り返し開始日以降、何回分のレッスンをカレンダーに表示・予約作成するかを指定します。例：1 = 初回のみ、4 = 4回分。",
-            "members": "ここに登録した会員は、今後の固定レッスン予約へ反映されます。外した会員の未来予約はキャンセル扱いになります。",
-            "capacity": "一般レッスンはコーチ人数×6名で自動調整されます。",
-            "coach_2": "複数コーチ開催時のみ選択してください。",
-            "coach_3": "複数コーチ開催時のみ選択してください。",
-        }
-        for field_name, help_text in help_text_map.items():
-            if field_name in self.fields:
-                self.fields[field_name].help_text = help_text
-
-
-class CoachExpenseAdminForm(forms.ModelForm):
-    class Meta:
-        model = CoachExpense
-        fields = "__all__"
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["created_by"].queryset = coach_user_queryset()
-        self.fields["created_by"].required = False
-
-
-class StringingOrderAdminForm(forms.ModelForm):
-    class Meta:
-        model = StringingOrder
-        fields = "__all__"
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if "assigned_coach" in self.fields:
-            self.fields["assigned_coach"].queryset = coach_user_queryset()
-            self.fields["assigned_coach"].required = False
-            self.fields["assigned_coach"].label = "担当コーチ"
-
-
-class CustomUserCreationForm(UserCreationForm):
-    class Meta(UserCreationForm.Meta):
-        model = User
-        fields = ("username", "full_name", "email", "phone_number", "role", "member_level")
-
-
-class CustomUserChangeForm(UserChangeForm):
-    class Meta(UserChangeForm.Meta):
-        model = User
-        fields = "__all__"
-
-
-@admin.register(User)
-class UserAdmin(BaseUserAdmin):
-    form = CustomUserChangeForm
-    add_form = CustomUserCreationForm
-
-    list_display = (
-        "id",
-        "username",
-        "full_name",
-        "email",
-        "phone_number",
-        "role",
-        "member_level",
-        "ticket_balance",
-        "is_profile_completed",
-        "is_staff",
-        "is_superuser",
-    )
-    list_filter = ("role", "member_level", "is_profile_completed", "is_staff", "is_superuser", "is_active")
-    search_fields = ("username", "full_name", "email", "phone_number")
-    ordering = ("id",)
-    actions = ("grant_tickets_selected", "grant_single_ticket", "grant_set4_tickets")
-
-    fieldsets = (
-        (None, {"fields": ("username", "password")}),
-        ("会員情報", {"fields": ("full_name", "phone_number", "email", "member_level", "ticket_balance", "is_profile_completed")}),
-        ("個人情報", {"fields": ("first_name", "last_name")}),
-        ("権限", {"fields": ("role", "is_active", "is_staff", "is_superuser", "groups", "user_permissions")}),
-        ("重要な日付", {"fields": ("last_login", "date_joined")}),
-    )
-
-    add_fieldsets = (
-        (
-            None,
-            {
-                "classes": ("wide",),
-                "fields": (
-                    "username",
-                    "full_name",
-                    "email",
-                    "phone_number",
-                    "role",
-                    "member_level",
-                    "password1",
-                    "password2",
-                    "is_staff",
-                    "is_superuser",
-                ),
-            },
-        ),
-    )
-
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path(
-                "grant-tickets/",
-                self.admin_site.admin_view(self.grant_tickets_view),
-                name="club_user_grant_tickets",
-            ),
-        ]
-        return custom_urls + urls
-
-    @admin.action(description="チケット付与（条件指定・複数人一括対応）")
-    def grant_tickets_selected(self, request, queryset):
-        selected_ids = list(queryset.values_list("pk", flat=True))
-        if not selected_ids:
-            self.message_user(request, "対象会員を選択してください。", level=messages.WARNING)
-            return None
-
-        ids_query = ",".join([str(pk) for pk in selected_ids])
-        url = reverse("admin:club_user_grant_tickets")
-        return HttpResponseRedirect(f"{url}?ids={ids_query}")
-
-    def grant_tickets_view(self, request):
-        raw_ids = (request.GET.get("ids") or request.POST.get("ids") or "").strip()
-        selected_ids = [int(value) for value in raw_ids.split(",") if value.strip().isdigit()]
-        queryset = User.objects.filter(pk__in=selected_ids).order_by("id")
-
-        if not queryset.exists():
-            self.message_user(request, "対象会員が見つかりません。", level=messages.WARNING)
-            return redirect("admin:club_user_changelist")
-
-        members = queryset.filter(role="member")
-        skipped_users = list(queryset.exclude(role="member"))
-
-        if request.method == "POST":
-            form = TicketGrantAdminForm(request.POST)
-            if form.is_valid():
-                success_count = 0
-                error_messages = []
-
-                purchase_type = form.resolved_purchase_type()
-                reason = form.resolved_reason()
-                label = form.resolved_label()
-                note = form.resolved_note()
-                tickets = form.cleaned_data["tickets"]
-                unit_price = form.cleaned_data["unit_price"]
-
-                for user in members:
-                    try:
-                        purchase_tickets(
-                            user=user,
-                            tickets=tickets,
-                            unit_price=unit_price,
-                            purchase_type=purchase_type,
-                            reason=reason,
-                            note=note,
-                            created_by=request.user,
-                            label=label,
-                        )
-                        success_count += 1
-                    except Exception as e:
-                        error_messages.append(f"{user} の付与に失敗しました: {e}")
-
-                if skipped_users:
-                    skipped_names = "、".join([str(user) for user in skipped_users])
-                    self.message_user(
-                        request,
-                        f"member 以外はスキップしました: {skipped_names}",
-                        level=messages.WARNING,
-                    )
-
-                for message_text in error_messages:
-                    self.message_user(request, message_text, level=messages.ERROR)
-
-                if success_count:
-                    self.message_user(
-                        request,
-                        f"{success_count}件の会員へチケットを付与しました。",
-                        level=messages.SUCCESS,
-                    )
-
-                return redirect("admin:club_user_changelist")
-        else:
-            initial = {
-                "tickets": 1,
-                "unit_price": 4000,
-                "label": "1枚券",
-                "note": "管理画面から一括付与",
-            }
-            form = TicketGrantAdminForm(initial=initial)
-
-        context = {
-            **self.admin_site.each_context(request),
-            "opts": self.model._meta,
-            "title": "チケット付与（条件指定）",
-            "form": form,
-            "selected_users": queryset,
-            "member_users": members,
-            "skipped_users": skipped_users,
-            "ids": raw_ids,
-        }
-        return render(request, "admin/club/user/grant_tickets.html", context)
-
-    @admin.action(description="チケット1枚を付与する（1枚 4,000円）")
-    def grant_single_ticket(self, request, queryset):
-        count = 0
-        for user in queryset:
-            if user.role != "member":
-                continue
-            try:
-                purchase_tickets(
-                    user=user,
-                    tickets=1,
-                    unit_price=4000,
-                    purchase_type=TicketPurchase.PURCHASE_TYPE_SINGLE,
-                    reason=TicketLedger.REASON_PURCHASE_SINGLE,
-                    note="管理画面から1枚付与",
-                    created_by=request.user,
-                    label="1枚券",
-                )
-                count += 1
-            except Exception as e:
-                self.message_user(request, f"{user} の付与に失敗しました: {e}", level=messages.ERROR)
-        if count:
-            self.message_user(request, f"{count}件の会員へチケット1枚を付与しました。", level=messages.SUCCESS)
-
-    @admin.action(description="4枚セットを付与する（1枚あたり 3,500円）")
-    def grant_set4_tickets(self, request, queryset):
-        count = 0
-        for user in queryset:
-            if user.role != "member":
-                continue
-            try:
-                purchase_tickets(
-                    user=user,
-                    tickets=4,
-                    unit_price=3500,
-                    purchase_type=TicketPurchase.PURCHASE_TYPE_SET4,
-                    reason=TicketLedger.REASON_PURCHASE_SET4,
-                    note="管理画面から4枚セット付与",
-                    created_by=request.user,
-                    label="4枚セット",
-                )
-                count += 1
-            except Exception as e:
-                self.message_user(request, f"{user} の付与に失敗しました: {e}", level=messages.ERROR)
-        if count:
-            self.message_user(request, f"{count}件の会員へ4枚セットを付与しました。", level=messages.SUCCESS)
-
-
-@admin.register(Court)
-class CourtAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "court_type", "is_active")
-    list_filter = ("court_type", "is_active")
-    search_fields = ("name",)
-
-
-@admin.register(CoachAvailability)
-class CoachAvailabilityAdmin(admin.ModelAdmin):
-    form = CoachAvailabilityAdminForm
-    list_display = (
-        "id",
-        "coach",
-        "court",
-        "lesson_type",
-        "target_level",
-        "coach_count",
-        "court_count",
-        "capacity",
-        "start_at",
-        "end_at",
-    )
-    list_filter = ("coach", "court", "lesson_type", "target_level")
-    search_fields = ("coach__username", "coach__full_name", "court__name")
-
-
-@admin.register(FixedLesson)
-class FixedLessonAdmin(admin.ModelAdmin):
-    form = FixedLessonAdminForm
-    list_display = (
-        "id",
-        "operation_status_admin",
-        "weekday_display_admin",
-        "start_hour_display_admin",
-        "lesson_title_admin",
-        "target_level_admin",
-        "coach_names_admin",
-        "court_display_admin",
-        "member_count_admin",
-        "capacity_status_admin",
-        "start_date",
-        "end_date_admin",
-        "occurrence_count_admin",
-        "future_reservation_count_admin",
-        "future_waitlist_count_admin",
-        "is_active",
-    )
-    list_display_links = ("id", "lesson_title_admin")
-    list_editable = ("is_active",)
-    list_filter = (
-        "is_active",
-        "weekday",
-        "target_level",
-        "lesson_type",
-        "coach",
-        "coach_2",
-        "coach_3",
-        "court",
-        "start_date",
-    )
-    search_fields = (
-        "title",
-        "coach__username",
-        "coach__full_name",
-        "coach_2__username",
-        "coach_2__full_name",
-        "coach_3__username",
-        "coach_3__full_name",
-        "court__name",
-        "members__username",
-        "members__full_name",
-    )
-    filter_horizontal = ("members",)
-    actions = (
-        "sync_selected_fixed_lessons",
-        "activate_selected_fixed_lessons",
-        "deactivate_selected_fixed_lessons",
-    )
-    list_per_page = 50
-    save_on_top = True
-
-    readonly_fields = (
-        "operation_help_admin",
-        "member_count_admin",
-        "capacity_status_admin",
-        "end_date_admin",
-        "future_reservation_count_admin",
-        "future_waitlist_count_admin",
-    )
-
-    fieldsets = (
-        ("運用確認", {
-            "fields": (
-                "operation_help_admin",
-                "member_count_admin",
-                "capacity_status_admin",
-                "end_date_admin",
-                "future_reservation_count_admin",
-                "future_waitlist_count_admin",
-            ),
-            "description": "保存後、固定参加メンバーの変更は今後の予約へ自動反映されます。",
-        }),
-        ("レッスン基本情報", {
-            "fields": (
-                "title",
-                "is_active",
-                "lesson_type",
-                "target_level",
-            )
-        }),
-        ("開催曜日・時間", {
-            "fields": (
-                "start_date",
-                "weekday",
-                "start_hour",
-                "weeks_ahead",
-            ),
-            "description": "繰り返し開始日以降、指定曜日に一致する日付から、指定した開催回数分だけレッスンカレンダーへ表示・予約生成します。例：作成する開催回数が1なら初回のみ、4なら4回分です。",
-        }),
-        ("担当コーチ・コート", {
-            "fields": (
-                "coach",
-                "coach_2",
-                "coach_3",
-                "court",
-            ),
-            "description": "coach_2 / coach_3 に入っているコーチにも、コーチ用参加者一覧・スケジュールに表示されます。",
-        }),
-        ("定員・必要数", {
-            "fields": (
-                "coach_count",
-                "court_count",
-                "capacity",
-            ),
-            "description": "一般レッスンでは、選択したコーチ人数に応じて定員と必要コート数が自動調整されます。",
-        }),
-        ("固定参加メンバー", {
-            "fields": (
-                "members",
-            ),
-            "description": "固定参加メンバーを追加・削除すると、保存時に今後の固定レッスン予約へ反映されます。",
-        }),
-        ("メモ", {
-            "fields": (
-                "note",
-            )
-        }),
-    )
-
-    def get_queryset(self, request):
-        return (
-            super()
-            .get_queryset(request)
-            .select_related("coach", "coach_2", "coach_3", "court")
-            .prefetch_related("members")
+    def apply_substitute_to_reservations(self):
+        reservation_qs = Reservation.objects.filter(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=self.lesson_type,
+            start_at=self.start_at,
+            end_at=self.end_at,
         )
 
-    def _future_start(self):
-        return timezone.now()
+        for reservation in reservation_qs:
+            new_substitute_id = self.substitute_coach_id
+            if reservation.substitute_coach_id == new_substitute_id:
+                continue
+            reservation.substitute_coach = self.substitute_coach
+            reservation.save(update_fields=["substitute_coach"])
 
-    def _end_date_for_obj(self, obj):
-        try:
-            repeat_start = obj.start_date or timezone.localdate()
-            initial_offset = (int(obj.weekday) - repeat_start.weekday()) % 7
-            if int(obj.weeks_ahead or 0) <= 0:
-                return repeat_start + timezone.timedelta(days=initial_offset)
-            return repeat_start + timezone.timedelta(days=initial_offset + (7 * (int(obj.weeks_ahead or 1) - 1)))
-        except Exception:
-            return None
+    def clean(self):
+        if not self.start_at or not self.end_at:
+            return
 
-    @admin.display(description="状態", ordering="is_active")
-    def operation_status_admin(self, obj):
-        if not obj.is_active:
-            return "停止中"
-        if not obj.court_id:
-            return "コート未設定"
-        if obj.member_count_for_admin() >= obj.effective_capacity():
-            return "満員"
-        return "運用中"
+        if self.start_at >= self.end_at:
+            raise ValidationError("開始日時は終了日時より前にしてください。")
 
-    @admin.display(description="曜日", ordering="weekday")
-    def weekday_display_admin(self, obj):
-        return obj.get_weekday_display()
+        if (
+            self.start_at.minute != 0
+            or self.start_at.second != 0
+            or self.start_at.microsecond != 0
+            or self.end_at.minute != 0
+            or self.end_at.second != 0
+            or self.end_at.microsecond != 0
+        ):
+            raise ValidationError("コーチ空き時間は1時間単位で指定してください。")
 
-    @admin.display(description="開始", ordering="start_hour")
-    def start_hour_display_admin(self, obj):
-        return f"{int(obj.start_hour or 0):02d}:00"
+        start_local = timezone.localtime(self.start_at) if timezone.is_aware(self.start_at) else self.start_at
+        end_local = timezone.localtime(self.end_at) if timezone.is_aware(self.end_at) else self.end_at
 
-    @admin.display(description="レッスン名", ordering="title")
-    def lesson_title_admin(self, obj):
-        return obj.title or obj.get_lesson_type_display()
+        if start_local.hour < BUSINESS_START_HOUR or start_local.hour >= BUSINESS_END_HOUR:
+            raise ValidationError("開始時刻は 09:00〜20:00 の範囲で指定してください。")
 
-    @admin.display(description="対象レベル", ordering="target_level")
-    def target_level_admin(self, obj):
-        return obj.get_target_level_display()
+        if end_local.hour <= BUSINESS_START_HOUR or end_local.hour > BUSINESS_END_HOUR:
+            raise ValidationError("終了時刻は 10:00〜21:00 の範囲で指定してください。")
 
-    @admin.display(description="担当コーチ")
-    def coach_names_admin(self, obj):
-        return obj.coach_display_names()
+        duration_hours = self.duration_hours()
+        minimum_hours = self.minimum_duration_hours_for_lesson_type(self.lesson_type, self.custom_duration_hours)
 
-    @admin.display(description="コート")
-    def court_display_admin(self, obj):
-        return obj.court_display()
+        if self.lesson_type == self.LESSON_GENERAL:
+            if duration_hours != 2:
+                raise ValidationError("一般レッスンは2時間で登録してください。")
+        elif self.lesson_type == self.LESSON_PRIVATE:
+            if duration_hours < 1:
+                raise ValidationError("プライベートレッスンは1時間以上で登録してください。")
+        elif self.lesson_type == self.LESSON_GROUP:
+            if duration_hours < 1:
+                raise ValidationError("グループレッスンは1時間以上で登録してください。")
+        elif self.lesson_type == self.LESSON_EVENT:
+            if duration_hours != minimum_hours:
+                raise ValidationError("イベントは設定した時間で登録してください。")
 
-    @admin.display(description="固定メンバー")
-    def member_count_admin(self, obj):
-        return obj.member_count_for_admin()
+        if self.substitute_coach_id and self.substitute_coach_id == self.coach_id:
+            self.substitute_coach = None
 
-    @admin.display(description="定員状況")
-    def capacity_status_admin(self, obj):
-        member_count = obj.member_count_for_admin()
-        capacity = obj.effective_capacity()
-        if member_count >= capacity:
-            return f"{member_count}/{capacity}名（満員）"
-        return f"{member_count}/{capacity}名"
+        if self.lesson_type == self.LESSON_GENERAL:
+            if int(self.coach_count or 0) < 1:
+                raise ValidationError("一般レッスンのコーチ人数は1以上にしてください。")
+            self.court_count = int(self.coach_count or 1)
+            self.capacity = self.effective_capacity()
 
-    @admin.display(description="表示終了目安")
-    def end_date_admin(self, obj):
-        end_date = self._end_date_for_obj(obj)
-        if not end_date:
+        elif self.lesson_type == self.LESSON_PRIVATE:
+            self.coach_count = 1
+            self.court_count = 1
+            self.capacity = 1
+
+        elif self.lesson_type == self.LESSON_GROUP:
+            self.coach_count = 1
+            self.court_count = 1
+            if self.capacity < 2:
+                raise ValidationError("グループレッスンの定員は2名以上にしてください。")
+
+        elif self.lesson_type == self.LESSON_EVENT:
+            self.coach_count = 1
+            self.court_count = 1
+            if self.custom_ticket_price < 0:
+                raise ValidationError("イベントのチケット価格は0以上にしてください。")
+            if self.custom_duration_hours < 1:
+                raise ValidationError("イベントの時間は1時間以上にしてください。")
+            if self.capacity < 1:
+                raise ValidationError("イベントの定員は1以上にしてください。")
+
+        overlap_qs = CoachAvailability.objects.filter(
+            coach=self.coach,
+            start_at__lt=self.end_at,
+            end_at__gt=self.start_at,
+        )
+        if self.pk:
+            overlap_qs = overlap_qs.exclude(pk=self.pk)
+        if overlap_qs.exists():
+            raise ValidationError("同じコーチで重複する空き時間があります。")
+
+    def save(self, *args, **kwargs):
+        previous_substitute_id = None
+        if self.pk:
+            previous_substitute_id = (
+                CoachAvailability.objects.filter(pk=self.pk).values_list("substitute_coach_id", flat=True).first()
+            )
+
+        self.full_clean()
+        result = super().save(*args, **kwargs)
+
+        if previous_substitute_id != self.substitute_coach_id:
+            self.apply_substitute_to_reservations()
+
+        return result
+
+
+class FixedLesson(models.Model, LessonTypeMixin):
+    WEEKDAY_CHOICES = (
+        (0, "月"),
+        (1, "火"),
+        (2, "水"),
+        (3, "木"),
+        (4, "金"),
+        (5, "土"),
+        (6, "日"),
+    )
+
+    title = models.CharField(max_length=150, default="", blank=True)
+    coach = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="fixed_lessons_as_coach",
+        limit_choices_to={"role__in": ["coach", "contractor_coach"]},
+    )
+    coach_2 = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="fixed_lessons_as_coach_2",
+        limit_choices_to={"role__in": ["coach", "contractor_coach"]},
+    )
+    coach_3 = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="fixed_lessons_as_coach_3",
+        limit_choices_to={"role__in": ["coach", "contractor_coach"]},
+    )
+    court = models.ForeignKey(
+        Court,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="fixed_lessons",
+    )
+    members = models.ManyToManyField(
+        User,
+        related_name="fixed_lessons",
+        limit_choices_to={"role": "member"},
+        blank=True,
+    )
+    lesson_type = models.CharField(
+        max_length=20,
+        choices=LessonTypeMixin.LESSON_TYPE_CHOICES,
+        default=LessonTypeMixin.LESSON_GENERAL,
+    )
+    target_level = models.CharField(
+        max_length=30,
+        choices=User.LEVEL_CHOICES,
+        default=User.LEVEL_BEGINNER,
+    )
+    start_date = models.DateField(default=timezone.localdate)
+    weekday = models.PositiveSmallIntegerField(choices=WEEKDAY_CHOICES)
+    start_hour = models.PositiveSmallIntegerField(default=9)
+    capacity = models.PositiveIntegerField(default=4)
+    coach_count = models.PositiveIntegerField(default=1)
+    court_count = models.PositiveIntegerField(default=1)
+    weeks_ahead = models.PositiveIntegerField(default=8)
+    is_active = models.BooleanField(default=True)
+    note = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["start_date", "weekday", "start_hour", "id"]
+
+    def all_coaches(self):
+        seen = set()
+        coaches = []
+        for coach in [self.coach, self.coach_2, self.coach_3]:
+            if coach and coach.pk not in seen:
+                coaches.append(coach)
+                seen.add(coach.pk)
+        return coaches
+
+    def coach_display_names(self):
+        coaches = self.all_coaches()
+        if not coaches:
             return "-"
-        return end_date.strftime("%Y-%m-%d")
+        return " / ".join(coach.display_name() for coach in coaches)
 
-    @admin.display(description="作成する開催回数", ordering="weeks_ahead")
-    def occurrence_count_admin(self, obj):
+    def includes_coach(self, user):
+        if not user or not getattr(user, "pk", None):
+            return False
+        return any(coach.pk == user.pk for coach in self.all_coaches())
+
+    def primary_coach(self):
+        return self.coach
+
+    def __str__(self):
+        base = self.title or f"{self.get_weekday_display()} {self.start_hour:02d}:00"
+        return f"{base} / {self.coach_display_names()}"
+
+    def court_display(self):
+        if self.court:
+            return str(self.court)
+        return "未定"
+
+    def effective_capacity(self):
+        if self.lesson_type == self.LESSON_GENERAL:
+            return max(int(self.coach_count or 1), 1) * 6
+        return int(self.capacity or 0)
+
+    def member_count_for_admin(self):
+        if not self.pk:
+            return 0
         try:
-            count = max(int(obj.weeks_ahead or 1), 1)
+            return self.members.count()
         except Exception:
-            count = 1
-        return f"{count}回分"
-
-    @admin.display(description="今後予約")
-    def future_reservation_count_admin(self, obj):
-        if not obj.pk:
             return 0
-        return Reservation.objects.filter(
-            fixed_lesson=obj,
-            start_at__gte=self._future_start(),
-            status=Reservation.STATUS_ACTIVE,
-        ).count()
 
-    @admin.display(description="今後キャンセル待ち")
-    def future_waitlist_count_admin(self, obj):
-        if not obj.pk:
-            return 0
-        return LessonWaitlist.objects.filter(
-            fixed_lesson=obj,
-            start_at__gte=self._future_start(),
-            status=LessonWaitlist.STATUS_WAITING,
-        ).count()
+    def end_date_for_admin(self):
+        repeat_start = self.start_date or timezone.localdate()
+        initial_offset = (self.weekday - repeat_start.weekday()) % 7
+        weeks = max(int(self.weeks_ahead or 1), 1)
+        return repeat_start + timedelta(days=initial_offset + (7 * (weeks - 1)))
 
-    @admin.display(description="運用メモ")
-    def operation_help_admin(self, obj):
-        if not obj or not obj.pk:
-            return "保存後に、固定メンバー数・今後予約数・キャンセル待ち数が表示されます。"
+    def clean(self):
+        if self.start_hour < BUSINESS_START_HOUR or self.start_hour >= BUSINESS_END_HOUR:
+            raise ValidationError("固定レッスンの開始時刻は 09:00〜20:00 の範囲で指定してください。")
 
-        messages_for_admin = []
-        if not obj.is_active:
-            messages_for_admin.append("この固定レッスンは停止中です。レッスンカレンダーには表示されません。")
-        if not obj.court_id:
-            messages_for_admin.append("コートが未設定です。予約生成・カレンダー表示で問題になる可能性があります。")
-        if obj.member_count_for_admin() > obj.effective_capacity():
-            messages_for_admin.append("固定メンバー数が定員を超えています。定員またはメンバーを確認してください。")
-        if not messages_for_admin:
-            messages_for_admin.append("運用上の大きな警告はありません。")
+        minimum_hours = self.minimum_duration_hours_for_lesson_type(self.lesson_type)
+        if self.start_hour + minimum_hours > BUSINESS_END_HOUR:
+            raise ValidationError("固定レッスンの終了時刻が営業時間を超えています。")
 
-        return " / ".join(messages_for_admin)
+        coach_ids = [coach.pk for coach in self.all_coaches()]
+        if len(coach_ids) != len(set(coach_ids)):
+            raise ValidationError("同じコーチを重複して指定することはできません。")
 
-    def save_related(self, request, form, formsets, change):
-        super().save_related(request, form, formsets, change)
-        fixed_lesson = form.instance
-        try:
-            changed_count = fixed_lesson.sync_future_reservations(created_by=request.user)
-            self.message_user(
-                request,
-                f"固定レッスンを保存しました。今後の予約への反映件数: {changed_count}件。",
-                level=messages.SUCCESS,
-            )
-        except Exception as e:
-            self.message_user(
-                request,
-                f"固定レッスンの今後予約への反映に失敗しました: {e}",
-                level=messages.ERROR,
-            )
+        selected_coach_count = max(len(self.all_coaches()), 1)
 
-    @admin.action(description="選択した固定レッスンの今後予約を生成・再同期する")
-    def sync_selected_fixed_lessons(self, request, queryset):
-        total = 0
-        for fixed_lesson in queryset:
-            try:
-                total += fixed_lesson.sync_future_reservations(created_by=request.user)
-            except Exception as e:
-                self.message_user(request, f"{fixed_lesson} の同期に失敗しました: {e}", level=messages.ERROR)
-        self.message_user(request, f"固定レッスン予約を {total} 件生成・更新しました。", level=messages.SUCCESS)
+        if self.lesson_type == self.LESSON_GENERAL:
+            self.coach_count = selected_coach_count
+            self.court_count = selected_coach_count
+            self.capacity = self.effective_capacity()
+        elif self.lesson_type == self.LESSON_PRIVATE:
+            self.coach_2 = None
+            self.coach_3 = None
+            self.coach_count = 1
+            self.court_count = 1
+            self.capacity = 1
+        elif self.lesson_type == self.LESSON_GROUP:
+            self.coach_2 = None
+            self.coach_3 = None
+            self.coach_count = 1
+            self.court_count = 1
+            if self.capacity < 2:
+                raise ValidationError("グループレッスンの定員は2名以上にしてください。")
+        elif self.lesson_type == self.LESSON_EVENT:
+            self.coach_count = selected_coach_count
+            self.court_count = max(selected_coach_count, 1)
+            if self.capacity < 1:
+                raise ValidationError("イベントの定員は1以上にしてください。")
 
-    @admin.action(description="選択した固定レッスンを有効にする")
-    def activate_selected_fixed_lessons(self, request, queryset):
-        updated = queryset.update(is_active=True)
-        self.message_user(request, f"{updated}件の固定レッスンを有効にしました。", level=messages.SUCCESS)
+    def _build_datetimes_for_date(self, target_date):
+        start_dt = datetime.combine(target_date, time(self.start_hour, 0))
+        if timezone.is_naive(start_dt):
+            start_dt = timezone.make_aware(start_dt)
 
-    @admin.action(description="選択した固定レッスンを無効にする")
-    def deactivate_selected_fixed_lessons(self, request, queryset):
-        updated = queryset.update(is_active=False)
-        self.message_user(request, f"{updated}件の固定レッスンを無効にしました。", level=messages.SUCCESS)
-
-
-@admin.register(Reservation)
-class ReservationAdmin(admin.ModelAdmin):
-    form = ReservationAdminForm
-    list_display = (
-        "id",
-        "user",
-        "coach",
-        "substitute_coach",
-        "court",
-        "lesson_type",
-        "target_level",
-        "tickets_used",
-        "start_at",
-        "end_at",
-        "status",
-        "is_fixed_entry",
-    )
-    list_filter = ("status", "lesson_type", "target_level", "coach", "substitute_coach", "court", "is_fixed_entry")
-    search_fields = (
-        "user__username",
-        "user__full_name",
-        "coach__username",
-        "coach__full_name",
-        "substitute_coach__username",
-        "substitute_coach__full_name",
-        "court__name",
-        "cancellation_reason",
-        "requested_court_note",
-        "approved_court_note",
-    )
-
-
-@admin.register(TicketLedger)
-class TicketLedgerAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "change_amount", "balance_after", "reason", "created_by", "created_at")
-    list_filter = ("reason", "created_at")
-    search_fields = (
-        "user__username",
-        "user__full_name",
-        "note",
-        "reservation__court__name",
-        "fixed_lesson__title",
-    )
-    autocomplete_fields = ("user", "reservation", "fixed_lesson", "created_by")
-
-
-@admin.register(TicketPurchase)
-class TicketPurchaseAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "user",
-        "purchase_type",
-        "unit_price",
-        "total_tickets",
-        "remaining_tickets",
-        "label",
-        "purchased_at",
-    )
-    list_filter = ("purchase_type", "unit_price", "purchased_at")
-    search_fields = ("user__username", "user__full_name", "label", "note")
-    autocomplete_fields = ("user", "created_by")
-
-
-@admin.register(TicketConsumption)
-class TicketConsumptionAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "user",
-        "reservation",
-        "purchase",
-        "tickets_used",
-        "unit_price_snapshot",
-        "refunded_at",
-        "created_at",
-    )
-    list_filter = ("unit_price_snapshot", "created_at", "refunded_at")
-    search_fields = (
-        "user__username",
-        "user__full_name",
-        "reservation__court__name",
-        "purchase__label",
-    )
-    autocomplete_fields = ("user", "purchase", "reservation", "fixed_lesson")
-
-
-@admin.register(CoachExpense)
-class CoachExpenseAdmin(admin.ModelAdmin):
-    form = CoachExpenseAdminForm
-    list_display = ("id", "expense_date", "category", "amount", "note", "created_by", "created_at")
-    list_filter = ("category", "expense_date")
-    search_fields = ("note",)
-
-
-@admin.register(LessonWaitlist)
-class LessonWaitlistAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "user",
-        "start_at",
-        "end_at",
-        "lesson_type",
-        "target_level",
-        "coach",
-        "substitute_coach",
-        "court",
-        "status",
-        "created_at",
-    )
-    list_filter = ("status", "lesson_type", "target_level", "coach", "court", "start_at")
-    search_fields = (
-        "user__username",
-        "user__full_name",
-        "coach__username",
-        "coach__full_name",
-        "substitute_coach__username",
-        "substitute_coach__full_name",
-        "court__name",
-        "note",
-    )
-    autocomplete_fields = ("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
-    readonly_fields = ("created_at", "updated_at", "canceled_at", "converted_at")
-    fieldsets = (
-        ("キャンセル待ち情報", {
-            "fields": (
-                "user",
-                "status",
-                "lesson_type",
-                "target_level",
-                "start_at",
-                "end_at",
-            )
-        }),
-        ("担当・場所", {
-            "fields": (
-                "coach",
-                "substitute_coach",
-                "court",
-                "availability",
-                "fixed_lesson",
-            )
-        }),
-        ("メモ・日時", {
-            "fields": (
-                "note",
-                "created_at",
-                "updated_at",
-                "canceled_at",
-                "converted_at",
-            )
-        }),
-    )
-
-
-@admin.register(StringingOrder)
-class StringingOrderAdmin(admin.ModelAdmin):
-    form = StringingOrderAdminForm
-    list_display = (
-        "id",
-        "user",
-        "assigned_coach",
-        "racket_name",
-        "string_name",
-        "tension_lbs",
-        "delivery_requested",
-        "base_price",
-        "delivery_fee",
-        "status",
-        "created_at",
-        "updated_at",
-    )
-    list_filter = ("status", "delivery_requested", "assigned_coach", "created_at")
-    search_fields = (
-        "user__username",
-        "user__full_name",
-        "assigned_coach__username",
-        "assigned_coach__full_name",
-        "racket_name",
-        "string_name",
-        "delivery_location",
-        "preferred_delivery_time",
-        "tension_lbs",
-        "note",
-    )
-    autocomplete_fields = ("user",)
-    readonly_fields = ("created_at", "updated_at")
-
-    fieldsets = (
-        ("依頼情報", {
-            "fields": (
-                "user",
-                "assigned_coach",
-                "status",
-            )
-        }),
-        ("内容", {
-            "fields": (
-                "racket_name",
-                "string_name",
-                "delivery_requested",
-                "tension_lbs",
-                "delivery_location",
-                "preferred_delivery_time",
-                "note",
-            )
-        }),
-        ("料金", {
-            "fields": (
-                "base_price",
-                "delivery_fee",
-            )
-        }),
-        ("日時", {
-            "fields": (
-                "created_at",
-                "updated_at",
-            )
-        }),
-    )
-
-
-@admin.register(LineAccountLink)
-class LineAccountLinkAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "line_user_id", "is_active", "linked_at", "last_event_at")
-    list_filter = ("is_active",)
-    search_fields = ("user__username", "user__full_name", "line_user_id")
-
-
-@admin.register(ScheduleSurveyResponse)
-class ScheduleSurveyResponseAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "user",
-        "preferred_frequency",
-        "answered_at",
-        "updated_at",
-    )
-    list_filter = ("preferred_frequency", "answered_at", "updated_at")
-    search_fields = (
-        "user__username",
-        "user__full_name",
-        "free_comment",
-    )
-    readonly_fields = ("answered_at", "created_at", "updated_at")
-
-
-@admin.register(ShopProductMaster)
-class ShopProductMasterAdmin(admin.ModelAdmin):
-    change_list_template = "admin/club/shopproductmaster/change_list.html"
-
-    list_display = (
-        "id",
-        "product_type",
-        "category",
-        "brand",
-        "display_label_admin",
-        "product_code",
-        "official_price_display",
-        "sale_price_display",
-        "is_active",
-        "sort_order",
-        "updated_at",
-    )
-    list_filter = ("product_type", "category", "brand", "is_active")
-    search_fields = (
-        "product_name",
-        "display_name",
-        "product_code",
-        "description",
-        "spec_weight_unstrung",
-        "spec_gauge",
-    )
-    readonly_fields = (
-        "created_at",
-        "updated_at",
-        "sale_price_display",
-        "racket_spec_summary",
-        "string_spec_summary",
-    )
-    list_per_page = 100
-    ordering = ("brand", "category", "product_type", "sort_order", "product_name", "id")
-
-    fieldsets = (
-        ("基本情報", {
-            "fields": (
-                "product_type",
-                "category",
-                "brand",
-                "product_name",
-                "display_name",
-                "product_code",
-                "official_price",
-                "sale_price_display",
-                "is_active",
-                "sort_order",
-            )
-        }),
-        ("リンク", {
-            "fields": (
-                "product_url",
-                "image_url",
-            )
-        }),
-        ("補足", {
-            "fields": (
-                "description",
-            )
-        }),
-        ("ラケットスペック", {
-            "fields": (
-                "spec_weight_unstrung",
-                "spec_string_pattern",
-                "spec_head_size",
-                "spec_balance",
-                "spec_length",
-                "spec_beam",
-                "racket_spec_summary",
-            )
-        }),
-        ("ガットスペック", {
-            "fields": (
-                "spec_gauge",
-                "spec_set_length",
-                "string_spec_summary",
-            )
-        }),
-        ("日時", {
-            "fields": (
-                "created_at",
-                "updated_at",
-            )
-        }),
-    )
-
-    @admin.display(description="表示名")
-    def display_label_admin(self, obj):
-        return obj.display_name or obj.product_name
-
-    @admin.display(description="定価")
-    def official_price_display(self, obj):
-        return f"{int(obj.official_price or 0)}円"
-
-    @admin.display(description="販売価格")
-    def sale_price_display(self, obj):
-        return f"{int(obj.sale_price or 0)}円"
-
-    @admin.display(description="ラケットスペック")
-    def racket_spec_summary(self, obj):
-        return " / ".join(obj.racket_spec_lines()) or "-"
-
-    @admin.display(description="ガットスペック")
-    def string_spec_summary(self, obj):
-        return " / ".join(obj.string_spec_lines()) or "-"
-
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path(
-                "import-products/",
-                self.admin_site.admin_view(self.import_products_view),
-                name="club_shopproductmaster_import_products",
-            ),
-        ]
-        return custom_urls + urls
-
-    def import_products_view(self, request):
-        if request.method == "POST":
-            form = ShopProductMasterImportForm(request.POST, request.FILES)
-            if form.is_valid():
-                upload_file = form.cleaned_data["upload_file"]
-                import_mode = form.cleaned_data["import_mode"]
-                default_is_active = form.cleaned_data["default_is_active"]
-                try:
-                    result = self._import_uploaded_products(
-                        upload_file=upload_file,
-                        import_mode=import_mode,
-                        default_is_active=default_is_active,
-                    )
-                    self.message_user(
-                        request,
-                        (
-                            f"商品マスタ取込が完了しました。"
-                            f" 追加: {result['created']}件 / 更新: {result['updated']}件 / "
-                            f"スキップ: {result['skipped']}件"
-                        ),
-                        level=messages.SUCCESS,
-                    )
-                    if result["errors"]:
-                        for error in result["errors"][:20]:
-                            self.message_user(request, error, level=messages.WARNING)
-                    return redirect("admin:club_shopproductmaster_changelist")
-                except ValidationError as e:
-                    for message_text in e.messages:
-                        self.message_user(request, message_text, level=messages.ERROR)
-                except Exception as e:
-                    self.message_user(request, f"取込に失敗しました: {e}", level=messages.ERROR)
+        if self.lesson_type == self.LESSON_GENERAL:
+            end_dt = start_dt + timedelta(hours=2)
         else:
-            form = ShopProductMasterImportForm()
+            end_dt = start_dt + timedelta(hours=1)
 
-        context = {
-            **self.admin_site.each_context(request),
-            "opts": self.model._meta,
-            "title": "Shop商品マスタ一括取込",
-            "form": form,
-        }
-        return render(request, "admin/club/shopproductmaster/import_products.html", context)
+        return start_dt, end_dt
 
-    def _import_uploaded_products(self, *, upload_file, import_mode, default_is_active):
-        rows = self._read_uploaded_rows(upload_file)
-        normalized_rows = self._normalize_import_rows(rows, default_is_active=default_is_active)
+    def first_occurrence_date(self):
+        """
+        繰り返し開始日以降で、最初にこの固定レッスンの曜日に当たる日付を返します。
 
-        created_count = 0
-        updated_count = 0
-        skipped_count = 0
-        errors = []
+        管理画面の「何週間先まで作成」は、実運用では「何回分作成」として扱います。
+        例：1 = 最初の1回だけ、4 = 4回分。
+        """
+        repeat_start = self.start_date or timezone.localdate()
+        initial_offset = (self.weekday - repeat_start.weekday()) % 7
+        return repeat_start + timedelta(days=initial_offset)
 
-        with transaction.atomic():
-            if import_mode == ShopProductMasterImportForm.IMPORT_MODE_REPLACE:
-                ShopProductMaster.objects.all().delete()
+    def occurrence_count(self):
+        try:
+            return max(int(self.weeks_ahead or 1), 1)
+        except Exception:
+            return 1
 
-            for index, row in enumerate(normalized_rows, start=2):
-                try:
-                    instance = self._find_existing_product(row)
-                    if instance is None:
-                        instance = ShopProductMaster()
-
-                    instance.product_type = row["product_type"]
-                    instance.category = row["category"]
-                    instance.brand = row["brand"]
-                    instance.product_name = row["product_name"]
-                    instance.display_name = row["display_name"]
-                    instance.product_code = row["product_code"]
-                    instance.official_price = row["official_price"]
-                    instance.image_url = row["image_url"]
-                    instance.product_url = row["product_url"]
-                    instance.description = row["description"]
-                    instance.spec_weight_unstrung = row["spec_weight_unstrung"]
-                    instance.spec_string_pattern = row["spec_string_pattern"]
-                    instance.spec_head_size = row["spec_head_size"]
-                    instance.spec_balance = row["spec_balance"]
-                    instance.spec_length = row["spec_length"]
-                    instance.spec_beam = row["spec_beam"]
-                    instance.spec_gauge = row["spec_gauge"]
-                    instance.spec_set_length = row["spec_set_length"]
-                    instance.sort_order = row["sort_order"]
-                    instance.is_active = row["is_active"]
-                    instance.full_clean()
-                    is_update = bool(instance.pk)
-                    instance.save()
-
-                    if is_update:
-                        updated_count += 1
-                    else:
-                        created_count += 1
-                except ValidationError as e:
-                    skipped_count += 1
-                    joined = " / ".join(e.messages)
-                    errors.append(f"{index}行目をスキップしました: {joined}")
-                except Exception as e:
-                    skipped_count += 1
-                    errors.append(f"{index}行目をスキップしました: {e}")
-
-        return {
-            "created": created_count,
-            "updated": updated_count,
-            "skipped": skipped_count,
-            "errors": errors,
-        }
-
-    def _read_uploaded_rows(self, upload_file):
-        suffix = Path(upload_file.name).suffix.lower()
-
-        if suffix == ".csv":
-            decoded = upload_file.read().decode("utf-8-sig")
-            reader = csv.DictReader(io.StringIO(decoded))
-            return list(reader)
-
-        if suffix == ".xlsx":
-            workbook = load_workbook(upload_file, data_only=True)
-            sheet = self._pick_product_master_sheet(workbook)
-            values = list(sheet.values)
-            if not values:
-                return []
-            headers = [str(value).strip() if value is not None else "" for value in values[0]]
-            rows = []
-            for row_values in values[1:]:
-                row_dict = {}
-                for idx, header in enumerate(headers):
-                    if not header:
-                        continue
-                    row_dict[header] = row_values[idx] if idx < len(row_values) else None
-                rows.append(row_dict)
-            return rows
-
-        raise ValidationError("取込できるのは .csv または .xlsx ファイルのみです。")
-
-    def _pick_product_master_sheet(self, workbook):
-        preferred_names = [
-            "商品マスタ_全件",
-            "商品マスタ",
-            "products",
-            "product_master",
+    def scheduled_occurrence_dates(self):
+        first_date = self.first_occurrence_date()
+        return [
+            first_date + timedelta(days=7 * index)
+            for index in range(self.occurrence_count())
         ]
-        expected_headers = {
-            "product_type",
-            "category",
-            "brand",
-            "product_name",
-            "display_name",
-            "product_code",
-            "official_price",
+
+    def sync_future_reservations(self, created_by=None):
+        if not self.is_active:
+            return 0
+        if not self.court_id:
+            return 0
+
+        changed_count = 0
+        today = timezone.localdate()
+        target_dates = self.scheduled_occurrence_dates()
+        target_datetimes = {
+            self._build_datetimes_for_date(target_date)
+            for target_date in target_dates
         }
 
-        for sheet_name in preferred_names:
-            if sheet_name in workbook.sheetnames:
-                sheet = workbook[sheet_name]
-                headers = self._sheet_header_set(sheet)
-                if expected_headers.intersection(headers):
-                    return sheet
+        members = list(self.members.all())
+        member_ids = {member.pk for member in members}
+        required_capacity = max(self.effective_capacity(), len(members), 1)
+        primary_coach = self.primary_coach()
 
-        best_sheet = None
-        best_score = -1
-        for sheet in workbook.worksheets:
-            headers = self._sheet_header_set(sheet)
-            score = len(expected_headers.intersection(headers))
-            if score > best_score:
-                best_score = score
-                best_sheet = sheet
-
-        if best_sheet is None or best_score <= 0:
-            raise ValidationError(
-                "Excel内に商品マスタの明細シートが見つかりません。"
-                " 『商品マスタ_全件』シート、または product_name / brand / category などの列を含むシートを使ってください。"
-            )
-
-        return best_sheet
-
-    def _sheet_header_set(self, sheet):
-        header_values = []
-        for cell_value in next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), []):
-            if cell_value is None:
+        # 以前の「1=1週間先まで」解釈などで作られた余分な未来の固定参加予約は、
+        # 今後分に限ってキャンセル扱いにし、管理画面の固定レッスン設定と表示数を合わせます。
+        extra_fixed_reservations = Reservation.objects.filter(
+            fixed_lesson=self,
+            is_fixed_entry=True,
+            start_at__date__gte=today,
+            status=Reservation.STATUS_ACTIVE,
+        )
+        for reservation in extra_fixed_reservations:
+            if (reservation.start_at, reservation.end_at) in target_datetimes:
                 continue
-            header_values.append(str(cell_value).strip())
-        return set(header_values)
-
-    def _normalize_import_rows(self, rows, *, default_is_active):
-        brand_map = {
-            "yonex": ShopProductMaster.BRAND_YONEX,
-            "YONEX": ShopProductMaster.BRAND_YONEX,
-            "wilson": ShopProductMaster.BRAND_WILSON,
-            "Wilson": ShopProductMaster.BRAND_WILSON,
-            "babolat": ShopProductMaster.BRAND_BABOLAT,
-            "Babolat": ShopProductMaster.BRAND_BABOLAT,
-            "head": ShopProductMaster.BRAND_HEAD,
-            "HEAD": ShopProductMaster.BRAND_HEAD,
-            "prince": ShopProductMaster.BRAND_PRINCE,
-            "Prince": ShopProductMaster.BRAND_PRINCE,
-            "dunlop": ShopProductMaster.BRAND_DUNLOP,
-            "DUNLOP": ShopProductMaster.BRAND_DUNLOP,
-            "tecnifibre": ShopProductMaster.BRAND_TECHNIFIBRE,
-            "Tecnifibre": ShopProductMaster.BRAND_TECHNIFIBRE,
-            "other": ShopProductMaster.BRAND_OTHER,
-            "その他": ShopProductMaster.BRAND_OTHER,
-        }
-        category_map = {
-            "racket": ShopProductMaster.CATEGORY_RACKET,
-            "ラケット": ShopProductMaster.CATEGORY_RACKET,
-            "string": ShopProductMaster.CATEGORY_STRING,
-            "ガット": ShopProductMaster.CATEGORY_STRING,
-            "アクセサリ": ShopProductMaster.CATEGORY_ACCESSORY,
-            "accessory": ShopProductMaster.CATEGORY_ACCESSORY,
-        }
-        product_type_map = {
-            "main": ShopProductMaster.PRODUCT_TYPE_MAIN,
-            "メイン商品": ShopProductMaster.PRODUCT_TYPE_MAIN,
-            "string": ShopProductMaster.PRODUCT_TYPE_STRING,
-            "ガット": ShopProductMaster.PRODUCT_TYPE_STRING,
-        }
-
-        def pick(row, *keys):
-            for key in keys:
-                if key in row and row[key] not in (None, ""):
-                    return row[key]
-            return ""
-
-        def clean_text(value):
-            return str(value or "").strip()
-
-        def clean_int(value, default=0):
-            if value in (None, ""):
-                return default
-            text = str(value).replace(",", "").strip()
-            return int(text or default)
-
-        def clean_bool(value, default=True):
-            if value in (None, ""):
-                return default
-            text = str(value).strip().lower()
-            if text in ("1", "true", "yes", "y", "on", "有効"):
-                return True
-            if text in ("0", "false", "no", "n", "off", "無効"):
-                return False
-            return default
-
-        normalized = []
-        for row in rows:
-            product_name = clean_text(
-                pick(row, "product_name", "商品名", "name", "品名", "モデル名")
-            )
-            if not product_name:
+            try:
+                reservation.cancel(
+                    created_by=created_by,
+                    reason="固定レッスンの開催回数変更による自動整理",
+                )
+                changed_count += 1
+            except ValidationError:
                 continue
 
-            brand_raw = clean_text(pick(row, "brand", "ブランド"))
-            category_raw = clean_text(pick(row, "category", "カテゴリ", "category_name"))
-            product_type_raw = clean_text(pick(row, "product_type", "商品種別", "type"))
+        for target_date in target_dates:
+            if target_date < today:
+                continue
 
-            product_type = product_type_map.get(product_type_raw, ShopProductMaster.PRODUCT_TYPE_MAIN)
-            category = category_map.get(category_raw, ShopProductMaster.CATEGORY_RACKET)
-            brand = brand_map.get(brand_raw, ShopProductMaster.BRAND_OTHER)
+            start_at, end_at = self._build_datetimes_for_date(target_date)
 
-            normalized.append(
-                {
-                    "product_type": product_type,
-                    "category": ShopProductMaster.CATEGORY_STRING if product_type == ShopProductMaster.PRODUCT_TYPE_STRING else category,
-                    "brand": brand,
-                    "product_name": product_name,
-                    "display_name": clean_text(pick(row, "display_name", "表示名")),
-                    "product_code": clean_text(pick(row, "product_code", "品番", "商品コード", "code")),
-                    "official_price": clean_int(pick(row, "official_price", "定価", "list_price", "price"), 0),
-                    "image_url": clean_text(pick(row, "image_url", "画像URL")),
-                    "product_url": clean_text(pick(row, "product_url", "商品URL", "url")),
-                    "description": clean_text(pick(row, "description", "説明", "備考")),
-                    "spec_weight_unstrung": clean_text(pick(row, "spec_weight_unstrung", "重量（ガット無し）", "重量(ガット無し)", "重量")),
-                    "spec_string_pattern": clean_text(pick(row, "spec_string_pattern", "ストリングパターン")),
-                    "spec_head_size": clean_text(pick(row, "spec_head_size", "ヘッドサイズ")),
-                    "spec_balance": clean_text(pick(row, "spec_balance", "バランス")),
-                    "spec_length": clean_text(pick(row, "spec_length", "長さ")),
-                    "spec_beam": clean_text(pick(row, "spec_beam", "ビーム")),
-                    "spec_gauge": clean_text(pick(row, "spec_gauge", "ゲージ")),
-                    "spec_set_length": clean_text(pick(row, "spec_set_length", "セット長", "長さ(ガット)", "ガット長さ")),
-                    "sort_order": clean_int(pick(row, "sort_order", "並び順"), 0),
-                    "is_active": clean_bool(pick(row, "is_active", "公開", "active"), default_is_active),
-                }
+            availability, _created = CoachAvailability.objects.get_or_create(
+                coach=primary_coach,
+                court=self.court,
+                lesson_type=self.lesson_type,
+                start_at=start_at,
+                end_at=end_at,
+                defaults={
+                    "capacity": required_capacity,
+                    "coach_count": self.coach_count,
+                    "court_count": self.court_count,
+                    "target_level": self.target_level,
+                    "note": f"固定レッスン: {self.title or self.get_weekday_display()}",
+                },
             )
-        return normalized
 
-    def _find_existing_product(self, row):
-        product_code = (row.get("product_code") or "").strip()
-        if product_code:
-            return ShopProductMaster.objects.filter(product_code=product_code).first()
+            updated_fields = []
+            if availability.capacity != required_capacity:
+                availability.capacity = required_capacity
+                updated_fields.append("capacity")
+            if availability.coach_count != self.coach_count:
+                availability.coach_count = self.coach_count
+                updated_fields.append("coach_count")
+            if availability.court_count != self.court_count:
+                availability.court_count = self.court_count
+                updated_fields.append("court_count")
+            if availability.target_level != self.target_level:
+                availability.target_level = self.target_level
+                updated_fields.append("target_level")
+            if not availability.note:
+                availability.note = f"固定レッスン: {self.title or self.get_weekday_display()}"
+                updated_fields.append("note")
+            if updated_fields:
+                availability.save(update_fields=updated_fields)
 
-        return ShopProductMaster.objects.filter(
-            brand=row["brand"],
-            category=row["category"],
-            product_type=row["product_type"],
-            product_name=row["product_name"],
+            # 管理サイトで固定メンバーを外した場合、未来の固定レッスン予約も連動してキャンセルする。
+            obsolete_reservations = Reservation.objects.filter(
+                fixed_lesson=self,
+                start_at=start_at,
+                end_at=end_at,
+                status=Reservation.STATUS_ACTIVE,
+            ).exclude(user_id__in=member_ids)
+            for reservation in obsolete_reservations:
+                try:
+                    reservation.cancel(created_by=created_by, reason="固定レッスンメンバー解除")
+                    changed_count += 1
+                except ValidationError:
+                    continue
+
+            for member in members:
+                existing = Reservation.objects.filter(
+                    user=member,
+                    coach=primary_coach,
+                    court=self.court,
+                    start_at=start_at,
+                    end_at=end_at,
+                    fixed_lesson=self,
+                    status=Reservation.STATUS_ACTIVE,
+                ).first()
+
+                if existing:
+                    update_fields = []
+                    if existing.availability_id != availability.pk:
+                        existing.availability = availability
+                        update_fields.append("availability")
+                    if existing.target_level != self.target_level:
+                        existing.target_level = self.target_level
+                        update_fields.append("target_level")
+                    if existing.lesson_type != self.lesson_type:
+                        existing.lesson_type = self.lesson_type
+                        update_fields.append("lesson_type")
+                    if existing.substitute_coach_id != availability.substitute_coach_id:
+                        existing.substitute_coach = availability.substitute_coach
+                        update_fields.append("substitute_coach")
+                    if update_fields:
+                        existing.save(update_fields=update_fields)
+                        changed_count += 1
+                    continue
+
+                reservation = Reservation(
+                    user=member,
+                    coach=primary_coach,
+                    substitute_coach=availability.substitute_coach,
+                    court=self.court,
+                    availability=availability,
+                    fixed_lesson=self,
+                    is_fixed_entry=True,
+                    lesson_type=self.lesson_type,
+                    target_level=self.target_level,
+                    start_at=start_at,
+                    end_at=end_at,
+                    status=Reservation.STATUS_ACTIVE,
+                )
+
+                try:
+                    with transaction.atomic():
+                        reservation.full_clean()
+                        reservation.save()
+                        reservation.consume_tickets(
+                            reason=TicketLedger.REASON_FIXED_USE,
+                            created_by=created_by,
+                            note=f"固定レッスン自動登録: {self.title or self.get_weekday_display()}",
+                        )
+                        changed_count += 1
+                except ValidationError:
+                    continue
+
+        return changed_count
+
+
+class TicketPurchase(models.Model):
+    PURCHASE_TYPE_SINGLE = "single"
+    PURCHASE_TYPE_SET4 = "set4"
+    PURCHASE_TYPE_EVENT = "event"
+    PURCHASE_TYPE_ADMIN = "admin"
+    PURCHASE_TYPE_LEGACY = "legacy"
+
+    PURCHASE_TYPE_CHOICES = (
+        (PURCHASE_TYPE_SINGLE, "1枚購入"),
+        (PURCHASE_TYPE_SET4, "4枚セット"),
+        (PURCHASE_TYPE_EVENT, "イベント用"),
+        (PURCHASE_TYPE_ADMIN, "管理画面調整"),
+        (PURCHASE_TYPE_LEGACY, "旧データ移行"),
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="ticket_purchases",
+    )
+    purchase_type = models.CharField(max_length=20, choices=PURCHASE_TYPE_CHOICES, default=PURCHASE_TYPE_SINGLE)
+    total_tickets = models.PositiveIntegerField(default=0)
+    remaining_tickets = models.PositiveIntegerField(default=0)
+    unit_price = models.PositiveIntegerField(default=0)
+    label = models.CharField(max_length=100, blank=True, default="")
+    note = models.CharField(max_length=255, blank=True, default="")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_ticket_purchases",
+    )
+    purchased_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["purchased_at", "id"]
+
+    def __str__(self):
+        label = self.label or self.get_purchase_type_display()
+        return f"{self.user} / {label} / {self.unit_price}円 / 残{self.remaining_tickets}"
+
+    def clean(self):
+        if self.total_tickets < 0:
+            raise ValidationError("購入枚数は0以上にしてください。")
+        if self.remaining_tickets < 0:
+            raise ValidationError("残数は0以上にしてください。")
+        if self.remaining_tickets > self.total_tickets:
+            raise ValidationError("残数は購入枚数を超えられません。")
+        if self.unit_price < 0:
+            raise ValidationError("単価は0以上にしてください。")
+
+    def unit_price_label(self):
+        if self.unit_price > 0:
+            return f"{self.unit_price}円券"
+        return "価格不明券"
+
+
+class TicketLedger(models.Model):
+    REASON_PURCHASE_SINGLE = "purchase_single"
+    REASON_PURCHASE_SET4 = "purchase_set4"
+    REASON_RESERVATION_USE = "reservation_use"
+    REASON_FIXED_USE = "fixed_use"
+    REASON_CANCEL_REFUND = "cancel_refund"
+    REASON_RAIN_REFUND = "rain_refund"
+    REASON_ADMIN_ADJUST = "admin_adjust"
+
+    REASON_CHOICES = (
+        (REASON_PURCHASE_SINGLE, "チケット1枚購入"),
+        (REASON_PURCHASE_SET4, "4枚セット購入"),
+        (REASON_RESERVATION_USE, "通常予約で消費"),
+        (REASON_FIXED_USE, "固定レッスンで消費"),
+        (REASON_CANCEL_REFUND, "キャンセル返却"),
+        (REASON_RAIN_REFUND, "雨天中止返却"),
+        (REASON_ADMIN_ADJUST, "管理画面調整"),
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="ticket_ledgers",
+    )
+    reservation = models.ForeignKey(
+        "Reservation",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ticket_ledgers",
+    )
+    fixed_lesson = models.ForeignKey(
+        "FixedLesson",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ticket_ledgers",
+    )
+    change_amount = models.IntegerField()
+    balance_after = models.IntegerField()
+    reason = models.CharField(max_length=30, choices=REASON_CHOICES)
+    note = models.CharField(max_length=255, blank=True, default="")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_ticket_ledgers",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        sign = "+" if self.change_amount >= 0 else ""
+        return f"{self.user} / {sign}{self.change_amount} / {self.get_reason_display()}"
+
+
+class TicketConsumption(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="ticket_consumptions",
+    )
+    purchase = models.ForeignKey(
+        TicketPurchase,
+        on_delete=models.CASCADE,
+        related_name="consumptions",
+    )
+    reservation = models.ForeignKey(
+        "Reservation",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="ticket_consumptions",
+    )
+    fixed_lesson = models.ForeignKey(
+        "FixedLesson",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ticket_consumptions",
+    )
+    tickets_used = models.PositiveIntegerField(default=1)
+    unit_price_snapshot = models.PositiveIntegerField(default=0)
+    refunded_at = models.DateTimeField(null=True, blank=True)
+    refund_note = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"{self.user} / {self.unit_price_label()} / {self.tickets_used}枚"
+
+    def unit_price_label(self):
+        if self.unit_price_snapshot > 0:
+            return f"{self.unit_price_snapshot}円券"
+        return "価格不明券"
+
+    @property
+    def is_refunded(self):
+        return bool(self.refunded_at)
+
+
+class CoachExpense(models.Model):
+    CATEGORY_COURT = "court"
+    CATEGORY_BALL = "ball"
+    CATEGORY_EQUIPMENT = "equipment"
+    CATEGORY_SERVER = "server"
+    CATEGORY_OTHER = "other"
+
+    CATEGORY_CHOICES = (
+        (CATEGORY_COURT, "コート費用"),
+        (CATEGORY_BALL, "ボール費用"),
+        (CATEGORY_EQUIPMENT, "テニス用機材費用"),
+        (CATEGORY_SERVER, "サーバー代金"),
+        (CATEGORY_OTHER, "その他"),
+    )
+
+    expense_date = models.DateField(default=timezone.localdate)
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default=CATEGORY_OTHER)
+    amount = models.PositiveIntegerField(default=0)
+    note = models.CharField(max_length=255, blank=True, default="")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_coach_expenses",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-expense_date", "-id"]
+
+    def __str__(self):
+        return f"{self.expense_date:%Y-%m-%d} / {self.get_category_display()} / {self.amount}円"
+
+    def clean(self):
+        if self.amount < 0:
+            raise ValidationError("経費は0円以上にしてください。")
+
+
+class ScheduleSurveyResponse(models.Model):
+    DAY_MON = "mon"
+    DAY_TUE = "tue"
+    DAY_WED = "wed"
+    DAY_THU = "thu"
+    DAY_FRI = "fri"
+    DAY_SAT = "sat"
+    DAY_SUN = "sun"
+
+    DAY_CHOICES = (
+        (DAY_MON, "月曜日"),
+        (DAY_TUE, "火曜日"),
+        (DAY_WED, "水曜日"),
+        (DAY_THU, "木曜日"),
+        (DAY_FRI, "金曜日"),
+        (DAY_SAT, "土曜日"),
+        (DAY_SUN, "日曜日"),
+    )
+
+    WEEKDAY_SLOT_09_11 = "weekday_09_11"
+    WEEKDAY_SLOT_11_13 = "weekday_11_13"
+    WEEKDAY_SLOT_13_15 = "weekday_13_15"
+    WEEKDAY_SLOT_15_17 = "weekday_15_17"
+    WEEKDAY_SLOT_17_19 = "weekday_17_19"
+    WEEKDAY_SLOT_19_21 = "weekday_19_21"
+
+    WEEKDAY_TIME_SLOT_CHOICES = (
+        (WEEKDAY_SLOT_09_11, "平日 9:00〜11:00"),
+        (WEEKDAY_SLOT_11_13, "平日 11:00〜13:00"),
+        (WEEKDAY_SLOT_13_15, "平日 13:00〜15:00"),
+        (WEEKDAY_SLOT_15_17, "平日 15:00〜17:00"),
+        (WEEKDAY_SLOT_17_19, "平日 17:00〜19:00"),
+        (WEEKDAY_SLOT_19_21, "平日 19:00〜21:00"),
+    )
+
+    WEEKEND_SLOT_09_11 = "weekend_09_11"
+    WEEKEND_SLOT_11_13 = "weekend_11_13"
+    WEEKEND_SLOT_13_15 = "weekend_13_15"
+    WEEKEND_SLOT_15_17 = "weekend_15_17"
+    WEEKEND_SLOT_17_19 = "weekend_17_19"
+    WEEKEND_SLOT_19_21 = "weekend_19_21"
+
+    WEEKEND_TIME_SLOT_CHOICES = (
+        (WEEKEND_SLOT_09_11, "土日 9:00〜11:00"),
+        (WEEKEND_SLOT_11_13, "土日 11:00〜13:00"),
+        (WEEKEND_SLOT_13_15, "土日 13:00〜15:00"),
+        (WEEKEND_SLOT_15_17, "土日 15:00〜17:00"),
+        (WEEKEND_SLOT_17_19, "土日 17:00〜19:00"),
+        (WEEKEND_SLOT_19_21, "土日 19:00〜21:00"),
+    )
+
+    LESSON_GENERAL = "general"
+    LESSON_PRIVATE = "private"
+    LESSON_GROUP = "group"
+
+    LESSON_TYPE_CHOICES = (
+        (LESSON_GENERAL, "一般"),
+        (LESSON_PRIVATE, "プライベート"),
+        (LESSON_GROUP, "グループ"),
+    )
+
+    FREQUENCY_WEEKLY_1 = "weekly_1"
+    FREQUENCY_WEEKLY_2 = "weekly_2"
+    FREQUENCY_MONTHLY_2_3 = "monthly_2_3"
+    FREQUENCY_IRREGULAR = "irregular"
+
+    FREQUENCY_CHOICES = (
+        (FREQUENCY_WEEKLY_1, "週1回"),
+        (FREQUENCY_WEEKLY_2, "週2回"),
+        (FREQUENCY_MONTHLY_2_3, "月2〜3回"),
+        (FREQUENCY_IRREGULAR, "不定期"),
+    )
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="schedule_survey_response",
+    )
+    selected_days = models.JSONField(default=list, blank=True)
+    selected_weekday_time_slots = models.JSONField(default=list, blank=True)
+    selected_weekend_time_slots = models.JSONField(default=list, blank=True)
+    selected_lesson_types = models.JSONField(default=list, blank=True)
+    preferred_frequency = models.CharField(max_length=30, choices=FREQUENCY_CHOICES)
+    free_comment = models.TextField(blank=True, default="")
+    answered_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-answered_at", "-id"]
+        verbose_name = "時間帯アンケート回答"
+        verbose_name_plural = "時間帯アンケート回答"
+
+    def __str__(self):
+        return f"{self.user} / {self.answered_at:%Y-%m-%d %H:%M}"
+
+    @classmethod
+    def day_label_map(cls):
+        return dict(cls.DAY_CHOICES)
+
+    @classmethod
+    def weekday_time_slot_label_map(cls):
+        return dict(cls.WEEKDAY_TIME_SLOT_CHOICES)
+
+    @classmethod
+    def weekend_time_slot_label_map(cls):
+        return dict(cls.WEEKEND_TIME_SLOT_CHOICES)
+
+    @classmethod
+    def lesson_type_label_map(cls):
+        return dict(cls.LESSON_TYPE_CHOICES)
+
+    @classmethod
+    def frequency_label_map(cls):
+        return dict(cls.FREQUENCY_CHOICES)
+
+    def clean(self):
+        allowed_days = {value for value, _label in self.DAY_CHOICES}
+        allowed_weekday_slots = {value for value, _label in self.WEEKDAY_TIME_SLOT_CHOICES}
+        allowed_weekend_slots = {value for value, _label in self.WEEKEND_TIME_SLOT_CHOICES}
+        allowed_lesson_types = {value for value, _label in self.LESSON_TYPE_CHOICES}
+        allowed_frequencies = {value for value, _label in self.FREQUENCY_CHOICES}
+
+        self.selected_days = [value for value in (self.selected_days or []) if value in allowed_days]
+        self.selected_weekday_time_slots = [
+            value for value in (self.selected_weekday_time_slots or []) if value in allowed_weekday_slots
+        ]
+        self.selected_weekend_time_slots = [
+            value for value in (self.selected_weekend_time_slots or []) if value in allowed_weekend_slots
+        ]
+        self.selected_lesson_types = [
+            value for value in (self.selected_lesson_types or []) if value in allowed_lesson_types
+        ]
+        self.free_comment = (self.free_comment or "").strip()
+
+        if not self.selected_days:
+            raise ValidationError("参加しやすい曜日を1つ以上選択してください。")
+
+        if not self.selected_weekday_time_slots and not self.selected_weekend_time_slots:
+            raise ValidationError("参加しやすい時間帯を1つ以上選択してください。")
+
+        if not self.selected_lesson_types:
+            raise ValidationError("希望レッスン種別を1つ以上選択してください。")
+
+        if self.preferred_frequency not in allowed_frequencies:
+            raise ValidationError("レッスン頻度を選択してください。")
+
+    def selected_day_labels(self):
+        label_map = self.day_label_map()
+        return [label_map.get(value, value) for value in (self.selected_days or [])]
+
+    def selected_weekday_time_slot_labels(self):
+        label_map = self.weekday_time_slot_label_map()
+        return [label_map.get(value, value) for value in (self.selected_weekday_time_slots or [])]
+
+    def selected_weekend_time_slot_labels(self):
+        label_map = self.weekend_time_slot_label_map()
+        return [label_map.get(value, value) for value in (self.selected_weekend_time_slots or [])]
+
+    def selected_lesson_type_labels(self):
+        label_map = self.lesson_type_label_map()
+        return [label_map.get(value, value) for value in (self.selected_lesson_types or [])]
+
+    def preferred_frequency_label(self):
+        return self.frequency_label_map().get(self.preferred_frequency, self.preferred_frequency)
+
+
+def apply_ticket_change(
+    *,
+    user,
+    amount: int,
+    reason: str,
+    note: str = "",
+    created_by=None,
+    reservation=None,
+    fixed_lesson=None,
+):
+    if amount == 0:
+        return None
+
+    with transaction.atomic():
+        locked_user = User.objects.select_for_update().get(pk=user.pk)
+        next_balance = locked_user.ticket_balance + amount
+
+        if next_balance < TICKET_BALANCE_MIN:
+            raise ValidationError(f"チケット残数の下限は {TICKET_BALANCE_MIN} 枚です。")
+
+        locked_user.ticket_balance = next_balance
+        locked_user.save(update_fields=["ticket_balance"])
+
+        ledger = TicketLedger.objects.create(
+            user=locked_user,
+            reservation=reservation,
+            fixed_lesson=fixed_lesson,
+            change_amount=amount,
+            balance_after=next_balance,
+            reason=reason,
+            note=note,
+            created_by=created_by if created_by and getattr(created_by, "pk", None) else None,
+        )
+
+        user.ticket_balance = next_balance
+        return ledger
+
+
+def purchase_tickets(
+    *,
+    user,
+    tickets: int,
+    unit_price: int,
+    purchase_type: str,
+    reason: str,
+    note: str = "",
+    created_by=None,
+    reservation=None,
+    fixed_lesson=None,
+    purchased_at=None,
+    label="",
+):
+    if tickets <= 0:
+        raise ValidationError("購入枚数は1以上にしてください。")
+
+    with transaction.atomic():
+        ledger = apply_ticket_change(
+            user=user,
+            amount=tickets,
+            reason=reason,
+            note=note,
+            created_by=created_by,
+            reservation=reservation,
+            fixed_lesson=fixed_lesson,
+        )
+
+        locked_user = User.objects.select_for_update().get(pk=user.pk)
+        purchase = TicketPurchase.objects.create(
+            user=locked_user,
+            purchase_type=purchase_type,
+            total_tickets=tickets,
+            remaining_tickets=tickets,
+            unit_price=unit_price,
+            label=label,
+            note=note,
+            created_by=created_by if created_by and getattr(created_by, "pk", None) else None,
+            purchased_at=purchased_at or timezone.now(),
+        )
+
+        user.ticket_balance = locked_user.ticket_balance
+        return ledger, purchase
+
+
+def _ensure_ticket_purchase_stock_for_user(user, created_by=None):
+    locked_user = User.objects.select_for_update().get(pk=user.pk)
+    balance = max(int(locked_user.ticket_balance or 0), 0)
+    purchase_remaining = (
+        TicketPurchase.objects.filter(user=locked_user).aggregate(total=models.Sum("remaining_tickets")).get("total") or 0
+    )
+
+    if purchase_remaining >= balance:
+        return
+
+    shortage = balance - purchase_remaining
+    TicketPurchase.objects.create(
+        user=locked_user,
+        purchase_type=TicketPurchase.PURCHASE_TYPE_LEGACY,
+        total_tickets=shortage,
+        remaining_tickets=shortage,
+        unit_price=0,
+        label="旧データ移行分",
+        note="既存残高との差分を補完",
+        created_by=created_by if created_by and getattr(created_by, "pk", None) else None,
+        purchased_at=timezone.now(),
+    )
+
+
+class Reservation(models.Model, LessonTypeMixin):
+    STATUS_ACTIVE = "active"
+    STATUS_CANCELED = "canceled"
+    STATUS_RAIN_CANCELED = "rain_canceled"
+    STATUS_PENDING = "pending"
+
+    STATUS_CHOICES = (
+        (STATUS_ACTIVE, "予約中"),
+        (STATUS_CANCELED, "キャンセル"),
+        (STATUS_RAIN_CANCELED, "雨天中止"),
+        (STATUS_PENDING, "承認待ち"),
+    )
+
+    PAYMENT_METHOD_TICKET = "ticket"
+    PAYMENT_METHOD_CASH = "cash"
+    PAYMENT_METHOD_OTHER = "other"
+
+    PAYMENT_METHOD_CHOICES = (
+        (PAYMENT_METHOD_TICKET, "チケット"),
+        (PAYMENT_METHOD_CASH, "当日受付"),
+        (PAYMENT_METHOD_OTHER, "その他"),
+    )
+
+    PAYMENT_STATUS_NOT_REQUIRED = "not_required"
+    PAYMENT_STATUS_UNPAID = "unpaid"
+    PAYMENT_STATUS_PAID = "paid"
+    PAYMENT_STATUS_WAIVED = "waived"
+
+    PAYMENT_STATUS_CHOICES = (
+        (PAYMENT_STATUS_NOT_REQUIRED, "対象外"),
+        (PAYMENT_STATUS_UNPAID, "未回収"),
+        (PAYMENT_STATUS_PAID, "回収済み"),
+        (PAYMENT_STATUS_WAIVED, "免除"),
+    )
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="reservations",
+    )
+    coach = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="coach_reservations",
+        limit_choices_to={"role__in": ["coach", "contractor_coach"]},
+    )
+    substitute_coach = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="substitute_reservations",
+        limit_choices_to={"role__in": ["coach", "contractor_coach"]},
+    )
+    court = models.ForeignKey(
+        Court,
+        on_delete=models.CASCADE,
+        related_name="reservations",
+    )
+    availability = models.ForeignKey(
+        CoachAvailability,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reservations",
+    )
+    fixed_lesson = models.ForeignKey(
+        FixedLesson,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reservations",
+    )
+    is_fixed_entry = models.BooleanField(default=False)
+    lesson_type = models.CharField(
+        max_length=20,
+        choices=LessonTypeMixin.LESSON_TYPE_CHOICES,
+        default=LessonTypeMixin.LESSON_GENERAL,
+    )
+    target_level = models.CharField(
+        max_length=30,
+        choices=User.LEVEL_CHOICES,
+        default=User.LEVEL_BEGINNER,
+    )
+    requested_court_type = models.CharField(
+        max_length=20,
+        choices=Court.COURT_TYPE_CHOICES,
+        default=Court.COURT_SONO,
+    )
+    requested_court_note = models.CharField(max_length=255, blank=True, default="")
+    approved_court_note = models.CharField(max_length=255, blank=True, default="")
+    start_at = models.DateTimeField()
+    end_at = models.DateTimeField()
+    tickets_used = models.PositiveIntegerField(default=0)
+    ticket_consumed_at = models.DateTimeField(null=True, blank=True)
+    ticket_refunded_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_ACTIVE)
+    canceled_at = models.DateTimeField(null=True, blank=True)
+    cancellation_reason = models.CharField(max_length=255, blank=True, default="")
+    custom_ticket_price = models.PositiveIntegerField(default=0)
+    custom_duration_hours = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-start_at", "-id"]
+
+    def __str__(self):
+        return f"{self.user} / {self.coach} / {self.get_lesson_type_display()} / {self.start_at:%Y-%m-%d %H:%M}"
+
+    @property
+    def is_active(self):
+        return self.status == self.STATUS_ACTIVE
+
+    @property
+    def is_canceled(self):
+        return self.status in (self.STATUS_CANCELED, self.STATUS_RAIN_CANCELED)
+
+    def has_substitute_coach(self):
+        return bool(self.substitute_coach_id)
+
+    def assigned_coach(self):
+        return self.substitute_coach or self.coach
+
+    def assigned_coach_display(self):
+        coach = self.assigned_coach()
+        if coach:
+            return coach.display_name()
+        return "-"
+
+    def normal_coach_display(self):
+        if self.coach:
+            return self.coach.display_name()
+        return "-"
+
+    def duration_hours(self):
+        if not self.start_at or not self.end_at:
+            return 0
+        delta = self.end_at - self.start_at
+        return int(delta.total_seconds() // 3600)
+
+    def is_preopen_cash_lesson(self):
+        return (
+            self.lesson_type == self.LESSON_GENERAL
+            and is_preopen_cash_lesson_date(self.start_at)
+        )
+
+    def payment_label(self):
+        if self.is_preopen_cash_lesson():
+            return f"7月プレオープン：当日、受付時に{PREOPEN_CASH_PRICE:,}円のお支払いをお願いします（チケットは使いません）"
+        if self.tickets_used == 1:
+            return "チケット1枚"
+        return f"チケット{self.tickets_used}枚"
+
+    def calculate_tickets_used(self):
+        duration_hours = self.duration_hours()
+
+        if self.is_preopen_cash_lesson():
+            return 0
+
+        if self.lesson_type == self.LESSON_PRIVATE:
+            return max(duration_hours, 1) * 2
+
+        if self.lesson_type == self.LESSON_GROUP:
+            active_count = Reservation.objects.filter(
+                coach=self.coach,
+                court=self.court,
+                lesson_type=self.lesson_type,
+                start_at=self.start_at,
+                end_at=self.end_at,
+                status=self.STATUS_ACTIVE,
+            ).count()
+            if self.pk and self.status == self.STATUS_ACTIVE:
+                active_count += 1
+            participant_count = max(active_count, 1)
+            return max(duration_hours, 1) * participant_count
+
+        if self.lesson_type == self.LESSON_EVENT:
+            return int(self.custom_ticket_price or 0)
+
+        return 1
+
+    def matching_availability(self):
+        return CoachAvailability.objects.filter(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=self.lesson_type,
+            start_at=self.start_at,
+            end_at=self.end_at,
         ).first()
 
+    def active_slot_reservations_qs(self):
+        qs = Reservation.objects.filter(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=self.lesson_type,
+            start_at=self.start_at,
+            end_at=self.end_at,
+            status=self.STATUS_ACTIVE,
+        )
+        if self.pk:
+            qs = qs.exclude(pk=self.pk)
+        return qs
 
-@admin.register(ShopEstimateRequest)
-class ShopEstimateRequestAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "created_at",
-        "user_display",
-        "handling_status",
-        "product_category",
-        "brand",
-        "main_product_display",
-        "main_sale_price_display",
-        "string_source",
-        "string_sale_price_display",
-        "stringing_fee_display",
-        "estimated_total_display",
-    )
-    list_filter = (
-        "handling_status",
-        "product_category",
-        "brand",
-        "string_source",
-        "request_stringing",
-        "created_at",
-    )
-    search_fields = (
-        "user__username",
-        "user__full_name",
-        "main_keyword",
-        "main_product_name",
-        "string_keyword",
-        "string_product_name",
-        "note",
-        "admin_note",
-    )
-    readonly_fields = (
-        "created_at",
-        "updated_at",
-        "main_sale_price_display",
-        "string_sale_price_display",
-        "stringing_fee_display",
-        "estimated_total_display",
-    )
-    list_select_related = ("user",)
-    list_per_page = 50
-    date_hierarchy = "created_at"
-    actions = (
-        "mark_as_checked",
-        "mark_as_ordered",
-        "mark_as_completed",
-        "mark_as_canceled",
-    )
+    def clean(self):
+        if not self.start_at or not self.end_at:
+            return
 
-    fieldsets = (
-        ("基本情報", {
-            "fields": (
-                "user",
-                "handling_status",
-                "product_category",
-                "brand",
-                "note",
-                "admin_note",
+        if self.start_at >= self.end_at:
+            raise ValidationError("開始日時は終了日時より前にしてください。")
+
+        if (
+            self.start_at.minute != 0
+            or self.start_at.second != 0
+            or self.start_at.microsecond != 0
+            or self.end_at.minute != 0
+            or self.end_at.second != 0
+            or self.end_at.microsecond != 0
+        ):
+            raise ValidationError("予約は1時間単位でのみ可能です。")
+
+        start_local = timezone.localtime(self.start_at) if timezone.is_aware(self.start_at) else self.start_at
+        end_local = timezone.localtime(self.end_at) if timezone.is_aware(self.end_at) else self.end_at
+
+        if start_local.hour < BUSINESS_START_HOUR or start_local.hour >= BUSINESS_END_HOUR:
+            raise ValidationError("予約開始時刻は 09:00〜20:00 の範囲で指定してください。")
+
+        if end_local.hour <= BUSINESS_START_HOUR or end_local.hour > BUSINESS_END_HOUR:
+            raise ValidationError("予約終了時刻は 10:00〜21:00 の範囲で指定してください。")
+
+        duration_hours = self.duration_hours()
+
+        if self.lesson_type == self.LESSON_GENERAL:
+            if duration_hours != 2:
+                raise ValidationError("一般レッスンは2時間で予約してください。")
+        elif self.lesson_type == self.LESSON_PRIVATE:
+            if duration_hours < 1:
+                raise ValidationError("プライベートレッスンは1時間以上で予約してください。")
+        elif self.lesson_type == self.LESSON_GROUP:
+            if duration_hours < 1:
+                raise ValidationError("グループレッスンは1時間以上で予約してください。")
+        elif self.lesson_type == self.LESSON_EVENT:
+            minimum_hours = self.minimum_duration_hours_for_lesson_type(self.lesson_type, self.custom_duration_hours)
+            if duration_hours != minimum_hours:
+                raise ValidationError("イベントは設定した時間で予約してください。")
+
+        self.tickets_used = self.calculate_tickets_used()
+        self.apply_default_payment_fields()
+
+        if self.user_id and self.coach_id and self.user_id == self.coach_id:
+            raise ValidationError("自分自身を予約することはできません。")
+
+        if self.substitute_coach_id and self.substitute_coach_id == self.user_id:
+            raise ValidationError("会員本人を代行コーチにすることはできません。")
+
+        if self.substitute_coach_id and self.substitute_coach_id == self.coach_id:
+            self.substitute_coach = None
+
+        if self.user and self.user.role == "member":
+            if not self.user.can_book_level(self.target_level):
+                raise ValidationError("ご自身のレベルでは、このレベルのレッスンは予約できません。")
+
+        if self.status not in (self.STATUS_ACTIVE, self.STATUS_PENDING):
+            return
+
+        user_overlap_qs = Reservation.objects.filter(
+            user=self.user,
+            status__in=[self.STATUS_ACTIVE, self.STATUS_PENDING],
+            start_at__lt=self.end_at,
+            end_at__gt=self.start_at,
+        )
+        if self.pk:
+            user_overlap_qs = user_overlap_qs.exclude(pk=self.pk)
+        if user_overlap_qs.exists():
+            raise ValidationError("同じ時間帯にすでに別の予約があります。")
+
+        availability = self.matching_availability()
+
+        if self.lesson_type in (self.LESSON_GENERAL, self.LESSON_EVENT):
+            if not availability:
+                raise ValidationError("該当するレッスン枠がありません。")
+            self.availability = availability
+            self.target_level = availability.target_level
+            self.custom_ticket_price = availability.custom_ticket_price
+            self.custom_duration_hours = availability.custom_duration_hours
+            if availability.substitute_coach_id:
+                self.substitute_coach = availability.substitute_coach
+
+            slot_reservations_qs = self.active_slot_reservations_qs()
+            if slot_reservations_qs.count() >= availability.capacity:
+                raise ValidationError("この時間枠は満員です。")
+
+        if self.lesson_type == self.LESSON_PRIVATE:
+            if self.status == self.STATUS_PENDING:
+                return
+
+            if availability:
+                self.availability = availability
+                self.target_level = availability.target_level
+                self.custom_ticket_price = availability.custom_ticket_price
+                self.custom_duration_hours = availability.custom_duration_hours
+                if availability.substitute_coach_id:
+                    self.substitute_coach = availability.substitute_coach
+
+            slot_reservations_qs = self.active_slot_reservations_qs()
+            if slot_reservations_qs.exists():
+                raise ValidationError("このプライベート枠はすでに予約済みです。")
+
+            effective_capacity = 1
+            if availability:
+                effective_capacity = int(availability.capacity or 1)
+
+            if effective_capacity < 1:
+                raise ValidationError("このプライベート枠は予約できません。")
+
+        if self.lesson_type == self.LESSON_GROUP:
+            if self.status == self.STATUS_PENDING:
+                if self.requested_court_type == Court.COURT_OTHER and not self.requested_court_note:
+                    raise ValidationError("それ以外のコートを選択した場合は、コート情報を入力してください。")
+                return
+
+            if self.requested_court_type == Court.COURT_OTHER and not self.requested_court_note:
+                raise ValidationError("それ以外のコートを選択した場合は、コート情報を入力してください。")
+
+            if availability:
+                self.availability = availability
+                self.target_level = availability.target_level
+                self.custom_ticket_price = availability.custom_ticket_price
+                self.custom_duration_hours = availability.custom_duration_hours
+                if availability.substitute_coach_id:
+                    self.substitute_coach = availability.substitute_coach
+
+                slot_reservations_qs = self.active_slot_reservations_qs()
+                if slot_reservations_qs.count() >= availability.capacity:
+                    raise ValidationError("このグループ枠は満員です。")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def active_count_in_same_slot(self):
+        return Reservation.objects.filter(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=self.lesson_type,
+            start_at=self.start_at,
+            end_at=self.end_at,
+            status=self.STATUS_ACTIVE,
+        ).count()
+
+    def ticket_consumption_queryset(self):
+        return self.ticket_consumptions.select_related("purchase").order_by("created_at", "id")
+
+    def ticket_breakdown_items(self):
+        summary = {}
+        for consumption in self.ticket_consumption_queryset():
+            unit_price = int(consumption.unit_price_snapshot or 0)
+            summary.setdefault(unit_price, 0)
+            summary[unit_price] += int(consumption.tickets_used or 0)
+
+        items = []
+        for unit_price, tickets in sorted(summary.items(), key=lambda x: (x[0],)):
+            if unit_price > 0:
+                label = f"{unit_price}円券"
+            else:
+                label = "価格不明券"
+            items.append(
+                {
+                    "unit_price": unit_price,
+                    "tickets": tickets,
+                    "label": label,
+                }
             )
-        }),
-        ("メイン商品", {
-            "fields": (
-                "main_keyword",
-                "main_product_name",
-                "main_official_price",
-                "main_sale_price_display",
+        return items
+
+    def ticket_breakdown_text(self):
+        items = self.ticket_breakdown_items()
+        if not items:
+            return "-"
+        return " / ".join([f"{item['label']} {item['tickets']}枚" for item in items])
+
+    def consume_tickets(self, reason="reservation_use", created_by=None, note=""):
+        if self.ticket_consumed_at or self.tickets_used <= 0:
+            return None
+
+        with transaction.atomic():
+            _ensure_ticket_purchase_stock_for_user(self.user, created_by=created_by)
+
+            locked_user = User.objects.select_for_update().get(pk=self.user.pk)
+            purchases = list(
+                TicketPurchase.objects.select_for_update()
+                .filter(user=locked_user, remaining_tickets__gt=0)
+                .order_by("purchased_at", "id")
             )
-        }),
-        ("ガット", {
-            "fields": (
-                "string_source",
-                "string_keyword",
-                "string_product_name",
-                "string_official_price",
-                "string_sale_price_display",
+
+            total_remaining = sum([purchase.remaining_tickets for purchase in purchases])
+            if total_remaining < self.tickets_used:
+                raise ValidationError("使用可能なチケット在庫が不足しています。")
+
+            remaining_to_consume = self.tickets_used
+            for purchase in purchases:
+                if remaining_to_consume <= 0:
+                    break
+                use_count = min(purchase.remaining_tickets, remaining_to_consume)
+                if use_count <= 0:
+                    continue
+
+                purchase.remaining_tickets -= use_count
+                purchase.save(update_fields=["remaining_tickets"])
+
+                TicketConsumption.objects.create(
+                    user=locked_user,
+                    purchase=purchase,
+                    reservation=self,
+                    fixed_lesson=self.fixed_lesson,
+                    tickets_used=use_count,
+                    unit_price_snapshot=purchase.unit_price,
+                )
+                remaining_to_consume -= use_count
+
+            ledger = apply_ticket_change(
+                user=locked_user,
+                amount=-self.tickets_used,
+                reason=reason,
+                note=note or f"予約消費: {self.start_at:%Y-%m-%d %H:%M}",
+                created_by=created_by,
+                reservation=self,
+                fixed_lesson=self.fixed_lesson,
             )
-        }),
-        ("ガット張り", {
-            "fields": (
-                "request_stringing",
-                "tension_lbs",
-                "stringing_fee_display",
+
+            consumed_at = timezone.now()
+            Reservation.objects.filter(pk=self.pk).update(ticket_consumed_at=consumed_at)
+            self.ticket_consumed_at = consumed_at
+            self.user.ticket_balance = locked_user.ticket_balance
+            return ledger
+
+    def refund_tickets(self, reason="reservation_cancel_refund", created_by=None, note=""):
+        if not self.ticket_consumed_at or self.ticket_refunded_at or self.tickets_used <= 0:
+            return None
+
+        with transaction.atomic():
+            consumptions = list(
+                self.ticket_consumptions.select_related("purchase").select_for_update().filter(refunded_at__isnull=True)
             )
-        }),
-        ("見積もり", {
-            "fields": (
-                "estimated_total_display",
+
+            if not consumptions:
+                ledger = apply_ticket_change(
+                    user=self.user,
+                    amount=self.tickets_used,
+                    reason=reason,
+                    note=note or f"チケット返却: {self.start_at:%Y-%m-%d %H:%M}",
+                    created_by=created_by,
+                    reservation=self,
+                    fixed_lesson=self.fixed_lesson,
+                )
+                refunded_at = timezone.now()
+                Reservation.objects.filter(pk=self.pk).update(ticket_refunded_at=refunded_at)
+                self.ticket_refunded_at = refunded_at
+                return ledger
+
+            for consumption in consumptions:
+                purchase = consumption.purchase
+                purchase.remaining_tickets += consumption.tickets_used
+                if purchase.remaining_tickets > purchase.total_tickets:
+                    purchase.remaining_tickets = purchase.total_tickets
+                purchase.save(update_fields=["remaining_tickets"])
+
+                consumption.refunded_at = timezone.now()
+                consumption.refund_note = note or "予約返却"
+                consumption.save(update_fields=["refunded_at", "refund_note"])
+
+            ledger = apply_ticket_change(
+                user=self.user,
+                amount=self.tickets_used,
+                reason=reason,
+                note=note or f"チケット返却: {self.start_at:%Y-%m-%d %H:%M}",
+                created_by=created_by,
+                reservation=self,
+                fixed_lesson=self.fixed_lesson,
             )
-        }),
-        ("日時", {
-            "fields": (
-                "created_at",
-                "updated_at",
+
+            refunded_at = timezone.now()
+            Reservation.objects.filter(pk=self.pk).update(ticket_refunded_at=refunded_at)
+            self.ticket_refunded_at = refunded_at
+            return ledger
+
+    def activate_after_approval(self, created_by=None, approved_note=""):
+        if self.status != self.STATUS_PENDING:
+            raise ValidationError("承認待ちの申請のみ承認できます。")
+
+        if self.lesson_type not in (self.LESSON_PRIVATE, self.LESSON_GROUP):
+            raise ValidationError("承認処理の対象外のレッスン種別です。")
+
+        with transaction.atomic():
+            locked_self = Reservation.objects.select_for_update().get(pk=self.pk)
+            locked_self.status = self.STATUS_ACTIVE
+            locked_self.canceled_at = None
+            locked_self.cancellation_reason = ""
+
+            if approved_note:
+                locked_self.approved_court_note = approved_note
+
+            locked_self.tickets_used = locked_self.calculate_tickets_used()
+            locked_self.full_clean()
+            locked_self.save()
+
+            locked_self.consume_tickets(
+                reason=TicketLedger.REASON_RESERVATION_USE,
+                created_by=created_by,
+                note=f"承認済み予約のチケット消費: {locked_self.start_at:%Y-%m-%d %H:%M}",
             )
-        }),
+
+            self.status = locked_self.status
+            self.tickets_used = locked_self.tickets_used
+            self.canceled_at = locked_self.canceled_at
+            self.cancellation_reason = locked_self.cancellation_reason
+            self.approved_court_note = locked_self.approved_court_note
+            self.availability = locked_self.availability
+            self.substitute_coach = locked_self.substitute_coach
+            self.custom_ticket_price = locked_self.custom_ticket_price
+            self.custom_duration_hours = locked_self.custom_duration_hours
+            self.ticket_consumed_at = locked_self.ticket_consumed_at
+
+        return True
+
+    def reject_request(self, created_by=None, reason="コーチ却下"):
+        if self.status != self.STATUS_PENDING:
+            raise ValidationError("承認待ちの申請のみ却下できます。")
+
+        canceled_at = timezone.now()
+        Reservation.objects.filter(pk=self.pk, status=self.STATUS_PENDING).update(
+            status=self.STATUS_CANCELED,
+            canceled_at=canceled_at,
+            cancellation_reason=reason or "コーチ却下",
+        )
+        self.status = self.STATUS_CANCELED
+        self.canceled_at = canceled_at
+        self.cancellation_reason = reason or "コーチ却下"
+        return True
+
+    def cancel(self, created_by=None, reason=""):
+        if self.status not in (self.STATUS_ACTIVE, self.STATUS_PENDING):
+            return False
+
+        canceled_at = timezone.now()
+        Reservation.objects.filter(pk=self.pk).update(
+            status=self.STATUS_CANCELED,
+            canceled_at=canceled_at,
+            cancellation_reason=reason or "会員キャンセル",
+        )
+        self.status = self.STATUS_CANCELED
+        self.canceled_at = canceled_at
+        self.cancellation_reason = reason or "会員キャンセル"
+
+        self.refund_tickets(
+            reason=TicketLedger.REASON_CANCEL_REFUND,
+            created_by=created_by,
+            note=f"予約キャンセル返却: {self.start_at:%Y-%m-%d %H:%M}",
+        )
+        return True
+
+    def mark_rain_canceled(self, created_by=None, reason="雨天中止"):
+        if self.status != self.STATUS_ACTIVE:
+            return False
+
+        canceled_at = timezone.now()
+        Reservation.objects.filter(pk=self.pk).update(
+            status=self.STATUS_RAIN_CANCELED,
+            canceled_at=canceled_at,
+            cancellation_reason=reason,
+        )
+        self.status = self.STATUS_RAIN_CANCELED
+        self.canceled_at = canceled_at
+        self.cancellation_reason = reason
+
+        self.refund_tickets(
+            reason=TicketLedger.REASON_RAIN_REFUND,
+            created_by=created_by,
+            note=f"雨天中止返却: {self.start_at:%Y-%m-%d %H:%M}",
+        )
+        return True
+
+
+class LessonWaitlist(models.Model):
+    STATUS_WAITING = "waiting"
+    STATUS_CANCELED = "canceled"
+    STATUS_CONVERTED = "converted"
+
+    STATUS_CHOICES = (
+        (STATUS_WAITING, "キャンセル待ち中"),
+        (STATUS_CANCELED, "キャンセル"),
+        (STATUS_CONVERTED, "予約済みに変更"),
     )
 
-    @admin.display(description="会員")
-    def user_display(self, obj):
-        try:
-            return obj.user.display_name()
-        except Exception:
-            return str(obj.user)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="lesson_waitlists",
+        verbose_name="会員",
+    )
+    coach = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="coach_lesson_waitlists",
+        limit_choices_to={"role__in": ["coach", "contractor_coach"]},
+        verbose_name="主担当コーチ",
+    )
+    substitute_coach = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="substitute_lesson_waitlists",
+        limit_choices_to={"role__in": ["coach", "contractor_coach"]},
+        verbose_name="代行コーチ",
+    )
+    court = models.ForeignKey(
+        Court,
+        on_delete=models.CASCADE,
+        related_name="lesson_waitlists",
+        verbose_name="コート",
+    )
+    availability = models.ForeignKey(
+        CoachAvailability,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lesson_waitlists",
+        verbose_name="レッスン枠",
+    )
+    fixed_lesson = models.ForeignKey(
+        FixedLesson,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lesson_waitlists",
+        verbose_name="固定レッスン",
+    )
+    lesson_type = models.CharField(
+        max_length=20,
+        choices=LessonTypeMixin.LESSON_TYPE_CHOICES,
+        default=LessonTypeMixin.LESSON_GENERAL,
+        verbose_name="レッスン種別",
+    )
+    target_level = models.CharField(
+        max_length=30,
+        choices=User.LEVEL_CHOICES,
+        default=User.LEVEL_BEGINNER,
+        verbose_name="対象レベル",
+    )
+    start_at = models.DateTimeField(verbose_name="開始日時")
+    end_at = models.DateTimeField(verbose_name="終了日時")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_WAITING, verbose_name="状態")
+    note = models.CharField(max_length=255, blank=True, default="", verbose_name="メモ")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="登録日時")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
+    canceled_at = models.DateTimeField(null=True, blank=True, verbose_name="キャンセル日時")
+    converted_at = models.DateTimeField(null=True, blank=True, verbose_name="予約変更日時")
 
-    @admin.display(description="商品")
-    def main_product_display(self, obj):
-        return obj.main_product_name or obj.main_keyword or "-"
+    class Meta:
+        ordering = ["start_at", "created_at", "id"]
+        verbose_name = "キャンセル待ち"
+        verbose_name_plural = "キャンセル待ち"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "coach", "court", "lesson_type", "start_at", "end_at"],
+                condition=models.Q(status="waiting"),
+                name="unique_waiting_lesson_per_user_slot",
+            ),
+        ]
 
-    @admin.display(description="メイン販売価格")
-    def main_sale_price_display(self, obj):
-        return f"{obj.main_sale_price}円"
+    def __str__(self):
+        return f"{self.user} / {self.get_lesson_type_display()} / {self.start_at:%Y-%m-%d %H:%M} / {self.get_status_display()}"
 
-    @admin.display(description="ガット販売価格")
-    def string_sale_price_display(self, obj):
-        return f"{obj.string_sale_price}円"
+    def assigned_coach(self):
+        return self.substitute_coach or self.coach
 
-    @admin.display(description="張り料金")
-    def stringing_fee_display(self, obj):
-        return f"{obj.stringing_fee}円"
+    def assigned_coach_display(self):
+        coach = self.assigned_coach()
+        if coach:
+            return coach.display_name()
+        return "-"
 
-    @admin.display(description="見積合計")
-    def estimated_total_display(self, obj):
-        return f"{obj.estimated_total}円"
+    def active_slot_reservations_qs(self):
+        return Reservation.objects.filter(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=self.lesson_type,
+            start_at=self.start_at,
+            end_at=self.end_at,
+            status=Reservation.STATUS_ACTIVE,
+        )
 
-    @admin.action(description="選択した物販申込を『確認済み』にする")
-    def mark_as_checked(self, request, queryset):
-        updated = queryset.exclude(
-            handling_status=ShopEstimateRequest.HANDLING_STATUS_CHECKED
-        ).update(handling_status=ShopEstimateRequest.HANDLING_STATUS_CHECKED)
-        self.message_user(request, f"{updated}件を確認済みに更新しました。", level=messages.SUCCESS)
+    def clean(self):
+        if self.user_id and getattr(self.user, "role", "") != "member":
+            raise ValidationError("キャンセル待ちは会員アカウントのみ登録できます。")
 
-    @admin.action(description="選択した物販申込を『発注済み』にする")
-    def mark_as_ordered(self, request, queryset):
-        updated = queryset.exclude(
-            handling_status=ShopEstimateRequest.HANDLING_STATUS_ORDERED
-        ).update(handling_status=ShopEstimateRequest.HANDLING_STATUS_ORDERED)
-        self.message_user(request, f"{updated}件を発注済みに更新しました。", level=messages.SUCCESS)
+        if self.start_at and self.end_at and self.start_at >= self.end_at:
+            raise ValidationError("開始日時は終了日時より前にしてください。")
 
-    @admin.action(description="選択した物販申込を『対応完了』にする")
-    def mark_as_completed(self, request, queryset):
-        updated = queryset.exclude(
-            handling_status=ShopEstimateRequest.HANDLING_STATUS_COMPLETED
-        ).update(handling_status=ShopEstimateRequest.HANDLING_STATUS_COMPLETED)
-        self.message_user(request, f"{updated}件を対応完了に更新しました。", level=messages.SUCCESS)
+        if self.status == self.STATUS_WAITING and self.start_at and self.start_at < timezone.now():
+            raise ValidationError("過去のレッスンにはキャンセル待ち登録できません。")
 
-    @admin.action(description="選択した物販申込を『キャンセル』にする")
-    def mark_as_canceled(self, request, queryset):
-        updated = queryset.exclude(
-            handling_status=ShopEstimateRequest.HANDLING_STATUS_CANCELED
-        ).update(handling_status=ShopEstimateRequest.HANDLING_STATUS_CANCELED)
-        self.message_user(request, f"{updated}件をキャンセルに更新しました。", level=messages.SUCCESS)
+        if self.lesson_type not in (LessonTypeMixin.LESSON_GENERAL, LessonTypeMixin.LESSON_EVENT):
+            raise ValidationError("キャンセル待ちは通常レッスンまたはイベントのみ登録できます。")
+
+        if self.user_id and self.target_level and hasattr(self.user, "can_book_level"):
+            if not self.user.can_book_level(self.target_level):
+                raise ValidationError("ご自身のレベルでは、このレッスンのキャンセル待ちは登録できません。")
+
+        duplicate_qs = LessonWaitlist.objects.filter(
+            user=self.user,
+            coach=self.coach,
+            court=self.court,
+            lesson_type=self.lesson_type,
+            start_at=self.start_at,
+            end_at=self.end_at,
+            status=self.STATUS_WAITING,
+        )
+        if self.pk:
+            duplicate_qs = duplicate_qs.exclude(pk=self.pk)
+        if duplicate_qs.exists():
+            raise ValidationError("このレッスンはすでにキャンセル待ち登録済みです。")
+
+        active_reservation_exists = Reservation.objects.filter(
+            user=self.user,
+            coach=self.coach,
+            court=self.court,
+            lesson_type=self.lesson_type,
+            start_at=self.start_at,
+            end_at=self.end_at,
+            status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+        ).exists()
+        if active_reservation_exists and self.status == self.STATUS_WAITING:
+            raise ValidationError("このレッスンはすでに予約済み、または申請済みです。")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def cancel(self, reason=""):
+        if self.status != self.STATUS_WAITING:
+            return False
+        now = timezone.now()
+        LessonWaitlist.objects.filter(pk=self.pk, status=self.STATUS_WAITING).update(
+            status=self.STATUS_CANCELED,
+            canceled_at=now,
+            note=reason or self.note,
+        )
+        self.status = self.STATUS_CANCELED
+        self.canceled_at = now
+        if reason:
+            self.note = reason
+        return True
+
+    def mark_converted(self):
+        if self.status != self.STATUS_WAITING:
+            return False
+        now = timezone.now()
+        LessonWaitlist.objects.filter(pk=self.pk, status=self.STATUS_WAITING).update(
+            status=self.STATUS_CONVERTED,
+            converted_at=now,
+        )
+        self.status = self.STATUS_CONVERTED
+        self.converted_at = now
+        return True
+
+
+class StringingOrder(models.Model):
+    DEFAULT_ASSIGNED_COACH_USERNAME = "12line_7c39cda5a465"
+    DEFAULT_ASSIGNED_COACH_EMAIL = "torekku0713@icloud.com"
+
+    STATUS_REQUESTED = "requested"
+    STATUS_IN_PROGRESS = "in_progress"
+    STATUS_COMPLETED = "completed"
+    STATUS_CANCELED = "canceled"
+
+    STATUS_CHOICES = (
+        (STATUS_REQUESTED, "受付済み"),
+        (STATUS_IN_PROGRESS, "対応中"),
+        (STATUS_COMPLETED, "完了"),
+        (STATUS_CANCELED, "キャンセル"),
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="stringing_orders",
+    )
+    assigned_coach = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_stringing_orders",
+        limit_choices_to={"role__in": ["coach", "contractor_coach"]},
+    )
+    racket_name = models.CharField(max_length=120, blank=True, default="")
+    string_name = models.CharField(max_length=120, blank=True, default="")
+    tension_lbs = models.PositiveIntegerField(default=50)
+    delivery_requested = models.BooleanField(default=False)
+    delivery_location = models.CharField(max_length=255, blank=True, default="")
+    preferred_delivery_time = models.CharField(max_length=255, blank=True, default="")
+    note = models.TextField(blank=True, default="")
+    base_price = models.PositiveIntegerField(default=1200)
+    delivery_fee = models.PositiveIntegerField(default=0)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_REQUESTED)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "ガット張り依頼"
+        verbose_name_plural = "ガット張り依頼"
+
+    def __str__(self):
+        return f"{self.user} / ガット張り / {self.tension_lbs}lbs / {self.created_at:%Y-%m-%d %H:%M}"
+
+    @classmethod
+    def default_assigned_coach(cls):
+        coach = User.objects.filter(
+            role__in=User.COACH_ROLE_VALUES,
+            username=cls.DEFAULT_ASSIGNED_COACH_USERNAME,
+        ).first()
+        if coach:
+            return coach
+
+        coach = User.objects.filter(
+            role__in=User.COACH_ROLE_VALUES,
+            email__iexact=cls.DEFAULT_ASSIGNED_COACH_EMAIL,
+        ).first()
+        if coach:
+            return coach
+
+        return None
+
+    def assigned_coach_display(self):
+        if self.assigned_coach:
+            return self.assigned_coach.display_name()
+        return "未割当"
+
+    def clean(self):
+        self.racket_name = (self.racket_name or "").strip()
+        self.string_name = (self.string_name or "").strip()
+        self.delivery_location = (self.delivery_location or "").strip()
+        self.preferred_delivery_time = (self.preferred_delivery_time or "").strip()
+        self.note = (self.note or "").strip()
+
+        if not self.assigned_coach_id:
+            default_coach = self.default_assigned_coach()
+            if default_coach:
+                self.assigned_coach = default_coach
+
+        if self.assigned_coach and getattr(self.assigned_coach, "role", "") != "coach":
+            raise ValidationError("担当コーチには coach ロールのユーザーを指定してください。")
+
+        if self.base_price < 0:
+            raise ValidationError("基本料金は0円以上にしてください。")
+
+        if int(self.tension_lbs or 0) < 30 or int(self.tension_lbs or 0) > 60:
+            raise ValidationError("張り上げテンションは 30〜60 lbs の範囲で指定してください。")
+
+        if self.delivery_requested:
+            self.delivery_fee = 500
+            if not self.delivery_location:
+                raise ValidationError("デリバリー希望の場合は、届け場所を入力してください。")
+            if not self.preferred_delivery_time:
+                raise ValidationError("デリバリー希望の場合は、日時指定を入力してください。")
+        else:
+            self.delivery_fee = 0
+            self.delivery_location = ""
+            if not self.preferred_delivery_time:
+                raise ValidationError("デリバリーなしの場合は、希望張り上げ納期を入力してください。")
+
+    def total_price(self):
+        return int(self.base_price or 0) + int(self.delivery_fee or 0)
+
+
+class LineAccountLink(models.Model):
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="line_link",
+    )
+    line_user_id = models.CharField(max_length=100, unique=True)
+    is_active = models.BooleanField(default=True)
+    linked_at = models.DateTimeField(default=timezone.now)
+    last_event_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["user_id"]
+
+    def __str__(self):
+        return f"{self.user.username} <-> {self.line_user_id}"
+
+
+
+
+class ShopProductMaster(models.Model):
+    PRODUCT_TYPE_MAIN = "main"
+    PRODUCT_TYPE_STRING = "string"
+
+    PRODUCT_TYPE_CHOICES = (
+        (PRODUCT_TYPE_MAIN, "メイン商品"),
+        (PRODUCT_TYPE_STRING, "ガット"),
+    )
+
+    CATEGORY_RACKET = "racket"
+    CATEGORY_STRING = "string"
+    CATEGORY_ACCESSORY = "accessory"
+
+    CATEGORY_CHOICES = (
+        (CATEGORY_RACKET, "ラケット"),
+        (CATEGORY_STRING, "ガット"),
+        (CATEGORY_ACCESSORY, "アクセサリ"),
+    )
+
+    BRAND_YONEX = "yonex"
+    BRAND_WILSON = "wilson"
+    BRAND_BABOLAT = "babolat"
+    BRAND_HEAD = "head"
+    BRAND_PRINCE = "prince"
+    BRAND_DUNLOP = "dunlop"
+    BRAND_TECHNIFIBRE = "tecnifibre"
+    BRAND_OTHER = "other"
+
+    BRAND_CHOICES = (
+        (BRAND_YONEX, "YONEX"),
+        (BRAND_WILSON, "Wilson"),
+        (BRAND_BABOLAT, "Babolat"),
+        (BRAND_HEAD, "HEAD"),
+        (BRAND_PRINCE, "Prince"),
+        (BRAND_DUNLOP, "DUNLOP"),
+        (BRAND_TECHNIFIBRE, "Tecnifibre"),
+        (BRAND_OTHER, "その他"),
+    )
+
+    product_type = models.CharField(
+        max_length=20,
+        choices=PRODUCT_TYPE_CHOICES,
+        default=PRODUCT_TYPE_MAIN,
+    )
+    category = models.CharField(
+        max_length=20,
+        choices=CATEGORY_CHOICES,
+        default=CATEGORY_RACKET,
+    )
+    brand = models.CharField(
+        max_length=30,
+        choices=BRAND_CHOICES,
+        default=BRAND_YONEX,
+    )
+    product_name = models.CharField(max_length=255)
+    display_name = models.CharField(max_length=255, blank=True, default="")
+    product_code = models.CharField(max_length=100, blank=True, default="")
+    official_price = models.PositiveIntegerField(default=0)
+    image_url = models.URLField(blank=True, default="")
+    product_url = models.URLField(blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    spec_weight_unstrung = models.CharField(max_length=120, blank=True, default="")
+    spec_string_pattern = models.CharField(max_length=120, blank=True, default="")
+    spec_head_size = models.CharField(max_length=120, blank=True, default="")
+    spec_balance = models.CharField(max_length=120, blank=True, default="")
+    spec_length = models.CharField(max_length=120, blank=True, default="")
+    spec_beam = models.CharField(max_length=120, blank=True, default="")
+    spec_gauge = models.CharField(max_length=120, blank=True, default="")
+    spec_set_length = models.CharField(max_length=120, blank=True, default="")
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["brand", "category", "product_type", "sort_order", "product_name", "id"]
+        verbose_name = "Shop商品マスタ"
+        verbose_name_plural = "Shop商品マスタ"
+
+    def __str__(self):
+        label = self.display_name or self.product_name
+        return f"{self.get_brand_display()} / {self.get_category_display()} / {label}"
+
+    @property
+    def sale_price(self):
+        return ShopEstimateRequest.sale_price_from_list_price(self.official_price)
+
+    def clean(self):
+        self.product_name = (self.product_name or "").strip()
+        self.display_name = (self.display_name or "").strip()
+        self.product_code = (self.product_code or "").strip()
+        self.image_url = (self.image_url or "").strip()
+        self.product_url = (self.product_url or "").strip()
+        self.description = (self.description or "").strip()
+        self.spec_weight_unstrung = (self.spec_weight_unstrung or "").strip()
+        self.spec_string_pattern = (self.spec_string_pattern or "").strip()
+        self.spec_head_size = (self.spec_head_size or "").strip()
+        self.spec_balance = (self.spec_balance or "").strip()
+        self.spec_length = (self.spec_length or "").strip()
+        self.spec_beam = (self.spec_beam or "").strip()
+        self.spec_gauge = (self.spec_gauge or "").strip()
+        self.spec_set_length = (self.spec_set_length or "").strip()
+
+        if not self.product_name:
+            raise ValidationError("商品名は必須です。")
+
+        if self.official_price < 0:
+            raise ValidationError("定価は0円以上にしてください。")
+
+        if self.product_type == self.PRODUCT_TYPE_STRING:
+            self.category = self.CATEGORY_STRING
+
+    def display_label(self):
+        return self.display_name or self.product_name
+
+    def racket_spec_lines(self):
+        lines = []
+        if self.spec_weight_unstrung:
+            lines.append(f"重量: {self.spec_weight_unstrung}")
+        if self.spec_string_pattern:
+            lines.append(f"ストリングパターン: {self.spec_string_pattern}")
+        if self.spec_head_size:
+            lines.append(f"ヘッドサイズ: {self.spec_head_size}")
+        if self.spec_balance:
+            lines.append(f"バランス: {self.spec_balance}")
+        if self.spec_length:
+            lines.append(f"長さ: {self.spec_length}")
+        if self.spec_beam:
+            lines.append(f"ビーム: {self.spec_beam}")
+        return lines
+
+    def string_spec_lines(self):
+        lines = []
+        if self.spec_gauge:
+            lines.append(f"ゲージ: {self.spec_gauge}")
+        if self.spec_set_length:
+            lines.append(f"長さ: {self.spec_set_length}")
+        return lines
+
+    def spec_lines(self):
+        if self.product_type == self.PRODUCT_TYPE_STRING:
+            return self.string_spec_lines()
+        if self.category == self.CATEGORY_RACKET:
+            return self.racket_spec_lines()
+        return []
+
+    def spec_text(self):
+        return "\n".join(self.spec_lines())
+
+
+class ShopEstimateRequest(models.Model):
+    CATEGORY_RACKET = "racket"
+    CATEGORY_STRING = "string"
+    CATEGORY_ACCESSORY = "accessory"
+
+    CATEGORY_CHOICES = (
+        (CATEGORY_RACKET, "ラケット"),
+        (CATEGORY_STRING, "ガット"),
+        (CATEGORY_ACCESSORY, "アクセサリ"),
+    )
+
+    STRING_SOURCE_OFFICIAL = "official"
+    STRING_SOURCE_BRING_IN = "bring_in"
+    STRING_SOURCE_NONE = "none"
+
+    STRING_SOURCE_CHOICES = (
+        (STRING_SOURCE_OFFICIAL, "ガットも購入する"),
+        (STRING_SOURCE_BRING_IN, "ガット持ち込み"),
+        (STRING_SOURCE_NONE, "ガット不要"),
+    )
+
+    BRAND_YONEX = "yonex"
+    BRAND_WILSON = "wilson"
+    BRAND_BABOLAT = "babolat"
+    BRAND_HEAD = "head"
+    BRAND_PRINCE = "prince"
+    BRAND_DUNLOP = "dunlop"
+    BRAND_TECHNIFIBRE = "tecnifibre"
+    BRAND_OTHER = "other"
+
+    BRAND_CHOICES = (
+        (BRAND_YONEX, "YONEX"),
+        (BRAND_WILSON, "Wilson"),
+        (BRAND_BABOLAT, "Babolat"),
+        (BRAND_HEAD, "HEAD"),
+        (BRAND_PRINCE, "Prince"),
+        (BRAND_DUNLOP, "DUNLOP"),
+        (BRAND_TECHNIFIBRE, "Tecnifibre"),
+        (BRAND_OTHER, "その他"),
+    )
+
+    HANDLING_STATUS_NEW = "new"
+    HANDLING_STATUS_CHECKED = "checked"
+    HANDLING_STATUS_ORDERED = "ordered"
+    HANDLING_STATUS_COMPLETED = "completed"
+    HANDLING_STATUS_CANCELED = "canceled"
+
+    HANDLING_STATUS_CHOICES = (
+        (HANDLING_STATUS_NEW, "未対応"),
+        (HANDLING_STATUS_CHECKED, "確認済み"),
+        (HANDLING_STATUS_ORDERED, "発注済み"),
+        (HANDLING_STATUS_COMPLETED, "対応完了"),
+        (HANDLING_STATUS_CANCELED, "キャンセル"),
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="shop_estimate_requests",
+    )
+    product_category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default=CATEGORY_RACKET)
+    brand = models.CharField(max_length=30, choices=BRAND_CHOICES, default=BRAND_YONEX)
+    handling_status = models.CharField(
+        max_length=20,
+        choices=HANDLING_STATUS_CHOICES,
+        default=HANDLING_STATUS_NEW,
+    )
+    admin_note = models.TextField(blank=True, default="")
+    main_keyword = models.CharField(max_length=255, blank=True, default="")
+    main_product_name = models.CharField(max_length=255, blank=True, default="")
+    main_official_price = models.PositiveIntegerField(default=0)
+    string_source = models.CharField(max_length=20, choices=STRING_SOURCE_CHOICES, default=STRING_SOURCE_NONE)
+    string_keyword = models.CharField(max_length=255, blank=True, default="")
+    string_product_name = models.CharField(max_length=255, blank=True, default="")
+    string_official_price = models.PositiveIntegerField(default=0)
+    request_stringing = models.BooleanField(default=False)
+    tension_lbs = models.PositiveIntegerField(null=True, blank=True)
+    note = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "物販見積もり依頼"
+        verbose_name_plural = "物販見積もり依頼"
+
+    def __str__(self):
+        return f"{self.user} / {self.get_product_category_display()} / {self.main_product_name or self.main_keyword or '-'}"
+
+    def clean(self):
+        self.main_keyword = (self.main_keyword or "").strip()
+        self.main_product_name = (self.main_product_name or "").strip()
+        self.string_keyword = (self.string_keyword or "").strip()
+        self.string_product_name = (self.string_product_name or "").strip()
+        self.note = (self.note or "").strip()
+        self.admin_note = (self.admin_note or "").strip()
+
+        if self.main_official_price < 0:
+            raise ValidationError("商品定価は0円以上にしてください。")
+
+        if self.string_official_price < 0:
+            raise ValidationError("ガット定価は0円以上にしてください。")
+
+        if self.string_source == self.STRING_SOURCE_OFFICIAL and self.string_official_price <= 0:
+            raise ValidationError("ガットも購入する場合は、ガット定価を入力してください。")
+
+        if self.string_source != self.STRING_SOURCE_OFFICIAL:
+            self.string_keyword = ""
+            self.string_product_name = ""
+            self.string_official_price = 0
+
+        if self.request_stringing:
+            if not self.tension_lbs:
+                self.tension_lbs = 50
+            if int(self.tension_lbs) < 30 or int(self.tension_lbs) > 60:
+                raise ValidationError("張り上げテンションは30〜60lbsで指定してください。")
+        else:
+            self.tension_lbs = None
+
+    @staticmethod
+    def sale_price_from_list_price(price):
+        return int(int(price or 0) * 0.8)
+
+    @property
+    def main_sale_price(self):
+        return self.sale_price_from_list_price(self.main_official_price)
+
+    @property
+    def string_sale_price(self):
+        return self.sale_price_from_list_price(self.string_official_price)
+
+    @property
+    def stringing_fee(self):
+        return 1200 if self.request_stringing else 0
+
+    @property
+    def estimated_total(self):
+        return int(self.main_sale_price) + int(self.string_sale_price) + int(self.stringing_fee)
