@@ -307,6 +307,9 @@
 
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
       <a href="{% url 'club:coach_payroll_summary' %}" class="btn btn-primary">実売上ベース精算</a>
+      {% if is_admin_mode %}
+        <a href="{% url 'club:coach_admin_settlement' %}?year={{ selected_year }}&month={{ selected_month }}" class="btn">admin月次精算</a>
+      {% endif %}
       <a href="{% url 'club:coach_expense_manage' %}" class="btn">経費登録</a>
       <a href="{% url 'club:coach_ticket_summary' %}" class="btn">チケット集計</a>
       <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
