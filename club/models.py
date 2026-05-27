@@ -63,6 +63,7 @@ class User(AbstractUser):
     }
 
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="member")
+    contractor_hourly_wage = models.PositiveIntegerField(default=0)
     full_name = models.CharField(max_length=150, blank=True, default="")
     phone_number = models.CharField(max_length=30, blank=True, default="")
     is_profile_completed = models.BooleanField(default=False)
@@ -75,6 +76,16 @@ class User(AbstractUser):
 
     def is_coach(self):
         return self.role in self.COACH_ROLE_VALUES
+
+    def is_contractor_coach(self):
+        return self.role == self.ROLE_CONTRACTOR_COACH
+
+    def contractor_hourly_wage_label(self):
+        if self.is_contractor_coach() and int(self.contractor_hourly_wage or 0) > 0:
+            return f"{int(self.contractor_hourly_wage):,}円/時"
+        if self.is_contractor_coach():
+            return "未設定"
+        return "-"
 
     def display_name(self):
         if self.full_name:
