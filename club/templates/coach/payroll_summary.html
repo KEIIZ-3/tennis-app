@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}給与・経費{% endblock %}
+{% block title %}実売上ベース精算{% endblock %}
 
 {% block content %}
 <style>
@@ -88,6 +88,18 @@
     line-height:1.2;
   }
 
+  .payroll-stat-note{
+    margin-top:6px;
+    color:var(--muted);
+    font-size:12px;
+    line-height:1.5;
+    font-weight:700;
+  }
+
+  .payroll-stat.primary .payroll-stat-note{
+    color:#cbd5e1;
+  }
+
   .desktop-table-area{
     display:block;
   }
@@ -156,10 +168,53 @@
     font-weight:700;
   }
 
+  .status-chip{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:24px;
+    padding:4px 8px;
+    border-radius:999px;
+    font-size:12px;
+    font-weight:900;
+    background:#f8fafc;
+    color:#334155;
+    border:1px solid #cbd5e1;
+  }
+
+  .status-chip.paid{
+    background:#f0fdf4;
+    color:#047857;
+    border-color:#bbf7d0;
+  }
+
+  .status-chip.unpaid{
+    background:#fff7ed;
+    color:#c2410c;
+    border-color:#fed7aa;
+  }
+
+  .status-chip.waived{
+    background:#f5f3ff;
+    color:#6d28d9;
+    border-color:#ddd6fe;
+  }
+
   .section-grid{
     display:grid;
     grid-template-columns:repeat(2, minmax(0, 1fr));
     gap:16px;
+  }
+
+  .warning-box{
+    padding:14px;
+    border:1px solid #fde68a;
+    border-radius:16px;
+    background:#fffbeb;
+    color:#92400e;
+    font-size:13px;
+    line-height:1.7;
+    font-weight:800;
   }
 
   @media (max-width: 1000px){
@@ -243,14 +298,15 @@
 <div class="card">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
     <div>
-      <h1 class="payroll-title">給与・経費</h1>
+      <h1 class="payroll-title">実売上ベース精算</h1>
       <p class="payroll-lead">
-        {{ month_label }} の給与計算、チケット集計、ガット張り、経費登録をまとめて確認できます。
+        {{ month_label }} のチケット消化売上、7月プレオープン回収済み参加費、ガット張り、経費精算をまとめて確認できます。
+        複数コーチの固定レッスンは、実売上を担当コーチ人数で均等按分します。
       </p>
     </div>
 
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
-      <a href="{% url 'club:coach_payroll_summary' %}" class="btn btn-primary">給与計算</a>
+      <a href="{% url 'club:coach_payroll_summary' %}" class="btn btn-primary">実売上ベース精算</a>
       <a href="{% url 'club:coach_expense_manage' %}" class="btn">経費登録</a>
       <a href="{% url 'club:coach_ticket_summary' %}" class="btn">チケット集計</a>
       <a href="{% url 'club:home' %}" class="btn">ホームへ戻る</a>
@@ -292,47 +348,37 @@
   </div>
 </div>
 
-
-<div class="card">
-  <h2 style="margin-top:0;">給与・経費メニュー</h2>
-  <div class="mobile-row-list">
-    <a href="{% url 'club:coach_payroll_summary' %}" class="mobile-row-card" style="text-decoration:none;">
-      <div class="mobile-row-title">給与計算</div>
-      <div class="mobile-row-sub">レッスン売上、ガット張り、経費按分をまとめて確認します。</div>
-    </a>
-    <a href="{% url 'club:coach_expense_manage' %}" class="mobile-row-card" style="text-decoration:none;">
-      <div class="mobile-row-title">経費登録</div>
-      <div class="mobile-row-sub">コート代・ボール代などの経費を登録します。</div>
-    </a>
-    <a href="{% url 'club:coach_ticket_summary' %}" class="mobile-row-card" style="text-decoration:none;">
-      <div class="mobile-row-title">チケット集計</div>
-      <div class="mobile-row-sub">給与計算の根拠になるチケット消費内訳を確認します。</div>
-    </a>
-  </div>
+<div class="warning-box">
+  方式A：売上金額ベース配分で計算しています。4,000円券、3,500円券、その他単価チケットは消費時単価で集計します。
+  7月プレオープン参加費は、回収済み分のみ支払予定額に含め、未回収・免除は別表示にしています。
 </div>
 
 <div class="payroll-stat-grid">
   <div class="payroll-stat primary">
-    <div class="payroll-stat-label">見込み給与</div>
+    <div class="payroll-stat-label">支払予定額</div>
     <div class="payroll-stat-value">{{ estimated_salary }}円</div>
+    <div class="payroll-stat-note">実売上 + 本人立替 - 共通経費按分</div>
   </div>
   <div class="payroll-stat info">
-    <div class="payroll-stat-label">レッスン売上</div>
+    <div class="payroll-stat-label">レッスン実売上</div>
     <div class="payroll-stat-value">{{ lesson_total_amount }}円</div>
+    <div class="payroll-stat-note">チケット {{ ticket_lesson_amount }}円 / 7月回収済み {{ preopen_paid_amount }}円</div>
   </div>
   <div class="payroll-stat success">
     <div class="payroll-stat-label">担当ガット張り</div>
     <div class="payroll-stat-value">{{ assigned_stringing_amount }}円</div>
+    <div class="payroll-stat-note">キャンセル以外の担当分</div>
   </div>
   <div class="payroll-stat notice">
-    <div class="payroll-stat-label">個人経費精算</div>
+    <div class="payroll-stat-label">本人立替精算</div>
     <div class="payroll-stat-value">{{ personal_reimbursement_amount }}円</div>
+    <div class="payroll-stat-note">承認済み本人立替</div>
   </div>
 </div>
 
 <div class="section-grid">
   <div class="card">
-    <h2 style="margin-top:0;">給与内訳</h2>
+    <h2 style="margin-top:0;">精算内訳</h2>
     <div style="overflow-x:auto;">
       <table>
         <tbody>
@@ -341,11 +387,15 @@
             <td>{% if selected_coach %}{{ selected_coach.display_name }}{% else %}-{% endif %}</td>
           </tr>
           <tr>
-            <th>総消費枚数</th>
-            <td>{{ total_tickets }}枚</td>
+            <th>チケット消化売上</th>
+            <td>{{ ticket_lesson_amount }}円</td>
           </tr>
           <tr>
-            <th>レッスン売上</th>
+            <th>7月参加費 回収済み</th>
+            <td>{{ preopen_paid_amount }}円</td>
+          </tr>
+          <tr>
+            <th>レッスン実売上</th>
             <td>{{ lesson_total_amount }}円</td>
           </tr>
           <tr>
@@ -353,7 +403,7 @@
             <td>{{ assigned_stringing_amount }}円</td>
           </tr>
           <tr>
-            <th>個人経費精算</th>
+            <th>本人立替精算</th>
             <td>{{ personal_reimbursement_amount }}円</td>
           </tr>
           <tr>
@@ -361,7 +411,7 @@
             <td>-{{ per_coach_common_expense }}円</td>
           </tr>
           <tr>
-            <th>見込み給与</th>
+            <th>支払予定額</th>
             <td><strong>{{ estimated_salary }}円</strong></td>
           </tr>
         </tbody>
@@ -370,7 +420,7 @@
   </div>
 
   <div class="card">
-    <h2 style="margin-top:0;">経費サマリー</h2>
+    <h2 style="margin-top:0;">経費・未回収サマリー</h2>
     <div style="overflow-x:auto;">
       <table>
         <tbody>
@@ -391,6 +441,14 @@
             <td>{{ per_coach_common_expense }}円</td>
           </tr>
           <tr>
+            <th>7月参加費 未回収</th>
+            <td>{{ preopen_unpaid_amount }}円 / {{ preopen_unpaid_count }}件</td>
+          </tr>
+          <tr>
+            <th>7月参加費 免除</th>
+            <td>{{ preopen_waived_amount }}円 / {{ preopen_waived_count }}件</td>
+          </tr>
+          <tr>
             <th>未割当ガット張り</th>
             <td>{{ unassigned_stringing_count }}件</td>
           </tr>
@@ -401,7 +459,7 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0;">価格帯別レッスン売上</h2>
+  <h2 style="margin-top:0;">価格帯別チケット消化売上</h2>
 
   {% if breakdown_rows %}
     <div style="overflow-x:auto;">
@@ -410,7 +468,7 @@
           <tr>
             <th>価格帯</th>
             <th>消費枚数</th>
-            <th>換算額</th>
+            <th>按分後換算額</th>
           </tr>
         </thead>
         <tbody>
@@ -425,12 +483,63 @@
       </table>
     </div>
   {% else %}
-    <p class="muted" style="margin:0;">この月のレッスン売上はまだありません。</p>
+    <p class="muted" style="margin:0;">この月のチケット消化売上はまだありません。</p>
   {% endif %}
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0;">予約ごとの内訳</h2>
+  <h2 style="margin-top:0;">7月プレオープン参加費</h2>
+
+  {% if preopen_rows %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>日時</th>
+            <th>会員</th>
+            <th>担当</th>
+            <th>状態</th>
+            <th>按分後金額</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in preopen_rows %}
+            <tr>
+              <td>{{ row.reservation.start_at|date:"Y-m-d H:i" }}</td>
+              <td>{{ row.reservation.user.display_name }}</td>
+              <td>
+                {% if row.has_substitute %}
+                  実施: {{ row.assigned_coach_name }}<br>
+                  <span class="muted">通常: {{ row.normal_coach_name }}</span>
+                {% else %}
+                  {{ row.assigned_coach_name }}
+                {% endif %}
+                {% if row.is_split %}
+                  <br><span class="muted">複数コーチ {{ row.split_denominator }}人で按分</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if row.is_paid %}
+                  <span class="status-chip paid">{{ row.payment_status_label }}</span>
+                {% elif row.is_waived %}
+                  <span class="status-chip waived">{{ row.payment_status_label }}</span>
+                {% else %}
+                  <span class="status-chip unpaid">{{ row.payment_status_label }}</span>
+                {% endif %}
+              </td>
+              <td>{{ row.amount }}円</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="muted" style="margin:0;">この月の7月プレオープン参加費対象はありません。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">予約ごとのチケット消化内訳</h2>
 
   {% if reservation_rows %}
     <div class="desktop-table-area">
@@ -445,7 +554,7 @@
               <th>コート</th>
               <th>消費枚数</th>
               <th>価格帯内訳</th>
-              <th>換算額</th>
+              <th>按分後換算額</th>
             </tr>
           </thead>
           <tbody>
@@ -463,6 +572,9 @@
                     <div class="muted" style="font-size:12px;">通常: {{ row.normal_coach_name }}</div>
                   {% else %}
                     {{ row.assigned_coach_name }}
+                  {% endif %}
+                  {% if row.is_split %}
+                    <div class="muted" style="font-size:12px;">複数コーチ {{ row.split_denominator }}人で按分</div>
                   {% endif %}
                 </td>
                 <td>{{ row.reservation.court }}</td>
@@ -497,6 +609,9 @@
                 {% else %}
                   {{ row.assigned_coach_name }}
                 {% endif %}
+                {% if row.is_split %}
+                  <br><span class="muted">複数コーチ {{ row.split_denominator }}人で按分</span>
+                {% endif %}
               </div>
             </div>
             <div class="mobile-info-row">
@@ -520,7 +635,7 @@
       </div>
     </div>
   {% else %}
-    <p class="muted" style="margin:0;">この月の予約内訳はまだありません。</p>
+    <p class="muted" style="margin:0;">この月のチケット消化予約はまだありません。</p>
   {% endif %}
 </div>
 
@@ -529,11 +644,11 @@
     <h2 style="margin-top:0;">担当ガット張り</h2>
     {% if stringing_rows %}
       <div class="mobile-row-list">
-        {% for order in stringing_rows %}
+        {% for row in stringing_rows %}
           <div class="mobile-row-card">
-            <div class="mobile-row-title">{{ order.user.display_name }} / {{ order.total_price }}円</div>
+            <div class="mobile-row-title">{{ row.order.user.display_name }} / {{ row.total_price }}円</div>
             <div class="mobile-row-sub">
-              {{ order.created_at|date:"Y-m-d H:i" }} / {{ order.racket_name|default:"ラケット名未入力" }}
+              {{ row.order.created_at|date:"Y-m-d H:i" }} / {{ row.order.racket_name|default:"ラケット名未入力" }} / {{ row.status_label }}
             </div>
           </div>
         {% endfor %}
@@ -544,18 +659,18 @@
   </div>
 
   <div class="card">
-    <h2 style="margin-top:0;">個人経費</h2>
+    <h2 style="margin-top:0;">本人立替経費</h2>
     {% if approved_personal_expense_rows %}
       <div class="mobile-row-list">
         {% for row in approved_personal_expense_rows %}
           <div class="mobile-row-card">
             <div class="mobile-row-title">{{ row.expense.get_category_display }} / {{ row.expense.amount }}円</div>
-            <div class="mobile-row-sub">{{ row.expense.expense_date|date:"Y-m-d" }} / {{ row.expense_type_label }}</div>
+            <div class="mobile-row-sub">{{ row.expense.expense_date|date:"Y-m-d" }} / {{ row.expense_type_label }} / {{ row.approval_status_label }}</div>
           </div>
         {% endfor %}
       </div>
     {% else %}
-      <p class="muted" style="margin:0;">この月の個人経費はありません。</p>
+      <p class="muted" style="margin:0;">この月の承認済み本人立替経費はありません。</p>
     {% endif %}
   </div>
 </div>
