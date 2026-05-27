@@ -66,6 +66,7 @@ _FIELD_VERBOSE_NAMES = {
         "email": "メールアドレス",
         "phone_number": "電話番号",
         "role": "権限種別",
+        "contractor_hourly_wage": "業務委託コーチ時給",
         "member_level": "会員レベル",
         "ticket_balance": "チケット残数",
         "is_profile_completed": "会員情報入力済み",
@@ -457,7 +458,7 @@ class StringingOrderAdminForm(forms.ModelForm):
 class CustomUserCreationForm(UserCreationForm):
     class Meta(UserCreationForm.Meta):
         model = User
-        fields = ("username", "full_name", "email", "phone_number", "role", "member_level")
+        fields = ("username", "full_name", "email", "phone_number", "role", "contractor_hourly_wage", "member_level")
 
 
 class CustomUserChangeForm(UserChangeForm):
@@ -478,6 +479,7 @@ class UserAdmin(BaseUserAdmin):
         "email",
         "phone_number",
         "role",
+        "contractor_hourly_wage_display",
         "member_level",
         "ticket_balance",
         "is_profile_completed",
@@ -492,6 +494,7 @@ class UserAdmin(BaseUserAdmin):
     fieldsets = (
         (None, {"fields": ("username", "password")}),
         ("会員情報", {"fields": ("full_name", "phone_number", "email", "member_level", "ticket_balance", "is_profile_completed")}),
+        ("業務委託コーチ設定", {"fields": ("contractor_hourly_wage",), "description": "権限種別が業務委託コーチの場合に、給与計算で使用する時給を円単位で入力します。通常コーチ・会員では0円のままで問題ありません。"}),
         ("個人情報", {"fields": ("first_name", "last_name")}),
         ("権限", {"fields": ("role", "is_active", "is_staff", "is_superuser", "groups", "user_permissions")}),
         ("重要な日付", {"fields": ("last_login", "date_joined")}),
@@ -508,6 +511,7 @@ class UserAdmin(BaseUserAdmin):
                     "email",
                     "phone_number",
                     "role",
+                    "contractor_hourly_wage",
                     "member_level",
                     "password1",
                     "password2",
@@ -517,6 +521,14 @@ class UserAdmin(BaseUserAdmin):
             },
         ),
     )
+
+    @admin.display(description="業務委託コーチ時給", ordering="contractor_hourly_wage")
+    def contractor_hourly_wage_display(self, obj):
+        try:
+            return obj.contractor_hourly_wage_label()
+        except Exception:
+            value = int(getattr(obj, "contractor_hourly_wage", 0) or 0)
+            return f"{value:,}円/時" if value > 0 else "-"
 
     def get_urls(self):
         urls = super().get_urls()
@@ -1326,6 +1338,14 @@ class ShopProductMasterAdmin(admin.ModelAdmin):
     @admin.display(description="ガットスペック")
     def string_spec_summary(self, obj):
         return " / ".join(obj.string_spec_lines()) or "-"
+
+    @admin.display(description="業務委託コーチ時給", ordering="contractor_hourly_wage")
+    def contractor_hourly_wage_display(self, obj):
+        try:
+            return obj.contractor_hourly_wage_label()
+        except Exception:
+            value = int(getattr(obj, "contractor_hourly_wage", 0) or 0)
+            return f"{value:,}円/時" if value > 0 else "-"
 
     def get_urls(self):
         urls = super().get_urls()
