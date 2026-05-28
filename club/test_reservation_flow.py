@@ -3,9 +3,8 @@ from datetime import date
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
-from django.utils import timezone
 
-from .models import Court, FixedLesson, Reservation
+from .models import Court, FixedLesson, LessonWaitlist, Reservation
 
 
 class ReservationFlowSmokeTests(TestCase):
@@ -19,6 +18,7 @@ class ReservationFlowSmokeTests(TestCase):
     - 業務委託コーチが他コーチ担当レッスンを受講予約できること
     - 業務委託コーチが自分担当レッスンを予約できないこと
     - 2026年7月プレオープンはチケットを消費しないこと
+    - 満員時にキャンセル待ち登録できること
     """
 
     def setUp(self):
@@ -209,8 +209,9 @@ class ReservationFlowSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertTrue(
-            fixed_lesson.waitlists.filter(
+            LessonWaitlist.objects.filter(
+                fixed_lesson=fixed_lesson,
                 user=self.member,
-                status="waiting",
+                status=LessonWaitlist.STATUS_WAITING,
             ).exists()
         )
