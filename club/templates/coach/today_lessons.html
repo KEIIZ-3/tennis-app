@@ -63,9 +63,63 @@
     font-weight:800;
   }
 
+  .today-action-panel{
+    display:grid;
+    grid-template-columns:1.2fr .8fr;
+    gap:10px;
+    align-items:stretch;
+  }
+
+  .action-card{
+    border:1px solid #e2e8f0;
+    background:#fff;
+    border-radius:18px;
+    padding:14px;
+    box-shadow:0 8px 18px rgba(15,23,42,.06);
+  }
+
+  .action-card.urgent{
+    border-color:#fed7aa;
+    background:#fff7ed;
+  }
+
+  .action-card.good{
+    border-color:#bbf7d0;
+    background:#f0fdf4;
+  }
+
+  .action-title{
+    margin:0;
+    color:#0f172a;
+    font-size:16px;
+    line-height:1.35;
+    font-weight:1000;
+  }
+
+  .action-text{
+    margin:6px 0 0;
+    color:#475569;
+    font-size:13px;
+    line-height:1.65;
+    font-weight:750;
+  }
+
+  .action-link-row{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:10px;
+  }
+
+  .action-link-row .btn{
+    min-height:38px;
+    border-radius:12px;
+    padding:8px 11px;
+  }
+
   .summary-grid{
     display:grid;
-    grid-template-columns:repeat(4,minmax(0,1fr));
+    grid-template-columns:repeat(6,minmax(0,1fr));
     gap:10px;
   }
 
@@ -75,6 +129,21 @@
     border:1px solid #e2e8f0;
     background:#fff;
     box-shadow:0 8px 18px rgba(15,23,42,.06);
+  }
+
+  .summary-card.primary{
+    border-color:#bfdbfe;
+    background:#eff6ff;
+  }
+
+  .summary-card.warn{
+    border-color:#fed7aa;
+    background:#fff7ed;
+  }
+
+  .summary-card.paid{
+    border-color:#bbf7d0;
+    background:#f0fdf4;
   }
 
   .summary-label{
@@ -89,6 +158,13 @@
     font-size:26px;
     line-height:1;
     font-weight:1000;
+  }
+
+  .summary-unit{
+    margin-top:3px;
+    color:#64748b;
+    font-size:12px;
+    font-weight:900;
   }
 
   .section-title{
@@ -114,6 +190,14 @@
     color:#fff;
     font-size:12px;
     font-weight:1000;
+  }
+
+  .section-note{
+    margin:-2px 0 10px;
+    color:#64748b;
+    font-size:13px;
+    line-height:1.7;
+    font-weight:750;
   }
 
   .lesson-list{
@@ -229,11 +313,46 @@
     padding:14px;
   }
 
+  .quick-action-strip{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:8px;
+  }
+
+  .quick-action-item{
+    border:1px solid #e2e8f0;
+    border-radius:14px;
+    background:#f8fafc;
+    padding:10px;
+  }
+
+  .quick-action-label{
+    color:#64748b;
+    font-size:11px;
+    font-weight:900;
+  }
+
+  .quick-action-value{
+    margin-top:3px;
+    color:#0f172a;
+    font-size:16px;
+    font-weight:1000;
+    line-height:1.2;
+  }
+
   .people-section{
     border:1px solid #e2e8f0;
     border-radius:16px;
     overflow:hidden;
     background:#fff;
+  }
+
+  .people-section.needs-payment{
+    border-color:#fed7aa;
+  }
+
+  .people-section.waitlist{
+    border-color:#bfdbfe;
   }
 
   .people-heading{
@@ -247,6 +366,16 @@
     color:#0f172a;
     font-size:14px;
     font-weight:1000;
+  }
+
+  .people-section.needs-payment .people-heading{
+    background:#fff7ed;
+    border-bottom-color:#fed7aa;
+  }
+
+  .people-section.waitlist .people-heading{
+    background:#eff6ff;
+    border-bottom-color:#bfdbfe;
   }
 
   .people-heading small{
@@ -272,6 +401,18 @@
     border-bottom:0;
   }
 
+  .person-row.payment-unpaid{
+    background:#fffbeb;
+  }
+
+  .person-row.payment-paid{
+    background:#f0fdf4;
+  }
+
+  .person-row.payment-waived{
+    background:#f5f3ff;
+  }
+
   .person-name{
     color:#0f172a;
     font-size:15px;
@@ -293,6 +434,7 @@
     gap:6px;
     flex-wrap:wrap;
     justify-content:flex-end;
+    align-items:center;
   }
 
   .mini-btn{
@@ -359,11 +501,10 @@
     flex-wrap:wrap;
   }
 
-
   .payment-box{
     margin-top:8px;
-    padding:8px;
-    border-radius:12px;
+    padding:10px;
+    border-radius:14px;
     border:1px solid #fed7aa;
     background:#fff7ed;
   }
@@ -390,10 +531,10 @@
   }
 
   .payment-actions{
-    display:flex;
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
     gap:6px;
-    flex-wrap:wrap;
-    margin-top:7px;
+    margin-top:8px;
   }
 
   .payment-actions form{
@@ -401,7 +542,8 @@
   }
 
   .payment-actions button{
-    min-height:30px;
+    width:100%;
+    min-height:34px;
     border-radius:999px;
     border:1px solid #cbd5e1;
     background:#fff;
@@ -416,6 +558,24 @@
     background:#0f172a;
     border-color:#0f172a;
     color:#fff;
+  }
+
+  .payment-help{
+    margin-top:7px;
+    color:#92400e;
+    font-size:11px;
+    line-height:1.45;
+    font-weight:850;
+  }
+
+  @media (max-width:900px){
+    .summary-grid{
+      grid-template-columns:repeat(3,minmax(0,1fr));
+    }
+
+    .today-action-panel{
+      grid-template-columns:1fr;
+    }
   }
 
   @media (max-width:768px){
@@ -476,17 +636,27 @@
       padding:11px;
     }
 
+    .quick-action-strip{
+      grid-template-columns:1fr;
+    }
+
     .person-row{
       grid-template-columns:1fr;
     }
 
     .person-actions{
       justify-content:flex-start;
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+    }
+
+    .mini-btn,
+    .person-actions form{
+      width:100%;
     }
 
     .mini-btn{
-      flex:1;
-      min-width:98px;
+      min-width:0;
     }
 
     .quick-links{
@@ -504,8 +674,8 @@
   <section class="ops-hero">
     <h1 class="ops-title">本日の受付・精算</h1>
     <p class="ops-lead">
-      担当レッスンの参加者・承認待ち・キャンセル待ちを、スマホで確認しやすい形にまとめています。
-      当日の連絡や、キャンセル待ちの繰り上げ対応に使ってください。
+      当日受付で使う情報を最上部に集約しました。
+      参加者確認、電話連絡、7月プレオープン参加費の回収状況変更、キャンセル待ち繰り上げをこの画面で完結できます。
     </p>
 
     <div class="ops-toolbar">
@@ -528,38 +698,76 @@
     {% endif %}
   </section>
 
+  <section class="today-action-panel" aria-label="今日の運用メモ">
+    {% if summary.payment_unpaid_total %}
+      <div class="action-card urgent">
+        <h2 class="action-title">未回収があります</h2>
+        <p class="action-text">
+          7月プレオープン参加費の未回収合計は {{ summary.payment_unpaid_total }}円です。
+          参加者欄の「未回収 / 回収済み / 免除」ボタンで当日受付時に更新してください。
+        </p>
+        <div class="action-link-row">
+          <a href="#today-lessons" class="btn btn-primary">今日の受付へ</a>
+        </div>
+      </div>
+    {% else %}
+      <div class="action-card good">
+        <h2 class="action-title">未回収はありません</h2>
+        <p class="action-text">
+          表示範囲内の回収状況は問題ありません。受付時に変更があれば参加者欄から更新してください。
+        </p>
+      </div>
+    {% endif %}
+
+    <div class="action-card">
+      <h2 class="action-title">確認の流れ</h2>
+      <p class="action-text">
+        1. 参加者を確認 → 2. 電話が必要な方へ連絡 → 3. 参加費の回収状況を更新 → 4. 空きがあればキャンセル待ちを確認。
+      </p>
+      <div class="action-link-row">
+        <a href="{% url 'club:reservation_list' %}" class="btn">予約管理へ</a>
+        <a href="{% url 'club:coach_revenue_summary' %}" class="btn">収支管理へ</a>
+      </div>
+    </div>
+  </section>
+
   <section class="summary-grid" aria-label="集計">
-    <div class="summary-card">
+    <div class="summary-card primary">
       <div class="summary-label">今日のレッスン</div>
       <div class="summary-value">{{ summary.today_lesson_count }}</div>
+      <div class="summary-unit">件</div>
     </div>
-    <div class="summary-card">
+    <div class="summary-card primary">
       <div class="summary-label">今日の参加者</div>
       <div class="summary-value">{{ summary.today_participant_count }}</div>
+      <div class="summary-unit">名</div>
     </div>
-    <div class="summary-card">
+    <div class="summary-card {% if summary.waitlist_count %}warn{% endif %}">
       <div class="summary-label">キャンセル待ち</div>
       <div class="summary-value">{{ summary.waitlist_count }}</div>
+      <div class="summary-unit">名</div>
     </div>
-    <div class="summary-card">
+    <div class="summary-card {% if summary.attention_count %}warn{% endif %}">
       <div class="summary-label">要確認</div>
       <div class="summary-value">{{ summary.attention_count }}</div>
+      <div class="summary-unit">件</div>
     </div>
-    <div class="summary-card">
+    <div class="summary-card {% if summary.payment_unpaid_total %}warn{% endif %}">
       <div class="summary-label">未回収</div>
       <div class="summary-value">{{ summary.payment_unpaid_total }}</div>
-      <div class="summary-label">円</div>
+      <div class="summary-unit">円</div>
     </div>
-    <div class="summary-card">
+    <div class="summary-card paid">
       <div class="summary-label">回収済み</div>
       <div class="summary-value">{{ summary.payment_paid_total }}</div>
-      <div class="summary-label">円</div>
+      <div class="summary-unit">円</div>
     </div>
   </section>
 
   {% if attention_rows %}
     <section>
       <h2 class="section-title">要確認 <span class="badge">{{ summary.attention_count }}</span></h2>
+      <p class="section-note">キャンセル待ち、承認待ち、満員など、先に見ておきたい枠です。</p>
       <div class="lesson-list">
         {% for row in attention_rows %}
           <article class="lesson-card has-attention {% if row.is_today %}is-today{% endif %}">
@@ -569,6 +777,7 @@
                 <div class="lesson-name">{{ row.title }}</div>
                 <div class="lesson-meta">
                   <span class="meta-pill dark">{{ row.target_level_label }}</span>
+                  <span class="meta-pill">{{ row.lesson_type_label }}</span>
                   <span class="meta-pill">{{ row.coach_name }}</span>
                   <span class="meta-pill">{{ row.court_name }}</span>
                 </div>
@@ -585,8 +794,10 @@
     </section>
   {% endif %}
 
-  <section>
+  <section id="today-lessons">
     <h2 class="section-title">今日のレッスン <span class="badge">{{ summary.today_lesson_count }}</span></h2>
+    <p class="section-note">当日の受付・精算はここで処理します。参加費が必要な場合は、参加者ごとに状態を切り替えてください。</p>
+
     {% if today_rows %}
       <div class="lesson-list">
         {% for row in today_rows %}
@@ -614,15 +825,30 @@
             </div>
 
             <div class="lesson-body">
-              <div class="people-section">
+              <div class="quick-action-strip">
+                <div class="quick-action-item">
+                  <div class="quick-action-label">受付対象</div>
+                  <div class="quick-action-value">{{ row.participant_count }}名</div>
+                </div>
+                <div class="quick-action-item">
+                  <div class="quick-action-label">空き枠</div>
+                  <div class="quick-action-value">{{ row.remaining_count }}名</div>
+                </div>
+                <div class="quick-action-item">
+                  <div class="quick-action-label">キャンセル待ち</div>
+                  <div class="quick-action-value">{{ row.waitlist_count }}名</div>
+                </div>
+              </div>
+
+              <div class="people-section {% if row.payment_unpaid_count %}needs-payment{% endif %}">
                 <div class="people-heading">
-                  <span>参加者</span>
+                  <span>参加者・受付精算</span>
                   <small>{{ row.participant_count }}名</small>
                 </div>
                 {% if row.participant_rows %}
                   <div class="person-list">
                     {% for person in row.participant_rows %}
-                      <div class="person-row">
+                      <div class="person-row {% if person.payment_required and person.payment_status == 'paid' %}payment-paid{% elif person.payment_required and person.payment_status == 'waived' %}payment-waived{% elif person.payment_required %}payment-unpaid{% endif %}">
                         <div>
                           <div class="person-name">{{ person.name }}</div>
                           <div class="person-sub">
@@ -650,6 +876,7 @@
                                   </form>
                                 {% endfor %}
                               </div>
+                              <div class="payment-help">7月プレオープン：受付時に参加費を確認してください。</div>
                             </div>
                           {% endif %}
                         </div>
@@ -725,7 +952,7 @@
               {% endif %}
 
               {% if row.waitlist_rows %}
-                <div class="people-section">
+                <div class="people-section waitlist">
                   <div class="people-heading">
                     <span>キャンセル待ち</span>
                     <small>{{ row.waitlist_count }}名</small>
@@ -746,7 +973,7 @@
                             <form method="post" action="{% url 'club:lesson_waitlist_promote' person.waitlist.pk %}">
                               {% csrf_token %}
                               <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                              <button type="submit" class="mini-btn warn">繰り上げ</button>
+                              <button type="submit" class="mini-btn warn" onclick="return confirm('この会員を正式予約へ繰り上げますか？');">繰り上げ</button>
                             </form>
                           {% endif %}
                         </div>
@@ -766,6 +993,7 @@
 
   <section>
     <h2 class="section-title">期間内のレッスン <span class="badge">{{ summary.lesson_count }}</span></h2>
+    <p class="section-note">今日以外のレッスンも含めた確認用です。詳細な受付操作は当日枠で行う想定です。</p>
     {% if grouped_days %}
       <div class="day-group">
         {% for group in grouped_days %}
