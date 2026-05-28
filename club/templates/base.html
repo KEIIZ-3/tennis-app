@@ -1,4 +1,14 @@
 {% load dashboard_tags %}
+{% if user.is_authenticated %}
+  {% if user.role == "coach" or user.role == "contractor_coach" or user.is_staff or user.is_superuser %}
+    {% coach_pending_request_count user as nav_pending_count %}
+    {% coach_unhandled_stringing_count user as nav_stringing_count %}
+  {% else %}
+    {% member_pending_reservation_count user as nav_member_pending_count %}
+    {% member_upcoming_reservation_count user as nav_member_upcoming_count %}
+    {% member_low_ticket_warning user as nav_low_ticket_warning %}
+  {% endif %}
+{% endif %}
 <!doctype html>
 <html lang="ja">
 <head>
@@ -146,6 +156,12 @@
       font-weight:700;
       color:#312e81;
     }
+    .top-badge.contractor{
+      background:#ecfdf5;
+      border-color:#bbf7d0;
+      color:#166534;
+      font-weight:800;
+    }
 
     .member-menu,
     .coach-menu{
@@ -226,10 +242,40 @@
       border-color:var(--line-green-dark);
     }
 
+    .coach-menu-groups{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:10px;
+      align-items:start;
+    }
+    .coach-menu-group{
+      border:1px solid var(--line);
+      background:#fff;
+      border-radius:14px;
+      padding:10px;
+      box-shadow:0 4px 14px rgba(15,23,42,.04);
+    }
+    .coach-menu-group.primary{
+      border-color:#bfdbfe;
+      background:#eff6ff;
+    }
+    .coach-menu-group-title{
+      margin:0 0 8px;
+      color:#475569;
+      font-size:12px;
+      line-height:1.3;
+      font-weight:1000;
+      letter-spacing:.02em;
+    }
     .coach-tabs{
       display:flex;
       gap:8px;
       flex-wrap:wrap;
+    }
+    .coach-menu-group .coach-tabs{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:7px;
     }
     .coach-tab{
       display:inline-flex;
@@ -245,6 +291,7 @@
       font-weight:700;
       transition:all .15s ease;
       white-space:nowrap;
+      text-align:center;
     }
     .coach-tab:hover{ filter:brightness(0.98); }
     .coach-tab.active{
@@ -531,6 +578,7 @@
     @media (max-width: 900px){
       .grid-3{ grid-template-columns:1fr; }
       .grid-2{ grid-template-columns:1fr; }
+      .coach-menu-groups{ grid-template-columns:1fr; }
     }
 
     @media (max-width: 768px){
@@ -635,13 +683,20 @@
         width:100%;
       }
 
-      .coach-tabs{
+      .coach-menu-groups{
         display:none;
         width:100%;
-        grid-template-columns:repeat(2, minmax(0, 1fr));
         gap:8px;
       }
-      .coach-menu.is-open .coach-tabs{ display:grid; }
+      .coach-menu.is-open .coach-menu-groups{ display:grid; }
+      .coach-menu-group{
+        padding:9px;
+        border-radius:13px;
+      }
+      .coach-menu-group-title{
+        margin-bottom:7px;
+        font-size:11px;
+      }
       .coach-tab{
         width:100%;
         min-height:42px;
@@ -689,7 +744,6 @@
       .member-menu-title,
       .coach-menu-title{ font-size:12px; }
       .member-menu .nav,
-      .coach-tabs,
       .topbar-row > .nav{
         grid-template-columns:repeat(2, minmax(0, 1fr));
         gap:7px;
@@ -819,7 +873,6 @@
         background:#f59e0b;
       }
 
-
       .bottom-app-nav .bottom-icon{
         font-size:17px;
         line-height:1;
@@ -837,20 +890,19 @@
           <div class="brand-mark">T</div>
           <div class="brand-text">
             <a href="{% url 'club:home' %}" class="brand-title">Play Design Tennis</a>
-            <div class="brand-sub">予約・チケット・LINE連携</div>
+            <div class="brand-sub">予約・チケット・受付管理</div>
           </div>
         </div>
 
         {% if user.is_authenticated %}
           <div class="top-meta">
-            <span class="top-badge">ログイン中: {{ user.display_name }}</span>
             {% if user.role == "member" %}
-              <span class="top-badge">レベル: {{ user.get_member_level_display }}</span>
-              <span class="top-badge ticket">チケット残数: {{ user.ticket_balance }}枚</span>
-            {% else %}
-              {% if user.role == "coach" or user.is_staff or user.is_superuser %}
-                <span class="top-badge coach">コーチ専用メニュー表示中</span>
-              {% endif %}
+              <span class="top-badge">会員：{{ user.display_name }}</span>
+              <span class="top-badge ticket">チケット {{ user.ticket_balance }}枚</span>
+            {% elif user.role == "contractor_coach" %}
+              <span class="top-badge contractor">業務委託コーチ：{{ user.display_name }}</span>
+            {% elif user.role == "coach" or user.is_staff or user.is_superuser %}
+              <span class="top-badge coach">コーチ専用メニュー表示中</span>
             {% endif %}
           </div>
         {% endif %}
@@ -898,17 +950,14 @@
             <nav class="nav">
               <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
               <a href="{% url 'club:lesson_calendar' %}">レッスンカレンダー</a>
+              <a href="{% url 'club:reservation_list' %}">予約確認</a>
               <a href="{% url 'club:help' %}">使い方</a>
               <a href="{% url 'club:terms' %}">利用規約</a>
-
-              {% if user.role == "coach" or user.is_staff or user.is_superuser %}
-                <a href="{% url 'club:line_connect' %}">LINE連携</a>
-
-                <form method="post" action="{% url 'club:logout' %}" class="logout-form">
-                  {% csrf_token %}
-                  <button type="submit" class="logout-button">ログアウト</button>
-                </form>
-              {% endif %}
+              <a href="{% url 'club:line_connect' %}">LINE連携</a>
+              <form method="post" action="{% url 'club:logout' %}" class="logout-form">
+                {% csrf_token %}
+                <button type="submit" class="logout-button">ログアウト</button>
+              </form>
             </nav>
           </div>
         {% endif %}
@@ -927,40 +976,61 @@
       {% endif %}
 
       {% if user.is_authenticated %}
-        {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+        {% if user.role == "coach" or user.role == "contractor_coach" or user.is_staff or user.is_superuser %}
           <div class="coach-menu" id="coach-menu">
             <div class="coach-menu-head">
-              <div class="coach-menu-title">コーチ専用メニュー</div>
-              <button type="button" class="coach-menu-toggle" id="coach-menu-toggle" aria-expanded="false" aria-controls="coach-tabs">
+              <div class="coach-menu-title">コーチメニュー（日常業務 / 管理確認）</div>
+              <button type="button" class="coach-menu-toggle" id="coach-menu-toggle" aria-expanded="false" aria-controls="coach-menu-groups">
                 メニューを開く
               </button>
             </div>
 
-            <div class="coach-tabs" id="coach-tabs">
-              <a href="{% url 'club:home' %}" class="coach-tab {% if request.resolver_match.url_name == 'home' %}active{% endif %}">ホーム</a>
-              <a href="{% url 'club:reservation_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_list' %}active{% endif %}">
-                予約・承認
-                {% if nav_pending_count %}
-                  <span class="nav-count-badge">{{ nav_pending_count }}</span>
-                {% endif %}
-              </a>
-              <a href="{% url 'club:coach_today_lessons' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_today_lessons' %}active{% endif %}">参加者一覧</a>
-              <a href="{% url 'club:coach_availability_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_availability_list' or request.resolver_match.url_name == 'coach_availability_create' or request.resolver_match.url_name == 'coach_availability_edit' or request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}active{% endif %}">スケジュール</a>
-              <a href="{% url 'club:stringing_order_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'stringing_order_list' %}active{% endif %}">
-                ガット張り
-                {% if nav_stringing_count %}
-                  <span class="nav-count-badge soft">{{ nav_stringing_count }}</span>
-                {% endif %}
-              </a>
-              <a href="{% url 'club:coach_revenue_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_revenue_summary' %}active{% endif %}">収支管理</a>
-              <a href="{% url 'club:coach_payroll_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_payroll_summary' or request.resolver_match.url_name == 'coach_ticket_summary' or request.resolver_match.url_name == 'coach_expense_manage' %}active{% endif %}">給与・経費</a>
-              <a href="{% url 'club:schedule_survey_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'schedule_survey_summary' or request.resolver_match.url_name == 'shop_estimate' or request.resolver_match.url_name == 'line_connect' or request.resolver_match.url_name == 'lesson_calendar' %}active{% endif %}">管理</a>
+            <div class="coach-menu-groups" id="coach-menu-groups">
+              <section class="coach-menu-group primary">
+                <h2 class="coach-menu-group-title">日常業務</h2>
+                <div class="coach-tabs">
+                  <a href="{% url 'club:coach_today_lessons' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_today_lessons' %}active{% endif %}">本日の受付・精算</a>
+                  <a href="{% url 'club:reservation_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_list' %}active{% endif %}">
+                    予約・承認
+                    {% if nav_pending_count %}
+                      <span class="nav-count-badge">{{ nav_pending_count }}</span>
+                    {% endif %}
+                  </a>
+                  <a href="{% url 'club:stringing_order_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'stringing_order_list' %}active{% endif %}">
+                    ガット張り
+                    {% if nav_stringing_count %}
+                      <span class="nav-count-badge soft">{{ nav_stringing_count }}</span>
+                    {% endif %}
+                  </a>
+                  <a href="{% url 'club:coach_expense_manage' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_expense_manage' %}active{% endif %}">経費登録</a>
+                </div>
+              </section>
 
-              <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="coach-tab">固定レッスン</a>
-              <a href="{% url 'club:coach_expense_manage' %}" class="coach-tab">経費登録</a>
-              <a href="{% url 'club:coach_ticket_summary' %}" class="coach-tab">チケット集計</a>
-              <a href="{% url 'club:shop_estimate' %}" class="coach-tab">Shop</a>
-              <a href="{% url 'club:line_connect' %}" class="coach-tab">LINE連携</a>
+              <section class="coach-menu-group">
+                <h2 class="coach-menu-group-title">レッスン・予約管理</h2>
+                <div class="coach-tabs">
+                  <a href="{% url 'club:lesson_calendar' %}" class="coach-tab {% if request.resolver_match.url_name == 'lesson_calendar' %}active{% endif %}">レッスンカレンダー</a>
+                  <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}active{% endif %}">固定レッスン</a>
+                  <a href="{% url 'club:coach_availability_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_availability_list' or request.resolver_match.url_name == 'coach_availability_create' or request.resolver_match.url_name == 'coach_availability_edit' %}active{% endif %}">スケジュール枠</a>
+                  {% if user.role == "contractor_coach" %}
+                    <a href="{% url 'club:reservation_list' %}" class="coach-tab">自分の受講予約</a>
+                  {% endif %}
+                </div>
+              </section>
+
+              <section class="coach-menu-group">
+                <h2 class="coach-menu-group-title">集計・管理確認</h2>
+                <div class="coach-tabs">
+                  <a href="{% url 'club:coach_revenue_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_revenue_summary' %}active{% endif %}">収支管理</a>
+                  <a href="{% url 'club:coach_payroll_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_payroll_summary' %}active{% endif %}">給与・精算</a>
+                  <a href="{% url 'club:coach_ticket_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_ticket_summary' %}active{% endif %}">チケット集計</a>
+                  <a href="{% url 'club:shop_estimate' %}" class="coach-tab {% if request.resolver_match.url_name == 'shop_estimate' %}active{% endif %}">Shop</a>
+                  <a href="{% url 'club:line_connect' %}" class="coach-tab {% if request.resolver_match.url_name == 'line_connect' %}active{% endif %}">LINE連携</a>
+                  {% if user.is_staff or user.is_superuser %}
+                    <a href="{% url 'club:coach_admin_settlement' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_admin_settlement' %}active{% endif %}">admin月次精算</a>
+                  {% endif %}
+                </div>
+              </section>
             </div>
           </div>
         {% endif %}
@@ -968,21 +1038,8 @@
     </div>
   </header>
 
-
-
   {% if user.is_authenticated %}
-    {% if user.role == "coach" or user.is_staff or user.is_superuser %}
-      {% coach_pending_request_count user as nav_pending_count %}
-      {% coach_unhandled_stringing_count user as nav_stringing_count %}
-    {% else %}
-      {% member_pending_reservation_count user as nav_member_pending_count %}
-      {% member_upcoming_reservation_count user as nav_member_upcoming_count %}
-      {% member_low_ticket_warning user as nav_low_ticket_warning %}
-    {% endif %}
-  {% endif %}
-
-  {% if user.is_authenticated %}
-    {% if user.role == "coach" or user.is_staff or user.is_superuser %}
+    {% if user.role == "coach" or user.role == "contractor_coach" or user.is_staff or user.is_superuser %}
       <nav class="bottom-app-nav" aria-label="コーチ用下部ナビ">
         <a href="{% url 'club:home' %}" class="{% if request.resolver_match.url_name == 'home' %}is-active{% endif %}">
           <span class="bottom-icon">🏠</span><span>ホーム</span>
@@ -1008,7 +1065,7 @@
             {% endif %}
           </span>
         </a>
-        <a href="{% url 'club:coach_revenue_summary' %}" class="{% if request.resolver_match.url_name == 'coach_revenue_summary' or request.resolver_match.url_name == 'coach_payroll_summary' or request.resolver_match.url_name == 'coach_expense_manage' or request.resolver_match.url_name == 'coach_ticket_summary' %}is-active{% endif %}">
+        <a href="{% url 'club:coach_revenue_summary' %}" class="{% if request.resolver_match.url_name == 'coach_revenue_summary' or request.resolver_match.url_name == 'coach_payroll_summary' or request.resolver_match.url_name == 'coach_expense_manage' or request.resolver_match.url_name == 'coach_ticket_summary' or request.resolver_match.url_name == 'coach_admin_settlement' %}is-active{% endif %}">
           <span class="bottom-icon">¥</span><span>収支</span>
         </a>
       </nav>
@@ -1017,7 +1074,7 @@
         <a href="{% url 'club:home' %}" class="{% if request.resolver_match.url_name == 'home' %}is-active{% endif %}">
           <span class="bottom-icon">🏠</span><span>ホーム</span>
         </a>
-        <a href="{% url 'club:lesson_calendar' %}" class="{% if request.resolver_match.url_name == 'lesson_calendar' or request.resolver_match.url_name == 'reservation_create' %}is-active{% endif %}">
+        <a href="{% url 'club:lesson_calendar' %}" class="{% if request.resolver_match.url_name == 'lesson_calendar' or request.resolver_match.url_name == 'reservation_create' or request.resolver_match.url_name == 'lesson_reservation_confirm' %}is-active{% endif %}">
           <span class="bottom-icon">📅</span>
           <span class="bottom-nav-wrap">
             予約
