@@ -33,6 +33,71 @@
     font-weight:700;
   }
 
+  .reservation-primary-actions{
+    display:flex;
+    gap:9px;
+    flex-wrap:wrap;
+    margin-top:14px;
+  }
+
+  .reservation-primary-actions .btn{
+    min-height:40px;
+    border-radius:12px;
+    padding:9px 13px;
+  }
+
+  .status-summary-grid{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:10px;
+  }
+
+  .status-summary-card{
+    padding:13px;
+    border:1px solid #e5e7eb;
+    background:#fff;
+    border-radius:16px;
+    box-shadow:0 6px 16px rgba(15,23,42,.04);
+  }
+
+  .status-summary-card.primary{
+    border-color:#bfdbfe;
+    background:#eff6ff;
+  }
+
+  .status-summary-card.waiting{
+    border-color:#fed7aa;
+    background:#fff7ed;
+  }
+
+  .status-summary-card.done{
+    border-color:#bbf7d0;
+    background:#ecfdf5;
+  }
+
+  .status-summary-label{
+    color:#64748b;
+    font-size:12px;
+    line-height:1.3;
+    font-weight:900;
+  }
+
+  .status-summary-value{
+    margin-top:4px;
+    color:#0f172a;
+    font-size:25px;
+    line-height:1.1;
+    font-weight:1000;
+  }
+
+  .status-summary-note{
+    margin-top:5px;
+    color:#64748b;
+    font-size:12px;
+    line-height:1.45;
+    font-weight:700;
+  }
+
   .section-card{
     border:1px solid #e5e7eb;
     background:#fff;
@@ -41,16 +106,29 @@
     box-shadow:0 8px 20px rgba(15,23,42,.05);
   }
 
+  .section-card.waiting-section{
+    border-color:#fed7aa;
+    background:#fffaf5;
+  }
+
   .section-title{
     display:flex;
     align-items:center;
     justify-content:space-between;
     gap:10px;
-    margin:0 0 12px;
+    margin:0 0 7px;
     color:#0f172a;
     font-size:19px;
     line-height:1.35;
     font-weight:1000;
+  }
+
+  .section-help{
+    margin:0 0 12px;
+    color:#64748b;
+    font-size:13px;
+    line-height:1.7;
+    font-weight:750;
   }
 
   .section-count{
@@ -82,12 +160,17 @@
   .reservation-item.is-past{
     background:#f8fafc;
     border-color:#e2e8f0;
-    opacity:.78;
+    opacity:.84;
   }
 
   .reservation-item.is-canceled{
     background:#fff7ed;
     border-color:#fed7aa;
+  }
+
+  .reservation-item.is-waiting{
+    background:#fff7ed;
+    border-color:#fdba74;
   }
 
   .reservation-top{
@@ -134,6 +217,11 @@
     color:#166534;
   }
 
+  .status-badge.rain{
+    background:#e0f2fe;
+    color:#075985;
+  }
+
   .reservation-meta{
     display:grid;
     gap:5px;
@@ -142,6 +230,30 @@
     font-size:13px;
     line-height:1.55;
     font-weight:750;
+  }
+
+  .reservation-message{
+    margin-top:10px;
+    padding:10px 12px;
+    border-radius:13px;
+    border:1px solid #bfdbfe;
+    background:#eff6ff;
+    color:#1e3a8a;
+    font-size:13px;
+    line-height:1.65;
+    font-weight:850;
+  }
+
+  .reservation-message.waiting{
+    border-color:#fed7aa;
+    background:#fff7ed;
+    color:#9a3412;
+  }
+
+  .reservation-message.canceled{
+    border-color:#fecaca;
+    background:#fef2f2;
+    color:#991b1b;
   }
 
   .reservation-actions{
@@ -190,6 +302,20 @@
       font-size:22px;
     }
 
+    .reservation-primary-actions{
+      display:grid;
+      grid-template-columns:1fr;
+    }
+
+    .reservation-primary-actions .btn{
+      width:100%;
+    }
+
+    .status-summary-grid{
+      grid-template-columns:1fr;
+      gap:8px;
+    }
+
     .section-card{
       padding:12px;
       border-radius:16px;
@@ -218,7 +344,32 @@
 <div class="reservation-page">
   <section class="reservation-hero">
     <h1 class="reservation-title">予約・キャンセル待ち確認</h1>
-    <p class="reservation-lead">今後の予約、過去の予約、キャンセル待ちをまとめて確認できます。コーチはキャンセル待ちの繰り上げもここから操作できます。</p>
+    <p class="reservation-lead">
+      今後の予約、キャンセル待ち、過去の履歴をまとめて確認できます。
+      キャンセル待ちは、空きが出た場合に先頭の方へLINE通知します。
+    </p>
+    <div class="reservation-primary-actions">
+      <a href="{% url 'club:lesson_calendar' %}" class="btn btn-primary">レッスンを予約する</a>
+      <a href="{% url 'club:tickets' %}" class="btn">チケットを確認する</a>
+    </div>
+  </section>
+
+  <section class="status-summary-grid" aria-label="予約状況サマリー">
+    <div class="status-summary-card primary">
+      <div class="status-summary-label">今後の予約</div>
+      <div class="status-summary-value">{{ future_reservation_rows|length }}件</div>
+      <div class="status-summary-note">予約中・承認待ちの予定です。</div>
+    </div>
+    <div class="status-summary-card waiting">
+      <div class="status-summary-label">キャンセル待ち中</div>
+      <div class="status-summary-value">{{ waiting_waitlist_rows|length }}件</div>
+      <div class="status-summary-note">空きが出た場合にLINEで案内します。</div>
+    </div>
+    <div class="status-summary-card done">
+      <div class="status-summary-label">過去の予約</div>
+      <div class="status-summary-value">{{ past_reservation_rows|length }}件</div>
+      <div class="status-summary-note">完了済みの参加履歴です。</div>
+    </div>
   </section>
 
   <section class="section-card">
@@ -226,6 +377,7 @@
       <span>今後の予約</span>
       <span class="section-count">{{ future_reservation_rows|length }}</span>
     </h2>
+    <p class="section-help">参加予定のレッスンです。詳細画面で参加状況やキャンセル可否を確認できます。</p>
 
     {% if future_reservation_rows %}
       <div class="reservation-list">
@@ -242,6 +394,11 @@
                 <div>コート：{{ reservation.court }}</div>
                 <div>消費チケット：{{ reservation.tickets_used }}枚</div>
               </div>
+              {% if reservation.status == "pending" %}
+                <div class="reservation-message">現在、コーチの承認待ちです。承認または却下の結果はメールでご案内します。</div>
+              {% elif reservation.status == "active" %}
+                <div class="reservation-message">予約済みです。当日は開始時間に間に合うようにお越しください。</div>
+              {% endif %}
               <div class="reservation-actions">
                 <a href="{% url 'club:reservation_detail' reservation.pk %}" class="btn btn-primary">詳細を見る</a>
                 {% if row.can_cancel %}
@@ -258,21 +415,24 @@
         {% endfor %}
       </div>
     {% else %}
-      <div class="empty-box">今後の予約はありません。</div>
+      <div class="empty-box">今後の予約はありません。レッスンカレンダーから参加したいレッスンを選んでください。</div>
     {% endif %}
   </section>
 
-  <section class="section-card">
+  <section class="section-card waiting-section">
     <h2 class="section-title">
       <span>キャンセル待ち</span>
       <span class="section-count">{{ waiting_waitlist_rows|length }}</span>
     </h2>
+    <p class="section-help">
+      キャンセル待ち中のレッスンです。空きが出た場合、先頭の有効な方へLINE通知します。通知後の予約は先着順です。
+    </p>
 
     {% if waiting_waitlist_rows %}
       <div class="reservation-list">
         {% for row in waiting_waitlist_rows %}
           {% with waitlist=row.waitlist %}
-            <article class="reservation-item">
+            <article class="reservation-item is-waiting">
               <div class="reservation-top">
                 <div class="reservation-date">{{ waitlist.start_at|date:"Y/m/d H:i" }}〜{{ waitlist.end_at|date:"H:i" }}</div>
                 <span class="status-badge waiting">{{ waitlist.get_status_display }}</span>
@@ -283,6 +443,9 @@
                 <div>コーチ：{{ row.assigned_coach_name }}{% if row.has_substitute %}（通常：{{ row.normal_coach_name }}）{% endif %}</div>
                 <div>参加状況：{{ row.active_count }}/{{ row.capacity }}名{% if row.remaining_count > 0 %} / 空き {{ row.remaining_count }}名{% endif %}</div>
                 <div>登録日時：{{ waitlist.created_at|date:"Y/m/d H:i" }}</div>
+              </div>
+              <div class="reservation-message waiting">
+                現在キャンセル待ち中です。空きが出た場合、キャンセル待ち先頭の方へLINEでお知らせします。
               </div>
               <div class="reservation-actions">
                 {% if row.can_promote %}
@@ -313,6 +476,7 @@
       <span>過去の予約</span>
       <span class="section-count">{{ past_reservation_rows|length }}</span>
     </h2>
+    <p class="section-help">参加済みのレッスン履歴です。</p>
 
     {% if past_reservation_rows %}
       <div class="reservation-list">
@@ -344,6 +508,7 @@
       <span>キャンセル済み・処理済み</span>
       <span class="section-count">履歴</span>
     </h2>
+    <p class="section-help">キャンセル済み予約、繰り上げ済み・取消済みのキャンセル待ち履歴です。</p>
 
     {% if canceled_reservation_rows or processed_waitlist_rows %}
       <div class="reservation-list">
@@ -352,12 +517,17 @@
             <article class="reservation-item is-canceled">
               <div class="reservation-top">
                 <div class="reservation-date">{{ reservation.start_at|date:"Y/m/d H:i" }}〜{{ reservation.end_at|date:"H:i" }}</div>
-                <span class="status-badge canceled">{{ reservation.get_status_display }}</span>
+                <span class="status-badge {% if reservation.status == 'rain_canceled' %}rain{% else %}canceled{% endif %}">{{ reservation.get_status_display }}</span>
               </div>
               <div class="reservation-meta">
                 <div>{{ reservation.get_lesson_type_display }} / {{ reservation.get_target_level_display }}</div>
                 <div>コーチ：{{ row.assigned_coach_name }}</div>
               </div>
+              {% if reservation.status == "rain_canceled" %}
+                <div class="reservation-message">雨天中止として処理されています。</div>
+              {% else %}
+                <div class="reservation-message canceled">キャンセル済みです。</div>
+              {% endif %}
               <div class="reservation-actions">
                 <a href="{% url 'club:reservation_detail' reservation.pk %}" class="btn">詳細を見る</a>
               </div>
