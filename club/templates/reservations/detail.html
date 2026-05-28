@@ -17,7 +17,7 @@
   }
 
   .detail-title{
-    margin:0;
+    margin:8px 0 0;
     font-size:28px;
     font-weight:1000;
     line-height:1.25;
@@ -44,6 +44,42 @@
     font-weight:900;
   }
 
+  .detail-status.is-canceled{
+    border-color:#fecaca;
+    background:#fef2f2;
+    color:#991b1b;
+  }
+
+  .detail-status.is-rain{
+    border-color:#bae6fd;
+    background:#e0f2fe;
+    color:#075985;
+  }
+
+  .detail-message{
+    margin-top:12px;
+    padding:12px;
+    border-radius:14px;
+    border:1px solid #bfdbfe;
+    background:#eff6ff;
+    color:#1e3a8a;
+    font-size:14px;
+    line-height:1.7;
+    font-weight:850;
+  }
+
+  .detail-message.warning{
+    border-color:#fed7aa;
+    background:#fff7ed;
+    color:#9a3412;
+  }
+
+  .detail-message.danger{
+    border-color:#fecaca;
+    background:#fef2f2;
+    color:#991b1b;
+  }
+
   .detail-grid{
     display:grid;
     grid-template-columns:repeat(2,minmax(0,1fr));
@@ -63,6 +99,14 @@
     color:#0f172a;
     font-size:17px;
     font-weight:1000;
+  }
+
+  .detail-card-help{
+    margin:-3px 0 10px;
+    color:#64748b;
+    font-size:13px;
+    line-height:1.65;
+    font-weight:750;
   }
 
   .detail-list{
@@ -104,6 +148,23 @@
     border-radius:12px;
     background:#f8fafc;
     font-size:14px;
+    font-weight:850;
+  }
+
+  .member-row.is-waiting{
+    border-color:#fed7aa;
+    background:#fff7ed;
+  }
+
+  .waitlist-note{
+    margin-top:10px;
+    padding:10px 12px;
+    border:1px solid #fed7aa;
+    background:#fff7ed;
+    border-radius:13px;
+    color:#9a3412;
+    font-size:13px;
+    line-height:1.65;
     font-weight:850;
   }
 
@@ -156,6 +217,11 @@
       gap:2px;
     }
 
+    .member-row{
+      display:grid;
+      grid-template-columns:1fr;
+    }
+
     .actions{
       display:grid;
       grid-template-columns:1fr;
@@ -170,9 +236,21 @@
 
 <div class="detail-page">
   <section class="detail-hero">
-    <div class="detail-status">{{ reservation.get_status_display }}</div>
+    <div class="detail-status {% if reservation.status == 'canceled' %}is-canceled{% elif reservation.status == 'rain_canceled' %}is-rain{% endif %}">
+      {{ reservation.get_status_display }}
+    </div>
     <h1 class="detail-title">予約詳細</h1>
     <p class="detail-lead">{{ reservation.start_at|date:"Y/m/d H:i" }}〜{{ reservation.end_at|date:"H:i" }} の予約内容です。</p>
+
+    {% if reservation.status == "active" %}
+      <div class="detail-message">この予約は確定しています。当日は開始時間に間に合うようにお越しください。</div>
+    {% elif reservation.status == "pending" %}
+      <div class="detail-message warning">現在、コーチの承認待ちです。承認または却下の結果はメールでご案内します。</div>
+    {% elif reservation.status == "rain_canceled" %}
+      <div class="detail-message">この予約は雨天中止として処理されています。</div>
+    {% elif reservation.status == "canceled" %}
+      <div class="detail-message danger">この予約はキャンセル済みです。</div>
+    {% endif %}
   </section>
 
   <section class="detail-grid">
@@ -191,6 +269,7 @@
 
     <div class="detail-card">
       <h2 class="detail-card-title">参加状況</h2>
+      <p class="detail-card-help">同じ枠の現在の参加人数と、キャンセル待ち件数です。</p>
       <div class="detail-list">
         <div class="detail-row"><div class="detail-label">現在の参加人数</div><div class="detail-value">{{ slot_active_count }}/{{ slot_capacity }}名</div></div>
         <div class="detail-row"><div class="detail-label">残り枠</div><div class="detail-value">{{ slot_remaining_count }}名</div></div>
@@ -217,11 +296,12 @@
 
   <section class="detail-card">
     <h2 class="detail-card-title">キャンセル待ち</h2>
+    <p class="detail-card-help">空きが出た場合、キャンセル待ち先頭の有効な方へLINE通知します。通知後の予約は先着順です。</p>
     {% if same_slot_waitlist_rows %}
       <div class="member-list">
         {% for row in same_slot_waitlist_rows %}
           {% with waitlist=row.waitlist %}
-            <div class="member-row">
+            <div class="member-row is-waiting">
               <span>{{ waitlist.user.display_name }} / {{ waitlist.get_status_display }}</span>
               <span>
                 {% if row.can_promote %}
@@ -242,6 +322,7 @@
           {% endwith %}
         {% endfor %}
       </div>
+      <div class="waitlist-note">キャンセル待ちの完全自動繰り上げは行いません。空きが出た場合はLINEで通知し、必要に応じてコーチ・管理者が繰り上げ操作を行います。</div>
     {% else %}
       <div class="empty-box">キャンセル待ちはありません。</div>
     {% endif %}
@@ -266,6 +347,7 @@
   <section class="detail-card">
     <div class="actions">
       <a href="{% url 'club:reservation_list' %}" class="btn">予約一覧へ戻る</a>
+      <a href="{% url 'club:lesson_calendar' %}" class="btn">レッスンカレンダーへ</a>
       {% if can_cancel %}
         <form method="post" action="{% url 'club:reservation_cancel' reservation.pk %}">
           {% csrf_token %}
