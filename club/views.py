@@ -3948,16 +3948,26 @@ def coach_payroll_summary(request):
     )
 
     active_coach_ids = set()
+    active_regular_coach_ids = set()
+    active_contractor_coach_ids = set()
     for reservation in reservation_qs:
         if reservation.status != Reservation.STATUS_ACTIVE:
             continue
         for coach in _reservation_coaches_for_split(reservation):
             active_coach_ids.add(coach.pk)
+            if getattr(coach, "role", "") == "contractor_coach":
+                active_contractor_coach_ids.add(coach.pk)
+            else:
+                active_regular_coach_ids.add(coach.pk)
 
     if not active_coach_ids:
         active_coach_ids = set(coach_queryset.values_list("pk", flat=True))
 
+    if not active_regular_coach_ids:
+        active_regular_coach_ids = set(coach_queryset.filter(role="coach").values_list("pk", flat=True))
+
     active_coach_count = len(active_coach_ids)
+    common_expense_participant_count = len(active_regular_coach_ids)
 
     total_tickets = 0
     ticket_lesson_amount = 0
@@ -4187,10 +4197,46 @@ def coach_payroll_summary(request):
 
     approved_common_expense_total = sum(_money(row["expense"].amount) for row in approved_common_expense_rows)
     personal_reimbursement_amount = sum(_money(row["expense"].amount) for row in approved_personal_expense_rows)
-    per_coach_common_expense = int(approved_common_expense_total / active_coach_count) if active_coach_count > 0 else 0
 
     contractor_hourly_pay_amount = int(contractor_work_minutes * contractor_hourly_wage / 60) if is_selected_contractor_coach else 0
     contractor_work_hours_text = f"{contractor_work_minutes // 60}時間{contractor_work_minutes % 60:02d}分"
+
+    monthly_contractor_expense_total = 0
+    contractor_month_slot_keys = set()
+    for reservation in reservation_qs:
+        if reservation.status != Reservation.STATUS_ACTIVE:
+            continue
+        coaches = _reservation_coaches_for_split(reservation)
+        for coach in coaches:
+            if getattr(coach, "role", "") != "contractor_coach":
+                continue
+            slot_key = (
+                str(reservation.lesson_type or ""),
+                str(getattr(reservation, "court_id", "") or ""),
+                _to_event_datetime_str(reservation.start_at) or "",
+                _to_event_datetime_str(reservation.end_at) or "",
+                str(coach.pk),
+            )
+            if slot_key in contractor_month_slot_keys:
+                continue
+            contractor_month_slot_keys.add(slot_key)
+            try:
+                minutes = max(int((reservation.end_at - reservation.start_at).total_seconds() // 60), 0)
+            except Exception:
+                minutes = 0
+            hourly_wage = _money(getattr(coach, "contractor_hourly_wage", 0))
+            monthly_contractor_expense_total += int(minutes * hourly_wage / 60)
+
+    common_expense_base_total = approved_common_expense_total + monthly_contractor_expense_total
+    if selected_coach and getattr(selected_coach, "role", "") == "contractor_coach":
+        per_coach_common_expense = 0
+    elif selected_coach and selected_coach.pk in active_regular_coach_ids and common_expense_participant_count > 0:
+        per_coach_common_expense = int(common_expense_base_total / common_expense_participant_count)
+    elif not selected_coach and common_expense_participant_count > 0:
+        per_coach_common_expense = int(common_expense_base_total / common_expense_participant_count)
+    else:
+        per_coach_common_expense = 0
+
     if is_selected_contractor_coach:
         lesson_compensation_amount = contractor_hourly_pay_amount
     else:
@@ -4200,7 +4246,7 @@ def coach_payroll_summary(request):
     estimated_salary = settlement_before_common - per_coach_common_expense
     salary_before_common = settlement_before_common
     total_amount = settlement_before_common
-    total_expense_amount = sum(_money(row["expense"].amount) for row in expense_meta_rows)
+    total_expense_amount = sum(_money(row["expense"].amount) for row in expense_meta_rows) + monthly_contractor_expense_total
 
     common_category_totals = {}
     for row in approved_common_expense_rows:
@@ -4290,6 +4336,9 @@ def coach_payroll_summary(request):
             "total_amount": total_amount,
             "total_expense_amount": total_expense_amount,
             "approved_common_expense_total": approved_common_expense_total,
+            "monthly_contractor_expense_total": monthly_contractor_expense_total,
+            "common_expense_base_total": common_expense_base_total,
+            "common_expense_participant_count": common_expense_participant_count,
             "per_coach_common_expense": per_coach_common_expense,
             "active_coach_count": active_coach_count,
             "estimated_salary": estimated_salary,
@@ -4438,12 +4487,21 @@ def coach_admin_settlement(request):
             return 0
 
     active_coach_ids = set()
+    active_regular_coach_ids = set()
+    active_contractor_coach_ids = set()
     for reservation in reservations:
         for coach in _reservation_coaches_for_split(reservation):
             active_coach_ids.add(coach.pk)
+            if getattr(coach, "role", "") == "contractor_coach":
+                active_contractor_coach_ids.add(coach.pk)
+            else:
+                active_regular_coach_ids.add(coach.pk)
     if not active_coach_ids:
         active_coach_ids = set(coach_queryset.values_list("pk", flat=True))
+    if not active_regular_coach_ids:
+        active_regular_coach_ids = set(coach_queryset.filter(role="coach").values_list("pk", flat=True))
     active_coach_count = len(active_coach_ids)
+    common_expense_participant_count = len(active_regular_coach_ids)
 
     monthly_expenses = list(
         CoachExpense.objects.filter(
@@ -4474,7 +4532,7 @@ def coach_admin_settlement(request):
     payout_rows = [row for row in expense_meta_rows if row["is_payout"]]
 
     approved_common_expense_total = sum(_money(row["expense"].amount) for row in approved_common_expense_rows)
-    per_coach_common_expense = int(approved_common_expense_total / active_coach_count) if active_coach_count > 0 else 0
+    per_coach_common_expense = 0
 
     coach_map = {}
     for coach in coach_queryset:
@@ -4496,7 +4554,7 @@ def coach_admin_settlement(request):
             "personal_reimbursement_due": 0,
             "salary_paid": 0,
             "reimbursement_paid": 0,
-            "common_expense_share": per_coach_common_expense if coach.pk in active_coach_ids else 0,
+            "common_expense_share": 0,
             "reservation_count": 0,
         }
 
@@ -4576,12 +4634,25 @@ def coach_admin_settlement(request):
         elif row["expense_type"] == EXPENSE_TYPE_REIMBURSEMENT_PAYOUT:
             coach_map[coach_id]["reimbursement_paid"] += amount
 
-    coach_rows = []
     for row in coach_map.values():
         row["contractor_hourly_pay_amount"] = int(
             row["contractor_work_minutes"] * row["contractor_hourly_wage"] / 60
         ) if row.get("is_contractor_coach") else 0
         row["contractor_work_hours_text"] = f"{row['contractor_work_minutes'] // 60}時間{row['contractor_work_minutes'] % 60:02d}分"
+
+    contractor_hourly_pay_total = sum(row["contractor_hourly_pay_amount"] for row in coach_map.values())
+    common_expense_base_total = approved_common_expense_total + contractor_hourly_pay_total
+    per_coach_common_expense = int(common_expense_base_total / common_expense_participant_count) if common_expense_participant_count > 0 else 0
+
+    coach_rows = []
+    for row in coach_map.values():
+        if row.get("is_contractor_coach"):
+            row["common_expense_share"] = 0
+        elif getattr(row["coach"], "pk", None) in active_regular_coach_ids:
+            row["common_expense_share"] = per_coach_common_expense
+        else:
+            row["common_expense_share"] = 0
+
         lesson_revenue_amount = row["ticket_amount"] + row["preopen_paid_amount"]
         if row.get("is_contractor_coach"):
             lesson_compensation_amount = row["contractor_hourly_pay_amount"]
@@ -4618,7 +4689,6 @@ def coach_admin_settlement(request):
         _money(purchase.total_tickets) * _money(purchase.unit_price)
         for purchase in TicketPurchase.objects.filter(purchased_at__date__gte=month_start, purchased_at__date__lt=next_month)
     )
-    contractor_hourly_pay_total = sum(row["contractor_hourly_pay_amount"] for row in coach_rows)
     salary_due_total = sum(row["salary_due"] for row in coach_rows)
     reimbursement_due_total = sum(row["reimbursement_due"] for row in coach_rows)
     salary_paid_total = sum(row["salary_paid"] for row in coach_rows)
@@ -4685,6 +4755,8 @@ def coach_admin_settlement(request):
             "cash_in_total": cash_in_total,
             "approved_common_expense_total": approved_common_expense_total,
             "contractor_hourly_pay_total": contractor_hourly_pay_total,
+            "common_expense_base_total": common_expense_base_total,
+            "common_expense_participant_count": common_expense_participant_count,
             "salary_due_total": salary_due_total,
             "reimbursement_due_total": reimbursement_due_total,
             "salary_paid_total": salary_paid_total,
