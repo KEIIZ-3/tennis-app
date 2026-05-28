@@ -1,0 +1,216 @@
+from datetime import date
+
+from django.contrib.auth import get_user_model
+from django.test import Client, TestCase
+from django.urls import reverse
+from django.utils import timezone
+
+from .models import Court, FixedLesson, Reservation
+
+
+class ReservationFlowSmokeTests(TestCase):
+    """
+    予約導線の最低限の自動デバッグ用テストです。
+
+    目的：
+    - lesson-calendar が 500 にならないこと
+    - 予約前確認URLが解決できること
+    - 会員が通常レッスンを予約できること
+    - 業務委託コーチが他コーチ担当レッスンを受講予約できること
+    - 業務委託コーチが自分担当レッスンを予約できないこと
+    - 2026年7月プレオープンはチケットを消費しないこと
+    """
+
+    def setUp(self):
+        self.User = get_user_model()
+        self.client = Client()
+
+        self.court = Court.objects.create(
+            name="テストコート",
+            is_active=True,
+            court_type=Court.COURT_SONO,
+        )
+
+        self.member = self._create_user(
+            username="member_test",
+            role=self.User.ROLE_MEMBER,
+            full_name="会員 テスト",
+            ticket_balance=0,
+        )
+
+        self.coach = self._create_user(
+            username="coach_test",
+            role=self.User.ROLE_COACH,
+            full_name="飯塚 コーチ",
+            ticket_balance=0,
+        )
+
+        self.contractor = self._create_user(
+            username="contractor_test",
+            role=self.User.ROLE_CONTRACTOR_COACH,
+            full_name="業務委託 コーチ",
+            ticket_balance=0,
+        )
+
+        self.lesson_date = date(2026, 7, 3)
+
+    def _create_user(self, *, username, role, full_name, ticket_balance=0):
+        user = self.User.objects.create_user(
+            username=username,
+            email=f"{username}@example.com",
+            password="password12345",
+        )
+        user.role = role
+        user.full_name = full_name
+        user.phone_number = "09000000000"
+        user.is_profile_completed = True
+        user.member_level = self.User.LEVEL_BEGINNER
+        user.ticket_balance = ticket_balance
+        user.save()
+        return user
+
+    def _create_fixed_lesson(self, *, coach=None, lesson_date=None, title="テスト一般レッスン"):
+        target_date = lesson_date or self.lesson_date
+        return FixedLesson.objects.create(
+            title=title,
+            coach=coach or self.coach,
+            court=self.court,
+            lesson_type=FixedLesson.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            target_level_2="",
+            start_date=target_date,
+            weekday=target_date.weekday(),
+            start_hour=19,
+            capacity=6,
+            coach_count=1,
+            court_count=1,
+            weeks_ahead=1,
+            is_active=True,
+        )
+
+    def _post_lesson_calendar_reserve(self, *, user, fixed_lesson, lesson_date=None, action="reserve"):
+        self.client.force_login(user)
+        target_date = lesson_date or self.lesson_date
+        return self.client.post(
+            reverse("club:lesson_calendar"),
+            data={
+                "action": action,
+                "fixed_lesson_id": str(fixed_lesson.pk),
+                "lesson_date": target_date.isoformat(),
+                "year": str(target_date.year),
+                "month": str(target_date.month),
+            },
+        )
+
+    def test_lesson_calendar_page_does_not_return_500_for_member(self):
+        self._create_fixed_lesson()
+        self.client.force_login(self.member)
+
+        response = self.client.get(
+            reverse("club:lesson_calendar"),
+            data={"year": "2026", "month": "7"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_lesson_reservation_confirm_url_is_available(self):
+        fixed_lesson = self._create_fixed_lesson()
+        self.client.force_login(self.member)
+
+        url = reverse("club:lesson_reservation_confirm")
+        response = self.client.get(
+            url,
+            data={
+                "fixed_lesson_id": str(fixed_lesson.pk),
+                "lesson_date": self.lesson_date.isoformat(),
+                "year": "2026",
+                "month": "7",
+            },
+        )
+
+        self.assertNotEqual(response.status_code, 500)
+
+    def test_member_can_reserve_regular_preopen_lesson_without_ticket_consumption(self):
+        fixed_lesson = self._create_fixed_lesson()
+
+        response = self._post_lesson_calendar_reserve(
+            user=self.member,
+            fixed_lesson=fixed_lesson,
+        )
+
+        self.assertEqual(response.status_code, 302)
+
+        reservation = Reservation.objects.get(user=self.member, fixed_lesson=fixed_lesson)
+        self.assertEqual(reservation.status, Reservation.STATUS_ACTIVE)
+        self.assertEqual(reservation.tickets_used, 0)
+
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.ticket_balance, 0)
+
+    def test_contractor_coach_can_take_other_coach_lesson(self):
+        fixed_lesson = self._create_fixed_lesson(
+            coach=self.coach,
+            title="他コーチ担当レッスン",
+        )
+
+        response = self._post_lesson_calendar_reserve(
+            user=self.contractor,
+            fixed_lesson=fixed_lesson,
+        )
+
+        self.assertEqual(response.status_code, 302)
+
+        reservation = Reservation.objects.get(user=self.contractor, fixed_lesson=fixed_lesson)
+        self.assertEqual(reservation.status, Reservation.STATUS_ACTIVE)
+        self.assertEqual(reservation.coach_id, self.coach.pk)
+
+    def test_contractor_coach_cannot_take_own_lesson(self):
+        fixed_lesson = self._create_fixed_lesson(
+            coach=self.contractor,
+            title="自分担当レッスン",
+        )
+
+        response = self._post_lesson_calendar_reserve(
+            user=self.contractor,
+            fixed_lesson=fixed_lesson,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(
+            Reservation.objects.filter(
+                user=self.contractor,
+                fixed_lesson=fixed_lesson,
+                status=Reservation.STATUS_ACTIVE,
+            ).exists()
+        )
+
+    def test_full_lesson_can_accept_waitlist_from_member(self):
+        fixed_lesson = self._create_fixed_lesson(title="満員テストレッスン")
+
+        members = []
+        for index in range(6):
+            members.append(
+                self._create_user(
+                    username=f"full_member_{index}",
+                    role=self.User.ROLE_MEMBER,
+                    full_name=f"満員 会員{index}",
+                    ticket_balance=0,
+                )
+            )
+
+        fixed_lesson.members.set(members)
+        fixed_lesson.sync_future_reservations(created_by=self.coach)
+
+        response = self._post_lesson_calendar_reserve(
+            user=self.member,
+            fixed_lesson=fixed_lesson,
+            action="join_waitlist",
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(
+            fixed_lesson.waitlists.filter(
+                user=self.member,
+                status="waiting",
+            ).exists()
+        )
