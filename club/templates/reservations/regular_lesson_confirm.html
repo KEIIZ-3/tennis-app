@@ -3,267 +3,312 @@
 
 {% block content %}
 <style>
-  .lesson-confirm-page{
+  .confirm-page{
     display:grid;
+    grid-template-columns:minmax(0, 1fr);
     gap:14px;
   }
 
-  .lesson-confirm-hero{
+  .confirm-hero{
     padding:18px;
-    border-radius:20px;
     border:1px solid #bfdbfe;
-    background:linear-gradient(180deg,#eff6ff 0%,#ffffff 100%);
+    border-radius:22px;
+    background:linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
     box-shadow:0 10px 24px rgba(15,23,42,.08);
   }
 
-  .lesson-confirm-title{
+  .confirm-title{
     margin:0;
     color:#0f172a;
-    font-size:26px;
+    font-size:28px;
     line-height:1.25;
     font-weight:1000;
-    letter-spacing:-.03em;
+    letter-spacing:-.02em;
   }
 
-  .lesson-confirm-subtitle{
+  .confirm-lead{
     margin:8px 0 0;
     color:#475569;
     font-size:14px;
-    line-height:1.8;
+    line-height:1.7;
     font-weight:750;
   }
 
-  .lesson-confirm-card{
-    padding:18px;
-    border-radius:20px;
-    border:2px solid #0b55b7;
+  .lesson-summary-card{
+    border:1px solid #e5e7eb;
     background:#fff;
-    box-shadow:0 12px 28px rgba(15,23,42,.08);
+    border-radius:20px;
+    padding:18px;
+    box-shadow:0 8px 20px rgba(15,23,42,.05);
   }
 
-  .lesson-summary-title{
-    margin:0 0 12px;
+  .lesson-date-line{
     color:#0750b8;
-    font-size:22px;
-    line-height:1.35;
+    font-size:25px;
+    line-height:1.25;
     font-weight:1000;
+    letter-spacing:-.02em;
   }
 
-  .lesson-summary-grid{
-    display:grid;
-    grid-template-columns:repeat(2,minmax(0,1fr));
-    gap:10px;
-  }
-
-  .lesson-summary-item{
-    padding:12px;
-    border-radius:14px;
-    border:1px solid #dbeafe;
-    background:#f8fbff;
-  }
-
-  .lesson-summary-label{
-    color:#64748b;
-    font-size:12px;
-    font-weight:900;
-    line-height:1.3;
-  }
-
-  .lesson-summary-value{
+  .lesson-time-line{
     margin-top:4px;
     color:#0f172a;
-    font-size:16px;
-    font-weight:1000;
-    line-height:1.45;
+    font-size:20px;
+    line-height:1.3;
+    font-weight:950;
   }
 
-  .lesson-confirm-actions{
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:10px;
-    margin-top:16px;
-  }
-
-  .lesson-confirm-actions .btn{
-    min-height:46px;
-    border-radius:14px;
-  }
-
-  .lesson-confirm-note{
+  .lesson-chip-row{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
     margin-top:12px;
-    padding:12px;
-    border-radius:14px;
-    background:#fff7ed;
-    border:1px solid #fed7aa;
-    color:#9a3412;
-    font-size:13px;
-    font-weight:850;
-    line-height:1.7;
   }
 
-  .confirm-badge{
+  .lesson-chip{
     display:inline-flex;
     align-items:center;
     justify-content:center;
-    min-height:26px;
-    padding:4px 10px;
+    min-height:30px;
+    padding:5px 10px;
     border-radius:999px;
-    background:#eff6ff;
-    border:1px solid #bfdbfe;
-    color:#0750b8;
+    background:#f8fafc;
+    border:1px solid #cbd5e1;
+    color:#334155;
     font-size:12px;
     font-weight:1000;
-    line-height:1.2;
   }
 
-  .lesson-confirm-disabled{
-    margin-top:14px;
+  .lesson-chip.level{
+    background:#111827;
+    color:#fff;
+    border-color:#111827;
+  }
+
+  .lesson-chip.payment{
+    background:#fff7ed;
+    color:#9a3412;
+    border-color:#fed7aa;
+  }
+
+  .confirm-grid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:12px;
+    margin-top:16px;
+  }
+
+  .confirm-info{
     padding:13px;
-    border-radius:14px;
-    border:1px solid #fecaca;
-    background:#fff5f5;
-    color:#991b1b;
-    font-size:14px;
+    border:1px solid #e5e7eb;
+    background:#f8fafc;
+    border-radius:16px;
+  }
+
+  .confirm-info-label{
+    color:#64748b;
+    font-size:12px;
     font-weight:900;
+  }
+
+  .confirm-info-value{
+    margin-top:4px;
+    color:#0f172a;
+    font-size:15px;
+    line-height:1.45;
+    font-weight:900;
+  }
+
+  .confirm-notice{
+    padding:14px;
+    border-radius:16px;
+    border:1px solid #bfdbfe;
+    background:#eff6ff;
+    color:#1e3a8a;
+    font-size:13px;
     line-height:1.7;
+    font-weight:850;
+  }
+
+  .confirm-warning{
+    padding:14px;
+    border-radius:16px;
+    border:1px solid #fed7aa;
+    background:#fff7ed;
+    color:#9a3412;
+    font-size:13px;
+    line-height:1.7;
+    font-weight:850;
+  }
+
+  .confirm-actions{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+  }
+
+  .confirm-actions form{
+    margin:0;
+  }
+
+  .confirm-actions .btn{
+    width:100%;
+    min-height:46px;
+    border-radius:14px;
+    font-size:15px;
+    font-weight:950;
+  }
+
+  .confirm-actions .full{
+    grid-column:1 / -1;
   }
 
   @media (max-width:768px){
-    .lesson-confirm-title{
-      font-size:23px;
-    }
-
-    .lesson-summary-grid{
-      grid-template-columns:1fr;
-    }
-
-    .lesson-confirm-actions{
-      grid-template-columns:1fr;
-    }
-
-    .lesson-confirm-card,
-    .lesson-confirm-hero{
+    .confirm-hero,
+    .lesson-summary-card{
       padding:15px;
       border-radius:18px;
+    }
+
+    .confirm-title{
+      font-size:24px;
+    }
+
+    .lesson-date-line{
+      font-size:22px;
+    }
+
+    .lesson-time-line{
+      font-size:18px;
+    }
+
+    .confirm-grid{
+      grid-template-columns:1fr;
+      gap:8px;
+    }
+
+    .confirm-info{
+      padding:12px;
+      border-radius:14px;
+    }
+
+    .confirm-actions{
+      grid-template-columns:1fr;
     }
   }
 </style>
 
-<div class="lesson-confirm-page">
-  <section class="lesson-confirm-hero">
-    <h1 class="lesson-confirm-title">レッスン予約確認</h1>
-    <p class="lesson-confirm-subtitle">
-      選択したレッスン内容を確認して、問題なければ予約を確定してください。
+<div class="confirm-page">
+  <section class="confirm-hero">
+    <h1 class="confirm-title">レッスン内容の確認</h1>
+    <p class="confirm-lead">
+      予約前に、日時・レベル・担当コーチ・参加状況を確認してください。問題なければ下のボタンで確定します。
     </p>
   </section>
 
-  <section class="lesson-confirm-card">
-    <h2 class="lesson-summary-title">{{ selected_lesson.title }}</h2>
+  {% if selected_lesson %}
+    <section class="lesson-summary-card">
+      <div class="lesson-date-line">{{ selected_lesson.date_label }}</div>
+      <div class="lesson-time-line">{{ selected_lesson.time_label }}</div>
 
-    <div class="lesson-summary-grid">
-      <div class="lesson-summary-item">
-        <div class="lesson-summary-label">日時</div>
-        <div class="lesson-summary-value">{{ selected_lesson.date_label }} {{ selected_lesson.time_label }}</div>
+      <div class="lesson-chip-row">
+        <span class="lesson-chip level">{{ selected_lesson.target_level_label }}</span>
+        <span class="lesson-chip">{{ selected_lesson.lesson_type_label }}</span>
+        <span class="lesson-chip payment">{{ selected_lesson.ticket_label }}</span>
       </div>
 
-      <div class="lesson-summary-item">
-        <div class="lesson-summary-label">コーチ</div>
-        <div class="lesson-summary-value">{{ selected_lesson.coach_name }}</div>
-      </div>
+      <div class="confirm-grid">
+        <div class="confirm-info">
+          <div class="confirm-info-label">担当コーチ</div>
+          <div class="confirm-info-value">{{ selected_lesson.coach_name }}</div>
+        </div>
 
-      <div class="lesson-summary-item">
-        <div class="lesson-summary-label">レッスン種別</div>
-        <div class="lesson-summary-value">{{ selected_lesson.lesson_type_label }}</div>
-      </div>
+        <div class="confirm-info">
+          <div class="confirm-info-label">場所</div>
+          <div class="confirm-info-value">{{ selected_lesson.court_name }}</div>
+        </div>
 
-      <div class="lesson-summary-item">
-        <div class="lesson-summary-label">対象レベル</div>
-        <div class="lesson-summary-value">{{ selected_lesson.target_level_label }}</div>
-      </div>
+        <div class="confirm-info">
+          <div class="confirm-info-label">参加状況</div>
+          <div class="confirm-info-value">
+            {{ selected_lesson.member_count }}/{{ selected_lesson.capacity }}名
+            {% if selected_lesson.member_count < selected_lesson.capacity %}
+              <br><span style="color:#047857; font-size:13px;">空きあり</span>
+            {% else %}
+              <br><span style="color:#9a3412; font-size:13px;">満員</span>
+            {% endif %}
+          </div>
+        </div>
 
-      <div class="lesson-summary-item">
-        <div class="lesson-summary-label">参加人数 / 定員</div>
-        <div class="lesson-summary-value">{{ selected_lesson.member_count }}/{{ selected_lesson.capacity }}名</div>
+        <div class="confirm-info">
+          <div class="confirm-info-label">キャンセル待ち</div>
+          <div class="confirm-info-value">{{ selected_lesson.waitlist_count }}名</div>
+        </div>
       </div>
+    </section>
 
-      <div class="lesson-summary-item">
-        <div class="lesson-summary-label">キャンセル待ち</div>
-        <div class="lesson-summary-value">{{ selected_lesson.waitlist_count }}名</div>
-      </div>
-
-      <div class="lesson-summary-item">
-        <div class="lesson-summary-label">お支払い・チケット</div>
-        <div class="lesson-summary-value">{{ selected_lesson.ticket_label }}</div>
-      </div>
-
-      <div class="lesson-summary-item">
-        <div class="lesson-summary-label">コート</div>
-        <div class="lesson-summary-value">{{ selected_lesson.court_name }}</div>
-      </div>
+    <div class="confirm-notice">
+      {{ selected_lesson.confirm_note }}
     </div>
 
-    {% if selected_lesson.can_submit %}
-      <form method="post" action="{% url 'club:lesson_calendar' %}">
-        {% csrf_token %}
-        <input type="hidden" name="availability_id" value="{{ selected_lesson.availability_id }}">
-        <input type="hidden" name="fixed_lesson_id" value="{{ selected_lesson.fixed_lesson_id }}">
-        <input type="hidden" name="lesson_date" value="{{ selected_lesson.lesson_date }}">
-        <input type="hidden" name="year" value="{{ target_year }}">
-        <input type="hidden" name="month" value="{{ target_month }}">
-
-        <div class="lesson-confirm-actions">
-          <button type="submit" class="btn btn-primary">この内容で予約する</button>
-          <a href="{{ back_url }}" class="btn">カレンダーに戻る</a>
-        </div>
-      </form>
-
-      <div class="lesson-confirm-note">
-        {{ selected_lesson.confirm_note }}
-      </div>
-    {% elif selected_lesson.can_join_waitlist %}
-      <div class="lesson-confirm-disabled">
+    {% if selected_lesson.disabled_reason %}
+      <div class="confirm-warning">
         {{ selected_lesson.disabled_reason }}
-      </div>
-      <form method="post" action="{% url 'club:lesson_calendar' %}">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="join_waitlist">
-        <input type="hidden" name="availability_id" value="{{ selected_lesson.availability_id }}">
-        <input type="hidden" name="fixed_lesson_id" value="{{ selected_lesson.fixed_lesson_id }}">
-        <input type="hidden" name="lesson_date" value="{{ selected_lesson.lesson_date }}">
-        <input type="hidden" name="year" value="{{ target_year }}">
-        <input type="hidden" name="month" value="{{ target_month }}">
-        <div class="lesson-confirm-actions">
-          <button type="submit" class="btn btn-primary">キャンセル待ちに登録する</button>
-          <a href="{{ back_url }}" class="btn">カレンダーに戻る</a>
-        </div>
-      </form>
-    {% elif selected_lesson.can_cancel_waitlist %}
-      <div class="lesson-confirm-disabled">
-        {{ selected_lesson.disabled_reason }}
-      </div>
-      <form method="post" action="{% url 'club:lesson_calendar' %}">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="cancel_waitlist">
-        <input type="hidden" name="availability_id" value="{{ selected_lesson.availability_id }}">
-        <input type="hidden" name="fixed_lesson_id" value="{{ selected_lesson.fixed_lesson_id }}">
-        <input type="hidden" name="lesson_date" value="{{ selected_lesson.lesson_date }}">
-        <input type="hidden" name="year" value="{{ target_year }}">
-        <input type="hidden" name="month" value="{{ target_month }}">
-        <div class="lesson-confirm-actions">
-          <button type="submit" class="btn">キャンセル待ちを取り消す</button>
-          <a href="{{ back_url }}" class="btn btn-primary">カレンダーに戻る</a>
-        </div>
-      </form>
-    {% else %}
-      <div class="lesson-confirm-disabled">
-        {{ selected_lesson.disabled_reason }}
-      </div>
-
-      <div class="lesson-confirm-actions">
-        <a href="{{ back_url }}" class="btn btn-primary">カレンダーに戻る</a>
-        <a href="{% url 'club:reservation_list' %}" class="btn">予約確認</a>
       </div>
     {% endif %}
-  </section>
+
+    <section class="lesson-summary-card">
+      <div class="confirm-actions">
+        {% if selected_lesson.can_submit %}
+          <form method="post" action="{% url 'club:lesson_calendar' %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="reserve">
+            <input type="hidden" name="year" value="{{ target_year }}">
+            <input type="hidden" name="month" value="{{ target_month }}">
+            {% if selected_lesson.availability_id %}<input type="hidden" name="availability_id" value="{{ selected_lesson.availability_id }}">{% endif %}
+            {% if selected_lesson.fixed_lesson_id %}<input type="hidden" name="fixed_lesson_id" value="{{ selected_lesson.fixed_lesson_id }}">{% endif %}
+            {% if selected_lesson.lesson_date %}<input type="hidden" name="lesson_date" value="{{ selected_lesson.lesson_date }}">{% endif %}
+            <button type="submit" class="btn btn-primary">この内容で予約する</button>
+          </form>
+        {% endif %}
+
+        {% if selected_lesson.can_join_waitlist %}
+          <form method="post" action="{% url 'club:lesson_calendar' %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="join_waitlist">
+            <input type="hidden" name="year" value="{{ target_year }}">
+            <input type="hidden" name="month" value="{{ target_month }}">
+            {% if selected_lesson.availability_id %}<input type="hidden" name="availability_id" value="{{ selected_lesson.availability_id }}">{% endif %}
+            {% if selected_lesson.fixed_lesson_id %}<input type="hidden" name="fixed_lesson_id" value="{{ selected_lesson.fixed_lesson_id }}">{% endif %}
+            {% if selected_lesson.lesson_date %}<input type="hidden" name="lesson_date" value="{{ selected_lesson.lesson_date }}">{% endif %}
+            <button type="submit" class="btn btn-primary">キャンセル待ちに登録する</button>
+          </form>
+        {% endif %}
+
+        {% if selected_lesson.can_cancel_waitlist %}
+          <form method="post" action="{% url 'club:lesson_calendar' %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="cancel_waitlist">
+            <input type="hidden" name="year" value="{{ target_year }}">
+            <input type="hidden" name="month" value="{{ target_month }}">
+            {% if selected_lesson.availability_id %}<input type="hidden" name="availability_id" value="{{ selected_lesson.availability_id }}">{% endif %}
+            {% if selected_lesson.fixed_lesson_id %}<input type="hidden" name="fixed_lesson_id" value="{{ selected_lesson.fixed_lesson_id }}">{% endif %}
+            {% if selected_lesson.lesson_date %}<input type="hidden" name="lesson_date" value="{{ selected_lesson.lesson_date }}">{% endif %}
+            <button type="submit" class="btn">キャンセル待ちを取り消す</button>
+          </form>
+        {% endif %}
+
+        <a href="{{ back_url }}" class="btn {% if not selected_lesson.can_submit and not selected_lesson.can_join_waitlist and not selected_lesson.can_cancel_waitlist %}full{% endif %}">カレンダーへ戻る</a>
+        <a href="{% url 'club:reservation_list' %}" class="btn">予約確認へ</a>
+      </div>
+    </section>
+  {% else %}
+    <section class="lesson-summary-card">
+      <div class="confirm-warning">レッスン情報を取得できませんでした。</div>
+      <div class="confirm-actions" style="margin-top:12px;">
+        <a href="{{ back_url }}" class="btn btn-primary full">カレンダーへ戻る</a>
+      </div>
+    </section>
+  {% endif %}
 </div>
 {% endblock %}
