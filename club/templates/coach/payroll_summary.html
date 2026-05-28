@@ -353,7 +353,8 @@
 
 <div class="warning-box">
   方式A：売上金額ベース配分で計算しています。4,000円券、3,500円券、その他単価チケットは消費時単価で集計します。
-  業務委託コーチの場合は、レッスン実売上ではなく「設定時給 × 担当時間」をレッスン報酬として支払予定額に反映します。
+  業務委託コーチへの時給支払いは、会社側の業務委託費として扱い、通常コーチ側の共通経費按分に含めます。
+  業務委託コーチ本人の支払予定額は「設定時給 × 担当時間」を基本とし、共通経費按分は差し引きません。
   7月プレオープン参加費は、回収済み分のみ支払予定額に含め、未回収・免除は別表示にしています。
 </div>
 
@@ -361,7 +362,13 @@
   <div class="payroll-stat primary">
     <div class="payroll-stat-label">支払予定額</div>
     <div class="payroll-stat-value">{{ estimated_salary }}円</div>
-    <div class="payroll-stat-note">レッスン報酬 + ガット張り + 本人立替 - 共通経費按分</div>
+    <div class="payroll-stat-note">
+      {% if is_selected_contractor_coach %}
+        業務委託費 + ガット張り + 本人立替
+      {% else %}
+        レッスン報酬 + ガット張り + 本人立替 - 共通経費按分
+      {% endif %}
+    </div>
   </div>
   <div class="payroll-stat info">
     <div class="payroll-stat-label">レッスン実売上</div>
@@ -384,6 +391,11 @@
     <div class="payroll-stat-label">本人立替精算</div>
     <div class="payroll-stat-value">{{ personal_reimbursement_amount }}円</div>
     <div class="payroll-stat-note">承認済み本人立替</div>
+  </div>
+  <div class="payroll-stat info">
+    <div class="payroll-stat-label">按分対象経費</div>
+    <div class="payroll-stat-value">{{ common_expense_base_total }}円</div>
+    <div class="payroll-stat-note">共通経費 {{ approved_common_expense_total }}円 + 業務委託費 {{ monthly_contractor_expense_total }}円</div>
   </div>
 </div>
 
@@ -438,7 +450,13 @@
           </tr>
           <tr>
             <th>共通経費按分</th>
-            <td>-{{ per_coach_common_expense }}円</td>
+            <td>
+              {% if is_selected_contractor_coach %}
+                0円<br><span class="muted">業務委託コーチ本人には按分しません</span>
+              {% else %}
+                -{{ per_coach_common_expense }}円<br><span class="muted">共通経費 + 業務委託費を通常コーチで按分</span>
+              {% endif %}
+            </td>
           </tr>
           <tr>
             <th>支払予定額</th>
@@ -463,11 +481,19 @@
             <td>{{ approved_common_expense_total }}円</td>
           </tr>
           <tr>
-            <th>按分対象コーチ数</th>
-            <td>{{ active_coach_count }}人</td>
+            <th>業務委託費予定</th>
+            <td>{{ monthly_contractor_expense_total }}円</td>
           </tr>
           <tr>
-            <th>1人あたり共通経費</th>
+            <th>按分対象経費</th>
+            <td>{{ common_expense_base_total }}円</td>
+          </tr>
+          <tr>
+            <th>按分対象コーチ数</th>
+            <td>{{ common_expense_participant_count }}人</td>
+          </tr>
+          <tr>
+            <th>1人あたり按分経費</th>
             <td>{{ per_coach_common_expense }}円</td>
           </tr>
           <tr>
