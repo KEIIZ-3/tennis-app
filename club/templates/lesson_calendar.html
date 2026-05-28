@@ -387,6 +387,9 @@
     letter-spacing:.02em;
     box-shadow:0 1px 3px rgba(15,23,42,.16);
     white-space:nowrap;
+    box-sizing:border-box;
+    overflow:visible;
+    text-overflow:clip;
   }
 
   .event-coach{
@@ -897,18 +900,23 @@
     }
 
     .event-level{
-      min-width:38px;
-      max-width:96%;
+      min-width:0;
+      max-width:100%;
       margin-top:2px;
-      padding:1.5px 5px;
-      font-size:8px;
+      padding:1.5px 2px;
+      font-size:6.8px;
       line-height:1.05;
+      letter-spacing:-.08em;
       box-shadow:none;
+      overflow:visible;
+      text-overflow:clip;
+      transform:scale(.98);
+      transform-origin:center center;
     }
 
     .event-coach{
       margin-top:2px;
-      font-size:7.2px;
+      font-size:6.6px;
       line-height:1.05;
       width:100%;
       word-break:keep-all;
@@ -916,25 +924,33 @@
     }
 
     .event-coach-list{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
       gap:0;
       flex-wrap:nowrap;
-      transform:scale(.94);
-      transform-origin:center center;
+      width:100%;
+      transform:none;
     }
 
     .event-coach-name{
-      max-width:none;
+      display:block;
+      width:100%;
+      max-width:100%;
       flex:0 0 auto;
-      padding:0 1px;
+      padding:0;
       border-radius:3px;
       background:transparent;
       overflow:visible;
       text-overflow:clip;
+      text-align:center;
+      white-space:nowrap;
+      letter-spacing:-.04em;
     }
 
     .event-coach-separator{
-      padding:0 1px;
-      font-size:.92em;
+      display:none;
     }
 
     .schedule-panel{
@@ -1065,20 +1081,20 @@
       font-size:7px;
     }
 
-    .event-coach{
-      font-size:6.4px;
+    .event-level{
+      padding:1px 1px;
+      font-size:5.8px;
+      letter-spacing:-.10em;
+      transform:scale(.98);
     }
 
-    .event-coach-list{
-      transform:scale(.90);
+    .event-coach{
+      font-size:5.8px;
     }
 
     .event-coach-name{
       padding:0;
-    }
-
-    .event-coach-separator{
-      padding:0 1px;
+      letter-spacing:-.06em;
     }
 
     .schedule-row{
