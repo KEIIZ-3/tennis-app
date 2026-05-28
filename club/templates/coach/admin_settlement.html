@@ -45,8 +45,8 @@
   <section class="settlement-hero">
     <h1 class="settlement-title">admin月次精算</h1>
     <p class="settlement-lead">
-      {{ month_label }} の売上入金、給与支払い、本人立替精算、未払い、会社残高をadmin専用で確認します。
-      給与支払い履歴はこの画面から記録できます。
+      {{ month_label }} の売上入金、給与/業務委託費支払い、本人立替精算、未払い、会社残高をadmin専用で確認します。
+      業務委託コーチへの時給支払いは会社側の経費として扱い、通常コーチ側の共通経費按分に含めます。
     </p>
     <div class="actions">
       <a href="{% url 'club:coach_payroll_summary' %}?year={{ selected_year }}&month={{ selected_month }}" class="btn">実売上ベース精算へ</a>
@@ -74,7 +74,7 @@
     <div class="summary-card primary">
       <div class="summary-label">会社残高目安</div>
       <div class="summary-value">{{ company_balance }}円</div>
-      <div class="summary-note">入金 - 支払済み給与 - 支払済み立替精算 - 承認済み共通経費</div>
+      <div class="summary-note">入金 - 支払済み給与/業務委託費 - 支払済み立替精算 - 承認済み共通経費</div>
     </div>
     <div class="summary-card info">
       <div class="summary-label">現金入金合計</div>
@@ -82,9 +82,9 @@
       <div class="summary-note">7月回収済み + チケット販売 + ガット張り</div>
     </div>
     <div class="summary-card success">
-      <div class="summary-label">支払い済み給与</div>
+      <div class="summary-label">支払い済み給与/業務委託費</div>
       <div class="summary-value">{{ salary_paid_total }}円</div>
-      <div class="summary-note">この画面で記録した給与支払い</div>
+      <div class="summary-note">この画面で記録した給与/業務委託費支払い</div>
     </div>
     <div class="summary-card warn">
       <div class="summary-label">未払い合計</div>
@@ -104,7 +104,17 @@
     <div class="summary-card">
       <div class="summary-label">承認済み共通経費</div>
       <div class="summary-value">{{ approved_common_expense_total }}円</div>
-      <div class="summary-note">按分対象 {{ active_coach_count }}人 / 1人 {{ per_coach_common_expense }}円</div>
+      <div class="summary-note">通常の共通経費</div>
+    </div>
+    <div class="summary-card warn">
+      <div class="summary-label">業務委託費予定</div>
+      <div class="summary-value">{{ contractor_hourly_pay_total }}円</div>
+      <div class="summary-note">時給 × 担当時間。通常コーチの按分対象に含めます</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">按分対象経費</div>
+      <div class="summary-value">{{ common_expense_base_total }}円</div>
+      <div class="summary-note">通常コーチ {{ common_expense_participant_count }}人 / 1人 {{ per_coach_common_expense }}円</div>
     </div>
     <div class="summary-card">
       <div class="summary-label">未払い本人立替</div>
@@ -150,20 +160,20 @@
       </div>
       <div class="wide">
         <label for="note">メモ</label>
-        <input id="note" name="note" type="text" placeholder="例：7月分給与、現金手渡し、振込など">
+        <input id="note" name="note" type="text" placeholder="例：7月分給与、業務委託費、現金手渡し、振込など">
       </div>
       <button type="submit" class="btn btn-primary">支払いを記録</button>
     </form>
   </section>
 
   <div class="notice-box">
-    チケット販売入金とチケット消化売上は同時に足すと二重計上になります。この画面では会社残高は「実際の入金」に寄せ、コーチ別支払予定は「実売上ベース精算」に寄せて分けて表示しています。業務委託コーチは、設定時給がある場合「時給 × 担当時間」をレッスン報酬として給与予定に反映します。
+    チケット販売入金とチケット消化売上は同時に足すと二重計上になります。この画面では会社残高は「実際の入金」に寄せ、コーチ別支払予定は「実売上ベース精算」に寄せて分けて表示しています。業務委託コーチへの時給支払いは会社側の業務委託費として扱い、通常コーチの按分対象経費に含めます。業務委託コーチ本人には共通経費按分を差し引きません。
   </div>
 
   <section class="section">
     <div class="section-head">
       <h2 class="section-title">コーチ別 精算・未払い</h2>
-      <span class="section-pill">給与未払い {{ unpaid_salary_total }}円 / 立替未払い {{ unpaid_reimbursement_total }}円</span>
+      <span class="section-pill">給与/業務委託費未払い {{ unpaid_salary_total }}円 / 立替未払い {{ unpaid_reimbursement_total }}円</span>
     </div>
     <div class="table-wrap">
       <table class="settlement-table">
@@ -177,10 +187,10 @@
             <th>担当時間</th>
             <th>レッスン報酬</th>
             <th>ガット張り</th>
-            <th>共通経費按分</th>
-            <th>給与予定</th>
-            <th>給与支払済み</th>
-            <th>給与未払い</th>
+            <th>按分経費</th>
+            <th>給与/業務委託費予定</th>
+            <th>給与/委託費支払済み</th>
+            <th>給与/委託費未払い</th>
             <th>本人立替予定</th>
             <th>立替支払済み</th>
             <th>立替未払い</th>
@@ -210,7 +220,13 @@
               </td>
               <td class="amount">{{ row.lesson_compensation_amount }}円</td>
               <td class="amount">{{ row.stringing_amount }}円</td>
-              <td class="amount">-{{ row.common_expense_share }}円</td>
+              <td class="amount">
+                {% if row.is_contractor_coach %}
+                  0円<br><span class="muted">按分対象外</span>
+                {% else %}
+                  -{{ row.common_expense_share }}円
+                {% endif %}
+              </td>
               <td class="amount">{{ row.salary_due }}円</td>
               <td class="amount">{{ row.salary_paid }}円</td>
               <td class="amount">{{ row.unpaid_salary }}円</td>
