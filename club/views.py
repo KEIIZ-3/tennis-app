@@ -1177,6 +1177,288 @@ def _fixed_lesson_includes_coach(fixed_lesson, coach):
         return getattr(fixed_lesson, "coach_id", None) == getattr(coach, "pk", None)
 
 
+
+@login_required
+@require_GET
+def lesson_reservation_confirm(request):
+    _sync_fixed_lessons()
+
+    today = timezone.localdate()
+
+    def _safe_int(value, default_value):
+        try:
+            return int(value or default_value)
+        except Exception:
+            return default_value
+
+    selected_year = _safe_int(request.GET.get("year"), today.year)
+    selected_month = _safe_int(request.GET.get("month"), today.month)
+    if selected_month < 1 or selected_month > 12:
+        selected_month = today.month
+
+    calendar_url = f"{reverse('club:lesson_calendar')}?{urlencode({'year': selected_year, 'month': selected_month})}"
+
+    profile_redirect = _require_profile_completed_for_booking(request)
+    if profile_redirect:
+        return profile_redirect
+
+    survey_redirect = _require_schedule_survey(request)
+    if survey_redirect:
+        return survey_redirect
+
+    if not _can_user_take_lessons(request.user):
+        messages.error(request, "通常レッスンの予約・キャンセル待ちは会員または業務委託コーチアカウントで行ってください。")
+        return redirect(calendar_url)
+
+    availability_id = (request.GET.get("availability_id") or "").strip()
+    fixed_lesson_id = (request.GET.get("fixed_lesson_id") or "").strip()
+    lesson_date_text = (request.GET.get("lesson_date") or "").strip()
+
+    fixed_lesson = None
+    availability = None
+
+    try:
+        if fixed_lesson_id and lesson_date_text:
+            fixed_lesson = get_object_or_404(
+                FixedLesson.objects.select_related("coach", "coach_2", "coach_3", "court"),
+                pk=fixed_lesson_id,
+                is_active=True,
+            )
+            try:
+                lesson_date = date.fromisoformat(lesson_date_text)
+            except Exception:
+                raise ValidationError("予約対象日が正しくありません。")
+
+            repeat_start = getattr(fixed_lesson, "start_date", None)
+            if repeat_start and lesson_date < repeat_start:
+                raise ValidationError("この固定レッスンはまだ開始前です。")
+
+            start_at, end_at = fixed_lesson._build_datetimes_for_date(lesson_date)
+            primary_coach = fixed_lesson.primary_coach() if hasattr(fixed_lesson, "primary_coach") else fixed_lesson.coach
+            court = fixed_lesson.court
+            if not court:
+                raise ValidationError("このレッスンはコート未設定のため、まだ予約できません。")
+
+            availability = (
+                CoachAvailability.objects.select_related("coach", "substitute_coach", "court")
+                .filter(
+                    coach=primary_coach,
+                    court=court,
+                    lesson_type=fixed_lesson.lesson_type,
+                    start_at=start_at,
+                    end_at=end_at,
+                )
+                .order_by("id")
+                .first()
+            )
+
+            slot_coach = availability.coach if availability else primary_coach
+            substitute_coach = availability.substitute_coach if availability else None
+            target_level = availability.target_level if availability else fixed_lesson.target_level
+            target_level_2 = getattr(availability, "target_level_2", "") if availability else getattr(fixed_lesson, "target_level_2", "")
+            lesson_type = availability.lesson_type if availability else fixed_lesson.lesson_type
+            lesson_type_label = availability.get_lesson_type_display() if availability else fixed_lesson.get_lesson_type_display()
+            title = _lesson_calendar_title(fixed_lesson)
+            coach_name = _fixed_lesson_coach_names(fixed_lesson)
+            status = availability.status if availability else CoachAvailability.STATUS_OPEN
+            try:
+                capacity = max(
+                    int(availability.effective_capacity()) if availability else 0,
+                    int(availability.capacity or 0) if availability else 0,
+                    int(fixed_lesson.effective_capacity()),
+                    int(fixed_lesson.capacity or 0),
+                    1,
+                )
+            except Exception:
+                capacity = max(int(getattr(fixed_lesson, "capacity", 1) or 1), 1)
+            fixed_member_count = fixed_lesson.members.count()
+            includes_current_user_as_coach = fixed_lesson.includes_coach(request.user)
+        elif availability_id:
+            availability = get_object_or_404(
+                CoachAvailability.objects.select_related("coach", "substitute_coach", "court"),
+                pk=availability_id,
+                lesson_type__in=[Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT],
+            )
+            fixed_lesson = None
+            lesson_date = timezone.localtime(availability.start_at).date() if timezone.is_aware(availability.start_at) else availability.start_at.date()
+            start_at = availability.start_at
+            end_at = availability.end_at
+            slot_coach = availability.coach
+            substitute_coach = availability.substitute_coach
+            court = availability.court
+            target_level = availability.target_level
+            target_level_2 = getattr(availability, "target_level_2", "") or ""
+            lesson_type = availability.lesson_type
+            lesson_type_label = availability.get_lesson_type_display()
+            title = "通常レッスン" if lesson_type == Reservation.LESSON_GENERAL else lesson_type_label
+            assigned = availability.assigned_coach() if hasattr(availability, "assigned_coach") else (availability.substitute_coach or availability.coach)
+            coach_name = _display_name(assigned)
+            status = availability.status
+            try:
+                capacity = max(int(availability.effective_capacity()), int(availability.capacity or 0), 1)
+            except Exception:
+                capacity = max(int(getattr(availability, "capacity", 1) or 1), 1)
+            fixed_member_count = 0
+            includes_current_user_as_coach = (
+                getattr(slot_coach, "pk", None) == request.user.pk
+                or getattr(substitute_coach, "pk", None) == request.user.pk
+            )
+        else:
+            raise ValidationError("対象のレッスンが見つかりません。")
+
+        if lesson_type not in (Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT):
+            raise ValidationError("このレッスンは個別相談フォームから申請してください。")
+
+        start_local = timezone.localtime(start_at) if timezone.is_aware(start_at) else start_at
+        end_local = timezone.localtime(end_at) if timezone.is_aware(end_at) else end_at
+
+        active_count = Reservation.objects.filter(
+            coach=slot_coach,
+            court=court,
+            lesson_type=lesson_type,
+            start_at=start_at,
+            end_at=end_at,
+            status=Reservation.STATUS_ACTIVE,
+        ).count()
+        active_count = max(int(active_count or 0), int(fixed_member_count or 0))
+
+        pending_count = Reservation.objects.filter(
+            coach=slot_coach,
+            court=court,
+            lesson_type=lesson_type,
+            start_at=start_at,
+            end_at=end_at,
+            status=Reservation.STATUS_PENDING,
+        ).count()
+
+        waitlist_count = LessonWaitlist.objects.filter(
+            coach=slot_coach,
+            court=court,
+            lesson_type=lesson_type,
+            start_at=start_at,
+            end_at=end_at,
+            status=LessonWaitlist.STATUS_WAITING,
+        ).count()
+
+        user_reservation = Reservation.objects.filter(
+            user=request.user,
+            coach=slot_coach,
+            court=court,
+            lesson_type=lesson_type,
+            start_at=start_at,
+            end_at=end_at,
+            status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+        ).order_by("id").first()
+
+        user_waitlist = LessonWaitlist.objects.filter(
+            user=request.user,
+            coach=slot_coach,
+            court=court,
+            lesson_type=lesson_type,
+            start_at=start_at,
+            end_at=end_at,
+            status=LessonWaitlist.STATUS_WAITING,
+        ).order_by("id").first()
+
+        level_allowed = _slot_level_allowed(request.user, target_level, target_level_2)
+        is_full = active_count >= capacity
+        is_past = start_at < timezone.now()
+        can_book = True
+        can_join_waitlist = False
+        disabled_reasons = []
+
+        if status != CoachAvailability.STATUS_OPEN:
+            can_book = False
+            disabled_reasons.append("このレッスンはまだ受付準備中です。")
+        if is_past:
+            can_book = False
+            disabled_reasons.append("このレッスンは受付終了です。")
+        if includes_current_user_as_coach:
+            can_book = False
+            disabled_reasons.append("自分が担当するレッスンは受講予約できません。")
+        if user_reservation:
+            can_book = False
+            disabled_reasons.append("このレッスンはすでに予約または申請済みです。")
+        if not level_allowed:
+            can_book = False
+            disabled_reasons.append("ご自身のレベルでは、このレッスンは予約できません。")
+        if is_full:
+            can_book = False
+            if not user_waitlist and not is_past and level_allowed and not includes_current_user_as_coach:
+                can_join_waitlist = True
+            disabled_reasons.append("このレッスンは満員です。")
+        if user_waitlist:
+            can_book = False
+            can_join_waitlist = False
+            disabled_reasons.append("このレッスンはキャンセル待ち登録済みです。")
+
+        remaining_count = max(int(capacity or 0) - int(active_count or 0), 0)
+        UserModel = get_user_model()
+        level_label = _lesson_level_label(availability or fixed_lesson) or UserModel.level_label(target_level)
+        payment_label = _regular_lesson_payment_label(lesson_type, start_at)
+        confirm_note = _regular_lesson_confirm_note(lesson_type, start_at)
+
+        hidden_params = {
+            "year": selected_year,
+            "month": selected_month,
+        }
+        if fixed_lesson_id and lesson_date_text:
+            hidden_params["fixed_lesson_id"] = fixed_lesson_id
+            hidden_params["lesson_date"] = lesson_date_text
+            if availability_id:
+                hidden_params["availability_id"] = availability_id
+        elif availability_id:
+            hidden_params["availability_id"] = availability_id
+
+        return render(
+            request,
+            "reservations/lesson_confirm.html",
+            {
+                "calendar_url": calendar_url,
+                "post_url": reverse("club:lesson_calendar"),
+                "selected_year": selected_year,
+                "selected_month": selected_month,
+                "lesson": {
+                    "title": title,
+                    "date_label": f"{start_local:%Y/%m/%d}",
+                    "weekday_label": ["月", "火", "水", "木", "金", "土", "日"][start_local.weekday()],
+                    "time_label": f"{start_local:%H:%M}〜{end_local:%H:%M}",
+                    "lesson_type_label": lesson_type_label,
+                    "level_label": level_label,
+                    "coach_name": coach_name,
+                    "normal_coach_name": _display_name(slot_coach),
+                    "substitute_coach_name": _display_name(substitute_coach) if substitute_coach else "",
+                    "has_substitute": bool(substitute_coach),
+                    "court_name": str(court) if court else "未定",
+                    "capacity": capacity,
+                    "active_count": active_count,
+                    "remaining_count": remaining_count,
+                    "pending_count": pending_count,
+                    "waitlist_count": waitlist_count,
+                    "payment_label": payment_label,
+                    "confirm_note": confirm_note,
+                    "is_full": is_full,
+                    "is_past": is_past,
+                },
+                "hidden_params": hidden_params,
+                "can_book": can_book,
+                "can_join_waitlist": can_join_waitlist,
+                "disabled_reasons": disabled_reasons,
+                "user_reservation": user_reservation,
+                "user_waitlist": user_waitlist,
+            },
+        )
+    except ValidationError as e:
+        if hasattr(e, "messages"):
+            for message_text in e.messages:
+                messages.error(request, message_text)
+        else:
+            messages.error(request, str(e))
+    except Exception as e:
+        messages.error(request, f"レッスン確認画面を表示できませんでした: {e}")
+
+    return redirect(calendar_url)
+
 @require_http_methods(["GET", "POST"])
 def lesson_calendar_view(request):
     _sync_fixed_lessons()
@@ -1751,7 +2033,7 @@ def lesson_calendar_view(request):
             reserve_params["fixed_lesson_id"] = fixed_lesson_id
             reserve_params["lesson_date"] = lesson_date
 
-        reserve_url = f"{reverse('club:reservation_create')}?{urlencode(reserve_params)}"
+        reserve_url = f"{reverse('club:lesson_reservation_confirm')}?{urlencode(reserve_params)}"
         login_url = f"{reverse('club:line_login_start')}?{urlencode({'next': reserve_url})}"
 
         return {
