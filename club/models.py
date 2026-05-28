@@ -36,6 +36,7 @@ class User(AbstractUser):
     )
 
     COACH_ROLE_VALUES = (ROLE_COACH, ROLE_CONTRACTOR_COACH)
+    LESSON_PARTICIPANT_ROLE_VALUES = (ROLE_MEMBER, ROLE_CONTRACTOR_COACH)
 
     LEVEL_FAMILY = "family"
     LEVEL_BEGINNER = "beginner"
@@ -79,6 +80,9 @@ class User(AbstractUser):
 
     def is_contractor_coach(self):
         return self.role == self.ROLE_CONTRACTOR_COACH
+
+    def can_take_lessons(self):
+        return self.role in self.LESSON_PARTICIPANT_ROLE_VALUES
 
     def contractor_hourly_wage_label(self):
         if self.is_contractor_coach() and int(self.contractor_hourly_wage or 0) > 0:
@@ -424,7 +428,7 @@ class FixedLesson(models.Model, LessonTypeMixin):
     members = models.ManyToManyField(
         User,
         related_name="fixed_lessons",
-        limit_choices_to={"role": "member"},
+        limit_choices_to={"role__in": User.LESSON_PARTICIPANT_ROLE_VALUES},
         blank=True,
     )
     lesson_type = models.CharField(
@@ -1582,6 +1586,9 @@ class Reservation(models.Model, LessonTypeMixin):
         self.tickets_used = self.calculate_tickets_used()
         self.apply_default_payment_fields()
 
+        if self.user_id and getattr(self.user, "role", "") not in User.LESSON_PARTICIPANT_ROLE_VALUES:
+            raise ValidationError("レッスン予約は会員または業務委託コーチアカウントのみ可能です。")
+
         if self.user_id and self.coach_id and self.user_id == self.coach_id:
             raise ValidationError("自分自身を予約することはできません。")
 
@@ -1594,7 +1601,7 @@ class Reservation(models.Model, LessonTypeMixin):
         if self.target_level_2 == self.target_level:
             self.target_level_2 = ""
 
-        if self.user and self.user.role == "member":
+        if self.user and getattr(self.user, "role", "") in User.LESSON_PARTICIPANT_ROLE_VALUES:
             if not self.user.can_book_any_level(self.target_level, self.target_level_2):
                 raise ValidationError("ご自身のレベルでは、このレベルのレッスンは予約できません。")
 
@@ -2051,8 +2058,8 @@ class LessonWaitlist(models.Model):
         )
 
     def clean(self):
-        if self.user_id and getattr(self.user, "role", "") != "member":
-            raise ValidationError("キャンセル待ちは会員アカウントのみ登録できます。")
+        if self.user_id and getattr(self.user, "role", "") not in User.LESSON_PARTICIPANT_ROLE_VALUES:
+            raise ValidationError("キャンセル待ちは会員または業務委託コーチアカウントのみ登録できます。")
 
         if self.start_at and self.end_at and self.start_at >= self.end_at:
             raise ValidationError("開始日時は終了日時より前にしてください。")
