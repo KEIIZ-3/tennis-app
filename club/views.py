@@ -86,6 +86,12 @@ def _is_coach_user(user):
     return getattr(user, "role", None) in ("coach", "contractor_coach")
 
 
+def _can_user_take_lessons(user):
+    if not user or not user.is_authenticated:
+        return False
+    return getattr(user, "role", None) in ("member", "contractor_coach")
+
+
 def _schedule_survey_choice_context():
     return {
         "day_choices": ScheduleSurveyResponse.DAY_CHOICES,
@@ -1069,12 +1075,14 @@ def _user_can_manage_waitlist(user, waitlist):
         return False
     if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
         return True
+    if waitlist.user_id == user.pk:
+        return True
     if getattr(user, "role", None) in ("coach", "contractor_coach"):
         return (
             waitlist.coach_id == user.pk
             or getattr(waitlist, "substitute_coach_id", None) == user.pk
         )
-    return waitlist.user_id == user.pk
+    return False
 
 
 def _coach_can_manage_waitlist(user, waitlist):
@@ -1301,8 +1309,8 @@ def lesson_calendar_view(request):
         if survey_redirect:
             return survey_redirect
 
-        if getattr(request.user, "role", None) != "member":
-            messages.error(request, "通常レッスンの予約・キャンセル待ちは会員アカウントで行ってください。")
+        if not _can_user_take_lessons(request.user):
+            messages.error(request, "通常レッスンの予約・キャンセル待ちは会員または業務委託コーチアカウントで行ってください。")
             return redirect(redirect_url)
 
         availability_id = (request.POST.get("availability_id") or "").strip()
@@ -1708,8 +1716,8 @@ def lesson_calendar_view(request):
             disabled_reason = "個別相談から申請"
         elif not request.user.is_authenticated:
             disabled_reason = "ログインすると予約できます。"
-        elif getattr(request.user, "role", None) != "member":
-            disabled_reason = "会員アカウントで予約できます。"
+        elif not _can_user_take_lessons(request.user):
+            disabled_reason = "会員または業務委託コーチアカウントで予約できます。"
         elif user_slot_status == Reservation.STATUS_ACTIVE:
             disabled_reason = "予約済みです。"
         elif user_slot_status == Reservation.STATUS_PENDING:
@@ -5467,7 +5475,7 @@ def reservation_create(request):
                     availability.status == CoachAvailability.STATUS_OPEN
                     and availability.start_at >= timezone.now()
                     and availability.lesson_type in (Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT)
-                    and getattr(request.user, "role", None) == "member"
+                    and _can_user_take_lessons(request.user)
                     and member_count < max(capacity, 1)
                     and not user_reserved
                 )
@@ -5475,7 +5483,7 @@ def reservation_create(request):
                     availability.status == CoachAvailability.STATUS_OPEN
                     and availability.start_at >= timezone.now()
                     and availability.lesson_type in (Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT)
-                    and getattr(request.user, "role", None) == "member"
+                    and _can_user_take_lessons(request.user)
                     and member_count >= max(capacity, 1)
                     and not user_reserved
                     and not user_waitlist
@@ -5548,7 +5556,7 @@ def reservation_create(request):
                     start_at >= timezone.now()
                     and is_after_repeat_start
                     and fixed_lesson.lesson_type in (Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT)
-                    and getattr(request.user, "role", None) == "member"
+                    and _can_user_take_lessons(request.user)
                     and court is not None
                     and member_count < max(capacity, 1)
                     and not user_reserved
@@ -5557,7 +5565,7 @@ def reservation_create(request):
                     start_at >= timezone.now()
                     and is_after_repeat_start
                     and fixed_lesson.lesson_type in (Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT)
-                    and getattr(request.user, "role", None) == "member"
+                    and _can_user_take_lessons(request.user)
                     and court is not None
                     and member_count >= max(capacity, 1)
                     and not user_reserved
@@ -5711,11 +5719,14 @@ def reservation_list(request):
     )
 
     # _is_staff_like() は coach も True になるため、コーチ判定を先に行う。
+    # 業務委託コーチは「担当コーチ」と「受講者」の両方になり得るため、
+    # 自分が担当する予約に加えて、自分自身の受講予約・キャンセル待ちも表示します。
     if _is_coach_user(request.user):
         reservation_ids = []
         for reservation in qs:
             if (
-                reservation.coach_id == request.user.pk
+                reservation.user_id == request.user.pk
+                or reservation.coach_id == request.user.pk
                 or getattr(reservation, "substitute_coach_id", None) == request.user.pk
             ):
                 reservation_ids.append(reservation.pk)
@@ -5724,7 +5735,8 @@ def reservation_list(request):
         waitlist_ids = []
         for waitlist in waitlist_qs:
             if (
-                waitlist.coach_id == request.user.pk
+                waitlist.user_id == request.user.pk
+                or waitlist.coach_id == request.user.pk
                 or getattr(waitlist, "substitute_coach_id", None) == request.user.pk
             ):
                 waitlist_ids.append(waitlist.pk)
