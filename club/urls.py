@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from . import lesson_member_list
+from . import admin_dashboard
 
 app_name = "club"
 
@@ -12,6 +13,7 @@ urlpatterns = [
     path("logout/", views.logout_view, name="logout"),
 
     path("healthz/", views.healthz, name="healthz"),
+    path("admin-dashboard/", admin_dashboard.admin_dashboard, name="admin_dashboard"),
 
     path("lesson-calendar/", views.lesson_calendar_view, name="lesson_calendar"),
     path("lesson-calendar/confirm/", views.lesson_reservation_confirm, name="lesson_reservation_confirm"),
