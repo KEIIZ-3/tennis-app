@@ -1,69 +1,1428 @@
-from django.urls import path
-from . import views
-from . import lesson_member_list
+{% extends "base.html" %}
+{% block title %}レッスンカレンダー
+{% if user.is_authenticated %}
+  {% if user.role == "coach" or user.role == "contractor_coach" or user.is_staff or user.is_superuser %}
+    <script>
+      (function () {
+        document.querySelectorAll("[data-member-list-url]").forEach(function (element) {
+          const url = element.getAttribute("data-member-list-url");
+          if (url) {
+            element.setAttribute("href", url);
+            element.setAttribute("aria-label", "メンバーリストを開く");
+          }
+        });
+      })();
+    </script>
+  {% endif %}
+{% endif %}
 
-app_name = "club"
+{% endblock %}
 
-urlpatterns = [
-    path("", views.home, name="home"),
-    path("login/", views.login_view, name="login"),
-    path("register/", views.register_view, name="register"),
-    path("profile/complete/", views.profile_complete_view, name="profile_complete"),
-    path("logout/", views.logout_view, name="logout"),
+{% block content %}
+<style>
+  .lesson-page{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:12px;
+  }
 
-    path("healthz/", views.healthz, name="healthz"),
+  .calendar-poster{
+    border:2px solid #0b55b7;
+    background:#ffffff;
+    border-radius:22px;
+    overflow:hidden;
+    box-shadow:0 12px 30px rgba(15,23,42,.10);
+  }
 
-    path("lesson-calendar/", views.lesson_calendar_view, name="lesson_calendar"),
-    path("lesson-calendar/confirm/", views.lesson_reservation_confirm, name="lesson_reservation_confirm"),
-    path("lesson-calendar/members/", lesson_member_list.lesson_calendar_member_list, name="lesson_calendar_member_list"),
+  .calendar-poster-head{
+    position:relative;
+    padding:18px 18px 14px;
+    background:
+      radial-gradient(circle at 24px 32px, #d9f500 0 18px, transparent 19px),
+      linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  }
 
-    path("calendar/events/", views.calendar_events, name="calendar_events"),
-    path("api/calendar/events/", views.calendar_events, name="calendar_events_api"),
+  .calendar-main-title{
+    margin:0;
+    display:flex;
+    align-items:flex-end;
+    gap:10px;
+    color:#0750b8;
+    font-weight:1000;
+    line-height:1;
+    letter-spacing:-.05em;
+  }
 
-    path("tickets/", views.tickets_view, name="tickets"),
-    path("help/", views.help_view, name="help"),
-    path("terms/", views.terms_view, name="terms"),
-    path("stringing/new/", views.stringing_order_create, name="stringing_order_create"),
-    path("stringing/", views.stringing_order_list, name="stringing_order_list"),
-    path("stringing/<int:pk>/", views.stringing_order_detail, name="stringing_order_detail"),
-    path("shop/estimate/", views.shop_estimate_view, name="shop_estimate"),
-    path("shop/history/", views.shop_estimate_history_view, name="shop_estimate_history"),
-    path("shop/estimate/complete/<int:pk>/", views.shop_estimate_complete_view, name="shop_estimate_complete"),
+  .calendar-main-title .month-number{
+    font-size:68px;
+    line-height:.9;
+  }
 
-    path("survey/", views.schedule_survey_view, name="schedule_survey"),
+  .calendar-main-title .month-text{
+    font-size:34px;
+    line-height:1.08;
+  }
 
-    path("reservations/new/", views.reservation_create, name="reservation_create"),
-    path("reservations/", views.reservation_list, name="reservation_list"),
-    path("reservations/<int:pk>/", views.reservation_detail, name="reservation_detail"),
-    path("reservations/<int:pk>/cancel/", views.reservation_cancel, name="reservation_cancel"),
-    path("waitlists/<int:pk>/cancel/", views.lesson_waitlist_cancel, name="lesson_waitlist_cancel"),
-    path("waitlists/<int:pk>/promote/", views.lesson_waitlist_promote, name="lesson_waitlist_promote"),
+  .racket-mark{
+    position:absolute;
+    right:14px;
+    top:8px;
+    width:54px;
+    height:54px;
+    border:4px solid #0750b8;
+    border-radius:50%;
+    transform:rotate(-24deg);
+    opacity:.95;
+  }
 
-    path("coach/today-lessons/", views.coach_today_lessons, name="coach_today_lessons"),
-    path("coach/availability/", views.coach_availability_list, name="coach_availability_list"),
-    path("coach/availability/new/", views.coach_availability_create, name="coach_availability_create"),
-    path("coach/availability/<int:pk>/edit/", views.coach_availability_create, name="coach_availability_edit"),
-    path("coach/availability/<int:pk>/delete/", views.coach_availability_delete, name="coach_availability_delete"),
+  .racket-mark::before{
+    content:"";
+    position:absolute;
+    left:50%;
+    top:52px;
+    width:8px;
+    height:52px;
+    border-radius:999px;
+    background:#0750b8;
+    transform:translateX(-50%);
+  }
 
-    path("coach/requests/<int:pk>/approve/", views.coach_request_approve, name="coach_request_approve"),
-    path("coach/requests/<int:pk>/reject/", views.coach_request_reject, name="coach_request_reject"),
+  .racket-mark::after{
+    content:"";
+    position:absolute;
+    inset:10px;
+    border-radius:50%;
+    border:1px solid rgba(7,80,184,.45);
+    box-shadow:
+      inset 8px 0 0 rgba(245,158,11,.16),
+      inset -8px 0 0 rgba(245,158,11,.16);
+  }
 
-    path("coach/fixed-lessons/", views.coach_fixed_lesson_weekly, name="coach_fixed_lesson_weekly"),
-    path("coach/ticket-summary/", views.coach_ticket_summary, name="coach_ticket_summary"),
-    path("coach/payroll-summary/", views.coach_payroll_summary, name="coach_payroll_summary"),
-    path("coach/revenue-summary/", views.coach_revenue_summary, name="coach_revenue_summary"),
-    path("coach/admin-settlement/", views.coach_admin_settlement, name="coach_admin_settlement"),
-    path("coach/expenses/", views.coach_expense_manage, name="coach_expense_manage"),
-    path("coach/survey-summary/", views.coach_schedule_survey_summary, name="schedule_survey_summary"),
-    path("coach/activity-log/", views.coach_activity_log, name="coach_activity_log"),
+  .price-ribbon{
+    margin-top:12px;
+    min-height:54px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    padding:8px 14px;
+    border-radius:18px;
+    background:#0750b8;
+    color:#fff;
+    font-weight:1000;
+    text-align:center;
+  }
 
-    path("line/", views.line_connect, name="line_connect"),
-    path("line/link/", views.line_link, name="line_link"),
-    path("line/webhook/", views.line_webhook, name="line_webhook"),
+  .price-ribbon .price-label{
+    font-size:22px;
+  }
 
-    path("line/login/start/", views.line_login_start, name="line_login_start"),
-    path("line/login/callback/", views.line_login_callback, name="line_login_callback"),
+  .price-ribbon .price-value{
+    color:#fff100;
+    font-size:42px;
+    line-height:1;
+    letter-spacing:.01em;
+  }
 
-    path("liff/", views.liff_entry, name="liff_entry"),
-    path("api/liff/bootstrap/", views.liff_bootstrap, name="liff_bootstrap"),
-]
+  .price-ribbon .price-note{
+    font-size:15px;
+    color:#e0f2fe;
+  }
+
+  .price-ribbon.is-standard{
+    background:#0f172a;
+  }
+
+  .price-ribbon.is-standard .price-value{
+    color:#ffffff;
+    font-size:24px;
+  }
+
+  .ticket-notice{
+    margin-top:12px;
+    display:grid;
+    grid-template-columns:auto 1fr;
+    gap:10px;
+    align-items:start;
+    padding:13px 15px;
+    border:2px solid #f59e0b;
+    border-radius:16px;
+    background:#fffbeb;
+    color:#78350f;
+    font-size:14px;
+    font-weight:900;
+    line-height:1.7;
+  }
+
+  .ticket-notice-icon{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:30px;
+    height:30px;
+    border-radius:999px;
+    background:#f59e0b;
+    color:#fff;
+    font-size:18px;
+    line-height:1;
+    font-weight:1000;
+    flex:0 0 auto;
+  }
+
+  .ticket-notice-title{
+    margin:0 0 3px;
+    color:#78350f;
+    font-size:15px;
+    font-weight:1000;
+  }
+
+  .ticket-notice-text{
+    margin:0;
+  }
+
+  .calendar-month-nav{
+    margin-top:12px;
+    display:grid;
+    grid-template-columns:1fr auto 1fr;
+    gap:8px;
+    align-items:center;
+  }
+
+  .calendar-month-nav .btn{
+    min-height:38px;
+    border-radius:999px;
+    padding:8px 12px;
+  }
+
+  .calendar-month-nav .month-current{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:38px;
+    padding:8px 14px;
+    border-radius:999px;
+    background:#eff6ff;
+    border:1px solid #bfdbfe;
+    color:#0750b8;
+    font-size:14px;
+    font-weight:1000;
+    white-space:nowrap;
+  }
+
+  .poster-calendar-area{
+    padding:0 14px 14px;
+    background:#fff;
+  }
+
+  .calendar-scroll{
+    width:100%;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  .monthly-calendar{
+    width:100%;
+    min-width:0;
+    table-layout:fixed;
+    border-collapse:separate;
+    border-spacing:0;
+    border:1px solid #cbd5e1;
+    border-radius:14px;
+    overflow:hidden;
+    background:#fff;
+  }
+
+  .monthly-calendar th{
+    height:42px;
+    padding:7px 4px;
+    border:0;
+    background:#0750b8;
+    color:#fff;
+    text-align:center;
+    font-size:20px;
+    line-height:1;
+    font-weight:1000;
+  }
+
+  .monthly-calendar th.sunday{
+    background:#e11d48;
+  }
+
+  .monthly-calendar td{
+    position:relative;
+    height:126px;
+    padding:7px 5px;
+    border-right:1px solid #d8dee8;
+    border-bottom:1px solid #d8dee8;
+    vertical-align:top;
+    background:#fff;
+  }
+
+  .monthly-calendar tr:last-child td{
+    border-bottom:0;
+  }
+
+  .monthly-calendar td:last-child{
+    border-right:0;
+  }
+
+  .day-cell-muted{
+    background:#f8fafc!important;
+    color:#94a3b8;
+  }
+
+  .day-cell-past{
+    background:#f1f5f9!important;
+    color:#94a3b8;
+  }
+
+  .day-cell-past .day-number{
+    color:#94a3b8!important;
+  }
+
+  .day-cell-past .calendar-event{
+    opacity:.48;
+    filter:grayscale(.35);
+    background:#f8fafc;
+    box-shadow:none;
+  }
+
+  .day-cell-past .calendar-event:hover{
+    opacity:.58;
+  }
+
+  .day-number{
+    font-size:16px;
+    line-height:1;
+    color:#334155;
+    font-weight:800;
+  }
+
+  .day-cell-saturday .day-number{
+    color:#0750b8;
+  }
+
+  .day-cell-sunday .day-number{
+    color:#e11d48;
+  }
+
+  .day-cell-today .day-number{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:26px;
+    height:26px;
+    border-radius:999px;
+    background:#0f172a;
+    color:#fff;
+  }
+
+  .calendar-event-list{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:5px;
+    margin-top:7px;
+  }
+
+  .calendar-event{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    min-height:74px;
+    padding:7px 5px 6px;
+    border:2px solid #cbd5e1;
+    border-radius:12px;
+    background:#ffffff;
+    text-align:center;
+    text-decoration:none;
+    box-shadow:0 3px 8px rgba(15,23,42,.08);
+    overflow:hidden;
+  }
+
+  .calendar-event.coach-blue{
+    border-color:#1d4ed8;
+    color:#1d4ed8;
+    background:#ffffff;
+    box-shadow:inset 0 4px 0 #1d4ed8, 0 3px 8px rgba(15,23,42,.08);
+  }
+
+  .calendar-event.coach-green{
+    border-color:#16a34a;
+    color:#15803d;
+    background:#ffffff;
+    box-shadow:inset 0 4px 0 #16a34a, 0 3px 8px rgba(15,23,42,.08);
+  }
+
+  .calendar-event.coach-purple{
+    border-color:#7e22ce;
+    color:#6b21a8;
+    background:#ffffff;
+    box-shadow:inset 0 4px 0 #7e22ce, 0 3px 8px rgba(15,23,42,.08);
+  }
+
+  .calendar-event.coach-orange{
+    border-color:#ea580c;
+    color:#c2410c;
+    background:#ffffff;
+    box-shadow:inset 0 4px 0 #ea580c, 0 3px 8px rgba(15,23,42,.08);
+  }
+
+  .calendar-event.coach-split-blue-green,
+  .calendar-event.coach-split-green-blue,
+  .calendar-event.coach-split-blue-purple,
+  .calendar-event.coach-split-purple-blue,
+  .calendar-event.coach-split-green-purple,
+  .calendar-event.coach-split-purple-green{
+    background:#ffffff;
+    border-color:#64748b;
+  }
+
+  .calendar-event.coach-split-blue-green{
+    border-left-color:#1d4ed8;
+    border-right-color:#16a34a;
+    box-shadow:inset 0 4px 0 #1d4ed8, inset 0 -4px 0 #16a34a, 0 3px 8px rgba(15,23,42,.08);
+  }
+
+  .calendar-event.coach-split-green-blue{
+    border-left-color:#16a34a;
+    border-right-color:#1d4ed8;
+    box-shadow:inset 0 4px 0 #16a34a, inset 0 -4px 0 #1d4ed8, 0 3px 8px rgba(15,23,42,.08);
+  }
+
+  .calendar-event.coach-split-blue-purple{
+    border-left-color:#1d4ed8;
+    border-right-color:#7e22ce;
+    box-shadow:inset 0 4px 0 #1d4ed8, inset 0 -4px 0 #7e22ce, 0 3px 8px rgba(15,23,42,.08);
+  }
+
+  .calendar-event.coach-split-purple-blue{
+    border-left-color:#7e22ce;
+    border-right-color:#1d4ed8;
+    box-shadow:inset 0 4px 0 #7e22ce, inset 0 -4px 0 #1d4ed8, 0 3px 8px rgba(15,23,42,.08);
+  }
+
+  .calendar-event.coach-split-green-purple{
+    border-left-color:#16a34a;
+    border-right-color:#7e22ce;
+    box-shadow:inset 0 4px 0 #16a34a, inset 0 -4px 0 #7e22ce, 0 3px 8px rgba(15,23,42,.08);
+  }
+
+  .calendar-event.coach-split-purple-green{
+    border-left-color:#7e22ce;
+    border-right-color:#16a34a;
+    box-shadow:inset 0 4px 0 #7e22ce, inset 0 -4px 0 #16a34a, 0 3px 8px rgba(15,23,42,.08);
+  }
+
+  .event-date{
+    color:#111827!important;
+    font-size:19px;
+    line-height:1;
+    font-weight:1000;
+    letter-spacing:-.04em;
+  }
+
+  .event-time{
+    margin-top:4px;
+    color:#111827;
+    font-size:11px;
+    line-height:1.12;
+    font-weight:950;
+  }
+
+  .event-meta{
+    margin-top:2px;
+    color:#111827;
+    font-size:10px;
+    line-height:1.12;
+    font-weight:900;
+  }
+
+  .event-level{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:46px;
+    max-width:92%;
+    margin:3px auto 0;
+    padding:2px 7px;
+    border-radius:999px;
+    background:#111827;
+    color:#ffffff;
+    font-size:10.5px;
+    line-height:1.1;
+    font-weight:1000;
+    letter-spacing:.02em;
+    box-shadow:0 1px 3px rgba(15,23,42,.16);
+    white-space:nowrap;
+    box-sizing:border-box;
+    overflow:visible;
+    text-overflow:clip;
+  }
+
+  .event-coach{
+    width:100%;
+    margin-top:4px;
+    font-size:11px;
+    line-height:1.15;
+    font-weight:1000;
+    white-space:nowrap;
+  }
+
+  .event-coach-list{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:2px;
+    flex-wrap:nowrap;
+    width:100%;
+    min-width:0;
+    white-space:nowrap;
+  }
+
+  .event-coach-name{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    flex:0 0 auto;
+    max-width:none;
+    min-width:0;
+    padding:1px 2px;
+    border-radius:6px;
+    background:rgba(255,255,255,.72);
+    white-space:nowrap;
+    overflow:visible;
+    text-overflow:clip;
+  }
+
+  .event-coach-separator{
+    flex:0 0 auto;
+    color:#64748b;
+    font-weight:900;
+    padding:0 1px;
+  }
+
+  .coach-name-blue{
+    color:#1d4ed8;
+  }
+
+  .coach-name-green{
+    color:#15803d;
+  }
+
+  .coach-name-purple{
+    color:#6b21a8;
+  }
+
+  .coach-name-orange{
+    color:#c2410c;
+  }
+
+  .schedule-panel{
+    border:2px solid #0750b8;
+    background:#fff;
+    border-radius:18px;
+    padding:14px;
+    box-shadow:0 8px 20px rgba(15,23,42,.06);
+  }
+
+  .schedule-heading{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    margin:0 0 12px;
+    text-align:center;
+    color:#0750b8;
+    font-size:28px;
+    line-height:1;
+    font-weight:1000;
+    letter-spacing:.08em;
+  }
+
+  .schedule-heading::before,
+  .schedule-heading::after{
+    content:"";
+    height:2px;
+    background:#0750b8;
+    flex:1;
+    max-width:150px;
+  }
+
+  .schedule-heading span{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:150px;
+    min-height:46px;
+    padding:7px 22px;
+    border-radius:12px;
+    background:#0750b8;
+    color:#fff;
+  }
+
+  .schedule-list{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:0 22px;
+  }
+
+  .schedule-row{
+    display:grid;
+    grid-template-columns:auto 92px 1fr;
+    gap:8px;
+    align-items:center;
+    padding:9px 0;
+    border-bottom:1px dotted #cbd5e1;
+  }
+
+  .schedule-row.is-past{
+    opacity:.58;
+    background:#f8fafc;
+    border-radius:12px;
+    padding-left:8px;
+    padding-right:8px;
+  }
+
+  .schedule-dot{
+    width:16px;
+    height:16px;
+    border-radius:999px;
+    background:#1d4ed8;
+  }
+
+  .schedule-row.coach-blue .schedule-dot{
+    background:#1d4ed8;
+  }
+
+  .schedule-row.coach-green .schedule-dot{
+    background:#16a34a;
+  }
+
+  .schedule-row.coach-purple .schedule-dot{
+    background:#7e22ce;
+  }
+
+  .schedule-row.coach-orange .schedule-dot{
+    background:#ea580c;
+  }
+
+  .schedule-date{
+    color:#1d4ed8;
+    font-size:20px;
+    line-height:1;
+    font-weight:1000;
+    white-space:nowrap;
+  }
+
+  .schedule-row.coach-green .schedule-date,
+  .schedule-row.coach-green .schedule-coach{
+    color:#15803d;
+  }
+
+  .schedule-row.coach-purple .schedule-date,
+  .schedule-row.coach-purple .schedule-coach{
+    color:#6b21a8;
+  }
+
+  .schedule-row.coach-orange .schedule-date,
+  .schedule-row.coach-orange .schedule-coach{
+    color:#c2410c;
+  }
+
+  .schedule-detail{
+    display:flex;
+    align-items:center;
+    gap:9px;
+    flex-wrap:wrap;
+    color:#111827;
+    font-size:13px;
+    line-height:1.35;
+    font-weight:850;
+  }
+
+  .schedule-level{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:3px 10px;
+    border-radius:999px;
+    background:#111827;
+    color:#ffffff;
+    font-size:12px;
+    line-height:1.2;
+    font-weight:1000;
+    white-space:nowrap;
+  }
+
+  .schedule-coach{
+    display:inline-flex;
+    align-items:center;
+    gap:3px;
+    flex-wrap:wrap;
+    color:#1d4ed8;
+    font-weight:1000;
+  }
+
+  .schedule-coach-name{
+    display:inline-flex;
+    align-items:center;
+    padding:1px 5px;
+    border-radius:999px;
+    background:#f8fafc;
+  }
+
+  .reserve-form{
+    margin:0;
+    grid-column:1 / -1;
+  }
+
+  .reserve-button{
+    width:100%;
+    min-height:38px;
+    margin-top:3px;
+    border-radius:12px;
+    font-size:13px;
+    padding:8px 10px;
+  }
+
+  .reserve-button[disabled]{
+    background:#f8fafc;
+    color:#64748b;
+    border:1px solid #cbd5e1;
+    cursor:not-allowed;
+  }
+
+  .notice-box{
+    display:flex;
+    gap:10px;
+    align-items:flex-start;
+    padding:13px 15px;
+    border:2px solid #0750b8;
+    border-radius:16px;
+    background:#f8fbff;
+    color:#0f172a;
+    font-size:14px;
+    font-weight:900;
+    line-height:1.7;
+  }
+
+  .notice-icon{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:30px;
+    height:30px;
+    border-radius:999px;
+    background:#0750b8;
+    color:#fff;
+    font-size:18px;
+    line-height:1;
+    font-weight:1000;
+    flex:0 0 auto;
+  }
+
+  .sub-actions{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+
+  .private-lesson-panel{
+    margin:12px 14px 0;
+    padding:14px 16px;
+    border:2px solid #bfdbfe;
+    background:#eff6ff;
+    border-radius:16px;
+  }
+
+  .private-lesson-panel-title{
+    margin:0;
+    color:#0f172a;
+    font-size:18px;
+    line-height:1.35;
+    font-weight:1000;
+  }
+
+  .private-lesson-panel-text{
+    margin:5px 0 0;
+    color:#475569;
+    font-size:13px;
+    line-height:1.7;
+    font-weight:750;
+  }
+
+  .private-lesson-panel-actions{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:10px;
+  }
+
+  .private-lesson-panel-actions .btn{
+    min-height:38px;
+    border-radius:12px;
+    padding:8px 12px;
+  }
+
+  .empty-calendar{
+    padding:18px;
+    border:1px dashed #cbd5e1;
+    border-radius:16px;
+    background:#f8fafc;
+    color:#475569;
+    font-size:14px;
+    line-height:1.7;
+    text-align:center;
+  }
+
+  .calendar-event.is-reserved,
+  .schedule-row.is-reserved{
+    box-shadow:0 0 0 3px rgba(15,23,42,.12) inset;
+  }
+
+  .calendar-event.is-waitlisted,
+  .schedule-row.is-waitlisted{
+    border-style:dashed;
+  }
+
+  .waitlist-badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:22px;
+    padding:3px 8px;
+    border-radius:999px;
+    background:#fff7ed;
+    border:1px solid #fed7aa;
+    color:#9a3412;
+    font-size:12px;
+    font-weight:1000;
+    line-height:1.1;
+  }
+
+  @media (max-width:768px){
+    .lesson-page{
+      gap:10px;
+    }
+
+    .calendar-poster{
+      margin-left:-2px;
+      margin-right:-2px;
+      border-radius:18px;
+    }
+
+    .calendar-poster-head{
+      padding:14px 12px 12px;
+      background:
+        radial-gradient(circle at 17px 25px, #d9f500 0 13px, transparent 14px),
+        linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    }
+
+    .calendar-main-title{
+      gap:6px;
+      padding-right:46px;
+    }
+
+    .calendar-main-title .month-number{
+      font-size:52px;
+      letter-spacing:-.08em;
+    }
+
+    .calendar-main-title .month-text{
+      font-size:25px;
+      line-height:1.05;
+    }
+
+    .racket-mark{
+      width:42px;
+      height:42px;
+      border-width:3px;
+      right:8px;
+      top:8px;
+    }
+
+    .racket-mark::before{
+      top:40px;
+      width:6px;
+      height:40px;
+    }
+
+    .price-ribbon{
+      min-height:46px;
+      margin-top:10px;
+      gap:4px;
+      padding:8px 8px;
+      border-radius:14px;
+      flex-wrap:wrap;
+    }
+
+    .price-ribbon .price-label{
+      font-size:16px;
+    }
+
+    .price-ribbon .price-value{
+      font-size:32px;
+    }
+
+    .price-ribbon .price-note{
+      font-size:12px;
+    }
+
+    .ticket-notice{
+      grid-template-columns:1fr;
+      gap:7px;
+      padding:11px;
+      font-size:12.5px;
+      border-radius:14px;
+    }
+
+    .ticket-notice-icon{
+      width:26px;
+      height:26px;
+      font-size:15px;
+    }
+
+    .calendar-month-nav{
+      grid-template-columns:1fr 1fr;
+      gap:7px;
+    }
+
+    .calendar-month-nav .month-current{
+      grid-column:1 / -1;
+      grid-row:1;
+      min-height:34px;
+      font-size:13px;
+      order:-1;
+    }
+
+    .calendar-month-nav .btn{
+      min-height:36px;
+      padding:7px 8px;
+      font-size:12px;
+    }
+
+    .poster-calendar-area{
+      padding:0 8px 10px;
+    }
+
+    .calendar-scroll{
+      overflow-x:hidden;
+    }
+
+    .monthly-calendar{
+      width:100%;
+      min-width:0;
+      border-radius:12px;
+    }
+
+    .monthly-calendar th{
+      height:32px;
+      padding:5px 2px;
+      font-size:15px;
+    }
+
+    .monthly-calendar td{
+      height:94px;
+      padding:4px 2px;
+    }
+
+    .day-number{
+      font-size:11px;
+      margin-left:1px;
+    }
+
+    .day-cell-today .day-number{
+      width:18px;
+      height:18px;
+      font-size:10px;
+    }
+
+    .calendar-event-list{
+      gap:2px;
+      margin-top:4px;
+    }
+
+    .calendar-event{
+      min-height:84px;
+      border-width:1.5px;
+      border-radius:8px;
+      padding:4px 2px 3px;
+      box-shadow:0 2px 5px rgba(15,23,42,.08);
+    }
+
+    .event-date{
+      font-size:13px;
+      letter-spacing:-.06em;
+    }
+
+    .event-time{
+      margin-top:2px;
+      font-size:8px;
+      line-height:1.08;
+    }
+
+    .event-meta{
+      display:block;
+      margin-top:2px;
+      font-size:8px;
+      line-height:1.05;
+      color:#111827;
+      font-weight:900;
+    }
+
+    .event-level{
+      min-width:0;
+      max-width:100%;
+      margin-top:2px;
+      padding:1.5px 2px;
+      font-size:6.8px;
+      line-height:1.05;
+      letter-spacing:-.08em;
+      box-shadow:none;
+      overflow:visible;
+      text-overflow:clip;
+      transform:scale(.98);
+      transform-origin:center center;
+    }
+
+    .event-coach{
+      margin-top:2px;
+      font-size:6.6px;
+      line-height:1.05;
+      width:100%;
+      word-break:keep-all;
+      overflow:visible;
+    }
+
+    .event-coach-list{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:0;
+      flex-wrap:nowrap;
+      width:100%;
+      transform:none;
+    }
+
+    .event-coach-name{
+      display:block;
+      width:100%;
+      max-width:100%;
+      flex:0 0 auto;
+      padding:0;
+      border-radius:3px;
+      background:transparent;
+      overflow:visible;
+      text-overflow:clip;
+      text-align:center;
+      white-space:nowrap;
+      letter-spacing:-.04em;
+    }
+
+    .event-coach-separator{
+      display:none;
+    }
+
+    .schedule-panel{
+      padding:11px;
+      border-radius:16px;
+    }
+
+    .schedule-heading{
+      font-size:22px;
+      gap:7px;
+      margin-bottom:8px;
+    }
+
+    .schedule-heading::before,
+    .schedule-heading::after{
+      max-width:60px;
+    }
+
+    .schedule-heading span{
+      min-width:112px;
+      min-height:38px;
+      padding:6px 14px;
+      border-radius:10px;
+    }
+
+    .schedule-list{
+      grid-template-columns:1fr;
+    }
+
+    .schedule-row{
+      grid-template-columns:auto 88px 1fr;
+      gap:7px;
+      padding:10px 0;
+    }
+
+    .schedule-dot{
+      width:15px;
+      height:15px;
+    }
+
+    .schedule-date{
+      font-size:19px;
+    }
+
+    .schedule-detail{
+      font-size:12px;
+      gap:6px;
+    }
+
+    .schedule-level{
+      padding:3px 9px;
+      font-size:11px;
+    }
+
+    .reserve-form{
+      grid-column:1 / -1;
+    }
+
+    .reserve-button{
+      min-height:42px;
+      margin-top:4px;
+      border-radius:12px;
+      font-size:13px;
+    }
+
+    .notice-box{
+      padding:12px;
+      border-radius:14px;
+      font-size:13px;
+    }
+
+    .sub-actions{
+      display:grid;
+      grid-template-columns:1fr;
+    }
+
+    .sub-actions .btn{
+      width:100%;
+    }
+
+    .private-lesson-panel{
+      margin:10px 8px 0;
+      padding:12px;
+      border-radius:14px;
+    }
+
+    .private-lesson-panel-title{
+      font-size:16px;
+    }
+
+    .private-lesson-panel-text{
+      font-size:12px;
+    }
+
+    .private-lesson-panel-actions{
+      display:grid;
+      grid-template-columns:1fr;
+    }
+
+    .private-lesson-panel-actions .btn{
+      width:100%;
+    }
+  }
+
+  @media (max-width:390px){
+    .calendar-main-title .month-number{
+      font-size:46px;
+    }
+
+    .calendar-main-title .month-text{
+      font-size:22px;
+    }
+
+    .price-ribbon .price-value{
+      font-size:28px;
+    }
+
+    .monthly-calendar td{
+      height:90px;
+      padding:3px 1px;
+    }
+
+    .event-date{
+      font-size:12px;
+    }
+
+    .event-time{
+      font-size:7px;
+    }
+
+    .event-level{
+      padding:1px 1px;
+      font-size:5.8px;
+      letter-spacing:-.10em;
+      transform:scale(.98);
+    }
+
+    .event-coach{
+      font-size:5.8px;
+    }
+
+    .event-coach-name{
+      padding:0;
+      letter-spacing:-.06em;
+    }
+
+    .schedule-row{
+      grid-template-columns:auto 82px 1fr;
+    }
+
+    .schedule-date{
+      font-size:17px;
+    }
+
+    .schedule-detail{
+      font-size:11px;
+    }
+
+    .schedule-level{
+      font-size:10px;
+      padding:2px 8px;
+    }
+  }
+</style>
+
+<div class="lesson-page">
+  <section class="calendar-poster" aria-label="レッスンカレンダー">
+    <div class="calendar-poster-head">
+      <div class="racket-mark" aria-hidden="true"></div>
+
+      <h1 class="calendar-main-title">
+        <span class="month-number">{{ target_month }}月</span>
+        <span class="month-text">レッスンカレンダー</span>
+      </h1>
+
+      {% if target_year == 2026 and target_month == 7 %}
+        <div class="price-ribbon">
+          <span class="price-label">7月限定・1レッスン：</span>
+          <span class="price-value">2,000円</span>
+          <span class="price-note">（プレオープン価格）</span>
+        </div>
+      {% else %}
+        <div class="price-ribbon is-standard">
+          <span class="price-label">通常レッスン：</span>
+          <span class="price-value">1レッスン＝チケット1枚</span>
+        </div>
+      {% endif %}
+
+      <div class="ticket-notice">
+        <span class="ticket-notice-icon">✓</span>
+        <div>
+          <p class="ticket-notice-title">チケットが足りない場合もご予約いただけます。</p>
+          <p class="ticket-notice-text">
+            通常レッスンは最後の1名になるとキャンセルできませんので、ご注意ください。
+          </p>
+        </div>
+      </div>
+
+      <div class="calendar-month-nav" aria-label="月移動">
+        <a class="btn" href="{% url 'club:lesson_calendar' %}?year={{ prev_year }}&month={{ prev_month }}">← 前月</a>
+        <span class="month-current">{{ month_title }}</span>
+        <a class="btn" href="{% url 'club:lesson_calendar' %}?year={{ next_year }}&month={{ next_month }}">次月 →</a>
+      </div>
+    </div>
+
+    <section class="private-lesson-panel" aria-label="個別レッスン相談">
+      <h2 class="private-lesson-panel-title">個別レッスンを相談したい場合</h2>
+      <p class="private-lesson-panel-text">プライベートレッスンやグループレッスンは、希望日時をコーチへ相談して申請できます。</p>
+      <div class="private-lesson-panel-actions">
+        {% if user.is_authenticated %}
+          <a href="{% url 'club:reservation_create' %}" class="btn btn-primary">個別レッスンを相談する</a>
+          <a href="{% url 'club:reservation_list' %}" class="btn">予約確認</a>
+        {% else %}
+          <a href="{% url 'club:line_login_start' %}" class="btn btn-primary">ログインして相談</a>
+        {% endif %}
+      </div>
+    </section>
+
+    <div class="poster-calendar-area">
+      <div class="calendar-scroll">
+        <table class="monthly-calendar">
+          <thead>
+            <tr>
+              {% for header in weekday_headers %}
+                <th class="{% if header == '日' %}sunday{% endif %}">{{ header }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for week in calendar_weeks %}
+              <tr>
+                {% for day in week %}
+                  <td class="{% if not day.is_current_month %}day-cell-muted{% endif %} {% if day.is_past %}day-cell-past{% endif %} {% if day.is_today %}day-cell-today{% endif %} {% if day.is_sunday %}day-cell-sunday{% endif %} {% if day.is_saturday %}day-cell-saturday{% endif %}">
+                    <div class="day-number">{{ day.day_number }}</div>
+                    {% if day.items %}
+                      <div class="calendar-event-list">
+                        {% for item in day.items %}
+                          {% if item.can_book or item.can_join_waitlist %}
+                            <a href="{{ item.reserve_url }}" data-member-list-url="{% url 'club:lesson_calendar_member_list' %}?availability_id={{ item.availability_id }}&fixed_lesson_id={{ item.fixed_lesson_id }}&lesson_date={{ item.lesson_date }}&year={{ target_year }}&month={{ target_month }}" class="calendar-event {{ item.color_class }} {{ item.color_combo_class }} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}">
+                              <div class="event-date">{{ item.date_label_jp }}</div>
+                              <div class="event-time">{{ item.time_label }}</div>
+                              <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
+                              <div class="event-level">{{ item.target_level_label }}</div>
+                              {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
+                              {% if item.is_reserved_by_user %}<div class="event-meta">予約済み</div>{% elif item.is_waitlisted_by_user %}<div class="event-meta">キャンセル待ち中</div>{% endif %}
+                              <div class="event-coach">
+                                {% if item.coach_name_parts %}
+                                  <div class="event-coach-list">
+                                    {% for coach_part in item.coach_name_parts %}
+                                      <span class="event-coach-name {{ coach_part.color_class }}">{{ coach_part.name }}</span>{% if not forloop.last %}<span class="event-coach-separator">/</span>{% endif %}
+                                    {% endfor %}
+                                  </div>
+                                {% else %}
+                                  {{ item.coach_name }}
+                                {% endif %}
+                              </div>
+                            </a>
+                          {% elif not user.is_authenticated %}
+                            <a href="{{ item.login_url }}" data-member-list-url="{% url 'club:lesson_calendar_member_list' %}?availability_id={{ item.availability_id }}&fixed_lesson_id={{ item.fixed_lesson_id }}&lesson_date={{ item.lesson_date }}&year={{ target_year }}&month={{ target_month }}" class="calendar-event {{ item.color_class }} {{ item.color_combo_class }} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}">
+                              <div class="event-date">{{ item.date_label_jp }}</div>
+                              <div class="event-time">{{ item.time_label }}</div>
+                              <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
+                              <div class="event-level">{{ item.target_level_label }}</div>
+                              {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
+                              {% if item.is_reserved_by_user %}<div class="event-meta">予約済み</div>{% elif item.is_waitlisted_by_user %}<div class="event-meta">キャンセル待ち中</div>{% endif %}
+                              <div class="event-coach">
+                                {% if item.coach_name_parts %}
+                                  <div class="event-coach-list">
+                                    {% for coach_part in item.coach_name_parts %}
+                                      <span class="event-coach-name {{ coach_part.color_class }}">{{ coach_part.name }}</span>{% if not forloop.last %}<span class="event-coach-separator">/</span>{% endif %}
+                                    {% endfor %}
+                                  </div>
+                                {% else %}
+                                  {{ item.coach_name }}
+                                {% endif %}
+                              </div>
+                            </a>
+                          {% else %}
+                            <a href="#lesson-{{ item.id }}" data-member-list-url="{% url 'club:lesson_calendar_member_list' %}?availability_id={{ item.availability_id }}&fixed_lesson_id={{ item.fixed_lesson_id }}&lesson_date={{ item.lesson_date }}&year={{ target_year }}&month={{ target_month }}" class="calendar-event {{ item.color_class }} {{ item.color_combo_class }} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}">
+                              <div class="event-date">{{ item.date_label_jp }}</div>
+                              <div class="event-time">{{ item.time_label }}</div>
+                              <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
+                              <div class="event-level">{{ item.target_level_label }}</div>
+                              {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
+                              {% if item.is_reserved_by_user %}<div class="event-meta">予約済み</div>{% elif item.is_waitlisted_by_user %}<div class="event-meta">キャンセル待ち中</div>{% endif %}
+                              <div class="event-coach">
+                                {% if item.coach_name_parts %}
+                                  <div class="event-coach-list">
+                                    {% for coach_part in item.coach_name_parts %}
+                                      <span class="event-coach-name {{ coach_part.color_class }}">{{ coach_part.name }}</span>{% if not forloop.last %}<span class="event-coach-separator">/</span>{% endif %}
+                                    {% endfor %}
+                                  </div>
+                                {% else %}
+                                  {{ item.coach_name }}
+                                {% endif %}
+                              </div>
+                            </a>
+                          {% endif %}
+                        {% endfor %}
+                      </div>
+                    {% endif %}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="schedule-panel" id="available-lessons">
+    <h2 class="schedule-heading"><span>開催日</span></h2>
+
+    {% if schedule_rows %}
+      <div class="schedule-list">
+        {% for item in schedule_rows %}
+          <div class="schedule-row {{ item.color_class }} {% if item.is_past %}is-past{% endif %} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}" id="lesson-{{ item.id }}">
+            <span class="schedule-dot" aria-hidden="true"></span>
+            <div class="schedule-date">{{ item.date_label_jp }}</div>
+            <div class="schedule-detail">
+              <span>{{ item.time_label }}</span>
+              <span class="schedule-level">{{ item.target_level_label }}</span>
+              <span>参加：{{ item.member_count }}/{{ item.capacity }}名</span>
+              <span>定員：{{ item.capacity }}名</span>
+              {% if item.waitlist_count %}<span class="waitlist-badge">キャンセル待ち {{ item.waitlist_count }}名</span>{% endif %}
+              {% if item.is_reserved_by_user %}<span class="waitlist-badge">予約済み</span>{% elif item.is_waitlisted_by_user %}<span class="waitlist-badge">キャンセル待ち中</span>{% endif %}
+              <span class="schedule-coach">
+                {% if item.coach_name_parts %}
+                  {% for coach_part in item.coach_name_parts %}
+                    <span class="schedule-coach-name {{ coach_part.color_class }}">{{ coach_part.name }}</span>{% if not forloop.last %}<span class="event-coach-separator">/</span>{% endif %}
+                  {% endfor %}
+                {% else %}
+                  {{ item.coach_name }}
+                {% endif %}
+              </span>
+              {% if item.has_substitute %}
+                <span>代行</span>
+              {% endif %}
+            </div>
+
+            {% if user.is_authenticated %}
+              {% if item.can_book %}
+                <div class="reserve-form">
+                  <a href="{{ item.reserve_url }}" class="btn btn-primary reserve-button">詳細・予約確認へ</a>
+                </div>
+              {% elif item.can_join_waitlist %}
+                <div class="reserve-form">
+                  <a href="{{ item.reserve_url }}" class="btn btn-primary reserve-button">詳細・キャンセル待ちへ</a>
+                </div>
+              {% elif item.can_cancel_waitlist %}
+                <form method="post" action="{% url 'club:lesson_calendar' %}" class="reserve-form">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="cancel_waitlist">
+                  <input type="hidden" name="availability_id" value="{{ item.availability_id }}">
+                  <input type="hidden" name="fixed_lesson_id" value="{{ item.fixed_lesson_id }}">
+                  <input type="hidden" name="lesson_date" value="{{ item.lesson_date }}">
+                  <input type="hidden" name="year" value="{{ target_year }}">
+                  <input type="hidden" name="month" value="{{ target_month }}">
+                  <button type="submit" class="btn reserve-button">キャンセル待ちを取消</button>
+                </form>
+              {% else %}
+                <button type="button" class="btn reserve-button" disabled>{{ item.disabled_reason }}</button>
+              {% endif %}
+            {% else %}
+              <a href="{{ item.login_url }}" class="btn btn-primary reserve-button">ログインして予約</a>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-calendar">
+        この月に公開中のレッスンはまだありません。前月・次月ボタンで別の月を確認してください。
+      </div>
+    {% endif %}
+  </section>
+
+  <div class="notice-box">
+    <span class="notice-icon">!</span>
+    <div>
+      チケットが足りない場合もご予約いただけます。
+      通常レッスンは最後の1名になるとキャンセルできませんので、ご注意ください。
+    </div>
+  </div>
+</div>
+
+{% if user.is_authenticated %}
+  {% if user.role == "coach" or user.role == "contractor_coach" or user.is_staff or user.is_superuser %}
+    <script>
+      (function () {
+        document.querySelectorAll("[data-member-list-url]").forEach(function (element) {
+          const url = element.getAttribute("data-member-list-url");
+          if (url) {
+            element.setAttribute("href", url);
+            element.setAttribute("aria-label", "メンバーリストを開く");
+          }
+        });
+      })();
+    </script>
+  {% endif %}
+{% endif %}
+
+{% endblock %}
