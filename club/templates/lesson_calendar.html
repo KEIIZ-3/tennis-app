@@ -112,6 +112,57 @@
     color:#e0f2fe;
   }
 
+  .price-ribbon.is-standard{
+    background:#0f172a;
+  }
+
+  .price-ribbon.is-standard .price-value{
+    color:#ffffff;
+    font-size:24px;
+  }
+
+  .ticket-notice{
+    margin-top:12px;
+    display:grid;
+    grid-template-columns:auto 1fr;
+    gap:10px;
+    align-items:start;
+    padding:13px 15px;
+    border:2px solid #f59e0b;
+    border-radius:16px;
+    background:#fffbeb;
+    color:#78350f;
+    font-size:14px;
+    font-weight:900;
+    line-height:1.7;
+  }
+
+  .ticket-notice-icon{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:30px;
+    height:30px;
+    border-radius:999px;
+    background:#f59e0b;
+    color:#fff;
+    font-size:18px;
+    line-height:1;
+    font-weight:1000;
+    flex:0 0 auto;
+  }
+
+  .ticket-notice-title{
+    margin:0 0 3px;
+    color:#78350f;
+    font-size:15px;
+    font-weight:1000;
+  }
+
+  .ticket-notice-text{
+    margin:0;
+  }
+
   .calendar-month-nav{
     margin-top:12px;
     display:grid;
@@ -697,15 +748,6 @@
     padding:8px 12px;
   }
 
-  .price-ribbon.is-standard{
-    background:#0f172a;
-  }
-
-  .price-ribbon.is-standard .price-value{
-    color:#ffffff;
-    font-size:24px;
-  }
-
   .empty-calendar{
     padding:18px;
     border:1px dashed #cbd5e1;
@@ -716,7 +758,6 @@
     line-height:1.7;
     text-align:center;
   }
-
 
   .calendar-event.is-reserved,
   .schedule-row.is-reserved{
@@ -809,6 +850,20 @@
 
     .price-ribbon .price-note{
       font-size:12px;
+    }
+
+    .ticket-notice{
+      grid-template-columns:1fr;
+      gap:7px;
+      padding:11px;
+      font-size:12.5px;
+      border-radius:14px;
+    }
+
+    .ticket-notice-icon{
+      width:26px;
+      height:26px;
+      font-size:15px;
     }
 
     .calendar-month-nav{
@@ -1139,6 +1194,18 @@
         </div>
       {% endif %}
 
+      <div class="ticket-notice">
+        <span class="ticket-notice-icon">✓</span>
+        <div>
+          <p class="ticket-notice-title">チケット残数が足りなくても予約できます</p>
+          <p class="ticket-notice-text">
+            チケット残数が不足している場合でも、先にレッスン予約していただいて大丈夫です。
+            当日受付時に現地でチケットをご購入いただければ、そのままご参加いただけます。
+            残数不足で迷う場合も、まずはカレンダーから予約へ進んでください。
+          </p>
+        </div>
+      </div>
+
       <div class="calendar-month-nav" aria-label="月移動">
         <a class="btn" href="{% url 'club:lesson_calendar' %}?year={{ prev_year }}&month={{ prev_month }}">← 前月</a>
         <span class="month-current">{{ month_title }}</span>
@@ -1320,7 +1387,10 @@
 
   <div class="notice-box">
     <span class="notice-icon">!</span>
-    <div>定員に達し次第、受付を終了させていただきます。お早めにご予約ください。</div>
+    <div>
+      定員に達し次第、受付を終了させていただきます。お早めにご予約ください。
+      チケット残数が足りない場合でも予約できます。当日受付時に現地でチケットをご購入いただければ問題ありません。
+    </div>
   </div>
 </div>
 {% endblock %}
