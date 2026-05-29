@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}メンバーリスト{% endblock %}
+
+{% block content %}
+<style>
+  .member-list-page{display:grid;gap:14px;}
+  .member-list-hero{padding:18px;border:1px solid #bfdbfe;border-radius:22px;background:linear-gradient(180deg,#eff6ff 0%,#ffffff 100%);box-shadow:0 10px 24px rgba(15,23,42,.08);}
+  .member-list-title{margin:0;color:#0f172a;font-size:28px;line-height:1.25;font-weight:1000;letter-spacing:-.02em;}
+  .member-list-lead{margin:8px 0 0;color:#475569;font-size:14px;line-height:1.7;font-weight:750;}
+  .member-list-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;}
+  .summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;}
+  .summary-card{padding:14px;border:1px solid #e5e7eb;background:#fff;border-radius:18px;box-shadow:0 8px 20px rgba(15,23,42,.05);}
+  .summary-card.primary{border-color:#bfdbfe;background:#eff6ff;}
+  .summary-card.waiting{border-color:#fed7aa;background:#fff7ed;}
+  .summary-label{color:#64748b;font-size:12px;font-weight:900;}
+  .summary-value{margin-top:5px;color:#0f172a;font-size:26px;line-height:1;font-weight:1000;}
+  .section-card{padding:15px;border:1px solid #e5e7eb;background:#fff;border-radius:18px;box-shadow:0 8px 20px rgba(15,23,42,.05);}
+  .section-card.waiting{border-color:#fed7aa;background:#fffaf5;}
+  .section-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px;color:#0f172a;font-size:20px;line-height:1.35;font-weight:1000;}
+  .count-badge{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;padding:0 9px;border-radius:999px;background:#0f172a;color:#fff;font-size:12px;font-weight:1000;}
+  .person-list{display:grid;gap:8px;}
+  .person-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:12px;border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;}
+  .person-row.waiting{background:#fff7ed;border-color:#fed7aa;}
+  .person-row.pending{background:#eff6ff;border-color:#bfdbfe;}
+  .person-name{color:#0f172a;font-size:16px;line-height:1.35;font-weight:1000;}
+  .person-meta{margin-top:4px;display:flex;gap:7px;flex-wrap:wrap;color:#64748b;font-size:12px;line-height:1.4;font-weight:850;}
+  .person-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;}
+  .mini-btn{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:6px 10px;border-radius:999px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;font-size:12px;font-weight:900;text-decoration:none;}
+  .mini-btn.primary{border-color:#2563eb;background:#2563eb;color:#fff;}
+  .empty-box{padding:14px;border:1px dashed #cbd5e1;border-radius:14px;background:#f8fafc;color:#64748b;font-size:14px;line-height:1.7;text-align:center;font-weight:800;}
+  @media(max-width:768px){
+    .member-list-title{font-size:24px;}
+    .member-list-actions{display:grid;grid-template-columns:1fr;}
+    .member-list-actions .btn{width:100%;}
+    .summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .person-row{grid-template-columns:1fr;}
+    .person-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));justify-content:stretch;}
+    .mini-btn{width:100%;}
+  }
+  @media(max-width:420px){
+    .summary-grid{grid-template-columns:1fr;}
+    .person-actions{grid-template-columns:1fr;}
+  }
+</style>
+
+<div class="member-list-page">
+  <section class="member-list-hero">
+    <h1 class="member-list-title">メンバーリスト</h1>
+    <p class="member-list-lead">
+      {{ start_at|date:"Y/m/d H:i" }}〜{{ end_at|date:"H:i" }} / {{ title }} / {{ target_level_label }}<br>
+      コーチ：{{ coach_name }} / コート：{{ court_name }}
+    </p>
+    <div class="member-list-actions">
+      <a href="{% url 'club:lesson_calendar' %}{% if back_year and back_month %}?year={{ back_year }}&month={{ back_month }}{% endif %}" class="btn">レッスンカレンダーへ戻る</a>
+      <a href="{% url 'club:coach_today_lessons' %}" class="btn btn-primary">本日の受付・精算へ</a>
+      <a href="{% url 'club:reservation_list' %}" class="btn">予約確認へ</a>
+    </div>
+  </section>
+
+  <section class="summary-grid">
+    <div class="summary-card primary"><div class="summary-label">参加者</div><div class="summary-value">{{ active_count }}/{{ capacity }}名</div></div>
+    <div class="summary-card"><div class="summary-label">空き枠</div><div class="summary-value">{{ remaining_count }}名</div></div>
+    <div class="summary-card"><div class="summary-label">承認待ち</div><div class="summary-value">{{ pending_count }}名</div></div>
+    <div class="summary-card waiting"><div class="summary-label">キャンセル待ち</div><div class="summary-value">{{ waitlist_count }}名</div></div>
+  </section>
+
+  <section class="section-card">
+    <h2 class="section-title"><span>参加者</span><span class="count-badge">{{ active_count }}</span></h2>
+    {% if active_rows %}
+      <div class="person-list">
+        {% for row in active_rows %}
+          <div class="person-row">
+            <div>
+              <div class="person-name">{{ row.name }}</div>
+              <div class="person-meta">
+                <span>レベル：{{ row.level }}</span>
+                {% if row.phone %}<span>電話：{{ row.phone }}</span>{% else %}<span>電話：未登録</span>{% endif %}
+                <span>チケット：{{ row.tickets_used }}枚</span>
+                {% if row.payment_status_label %}<span>支払：{{ row.payment_status_label }}</span>{% endif %}
+              </div>
+            </div>
+            <div class="person-actions">
+              {% if row.phone %}<a href="tel:{{ row.phone }}" class="mini-btn primary">電話</a>{% endif %}
+              <a href="{{ row.detail_url }}" class="mini-btn">予約詳細</a>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-box">参加者はまだいません。</div>
+    {% endif %}
+  </section>
+
+  {% if registered_member_rows %}
+    <section class="section-card">
+      <h2 class="section-title"><span>固定登録メンバー（予約未作成）</span><span class="count-badge">{{ registered_member_rows|length }}</span></h2>
+      <div class="person-list">
+        {% for row in registered_member_rows %}
+          <div class="person-row">
+            <div>
+              <div class="person-name">{{ row.name }}</div>
+              <div class="person-meta">
+                <span>レベル：{{ row.level }}</span>
+                {% if row.phone %}<span>電話：{{ row.phone }}</span>{% else %}<span>電話：未登録</span>{% endif %}
+              </div>
+            </div>
+            <div class="person-actions">
+              {% if row.phone %}<a href="tel:{{ row.phone }}" class="mini-btn primary">電話</a>{% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  <section class="section-card">
+    <h2 class="section-title"><span>承認待ち</span><span class="count-badge">{{ pending_count }}</span></h2>
+    {% if pending_rows %}
+      <div class="person-list">
+        {% for row in pending_rows %}
+          <div class="person-row pending">
+            <div>
+              <div class="person-name">{{ row.name }}</div>
+              <div class="person-meta">
+                <span>レベル：{{ row.level }}</span>
+                {% if row.phone %}<span>電話：{{ row.phone }}</span>{% else %}<span>電話：未登録</span>{% endif %}
+              </div>
+            </div>
+            <div class="person-actions">
+              {% if row.phone %}<a href="tel:{{ row.phone }}" class="mini-btn primary">電話</a>{% endif %}
+              <a href="{{ row.detail_url }}" class="mini-btn">予約詳細</a>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-box">承認待ちはありません。</div>
+    {% endif %}
+  </section>
+
+  <section class="section-card waiting">
+    <h2 class="section-title"><span>キャンセル待ち</span><span class="count-badge">{{ waitlist_count }}</span></h2>
+    {% if waitlist_rows %}
+      <div class="person-list">
+        {% for row in waitlist_rows %}
+          <div class="person-row waiting">
+            <div>
+              <div class="person-name">{{ forloop.counter }}. {{ row.name }}</div>
+              <div class="person-meta">
+                <span>レベル：{{ row.level }}</span>
+                {% if row.phone %}<span>電話：{{ row.phone }}</span>{% else %}<span>電話：未登録</span>{% endif %}
+                <span>登録：{{ row.created_at|date:"Y/m/d H:i" }}</span>
+              </div>
+            </div>
+            <div class="person-actions">
+              {% if row.phone %}<a href="tel:{{ row.phone }}" class="mini-btn primary">電話</a>{% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-box">キャンセル待ちはありません。</div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
