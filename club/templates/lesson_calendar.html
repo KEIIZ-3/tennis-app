@@ -1211,15 +1211,27 @@
         </div>
       {% endif %}
 
-      <div class="ticket-notice">
-        <span class="ticket-notice-icon">✓</span>
-        <div>
-          <p class="ticket-notice-title">チケットが足りない場合もご予約いただけます。</p>
-          <p class="ticket-notice-text">
-            通常レッスンは最後の1名になるとキャンセルできませんので、ご注意ください。
-          </p>
+      {% if target_year == 2026 and target_month == 7 %}
+        <div class="ticket-notice">
+          <span class="ticket-notice-icon">¥</span>
+          <div>
+            <p class="ticket-notice-title">2026年7月は1レッスン2,000円です。</p>
+            <p class="ticket-notice-text">
+              参加費は当日、現地で集金させていただきます。
+            </p>
+          </div>
         </div>
-      </div>
+      {% else %}
+        <div class="ticket-notice">
+          <span class="ticket-notice-icon">✓</span>
+          <div>
+            <p class="ticket-notice-title">チケットが足りない場合もご予約いただけます。</p>
+            <p class="ticket-notice-text">
+              通常レッスンは最後の1名になるとキャンセルできませんので、ご注意ください。
+            </p>
+          </div>
+        </div>
+      {% endif %}
 
       <div class="calendar-month-nav" aria-label="月移動">
         <a class="btn" href="{% url 'club:lesson_calendar' %}?year={{ prev_year }}&month={{ prev_month }}">← 前月</a>
@@ -1261,7 +1273,7 @@
                       <div class="calendar-event-list">
                         {% for item in day.items %}
                           {% if item.can_book or item.can_join_waitlist %}
-                            <a href="{{ item.reserve_url }}" data-member-list-url="/lesson-calendar/members/?availability_id={{ item.availability_id }}&fixed_lesson_id={{ item.fixed_lesson_id }}&lesson_date={{ item.lesson_date }}&year={{ target_year }}&month={{ target_month }}" class="calendar-event {{ item.color_class }} {{ item.color_combo_class }} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}">
+                            <a href="{{ item.reserve_url }}" data-member-list-url="{% url 'club:lesson_calendar_member_list' %}?availability_id={{ item.availability_id }}&fixed_lesson_id={{ item.fixed_lesson_id }}&lesson_date={{ item.lesson_date }}&year={{ target_year }}&month={{ target_month }}" class="calendar-event {{ item.color_class }} {{ item.color_combo_class }} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}">
                               <div class="event-date">{{ item.date_label_jp }}</div>
                               <div class="event-time">{{ item.time_label }}</div>
                               <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
@@ -1281,7 +1293,7 @@
                               </div>
                             </a>
                           {% elif not user.is_authenticated %}
-                            <a href="{{ item.login_url }}" data-member-list-url="/lesson-calendar/members/?availability_id={{ item.availability_id }}&fixed_lesson_id={{ item.fixed_lesson_id }}&lesson_date={{ item.lesson_date }}&year={{ target_year }}&month={{ target_month }}" class="calendar-event {{ item.color_class }} {{ item.color_combo_class }} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}">
+                            <a href="{{ item.login_url }}" data-member-list-url="{% url 'club:lesson_calendar_member_list' %}?availability_id={{ item.availability_id }}&fixed_lesson_id={{ item.fixed_lesson_id }}&lesson_date={{ item.lesson_date }}&year={{ target_year }}&month={{ target_month }}" class="calendar-event {{ item.color_class }} {{ item.color_combo_class }} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}">
                               <div class="event-date">{{ item.date_label_jp }}</div>
                               <div class="event-time">{{ item.time_label }}</div>
                               <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
@@ -1301,7 +1313,7 @@
                               </div>
                             </a>
                           {% else %}
-                            <a href="#lesson-{{ item.id }}" data-member-list-url="/lesson-calendar/members/?availability_id={{ item.availability_id }}&fixed_lesson_id={{ item.fixed_lesson_id }}&lesson_date={{ item.lesson_date }}&year={{ target_year }}&month={{ target_month }}" class="calendar-event {{ item.color_class }} {{ item.color_combo_class }} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}">
+                            <a href="#lesson-{{ item.id }}" data-member-list-url="{% url 'club:lesson_calendar_member_list' %}?availability_id={{ item.availability_id }}&fixed_lesson_id={{ item.fixed_lesson_id }}&lesson_date={{ item.lesson_date }}&year={{ target_year }}&month={{ target_month }}" class="calendar-event {{ item.color_class }} {{ item.color_combo_class }} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}">
                               <div class="event-date">{{ item.date_label_jp }}</div>
                               <div class="event-time">{{ item.time_label }}</div>
                               <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
@@ -1403,8 +1415,12 @@
   <div class="notice-box">
     <span class="notice-icon">!</span>
     <div>
-      チケットが足りない場合もご予約いただけます。
-      通常レッスンは最後の1名になるとキャンセルできませんので、ご注意ください。
+      {% if target_year == 2026 and target_month == 7 %}
+        2026年7月は1レッスン2,000円です。参加費は当日、現地で集金させていただきます。
+      {% else %}
+        チケットが足りない場合もご予約いただけます。
+        通常レッスンは最後の1名になるとキャンセルできませんので、ご注意ください。
+      {% endif %}
     </div>
   </div>
 </div>
