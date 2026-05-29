@@ -3,50 +3,485 @@
 
 {% block content %}
 <style>
-  .settlement-page{display:grid;gap:14px;}
-  .settlement-hero{padding:18px;border-radius:22px;border:1px solid #bfdbfe;background:linear-gradient(180deg,#eff6ff 0%,#fff 100%);box-shadow:0 10px 24px rgba(15,23,42,.08);}
-  .settlement-title{margin:0;color:#0f172a;font-size:28px;line-height:1.25;font-weight:1000;letter-spacing:-.02em;}
-  .settlement-lead{margin:8px 0 0;color:#475569;font-size:14px;line-height:1.7;font-weight:750;}
-  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
-  .filter-card{display:flex;gap:10px;flex-wrap:wrap;align-items:end;padding:14px;border:1px solid #e5e7eb;border-radius:18px;background:#fff;}
-  .filter-card label{display:block;margin:0 0 5px;color:#475569;font-size:12px;font-weight:900;}
-  .filter-card input,.filter-card select{min-height:40px;border:1px solid #d1d5db;border-radius:12px;padding:8px 10px;background:#fff;font-size:14px;}
-  .summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;}
-  .summary-card{padding:14px;border-radius:18px;background:#fff;border:1px solid #e5e7eb;box-shadow:0 8px 20px rgba(15,23,42,.05);}
-  .summary-card.primary{background:#0f172a;color:#fff;border-color:#0f172a;}
-  .summary-card.warn{background:#fff7ed;border-color:#fed7aa;}
-  .summary-card.info{background:#eff6ff;border-color:#bfdbfe;}
-  .summary-card.success{background:#f0fdf4;border-color:#bbf7d0;}
-  .summary-label{color:#64748b;font-size:12px;font-weight:900;}
-  .summary-card.primary .summary-label{color:#cbd5e1;}
-  .summary-value{margin-top:6px;color:#0f172a;font-size:24px;line-height:1.15;font-weight:1000;letter-spacing:-.03em;}
-  .summary-card.primary .summary-value{color:#fff;}
-  .summary-note{margin-top:5px;color:#64748b;font-size:12px;line-height:1.5;font-weight:750;}
-  .section{padding:16px;border-radius:20px;background:#fff;border:1px solid #e5e7eb;box-shadow:0 8px 20px rgba(15,23,42,.05);}
-  .section-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
-  .section-title{margin:0;font-size:20px;font-weight:1000;color:#0f172a;}
-  .section-pill{display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:5px 11px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:1000;}
-  .table-wrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
-  .settlement-table{width:100%;min-width:920px;border-collapse:collapse;}
-  .settlement-table th,.settlement-table td{padding:10px 9px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top;font-size:13px;line-height:1.45;}
-  .settlement-table th{color:#475569;background:#f8fafc;font-weight:1000;white-space:nowrap;}
-  .amount{text-align:right!important;white-space:nowrap;font-weight:1000;}
-  .muted{color:#64748b;font-size:12px;line-height:1.5;}
-  .form-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;align-items:end;}
-  .form-grid label{display:block;margin:0 0 5px;color:#475569;font-size:12px;font-weight:900;}
-  .form-grid input,.form-grid select{width:100%;min-height:40px;border:1px solid #d1d5db;border-radius:12px;padding:8px 10px;background:#fff;font-size:14px;box-sizing:border-box;}
-  .form-grid .wide{grid-column:span 2;}
-  .notice-box{padding:12px 14px;border-radius:16px;border:1px solid #fde68a;background:#fffbeb;color:#92400e;font-size:13px;line-height:1.7;font-weight:800;}
-  @media (max-width: 900px){.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.form-grid{grid-template-columns:1fr 1fr;}.form-grid .wide{grid-column:span 2;}}
-  @media (max-width: 768px){.settlement-title{font-size:24px;}.summary-grid{grid-template-columns:1fr;}.filter-card{display:grid;grid-template-columns:1fr 1fr;}.filter-card button{grid-column:span 2;width:100%;}.form-grid{grid-template-columns:1fr;}.form-grid .wide{grid-column:span 1;}.form-grid button{width:100%;}.settlement-table{min-width:820px;}}
+  .settlement-page{
+    display:grid;
+    gap:14px;
+  }
+
+  .settlement-hero{
+    padding:18px;
+    border-radius:22px;
+    border:1px solid #bfdbfe;
+    background:linear-gradient(180deg,#eff6ff 0%,#fff 100%);
+    box-shadow:0 10px 24px rgba(15,23,42,.08);
+  }
+
+  .settlement-title{
+    margin:0;
+    color:#0f172a;
+    font-size:28px;
+    line-height:1.25;
+    font-weight:1000;
+    letter-spacing:-.02em;
+  }
+
+  .settlement-lead{
+    margin:8px 0 0;
+    color:#475569;
+    font-size:14px;
+    line-height:1.75;
+    font-weight:750;
+  }
+
+  .actions{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:12px;
+  }
+
+  .filter-card{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    align-items:end;
+    padding:14px;
+    border:1px solid #e5e7eb;
+    border-radius:18px;
+    background:#fff;
+    box-shadow:0 8px 20px rgba(15,23,42,.05);
+  }
+
+  .filter-card label{
+    display:block;
+    margin:0 0 5px;
+    color:#475569;
+    font-size:12px;
+    font-weight:900;
+  }
+
+  .filter-card input,
+  .filter-card select{
+    min-height:40px;
+    border:1px solid #d1d5db;
+    border-radius:12px;
+    padding:8px 10px;
+    background:#fff;
+    font-size:14px;
+  }
+
+  .summary-grid{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:10px;
+  }
+
+  .summary-card{
+    padding:14px;
+    border-radius:18px;
+    background:#fff;
+    border:1px solid #e5e7eb;
+    box-shadow:0 8px 20px rgba(15,23,42,.05);
+  }
+
+  .summary-card.primary{
+    background:#0f172a;
+    color:#fff;
+    border-color:#0f172a;
+  }
+
+  .summary-card.warn{
+    background:#fff7ed;
+    border-color:#fed7aa;
+  }
+
+  .summary-card.danger{
+    background:#fef2f2;
+    border-color:#fecaca;
+  }
+
+  .summary-card.info{
+    background:#eff6ff;
+    border-color:#bfdbfe;
+  }
+
+  .summary-card.success{
+    background:#f0fdf4;
+    border-color:#bbf7d0;
+  }
+
+  .summary-label{
+    color:#64748b;
+    font-size:12px;
+    font-weight:900;
+  }
+
+  .summary-card.primary .summary-label{
+    color:#cbd5e1;
+  }
+
+  .summary-value{
+    margin-top:6px;
+    color:#0f172a;
+    font-size:24px;
+    line-height:1.15;
+    font-weight:1000;
+    letter-spacing:-.03em;
+  }
+
+  .summary-card.primary .summary-value{
+    color:#fff;
+  }
+
+  .summary-note{
+    margin-top:5px;
+    color:#64748b;
+    font-size:12px;
+    line-height:1.5;
+    font-weight:750;
+  }
+
+  .summary-card.primary .summary-note{
+    color:#cbd5e1;
+  }
+
+  .cashflow-grid{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:10px;
+  }
+
+  .cashflow-card{
+    padding:14px;
+    border-radius:18px;
+    border:1px solid #e5e7eb;
+    background:#fff;
+    box-shadow:0 8px 20px rgba(15,23,42,.05);
+  }
+
+  .cashflow-card.in{
+    border-color:#bbf7d0;
+    background:#f0fdf4;
+  }
+
+  .cashflow-card.out{
+    border-color:#fed7aa;
+    background:#fff7ed;
+  }
+
+  .cashflow-card.balance{
+    border-color:#bfdbfe;
+    background:#eff6ff;
+  }
+
+  .cashflow-title{
+    margin:0;
+    color:#0f172a;
+    font-size:15px;
+    line-height:1.35;
+    font-weight:1000;
+  }
+
+  .cashflow-value{
+    margin-top:6px;
+    color:#0f172a;
+    font-size:24px;
+    line-height:1.15;
+    font-weight:1000;
+  }
+
+  .cashflow-note{
+    margin-top:6px;
+    color:#64748b;
+    font-size:12px;
+    line-height:1.55;
+    font-weight:750;
+  }
+
+  .section{
+    padding:16px;
+    border-radius:20px;
+    background:#fff;
+    border:1px solid #e5e7eb;
+    box-shadow:0 8px 20px rgba(15,23,42,.05);
+  }
+
+  .section-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-bottom:12px;
+  }
+
+  .section-title{
+    margin:0;
+    font-size:20px;
+    font-weight:1000;
+    color:#0f172a;
+  }
+
+  .section-help{
+    margin:-4px 0 12px;
+    color:#64748b;
+    font-size:13px;
+    line-height:1.7;
+    font-weight:750;
+  }
+
+  .section-pill{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:32px;
+    padding:5px 11px;
+    border-radius:999px;
+    background:#eff6ff;
+    color:#1d4ed8;
+    font-size:12px;
+    font-weight:1000;
+  }
+
+  .table-wrap{
+    width:100%;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  .settlement-table{
+    width:100%;
+    min-width:920px;
+    border-collapse:collapse;
+  }
+
+  .settlement-table th,
+  .settlement-table td{
+    padding:10px 9px;
+    border-bottom:1px solid #e5e7eb;
+    text-align:left;
+    vertical-align:top;
+    font-size:13px;
+    line-height:1.45;
+  }
+
+  .settlement-table th{
+    color:#475569;
+    background:#f8fafc;
+    font-weight:1000;
+    white-space:nowrap;
+  }
+
+  .amount{
+    text-align:right!important;
+    white-space:nowrap;
+    font-weight:1000;
+  }
+
+  .amount.plus{
+    color:#047857;
+  }
+
+  .amount.minus{
+    color:#b91c1c;
+  }
+
+  .amount.unpaid{
+    color:#c2410c;
+  }
+
+  .muted{
+    color:#64748b;
+    font-size:12px;
+    line-height:1.5;
+  }
+
+  .form-grid{
+    display:grid;
+    grid-template-columns:repeat(5,minmax(0,1fr));
+    gap:10px;
+    align-items:end;
+  }
+
+  .form-grid label{
+    display:block;
+    margin:0 0 5px;
+    color:#475569;
+    font-size:12px;
+    font-weight:900;
+  }
+
+  .form-grid input,
+  .form-grid select{
+    width:100%;
+    min-height:40px;
+    border:1px solid #d1d5db;
+    border-radius:12px;
+    padding:8px 10px;
+    background:#fff;
+    font-size:14px;
+    box-sizing:border-box;
+  }
+
+  .form-grid .wide{
+    grid-column:span 2;
+  }
+
+  .notice-box{
+    padding:12px 14px;
+    border-radius:16px;
+    border:1px solid #fde68a;
+    background:#fffbeb;
+    color:#92400e;
+    font-size:13px;
+    line-height:1.7;
+    font-weight:850;
+  }
+
+  .notice-box.info{
+    border-color:#bfdbfe;
+    background:#eff6ff;
+    color:#1e3a8a;
+  }
+
+  .mobile-card-list{
+    display:none;
+    gap:10px;
+  }
+
+  .mobile-money-card{
+    border:1px solid #e5e7eb;
+    background:#fff;
+    border-radius:16px;
+    padding:13px;
+    box-shadow:0 6px 18px rgba(15,23,42,.04);
+  }
+
+  .mobile-card-title{
+    color:#0f172a;
+    font-size:15px;
+    font-weight:1000;
+    line-height:1.35;
+  }
+
+  .mobile-card-sub{
+    margin-top:3px;
+    color:#64748b;
+    font-size:12px;
+    line-height:1.45;
+    font-weight:750;
+  }
+
+  .mobile-info-row{
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    border-top:1px solid #f1f5f9;
+    padding:8px 0;
+    font-size:13px;
+  }
+
+  .mobile-info-label{
+    color:#64748b;
+    font-weight:850;
+  }
+
+  .mobile-info-value{
+    text-align:right;
+    font-weight:850;
+  }
+
+  @media (max-width: 1000px){
+    .summary-grid{
+      grid-template-columns:repeat(2,minmax(0,1fr));
+    }
+
+    .cashflow-grid{
+      grid-template-columns:1fr;
+    }
+
+    .form-grid{
+      grid-template-columns:1fr 1fr;
+    }
+
+    .form-grid .wide{
+      grid-column:span 2;
+    }
+  }
+
+  @media (max-width: 768px){
+    .settlement-title{
+      font-size:24px;
+    }
+
+    .actions{
+      display:grid;
+      grid-template-columns:1fr;
+    }
+
+    .actions .btn{
+      width:100%;
+    }
+
+    .summary-grid{
+      grid-template-columns:1fr;
+    }
+
+    .filter-card{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+    }
+
+    .filter-card button{
+      grid-column:span 2;
+      width:100%;
+    }
+
+    .filter-card .btn{
+      width:100%;
+    }
+
+    .form-grid{
+      grid-template-columns:1fr;
+    }
+
+    .form-grid .wide{
+      grid-column:span 1;
+    }
+
+    .form-grid button{
+      width:100%;
+    }
+
+    .settlement-table{
+      min-width:900px;
+    }
+
+    .mobile-card-list{
+      display:grid;
+    }
+
+    .desktop-only-mobile-hide{
+      display:none;
+    }
+
+    .mobile-info-row{
+      display:block;
+    }
+
+    .mobile-info-value{
+      margin-top:3px;
+      text-align:left;
+    }
+  }
 </style>
 
 <div class="settlement-page">
   <section class="settlement-hero">
     <h1 class="settlement-title">admin月次精算</h1>
     <p class="settlement-lead">
-      {{ month_label }} の売上入金、給与/業務委託費支払い、本人立替精算、未払い、会社残高をadmin専用で確認します。
-      業務委託コーチへの時給支払いは会社側の経費として扱い、通常コーチ側の共通経費按分に含めます。
+      {{ month_label }} の会社全体のお金の動きをadmin専用で確認します。
+      会社残高目安、給与/業務委託費の支払い済み・未払い、本人立替精算の未払いを分けて見える化しています。
     </p>
     <div class="actions">
       <a href="{% url 'club:coach_payroll_summary' %}?year={{ selected_year }}&month={{ selected_month }}" class="btn">実売上ベース精算へ</a>
@@ -70,7 +505,25 @@
     <a href="{{ next_url }}" class="btn">次の月</a>
   </form>
 
-  <div class="summary-grid">
+  <section class="cashflow-grid" aria-label="会社のお金の動き">
+    <div class="cashflow-card in">
+      <h2 class="cashflow-title">入金</h2>
+      <div class="cashflow-value">{{ cash_in_total }}円</div>
+      <div class="cashflow-note">7月参加費回収済み + チケット販売 + ガット張り入金。</div>
+    </div>
+    <div class="cashflow-card out">
+      <h2 class="cashflow-title">支払済み</h2>
+      <div class="cashflow-value">{{ salary_paid_total|add:reimbursement_paid_total }}円</div>
+      <div class="cashflow-note">給与/業務委託費支払い済み + 本人立替精算支払い済み。</div>
+    </div>
+    <div class="cashflow-card balance">
+      <h2 class="cashflow-title">会社残高目安</h2>
+      <div class="cashflow-value">{{ company_balance }}円</div>
+      <div class="cashflow-note">入金から支払い済みと承認済み共通経費を差し引いた目安です。</div>
+    </div>
+  </section>
+
+  <section class="summary-grid">
     <div class="summary-card primary">
       <div class="summary-label">会社残高目安</div>
       <div class="summary-value">{{ company_balance }}円</div>
@@ -86,10 +539,10 @@
       <div class="summary-value">{{ salary_paid_total }}円</div>
       <div class="summary-note">この画面で記録した給与/業務委託費支払い</div>
     </div>
-    <div class="summary-card warn">
+    <div class="summary-card danger">
       <div class="summary-label">未払い合計</div>
       <div class="summary-value">{{ unpaid_salary_total|add:unpaid_reimbursement_total }}円</div>
-      <div class="summary-note">未払い給与 + 未払い本人立替精算</div>
+      <div class="summary-note">未払い給与/業務委託費 + 未払い本人立替精算</div>
     </div>
     <div class="summary-card">
       <div class="summary-label">チケット販売入金</div>
@@ -116,18 +569,21 @@
       <div class="summary-value">{{ common_expense_base_total }}円</div>
       <div class="summary-note">通常コーチ {{ common_expense_participant_count }}人 / 1人 {{ per_coach_common_expense }}円</div>
     </div>
-    <div class="summary-card">
+    <div class="summary-card danger">
       <div class="summary-label">未払い本人立替</div>
       <div class="summary-value">{{ unpaid_reimbursement_total }}円</div>
       <div class="summary-note">承認済み本人立替 - 立替精算支払い済み</div>
     </div>
-  </div>
+  </section>
 
   <section class="section">
     <div class="section-head">
       <h2 class="section-title">支払い履歴を記録</h2>
       <span class="section-pill">admin専用</span>
     </div>
+    <p class="section-help">
+      支払い済み給与、業務委託費、本人立替精算を記録します。記録後、未払い額と会社残高目安に反映されます。
+    </p>
     <form method="post" class="form-grid">
       {% csrf_token %}
       <input type="hidden" name="action" value="create_payout">
@@ -167,7 +623,7 @@
   </section>
 
   <div class="notice-box">
-    チケット販売入金とチケット消化売上は同時に足すと二重計上になります。この画面では会社残高は「実際の入金」に寄せ、コーチ別支払予定は「実売上ベース精算」に寄せて分けて表示しています。業務委託コーチへの時給支払いは会社側の業務委託費として扱い、通常コーチの按分対象経費に含めます。業務委託コーチ本人には共通経費按分を差し引きません。
+    チケット販売入金とチケット消化売上は同時に足すと二重計上になります。この画面では会社残高は「実際の入金」、コーチ別支払予定は「実売上ベース精算」に分けています。業務委託コーチへの時給支払いは会社側の業務委託費として扱い、通常コーチの按分対象経費に含めます。業務委託コーチ本人には共通経費按分を差し引きません。
   </div>
 
   <section class="section">
@@ -175,7 +631,11 @@
       <h2 class="section-title">コーチ別 精算・未払い</h2>
       <span class="section-pill">給与/業務委託費未払い {{ unpaid_salary_total }}円 / 立替未払い {{ unpaid_reimbursement_total }}円</span>
     </div>
-    <div class="table-wrap">
+    <p class="section-help">
+      コーチごとの支払予定、支払い済み、未払いを一覧で確認します。未払いが残っている行を優先的に確認してください。
+    </p>
+
+    <div class="table-wrap desktop-only-mobile-hide">
       <table class="settlement-table">
         <thead>
           <tr>
@@ -201,8 +661,8 @@
             <tr>
               <td>{{ row.coach_name }}</td>
               <td>{{ row.reservation_count }}件</td>
-              <td class="amount">{{ row.ticket_amount }}円</td>
-              <td class="amount">{{ row.preopen_paid_amount }}円</td>
+              <td class="amount plus">{{ row.ticket_amount }}円</td>
+              <td class="amount plus">{{ row.preopen_paid_amount }}円</td>
               <td class="amount">
                 {% if row.is_contractor_coach %}
                   {{ row.contractor_hourly_wage }}円/時
@@ -218,27 +678,62 @@
                   -
                 {% endif %}
               </td>
-              <td class="amount">{{ row.lesson_compensation_amount }}円</td>
-              <td class="amount">{{ row.stringing_amount }}円</td>
+              <td class="amount plus">{{ row.lesson_compensation_amount }}円</td>
+              <td class="amount plus">{{ row.stringing_amount }}円</td>
               <td class="amount">
                 {% if row.is_contractor_coach %}
                   0円<br><span class="muted">按分対象外</span>
                 {% else %}
-                  -{{ row.common_expense_share }}円
+                  <span class="amount minus">-{{ row.common_expense_share }}円</span>
                 {% endif %}
               </td>
               <td class="amount">{{ row.salary_due }}円</td>
               <td class="amount">{{ row.salary_paid }}円</td>
-              <td class="amount">{{ row.unpaid_salary }}円</td>
+              <td class="amount unpaid">{{ row.unpaid_salary }}円</td>
               <td class="amount">{{ row.reimbursement_due }}円</td>
               <td class="amount">{{ row.reimbursement_paid }}円</td>
-              <td class="amount">{{ row.unpaid_reimbursement }}円</td>
+              <td class="amount unpaid">{{ row.unpaid_reimbursement }}円</td>
             </tr>
           {% empty %}
             <tr><td colspan="15">対象データはありません。</td></tr>
           {% endfor %}
         </tbody>
       </table>
+    </div>
+
+    <div class="mobile-card-list">
+      {% for row in coach_rows %}
+        <div class="mobile-money-card">
+          <div class="mobile-card-title">{{ row.coach_name }}</div>
+          <div class="mobile-card-sub">{{ row.reservation_count }}件 / ガット張り {{ row.stringing_amount }}円</div>
+          <div class="mobile-info-row">
+            <div class="mobile-info-label">給与/委託費予定</div>
+            <div class="mobile-info-value">{{ row.salary_due }}円</div>
+          </div>
+          <div class="mobile-info-row">
+            <div class="mobile-info-label">支払い済み</div>
+            <div class="mobile-info-value">{{ row.salary_paid }}円</div>
+          </div>
+          <div class="mobile-info-row">
+            <div class="mobile-info-label">未払い</div>
+            <div class="mobile-info-value">{{ row.unpaid_salary }}円</div>
+          </div>
+          <div class="mobile-info-row">
+            <div class="mobile-info-label">本人立替未払い</div>
+            <div class="mobile-info-value">{{ row.unpaid_reimbursement }}円</div>
+          </div>
+          {% if row.is_contractor_coach %}
+            <div class="mobile-info-row">
+              <div class="mobile-info-label">業務委託</div>
+              <div class="mobile-info-value">時給 {{ row.contractor_hourly_wage }}円 / {{ row.contractor_work_hours_text }}</div>
+            </div>
+          {% endif %}
+        </div>
+      {% empty %}
+        <div class="mobile-money-card">
+          <div class="mobile-card-title">対象データはありません。</div>
+        </div>
+      {% endfor %}
     </div>
   </section>
 
@@ -247,6 +742,7 @@
       <h2 class="section-title">支払い履歴</h2>
       <span class="section-pill">{{ payout_history_rows|length }}件</span>
     </div>
+    <p class="section-help">この月にadminが記録した給与、業務委託費、本人立替精算の支払い履歴です。</p>
     <div class="table-wrap">
       <table class="settlement-table">
         <thead>
@@ -282,6 +778,7 @@
       <h2 class="section-title">未払い・要確認の個人立替</h2>
       <span class="section-pill">提出/承認済み合計 {{ pending_personal_reimbursement_total }}円</span>
     </div>
+    <p class="section-help">本人立替経費のうち、未払い・要確認のものを確認します。</p>
     <div class="table-wrap">
       <table class="settlement-table">
         <thead>
@@ -303,7 +800,7 @@
               <td>{{ row.expense.get_category_display }}</td>
               <td>{{ row.approval_status_label }}</td>
               <td>{{ row.receipt_status_label }} / {{ row.receipt_check_status_label }}</td>
-              <td class="amount">{{ row.expense.amount }}円</td>
+              <td class="amount unpaid">{{ row.expense.amount }}円</td>
               <td>{{ row.plain_note|default:"-" }}</td>
             </tr>
           {% empty %}
@@ -313,5 +810,9 @@
       </table>
     </div>
   </section>
+
+  <div class="notice-box info">
+    この画面はadmin専用です。通常コーチ・業務委託コーチには、会社残高や全体の支払い履歴は表示しない運用です。
+  </div>
 </div>
 {% endblock %}
