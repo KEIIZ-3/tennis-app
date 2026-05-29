@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import lesson_member_list
 
 app_name = "club"
 
@@ -14,6 +15,7 @@ urlpatterns = [
 
     path("lesson-calendar/", views.lesson_calendar_view, name="lesson_calendar"),
     path("lesson-calendar/confirm/", views.lesson_reservation_confirm, name="lesson_reservation_confirm"),
+    path("lesson-calendar/members/", lesson_member_list.lesson_calendar_member_list, name="lesson_calendar_member_list"),
 
     path("calendar/events/", views.calendar_events, name="calendar_events"),
     path("api/calendar/events/", views.calendar_events, name="calendar_events_api"),
