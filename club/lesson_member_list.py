@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
@@ -132,6 +133,7 @@ def _phone_label(user):
 def _member_row_from_reservation(reservation):
     user = reservation.user
     return {
+        "kind": "reservation",
         "reservation": reservation,
         "name": _display_name(user),
         "phone": _phone_label(user),
@@ -145,11 +147,17 @@ def _member_row_from_reservation(reservation):
     }
 
 
-def _member_row_from_user(user):
+def _member_row_from_fixed_member(user):
     return {
+        "kind": "fixed_member",
+        "reservation": None,
         "name": _display_name(user),
         "phone": _phone_label(user),
         "level": _level_label(getattr(user, "member_level", "")),
+        "status_label": "固定登録",
+        "detail_url": "",
+        "payment_status_label": "",
+        "tickets_used": "-",
     }
 
 
@@ -163,6 +171,31 @@ def _waitlist_row(waitlist):
         "status_label": waitlist.get_status_display(),
         "created_at": waitlist.created_at,
     }
+
+
+def _slot_reservation_filter(*, availability, fixed_lesson, coach, court, lesson_type, start_at, end_at):
+    base = Q(
+        lesson_type=lesson_type,
+        start_at=start_at,
+        end_at=end_at,
+    )
+
+    candidates = Q()
+    if availability:
+        candidates |= Q(availability=availability)
+    if fixed_lesson:
+        candidates |= Q(fixed_lesson=fixed_lesson)
+
+    # カレンダーの人数カウントは「coach/court/start/end/lesson_type」のslot_key基準。
+    # 予約にavailability/fixed_lessonが未紐付けの場合も拾えるように、同じ条件も併用する。
+    if coach and court:
+        candidates |= Q(coach=coach, court=court)
+    elif coach:
+        candidates |= Q(coach=coach)
+    elif court:
+        candidates |= Q(court=court)
+
+    return base & candidates
 
 
 @login_required
@@ -186,7 +219,7 @@ def lesson_calendar_member_list(request):
 
     if fixed_lesson_id and lesson_date_text:
         fixed_lesson = get_object_or_404(
-            FixedLesson.objects.select_related("coach", "coach_2", "coach_3", "court"),
+            FixedLesson.objects.select_related("coach", "coach_2", "coach_3", "court").prefetch_related("members"),
             pk=fixed_lesson_id,
             is_active=True,
         )
@@ -202,18 +235,30 @@ def lesson_calendar_member_list(request):
         title = fixed_lesson.title or fixed_lesson.get_lesson_type_display()
         target_level_label = _lesson_level_label(fixed_lesson)
 
-        availability = (
-            CoachAvailability.objects.select_related("coach", "substitute_coach", "court")
-            .filter(
-                coach=coach,
-                court=court,
-                lesson_type=lesson_type,
-                start_at=start_at,
-                end_at=end_at,
+        if availability_id:
+            availability = (
+                CoachAvailability.objects.select_related("coach", "substitute_coach", "court")
+                .filter(pk=availability_id)
+                .first()
             )
-            .order_by("id")
-            .first()
-        )
+
+        if not availability:
+            availability = (
+                CoachAvailability.objects.select_related("coach", "substitute_coach", "court")
+                .filter(
+                    coach=coach,
+                    lesson_type=lesson_type,
+                    start_at=start_at,
+                    end_at=end_at,
+                )
+                .filter(Q(court=court) | Q(court__isnull=True))
+                .order_by("id")
+                .first()
+            )
+
+        if availability:
+            coach = availability.coach
+            court = availability.court or court
     elif availability_id:
         availability = get_object_or_404(
             CoachAvailability.objects.select_related("coach", "substitute_coach", "court"),
@@ -229,59 +274,65 @@ def lesson_calendar_member_list(request):
     else:
         return HttpResponse("対象レッスンが見つかりません。", status=404)
 
+    reservation_filter = _slot_reservation_filter(
+        availability=availability,
+        fixed_lesson=fixed_lesson,
+        coach=coach,
+        court=court,
+        lesson_type=lesson_type,
+        start_at=start_at,
+        end_at=end_at,
+    )
+
     active_reservations = list(
-        Reservation.objects.select_related("user", "coach", "substitute_coach", "court", "fixed_lesson")
-        .filter(
-            coach=coach,
-            court=court,
-            lesson_type=lesson_type,
-            start_at=start_at,
-            end_at=end_at,
-            status=Reservation.STATUS_ACTIVE,
-        )
+        Reservation.objects.select_related("user", "coach", "substitute_coach", "court", "fixed_lesson", "availability")
+        .filter(reservation_filter, status=Reservation.STATUS_ACTIVE)
         .order_by("user__full_name", "user__username", "id")
+        .distinct()
     )
 
     pending_reservations = list(
-        Reservation.objects.select_related("user", "coach", "substitute_coach", "court", "fixed_lesson")
-        .filter(
-            coach=coach,
-            court=court,
-            lesson_type=lesson_type,
-            start_at=start_at,
-            end_at=end_at,
-            status=Reservation.STATUS_PENDING,
-        )
+        Reservation.objects.select_related("user", "coach", "substitute_coach", "court", "fixed_lesson", "availability")
+        .filter(reservation_filter, status=Reservation.STATUS_PENDING)
         .order_by("user__full_name", "user__username", "id")
+        .distinct()
     )
 
     waitlists = list(
-        LessonWaitlist.objects.select_related("user", "coach", "substitute_coach", "court", "fixed_lesson")
+        LessonWaitlist.objects.select_related("user", "coach", "substitute_coach", "court", "fixed_lesson", "availability")
         .filter(
-            coach=coach,
-            court=court,
             lesson_type=lesson_type,
             start_at=start_at,
             end_at=end_at,
             status=LessonWaitlist.STATUS_WAITING,
         )
+        .filter(
+            Q(availability=availability)
+            | Q(fixed_lesson=fixed_lesson)
+            | Q(coach=coach, court=court)
+        )
         .order_by("created_at", "id")
+        .distinct()
     )
 
     active_user_ids = {reservation.user_id for reservation in active_reservations}
     pending_user_ids = {reservation.user_id for reservation in pending_reservations}
-    registered_member_rows = []
+
+    fixed_member_rows = []
     if fixed_lesson:
         try:
             for member in fixed_lesson.members.all().order_by("full_name", "username", "id"):
                 if member.pk in active_user_ids or member.pk in pending_user_ids:
                     continue
-                registered_member_rows.append(_member_row_from_user(member))
+                fixed_member_rows.append(_member_row_from_fixed_member(member))
         except Exception:
-            registered_member_rows = []
+            fixed_member_rows = []
+
+    active_rows = [_member_row_from_reservation(reservation) for reservation in active_reservations]
+    active_rows.extend(fixed_member_rows)
 
     capacity = _capacity_for_slot(availability=availability, fixed_lesson=fixed_lesson)
-    active_count = len(active_reservations)
+    active_count = len(active_rows)
     waitlist_count = len(waitlists)
     pending_count = len(pending_reservations)
 
@@ -308,10 +359,9 @@ def lesson_calendar_member_list(request):
             "remaining_count": max(capacity - active_count, 0),
             "pending_count": pending_count,
             "waitlist_count": waitlist_count,
-            "active_rows": [_member_row_from_reservation(reservation) for reservation in active_reservations],
+            "active_rows": active_rows,
             "pending_rows": [_member_row_from_reservation(reservation) for reservation in pending_reservations],
             "waitlist_rows": [_waitlist_row(waitlist) for waitlist in waitlists],
-            "registered_member_rows": registered_member_rows,
             "back_year": request.GET.get("year") or "",
             "back_month": request.GET.get("month") or "",
         },
