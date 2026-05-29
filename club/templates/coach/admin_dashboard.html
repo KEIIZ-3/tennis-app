@@ -1,0 +1,341 @@
+{% extends "base.html" %}
+
+{% block title %}かんたん管理 | Play Design Tennis{% endblock %}
+
+{% block content %}
+<style>
+  .admin-dashboard-hero{
+    border:1px solid #dbeafe;
+    background:linear-gradient(135deg,#eff6ff 0%,#ffffff 55%,#f8fafc 100%);
+    border-radius:22px;
+    padding:22px;
+    box-shadow:0 10px 28px rgba(15,23,42,.07);
+    margin-bottom:18px;
+  }
+  .admin-dashboard-hero h1{
+    margin:0 0 8px;
+    font-size:28px;
+    line-height:1.2;
+    font-weight:900;
+    letter-spacing:-.02em;
+  }
+  .admin-dashboard-hero p{
+    margin:0;
+    color:#475569;
+    font-size:14px;
+  }
+  .admin-dashboard-date{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    margin-bottom:12px;
+    padding:7px 11px;
+    border-radius:999px;
+    background:#fff;
+    border:1px solid #bfdbfe;
+    color:#1e3a8a;
+    font-size:13px;
+    font-weight:800;
+  }
+  .admin-dashboard-section{
+    margin:18px 0 10px;
+  }
+  .admin-dashboard-section h2{
+    margin:0 0 10px;
+    font-size:18px;
+    line-height:1.3;
+    font-weight:900;
+  }
+  .admin-dashboard-section-note{
+    margin:-4px 0 12px;
+    color:#64748b;
+    font-size:13px;
+  }
+  .admin-stat-grid{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:12px;
+    margin-bottom:16px;
+  }
+  .admin-stat-card{
+    display:block;
+    min-height:112px;
+    padding:16px;
+    border:1px solid #e2e8f0;
+    border-radius:18px;
+    background:#fff;
+    box-shadow:0 7px 20px rgba(15,23,42,.05);
+  }
+  .admin-stat-card.urgent{
+    border-color:#fecaca;
+    background:#fff7f7;
+  }
+  .admin-stat-card.warning{
+    border-color:#fed7aa;
+    background:#fff7ed;
+  }
+  .admin-stat-label{
+    display:block;
+    color:#64748b;
+    font-size:12px;
+    font-weight:900;
+    line-height:1.35;
+  }
+  .admin-stat-value{
+    display:block;
+    margin-top:6px;
+    color:#0f172a;
+    font-size:28px;
+    line-height:1;
+    font-weight:1000;
+  }
+  .admin-stat-unit{
+    margin-left:3px;
+    font-size:13px;
+    font-weight:800;
+    color:#64748b;
+  }
+  .admin-action-grid{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:12px;
+  }
+  .admin-action-card{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    min-height:150px;
+    padding:18px;
+    border:1px solid #e2e8f0;
+    border-radius:20px;
+    background:#fff;
+    box-shadow:0 7px 20px rgba(15,23,42,.05);
+    transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+  }
+  .admin-action-card:hover{
+    transform:translateY(-2px);
+    border-color:#bfdbfe;
+    box-shadow:0 12px 28px rgba(15,23,42,.08);
+  }
+  .admin-action-card.primary{
+    border-color:#bfdbfe;
+    background:#eff6ff;
+  }
+  .admin-action-icon{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:42px;
+    height:42px;
+    border-radius:14px;
+    background:#0f172a;
+    color:#fff;
+    font-size:20px;
+    font-weight:900;
+  }
+  .admin-action-title{
+    margin:0;
+    color:#0f172a;
+    font-size:17px;
+    line-height:1.3;
+    font-weight:900;
+  }
+  .admin-action-text{
+    margin:0;
+    color:#64748b;
+    font-size:13px;
+    line-height:1.45;
+  }
+  .admin-action-cta{
+    margin-top:auto;
+    color:#1d4ed8;
+    font-size:13px;
+    font-weight:900;
+  }
+  .upcoming-list{
+    display:grid;
+    gap:10px;
+  }
+  .upcoming-item{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    align-items:flex-start;
+    padding:14px;
+    border:1px solid #e2e8f0;
+    border-radius:16px;
+    background:#fff;
+  }
+  .upcoming-title{
+    margin:0 0 3px;
+    font-size:14px;
+    font-weight:900;
+  }
+  .upcoming-meta{
+    margin:0;
+    color:#64748b;
+    font-size:13px;
+  }
+  .upcoming-pill{
+    flex:0 0 auto;
+    padding:5px 9px;
+    border-radius:999px;
+    border:1px solid #dbeafe;
+    background:#eff6ff;
+    color:#1e40af;
+    font-size:12px;
+    font-weight:900;
+    white-space:nowrap;
+  }
+  .admin-dashboard-notice{
+    padding:15px;
+    border:1px solid #fed7aa;
+    background:#fff7ed;
+    border-radius:16px;
+    color:#7c2d12;
+    font-size:13px;
+    line-height:1.55;
+  }
+  @media (max-width: 900px){
+    .admin-stat-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .admin-action-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  }
+  @media (max-width: 640px){
+    .admin-dashboard-hero{ padding:17px; border-radius:18px; }
+    .admin-dashboard-hero h1{ font-size:23px; }
+    .admin-stat-grid,
+    .admin-action-grid{ grid-template-columns:1fr; }
+    .admin-action-card{ min-height:0; padding:16px; }
+    .upcoming-item{ flex-direction:column; }
+    .upcoming-pill{ align-self:flex-start; }
+  }
+</style>
+
+<section class="admin-dashboard-hero">
+  <div class="admin-dashboard-date">📌 {{ today|date:"Y年n月j日" }} の管理トップ</div>
+  <h1>かんたん管理</h1>
+  <p>よく使う確認・受付・精算・管理機能を、大きなボタンから選べる画面です。迷ったらまずこの画面から操作してください。</p>
+</section>
+
+<section class="admin-dashboard-section">
+  <h2>いま確認したいこと</h2>
+  <p class="admin-dashboard-section-note">赤・オレンジの数字は、早めに確認したい項目です。</p>
+  <div class="admin-stat-grid">
+    <a class="admin-stat-card" href="{% url 'club:coach_today_lessons' %}">
+      <span class="admin-stat-label">今日の参加予定</span>
+      <span class="admin-stat-value">{{ stats.today_reservations }}<span class="admin-stat-unit">件</span></span>
+    </a>
+    <a class="admin-stat-card urgent" href="{% url 'club:reservation_list' %}">
+      <span class="admin-stat-label">承認待ち</span>
+      <span class="admin-stat-value">{{ stats.pending_reservations }}<span class="admin-stat-unit">件</span></span>
+    </a>
+    <a class="admin-stat-card warning" href="{% url 'club:stringing_order_list' %}">
+      <span class="admin-stat-label">未完了のガット張り</span>
+      <span class="admin-stat-value">{{ stats.unhandled_stringing_orders }}<span class="admin-stat-unit">件</span></span>
+    </a>
+    <a class="admin-stat-card warning" href="{% url 'club:coach_today_lessons' %}">
+      <span class="admin-stat-label">今日の未回収</span>
+      <span class="admin-stat-value">{{ stats.unpaid_preopen_reservations }}<span class="admin-stat-unit">件</span></span>
+    </a>
+  </div>
+</section>
+
+<section class="admin-dashboard-section">
+  <h2>やりたいことを選ぶ</h2>
+  <div class="admin-action-grid">
+    <a class="admin-action-card primary" href="{% url 'club:coach_today_lessons' %}">
+      <span class="admin-action-icon">👥</span>
+      <h3 class="admin-action-title">今日の受付・精算</h3>
+      <p class="admin-action-text">参加者確認、電話連絡、7月プレオープン参加費の回収状況を確認します。</p>
+      <span class="admin-action-cta">開く →</span>
+    </a>
+
+    <a class="admin-action-card" href="{% url 'club:lesson_calendar' %}">
+      <span class="admin-action-icon">📅</span>
+      <h3 class="admin-action-title">レッスンカレンダー</h3>
+      <p class="admin-action-text">レッスン予定、参加者、空き状況をカレンダー形式で確認します。</p>
+      <span class="admin-action-cta">開く →</span>
+    </a>
+
+    <a class="admin-action-card" href="{% url 'club:reservation_list' %}">
+      <span class="admin-action-icon">✅</span>
+      <h3 class="admin-action-title">予約・承認</h3>
+      <p class="admin-action-text">予約一覧、承認待ち、キャンセル待ち、過去予約を確認します。</p>
+      <span class="admin-action-cta">開く →</span>
+    </a>
+
+    <a class="admin-action-card" href="{% url 'club:stringing_order_list' %}">
+      <span class="admin-action-icon">🎾</span>
+      <h3 class="admin-action-title">ガット張り管理</h3>
+      <p class="admin-action-text">未対応の依頼、担当コーチ、ステータス、配送希望を確認します。</p>
+      <span class="admin-action-cta">開く →</span>
+    </a>
+
+    <a class="admin-action-card" href="{% url 'club:coach_expense_manage' %}">
+      <span class="admin-action-icon">🧾</span>
+      <h3 class="admin-action-title">経費登録</h3>
+      <p class="admin-action-text">コート代、ボール代、備品代などの立替経費を登録します。</p>
+      <span class="admin-action-cta">開く →</span>
+    </a>
+
+    <a class="admin-action-card" href="{% url 'club:coach_revenue_summary' %}">
+      <span class="admin-action-icon">¥</span>
+      <h3 class="admin-action-title">収支管理</h3>
+      <p class="admin-action-text">売上、チケット、支払い予定、精算関係の画面へ進みます。</p>
+      <span class="admin-action-cta">開く →</span>
+    </a>
+
+    <a class="admin-action-card" href="{% url 'club:coach_fixed_lesson_weekly' %}">
+      <span class="admin-action-icon">🔁</span>
+      <h3 class="admin-action-title">固定レッスン</h3>
+      <p class="admin-action-text">毎週の固定レッスン、固定登録メンバー、開催枠を確認します。</p>
+      <span class="admin-action-cta">開く →</span>
+    </a>
+
+    <a class="admin-action-card" href="{% url 'club:coach_availability_list' %}">
+      <span class="admin-action-icon">＋</span>
+      <h3 class="admin-action-title">スケジュール枠</h3>
+      <p class="admin-action-text">新しいレッスン枠の登録、既存枠の変更、削除を行います。</p>
+      <span class="admin-action-cta">開く →</span>
+    </a>
+
+    {% if is_full_admin %}
+      <a class="admin-action-card" href="/admin/">
+        <span class="admin-action-icon">⚙</span>
+        <h3 class="admin-action-title">Django管理サイト</h3>
+        <p class="admin-action-text">ユーザー、商品マスタ、細かいデータ修正など上級者向けの管理画面です。</p>
+        <span class="admin-action-cta">開く →</span>
+      </a>
+    {% endif %}
+  </div>
+</section>
+
+<section class="admin-dashboard-section">
+  <h2>今後1週間のレッスン枠</h2>
+  {% if upcoming_lessons %}
+    <div class="upcoming-list">
+      {% for lesson in upcoming_lessons %}
+        <div class="upcoming-item">
+          <div>
+            <p class="upcoming-title">{{ lesson.start_at|date:"n/j(D) H:i" }}〜{{ lesson.end_at|date:"H:i" }}　{{ lesson.get_lesson_type_display }}</p>
+            <p class="upcoming-meta">
+              {{ lesson.target_level_display_label }} / {{ lesson.assigned_coach.display_name }} / {{ lesson.court }} / 定員{{ lesson.capacity }}名
+            </p>
+          </div>
+          <span class="upcoming-pill">{{ lesson.get_status_display }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="admin-dashboard-notice">今後1週間のレッスン枠は見つかりませんでした。必要に応じて「スケジュール枠」から登録してください。</div>
+  {% endif %}
+</section>
+
+<section class="admin-dashboard-section">
+  <h2>管理メモ</h2>
+  <div class="admin-dashboard-notice">
+    現在の会員数は {{ stats.member_count }} 名です。チケット残数が0枚以下の会員は {{ stats.low_ticket_member_count }} 名です。固定レッスンは {{ stats.active_fixed_lessons }} 件が有効です。<br>
+    第1弾では「迷わず開ける管理トップ」を追加しています。次の段階で、会員検索・チケット付与をさらに簡単にできます。
+  </div>
+</section>
+{% endblock %}
