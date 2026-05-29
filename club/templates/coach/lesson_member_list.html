@@ -22,8 +22,11 @@
   .person-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:12px;border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;}
   .person-row.waiting{background:#fff7ed;border-color:#fed7aa;}
   .person-row.pending{background:#eff6ff;border-color:#bfdbfe;}
+  .person-row.fixed{background:#f0fdf4;border-color:#bbf7d0;}
   .person-name{color:#0f172a;font-size:16px;line-height:1.35;font-weight:1000;}
   .person-meta{margin-top:4px;display:flex;gap:7px;flex-wrap:wrap;color:#64748b;font-size:12px;line-height:1.4;font-weight:850;}
+  .status-badge{display:inline-flex;align-items:center;justify-content:center;min-height:22px;padding:3px 8px;border-radius:999px;background:#e0f2fe;color:#075985;font-size:12px;font-weight:1000;}
+  .status-badge.fixed{background:#dcfce7;color:#166534;}
   .person-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;}
   .mini-btn{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:6px 10px;border-radius:999px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;font-size:12px;font-weight:900;text-decoration:none;}
   .mini-btn.primary{border-color:#2563eb;background:#2563eb;color:#fff;}
@@ -69,19 +72,20 @@
     {% if active_rows %}
       <div class="person-list">
         {% for row in active_rows %}
-          <div class="person-row">
+          <div class="person-row {% if row.kind == 'fixed_member' %}fixed{% endif %}">
             <div>
               <div class="person-name">{{ row.name }}</div>
               <div class="person-meta">
+                <span class="status-badge {% if row.kind == 'fixed_member' %}fixed{% endif %}">{{ row.status_label }}</span>
                 <span>レベル：{{ row.level }}</span>
                 {% if row.phone %}<span>電話：{{ row.phone }}</span>{% else %}<span>電話：未登録</span>{% endif %}
-                <span>チケット：{{ row.tickets_used }}枚</span>
+                <span>チケット：{{ row.tickets_used }}{% if row.tickets_used != "-" %}枚{% endif %}</span>
                 {% if row.payment_status_label %}<span>支払：{{ row.payment_status_label }}</span>{% endif %}
               </div>
             </div>
             <div class="person-actions">
               {% if row.phone %}<a href="tel:{{ row.phone }}" class="mini-btn primary">電話</a>{% endif %}
-              <a href="{{ row.detail_url }}" class="mini-btn">予約詳細</a>
+              {% if row.detail_url %}<a href="{{ row.detail_url }}" class="mini-btn">予約詳細</a>{% endif %}
             </div>
           </div>
         {% endfor %}
@@ -90,28 +94,6 @@
       <div class="empty-box">参加者はまだいません。</div>
     {% endif %}
   </section>
-
-  {% if registered_member_rows %}
-    <section class="section-card">
-      <h2 class="section-title"><span>固定登録メンバー（予約未作成）</span><span class="count-badge">{{ registered_member_rows|length }}</span></h2>
-      <div class="person-list">
-        {% for row in registered_member_rows %}
-          <div class="person-row">
-            <div>
-              <div class="person-name">{{ row.name }}</div>
-              <div class="person-meta">
-                <span>レベル：{{ row.level }}</span>
-                {% if row.phone %}<span>電話：{{ row.phone }}</span>{% else %}<span>電話：未登録</span>{% endif %}
-              </div>
-            </div>
-            <div class="person-actions">
-              {% if row.phone %}<a href="tel:{{ row.phone }}" class="mini-btn primary">電話</a>{% endif %}
-            </div>
-          </div>
-        {% endfor %}
-      </div>
-    </section>
-  {% endif %}
 
   <section class="section-card">
     <h2 class="section-title"><span>承認待ち</span><span class="count-badge">{{ pending_count }}</span></h2>
