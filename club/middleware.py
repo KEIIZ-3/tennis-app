@@ -6,6 +6,52 @@ from django.utils.deprecation import MiddlewareMixin
 
 
 _CANCEL_POLICY_PATCHED = False
+_COURT_TYPE_POLICY_PATCHED = False
+
+
+def _patch_court_type_choices():
+    """
+    管理サイトの「コート種別」プルダウンを運用名に合わせます。
+
+    既存DB値:
+    - sono: 西猪名公園
+    - other: その他
+
+    追加DB値:
+    - amagasaki: 尼崎記念公園
+
+    Courtモデル本体の巨大置換を避けるため、リクエスト処理前に
+    モデルフィールドのchoicesを補正し、管理サイトのフォーム生成・保存検証に反映します。
+    """
+    global _COURT_TYPE_POLICY_PATCHED
+
+    if _COURT_TYPE_POLICY_PATCHED:
+        return
+
+    try:
+        from .models import Court
+    except Exception:
+        return
+
+    court_type_choices = (
+        ("sono", "西猪名公園"),
+        ("amagasaki", "尼崎記念公園"),
+        ("other", "その他"),
+    )
+
+    try:
+        Court.COURT_SONO = "sono"
+        Court.COURT_AMAGASAKI = "amagasaki"
+        Court.COURT_OTHER = "other"
+        Court.COURT_TYPE_CHOICES = court_type_choices
+
+        field = Court._meta.get_field("court_type")
+        field.choices = court_type_choices
+        field.default = "sono"
+
+        _COURT_TYPE_POLICY_PATCHED = True
+    except Exception:
+        return
 
 
 def _is_2026_july_preopen_general_reservation(reservation) -> bool:
@@ -605,7 +651,8 @@ class AdminDashboardMenuMiddleware(MiddlewareMixin):
     """
     コーチ・業務委託コーチ・admin 用の共通メニューに、かんたん管理への導線を追加します。
 
-    併せて、2026年7月プレオープン一般レッスンの「最後の1名キャンセル不可」例外、
+    併せて、コート種別の管理サイト選択肢補正、
+    2026年7月プレオープン一般レッスンの「最後の1名キャンセル不可」例外、
     レッスンカレンダーへの雨天・コート案内、各レッスンのコート種別・コート名表示、
     日本の祝日背景色表示を適用します。
     """
@@ -614,6 +661,7 @@ class AdminDashboardMenuMiddleware(MiddlewareMixin):
     daily_group_marker = '<h2 class="coach-menu-group-title">日常業務</h2>\n                <div class="coach-tabs">'
 
     def process_request(self, request):
+        _patch_court_type_choices()
         _patch_preopen_last_cancel_policy()
         return None
 
