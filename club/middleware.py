@@ -87,6 +87,94 @@ def _month_start_end(year_value, month_value):
     return month_start, next_month
 
 
+def _nth_weekday(year_value, month_value, weekday_value, nth_value):
+    target = date(year_value, month_value, 1)
+    offset = (weekday_value - target.weekday()) % 7
+    return target + timedelta(days=offset + (nth_value - 1) * 7)
+
+
+def _vernal_equinox_day(year_value):
+    # 2099年までの日本の春分日近似式。現行運用上のレッスンカレンダー表示用途。
+    return int(20.8431 + 0.242194 * (year_value - 1980) - int((year_value - 1980) / 4))
+
+
+def _autumnal_equinox_day(year_value):
+    # 2099年までの日本の秋分日近似式。現行運用上のレッスンカレンダー表示用途。
+    return int(23.2488 + 0.242194 * (year_value - 1980) - int((year_value - 1980) / 4))
+
+
+def _base_japanese_holidays(year_value):
+    holidays = {
+        date(year_value, 1, 1): "元日",
+        _nth_weekday(year_value, 1, 0, 2): "成人の日",
+        date(year_value, 2, 11): "建国記念の日",
+        date(year_value, 2, 23): "天皇誕生日",
+        date(year_value, 3, _vernal_equinox_day(year_value)): "春分の日",
+        date(year_value, 4, 29): "昭和の日",
+        date(year_value, 5, 3): "憲法記念日",
+        date(year_value, 5, 4): "みどりの日",
+        date(year_value, 5, 5): "こどもの日",
+        date(year_value, 8, 11): "山の日",
+        _nth_weekday(year_value, 9, 0, 3): "敬老の日",
+        date(year_value, 9, _autumnal_equinox_day(year_value)): "秋分の日",
+        _nth_weekday(year_value, 10, 0, 2): "スポーツの日",
+        date(year_value, 11, 3): "文化の日",
+        date(year_value, 11, 23): "勤労感謝の日",
+    }
+
+    # 海の日：7月第3月曜日
+    holidays[_nth_weekday(year_value, 7, 0, 3)] = "海の日"
+
+    return holidays
+
+
+def _japanese_holidays_for_year(year_value):
+    holidays = dict(_base_japanese_holidays(year_value))
+
+    # 国民の休日：祝日と祝日に挟まれた平日
+    cursor = date(year_value, 1, 2)
+    year_end = date(year_value, 12, 30)
+    while cursor <= year_end:
+        if cursor not in holidays:
+            previous_day = cursor - timedelta(days=1)
+            next_day = cursor + timedelta(days=1)
+            if previous_day in holidays and next_day in holidays:
+                holidays[cursor] = "国民の休日"
+        cursor += timedelta(days=1)
+
+    # 振替休日：日曜に祝日が当たる場合、以後最初の平日を休日にする
+    for holiday_date, holiday_name in sorted(list(holidays.items())):
+        if holiday_date.weekday() != 6:
+            continue
+
+        substitute_date = holiday_date + timedelta(days=1)
+        while substitute_date in holidays:
+            substitute_date += timedelta(days=1)
+
+        if substitute_date.year == year_value:
+            holidays[substitute_date] = f"{holiday_name} 振替休日"
+
+    return dict(sorted(holidays.items()))
+
+
+def _japanese_holiday_map_for_month(year_value, month_value):
+    try:
+        month_start, next_month = _month_start_end(year_value, month_value)
+    except Exception:
+        today = timezone.localdate()
+        month_start, next_month = _month_start_end(today.year, today.month)
+
+    holidays = {}
+    for target_year in {month_start.year, next_month.year}:
+        holidays.update(_japanese_holidays_for_year(target_year))
+
+    return {
+        target_date.isoformat(): holiday_name
+        for target_date, holiday_name in holidays.items()
+        if month_start <= target_date < next_month
+    }
+
+
 def _court_display_name(court):
     if not court:
         return "未定"
@@ -255,15 +343,30 @@ def _build_lesson_calendar_court_map(request):
     return court_map
 
 
-def _inject_lesson_calendar_notice_and_courts(request, html):
+def _calendar_target_year_month(request):
+    today = timezone.localdate()
+    target_year = _parse_int(request.GET.get("year"), today.year)
+    target_month = _parse_int(request.GET.get("month"), today.month)
+
+    if target_month < 1 or target_month > 12:
+        target_month = today.month
+
+    return target_year, target_month
+
+
+def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
     if not request.path.startswith("/lesson-calendar/"):
         return html
 
     if "lesson-calendar-court-notice-script" in html:
         return html
 
+    target_year, target_month = _calendar_target_year_month(request)
     court_map = _build_lesson_calendar_court_map(request)
+    holiday_map = _japanese_holiday_map_for_month(target_year, target_month)
+
     court_map_json = json.dumps(court_map, ensure_ascii=False)
+    holiday_map_json = json.dumps(holiday_map, ensure_ascii=False)
 
     injection = f"""
 <style id="lesson-calendar-court-notice-style">
@@ -275,6 +378,33 @@ def _inject_lesson_calendar_notice_and_courts(request, html):
   }}
   .court-weather-notice .ticket-notice-icon{{
     background:#0ea5e9!important;
+  }}
+  .monthly-calendar td.is-japanese-holiday{{
+    background:#fff1f2!important;
+  }}
+  .monthly-calendar td.is-japanese-holiday .day-number{{
+    color:#be123c!important;
+  }}
+  .monthly-calendar td.is-japanese-holiday.day-cell-past{{
+    background:#fce7f3!important;
+  }}
+  .holiday-name{{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    max-width:100%;
+    margin:3px 0 1px;
+    padding:2px 6px;
+    border-radius:999px;
+    background:#ffe4e6;
+    color:#be123c;
+    border:1px solid #fecdd3;
+    font-size:10px;
+    line-height:1.1;
+    font-weight:1000;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
   }}
   .event-court{{
     margin-top:2px;
@@ -302,6 +432,18 @@ def _inject_lesson_calendar_notice_and_courts(request, html):
     white-space:normal;
   }}
   @media (max-width:768px){{
+    .holiday-name{{
+      display:block;
+      margin-top:2px;
+      padding:1px 2px;
+      border-radius:4px;
+      font-size:5.8px;
+      line-height:1.02;
+      letter-spacing:-.10em;
+      white-space:normal;
+      overflow:visible;
+      text-overflow:clip;
+    }}
     .event-court{{
       margin-top:1px;
       font-size:5.8px;
@@ -320,6 +462,9 @@ def _inject_lesson_calendar_notice_and_courts(request, html):
 <script id="lesson-calendar-court-notice-script">
 (function () {{
   const courtByKey = {court_map_json};
+  const holidayByDate = {holiday_map_json};
+  const targetYear = {int(target_year)};
+  const targetMonth = {int(target_month)};
 
   function ready(callback) {{
     if (document.readyState === "loading") {{
@@ -327,6 +472,10 @@ def _inject_lesson_calendar_notice_and_courts(request, html):
     }} else {{
       callback();
     }}
+  }}
+
+  function zeroPad(value) {{
+    return String(value).padStart(2, "0");
   }}
 
   function keyFromUrl(rawUrl) {{
@@ -365,6 +514,30 @@ def _inject_lesson_calendar_notice_and_courts(request, html):
       '</div>';
 
     monthNav.parentNode.insertBefore(notice, monthNav);
+  }}
+
+  function addHolidayBackgrounds() {{
+    document.querySelectorAll(".monthly-calendar td").forEach(function (cell) {{
+      if (cell.classList.contains("day-cell-muted")) return;
+      if (cell.querySelector(".holiday-name")) return;
+
+      const dayNumberElement = cell.querySelector(".day-number");
+      if (!dayNumberElement) return;
+
+      const dayNumber = parseInt((dayNumberElement.textContent || "").trim(), 10);
+      if (!dayNumber) return;
+
+      const dateKey = String(targetYear) + "-" + zeroPad(targetMonth) + "-" + zeroPad(dayNumber);
+      const holidayName = holidayByDate[dateKey];
+      if (!holidayName) return;
+
+      cell.classList.add("is-japanese-holiday");
+
+      const holidayElement = document.createElement("div");
+      holidayElement.className = "holiday-name";
+      holidayElement.textContent = holidayName;
+      dayNumberElement.insertAdjacentElement("afterend", holidayElement);
+    }});
   }}
 
   function addCourtToCalendarEvents() {{
@@ -414,6 +587,7 @@ def _inject_lesson_calendar_notice_and_courts(request, html):
 
   ready(function () {{
     addNotice();
+    addHolidayBackgrounds();
     addCourtToCalendarEvents();
     addCourtToScheduleRows();
   }});
@@ -432,7 +606,8 @@ class AdminDashboardMenuMiddleware(MiddlewareMixin):
     コーチ・業務委託コーチ・admin 用の共通メニューに、かんたん管理への導線を追加します。
 
     併せて、2026年7月プレオープン一般レッスンの「最後の1名キャンセル不可」例外、
-    レッスンカレンダーへの雨天・コート案内、各レッスンのコート種別・コート名表示を適用します。
+    レッスンカレンダーへの雨天・コート案内、各レッスンのコート種別・コート名表示、
+    日本の祝日背景色表示を適用します。
     """
 
     shortcut_marker = 'href="/admin-dashboard/"'
@@ -457,7 +632,7 @@ class AdminDashboardMenuMiddleware(MiddlewareMixin):
         except Exception:
             return response
 
-        html = _inject_lesson_calendar_notice_and_courts(request, html)
+        html = _inject_lesson_calendar_notice_courts_and_holidays(request, html)
 
         if user and getattr(user, "is_authenticated", False):
             is_coach_menu_user = (
