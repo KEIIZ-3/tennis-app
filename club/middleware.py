@@ -549,6 +549,12 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
     return "";
   }}
 
+  function memberListUrlFromEvent(element) {{
+    const url = element.getAttribute("data-member-list-url") || "";
+    if (!url) return "";
+    return url;
+  }}
+
   function keyFromEvent(element) {{
     return keyFromUrl(element.getAttribute("data-member-list-url") || element.getAttribute("href") || "");
   }}
@@ -619,6 +625,19 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
     }});
   }}
 
+  function routeJulyCardsToMemberList() {{
+    if (!isJulyPreopen2026) return;
+
+    document.querySelectorAll(".calendar-event").forEach(function (eventElement) {{
+      const memberListUrl = memberListUrlFromEvent(eventElement);
+      if (!memberListUrl) return;
+
+      eventElement.setAttribute("href", memberListUrl);
+      eventElement.setAttribute("aria-label", "参加状況を確認する");
+      eventElement.setAttribute("title", "参加状況を確認する");
+    }});
+  }}
+
   function addCourtToScheduleRows() {{
     document.querySelectorAll('.schedule-row[id^="lesson-"]').forEach(function (row) {{
       if (row.querySelector(".schedule-court")) return;
@@ -647,6 +666,7 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
     addNotice();
     addHolidayBackgrounds();
     addCourtToCalendarEvents();
+    routeJulyCardsToMemberList();
     addCourtToScheduleRows();
   }});
 }})();
@@ -666,7 +686,8 @@ class AdminDashboardMenuMiddleware(MiddlewareMixin):
     併せて、コート種別の管理サイト選択肢補正、
     2026年7月プレオープン一般レッスンの「最後の1名キャンセル不可」例外、
     レッスンカレンダーへの雨天・コート案内、各レッスンのコート種別・コート名表示、
-    日本の祝日背景色表示、2026年7月分の1週間前エントリー案内を適用します。
+    日本の祝日背景色表示、2026年7月分の1週間前エントリー案内、
+    2026年7月分の顧客向け参加状況表示を適用します。
     """
 
     shortcut_marker = 'href="/admin-dashboard/"'
