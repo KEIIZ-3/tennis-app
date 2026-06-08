@@ -87,21 +87,30 @@ def _month_start_end(year_value, month_value):
     return month_start, next_month
 
 
-def _local_date_key(value):
-    if not value:
-        return ""
-    try:
-        if timezone.is_aware(value):
-            value = timezone.localtime(value)
-        return value.strftime("%Y%m%d")
-    except Exception:
-        return ""
-
-
 def _court_display_name(court):
-    if court:
-        return str(court)
-    return "未定"
+    if not court:
+        return "未定"
+
+    court_name = str(court)
+
+    try:
+        court_type_label = court.get_court_type_display()
+    except Exception:
+        court_type_label = ""
+
+    court_type_label = (court_type_label or "").strip()
+    court_name = (court_name or "").strip()
+
+    if not court_type_label:
+        return court_name or "未定"
+
+    if court_name and court_type_label in court_name:
+        return court_name
+
+    if court_name:
+        return f"{court_type_label}：{court_name}"
+
+    return court_type_label
 
 
 def _first_active_court():
@@ -270,9 +279,13 @@ def _inject_lesson_calendar_notice_and_courts(request, html):
   .event-court{{
     margin-top:2px;
     color:#334155;
-    font-size:9px;
+    font-size:8.5px;
     line-height:1.08;
     font-weight:950;
+    max-width:100%;
+    word-break:keep-all;
+    overflow:hidden;
+    text-overflow:ellipsis;
   }}
   .schedule-court{{
     display:inline-flex;
@@ -286,14 +299,17 @@ def _inject_lesson_calendar_notice_and_courts(request, html):
     font-size:12px;
     line-height:1.2;
     font-weight:1000;
-    white-space:nowrap;
+    white-space:normal;
   }}
   @media (max-width:768px){{
     .event-court{{
       margin-top:1px;
-      font-size:6.4px;
+      font-size:5.8px;
       line-height:1.02;
-      letter-spacing:-.08em;
+      letter-spacing:-.10em;
+      white-space:normal;
+      overflow:visible;
+      text-overflow:clip;
     }}
     .schedule-court{{
       padding:2px 7px;
@@ -416,7 +432,7 @@ class AdminDashboardMenuMiddleware(MiddlewareMixin):
     コーチ・業務委託コーチ・admin 用の共通メニューに、かんたん管理への導線を追加します。
 
     併せて、2026年7月プレオープン一般レッスンの「最後の1名キャンセル不可」例外、
-    レッスンカレンダーへの雨天・コート案内、各レッスンのコート表示を適用します。
+    レッスンカレンダーへの雨天・コート案内、各レッスンのコート種別・コート名表示を適用します。
     """
 
     shortcut_marker = 'href="/admin-dashboard/"'
