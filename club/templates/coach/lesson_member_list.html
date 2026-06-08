@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}メンバーリスト{% endblock %}
+{% block title %}{% if is_public_member_view %}参加状況{% else %}メンバーリスト{% endif %}{% endblock %}
 
 {% block content %}
 <style>
@@ -7,8 +7,10 @@
   .member-list-hero{padding:18px;border:1px solid #bfdbfe;border-radius:22px;background:linear-gradient(180deg,#eff6ff 0%,#ffffff 100%);box-shadow:0 10px 24px rgba(15,23,42,.08);}
   .member-list-title{margin:0;color:#0f172a;font-size:28px;line-height:1.25;font-weight:1000;letter-spacing:-.02em;}
   .member-list-lead{margin:8px 0 0;color:#475569;font-size:14px;line-height:1.7;font-weight:750;}
+  .public-note{margin:10px 0 0;padding:10px 12px;border:1px solid #fed7aa;border-radius:14px;background:#fff7ed;color:#9a3412;font-size:13px;line-height:1.7;font-weight:900;}
   .member-list-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;}
   .summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;}
+  .summary-grid.public{grid-template-columns:repeat(2,minmax(0,1fr));}
   .summary-card{padding:14px;border:1px solid #e5e7eb;background:#fff;border-radius:18px;box-shadow:0 8px 20px rgba(15,23,42,.05);}
   .summary-card.primary{border-color:#bfdbfe;background:#eff6ff;}
   .summary-card.waiting{border-color:#fed7aa;background:#fff7ed;}
@@ -35,36 +37,45 @@
     .member-list-title{font-size:24px;}
     .member-list-actions{display:grid;grid-template-columns:1fr;}
     .member-list-actions .btn{width:100%;}
-    .summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .summary-grid,.summary-grid.public{grid-template-columns:repeat(2,minmax(0,1fr));}
     .person-row{grid-template-columns:1fr;}
     .person-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));justify-content:stretch;}
     .mini-btn{width:100%;}
   }
   @media(max-width:420px){
-    .summary-grid{grid-template-columns:1fr;}
+    .summary-grid,.summary-grid.public{grid-template-columns:1fr;}
     .person-actions{grid-template-columns:1fr;}
   }
 </style>
 
 <div class="member-list-page">
   <section class="member-list-hero">
-    <h1 class="member-list-title">メンバーリスト</h1>
+    <h1 class="member-list-title">{% if is_public_member_view %}参加状況{% else %}メンバーリスト{% endif %}</h1>
     <p class="member-list-lead">
       {{ start_at|date:"Y/m/d H:i" }}〜{{ end_at|date:"H:i" }} / {{ title }} / {{ target_level_label }}<br>
       コーチ：{{ coach_name }} / コート：{{ court_name }}
     </p>
+    {% if is_public_member_view %}
+      <p class="public-note">
+        2026年7月プレオープン期間のため、現在の参加状況を確認できます。表示する情報は参加者名とレベルのみです。
+      </p>
+    {% endif %}
     <div class="member-list-actions">
       <a href="{% url 'club:lesson_calendar' %}{% if back_year and back_month %}?year={{ back_year }}&month={{ back_month }}{% endif %}" class="btn">レッスンカレンダーへ戻る</a>
-      <a href="{% url 'club:coach_today_lessons' %}" class="btn btn-primary">本日の受付・精算へ</a>
-      <a href="{% url 'club:reservation_list' %}" class="btn">予約確認へ</a>
+      {% if is_coach_view %}
+        <a href="{% url 'club:coach_today_lessons' %}" class="btn btn-primary">本日の受付・精算へ</a>
+        <a href="{% url 'club:reservation_list' %}" class="btn">予約確認へ</a>
+      {% endif %}
     </div>
   </section>
 
-  <section class="summary-grid">
+  <section class="summary-grid {% if is_public_member_view %}public{% endif %}">
     <div class="summary-card primary"><div class="summary-label">参加者</div><div class="summary-value">{{ active_count }}/{{ capacity }}名</div></div>
     <div class="summary-card"><div class="summary-label">空き枠</div><div class="summary-value">{{ remaining_count }}名</div></div>
-    <div class="summary-card"><div class="summary-label">承認待ち</div><div class="summary-value">{{ pending_count }}名</div></div>
-    <div class="summary-card waiting"><div class="summary-label">キャンセル待ち</div><div class="summary-value">{{ waitlist_count }}名</div></div>
+    {% if is_coach_view %}
+      <div class="summary-card"><div class="summary-label">承認待ち</div><div class="summary-value">{{ pending_count }}名</div></div>
+      <div class="summary-card waiting"><div class="summary-label">キャンセル待ち</div><div class="summary-value">{{ waitlist_count }}名</div></div>
+    {% endif %}
   </section>
 
   <section class="section-card">
@@ -76,17 +87,23 @@
             <div>
               <div class="person-name">{{ row.name }}</div>
               <div class="person-meta">
-                <span class="status-badge {% if row.kind == 'fixed_member' %}fixed{% endif %}">{{ row.status_label }}</span>
+                {% if is_coach_view %}
+                  <span class="status-badge {% if row.kind == 'fixed_member' %}fixed{% endif %}">{{ row.status_label }}</span>
+                {% endif %}
                 <span>レベル：{{ row.level }}</span>
-                {% if row.phone %}<span>電話：{{ row.phone }}</span>{% else %}<span>電話：未登録</span>{% endif %}
-                <span>チケット：{{ row.tickets_used }}{% if row.tickets_used != "-" %}枚{% endif %}</span>
-                {% if row.payment_status_label %}<span>支払：{{ row.payment_status_label }}</span>{% endif %}
+                {% if is_coach_view %}
+                  {% if row.phone %}<span>電話：{{ row.phone }}</span>{% else %}<span>電話：未登録</span>{% endif %}
+                  <span>チケット：{{ row.tickets_used }}{% if row.tickets_used != "-" %}枚{% endif %}</span>
+                  {% if row.payment_status_label %}<span>支払：{{ row.payment_status_label }}</span>{% endif %}
+                {% endif %}
               </div>
             </div>
-            <div class="person-actions">
-              {% if row.phone %}<a href="tel:{{ row.phone }}" class="mini-btn primary">電話</a>{% endif %}
-              {% if row.detail_url %}<a href="{{ row.detail_url }}" class="mini-btn">予約詳細</a>{% endif %}
-            </div>
+            {% if is_coach_view %}
+              <div class="person-actions">
+                {% if row.phone %}<a href="tel:{{ row.phone }}" class="mini-btn primary">電話</a>{% endif %}
+                {% if row.detail_url %}<a href="{{ row.detail_url }}" class="mini-btn">予約詳細</a>{% endif %}
+              </div>
+            {% endif %}
           </div>
         {% endfor %}
       </div>
@@ -95,54 +112,56 @@
     {% endif %}
   </section>
 
-  <section class="section-card">
-    <h2 class="section-title"><span>承認待ち</span><span class="count-badge">{{ pending_count }}</span></h2>
-    {% if pending_rows %}
-      <div class="person-list">
-        {% for row in pending_rows %}
-          <div class="person-row pending">
-            <div>
-              <div class="person-name">{{ row.name }}</div>
-              <div class="person-meta">
-                <span>レベル：{{ row.level }}</span>
-                {% if row.phone %}<span>電話：{{ row.phone }}</span>{% else %}<span>電話：未登録</span>{% endif %}
+  {% if is_coach_view %}
+    <section class="section-card">
+      <h2 class="section-title"><span>承認待ち</span><span class="count-badge">{{ pending_count }}</span></h2>
+      {% if pending_rows %}
+        <div class="person-list">
+          {% for row in pending_rows %}
+            <div class="person-row pending">
+              <div>
+                <div class="person-name">{{ row.name }}</div>
+                <div class="person-meta">
+                  <span>レベル：{{ row.level }}</span>
+                  {% if row.phone %}<span>電話：{{ row.phone }}</span>{% else %}<span>電話：未登録</span>{% endif %}
+                </div>
+              </div>
+              <div class="person-actions">
+                {% if row.phone %}<a href="tel:{{ row.phone }}" class="mini-btn primary">電話</a>{% endif %}
+                <a href="{{ row.detail_url }}" class="mini-btn">予約詳細</a>
               </div>
             </div>
-            <div class="person-actions">
-              {% if row.phone %}<a href="tel:{{ row.phone }}" class="mini-btn primary">電話</a>{% endif %}
-              <a href="{{ row.detail_url }}" class="mini-btn">予約詳細</a>
-            </div>
-          </div>
-        {% endfor %}
-      </div>
-    {% else %}
-      <div class="empty-box">承認待ちはありません。</div>
-    {% endif %}
-  </section>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-box">承認待ちはありません。</div>
+      {% endif %}
+    </section>
 
-  <section class="section-card waiting">
-    <h2 class="section-title"><span>キャンセル待ち</span><span class="count-badge">{{ waitlist_count }}</span></h2>
-    {% if waitlist_rows %}
-      <div class="person-list">
-        {% for row in waitlist_rows %}
-          <div class="person-row waiting">
-            <div>
-              <div class="person-name">{{ forloop.counter }}. {{ row.name }}</div>
-              <div class="person-meta">
-                <span>レベル：{{ row.level }}</span>
-                {% if row.phone %}<span>電話：{{ row.phone }}</span>{% else %}<span>電話：未登録</span>{% endif %}
-                <span>登録：{{ row.created_at|date:"Y/m/d H:i" }}</span>
+    <section class="section-card waiting">
+      <h2 class="section-title"><span>キャンセル待ち</span><span class="count-badge">{{ waitlist_count }}</span></h2>
+      {% if waitlist_rows %}
+        <div class="person-list">
+          {% for row in waitlist_rows %}
+            <div class="person-row waiting">
+              <div>
+                <div class="person-name">{{ forloop.counter }}. {{ row.name }}</div>
+                <div class="person-meta">
+                  <span>レベル：{{ row.level }}</span>
+                  {% if row.phone %}<span>電話：{{ row.phone }}</span>{% else %}<span>電話：未登録</span>{% endif %}
+                  <span>登録：{{ row.created_at|date:"Y/m/d H:i" }}</span>
+                </div>
+              </div>
+              <div class="person-actions">
+                {% if row.phone %}<a href="tel:{{ row.phone }}" class="mini-btn primary">電話</a>{% endif %}
               </div>
             </div>
-            <div class="person-actions">
-              {% if row.phone %}<a href="tel:{{ row.phone }}" class="mini-btn primary">電話</a>{% endif %}
-            </div>
-          </div>
-        {% endfor %}
-      </div>
-    {% else %}
-      <div class="empty-box">キャンセル待ちはありません。</div>
-    {% endif %}
-  </section>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-box">キャンセル待ちはありません。</div>
+      {% endif %}
+    </section>
+  {% endif %}
 </div>
 {% endblock %}
