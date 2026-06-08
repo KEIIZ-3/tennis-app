@@ -57,10 +57,13 @@
     </p>
     {% if is_public_member_view %}
       <p class="public-note">
-        2026年7月プレオープン期間のため、現在の参加状況を確認できます。表示する情報は参加者名とレベルのみです。
+        2026年7月プレオープン期間のため、現在の参加状況を確認できます。予約する場合は下の「このレッスンを予約する」ボタンから進んでください。表示する情報は参加者名とレベルのみです。
       </p>
     {% endif %}
     <div class="member-list-actions">
+      {% if is_public_member_view and reservation_url %}
+        <a href="{{ reservation_url }}" class="btn btn-primary">このレッスンを予約する</a>
+      {% endif %}
       <a href="{% url 'club:lesson_calendar' %}{% if back_year and back_month %}?year={{ back_year }}&month={{ back_month }}{% endif %}" class="btn">レッスンカレンダーへ戻る</a>
       {% if is_coach_view %}
         <a href="{% url 'club:coach_today_lessons' %}" class="btn btn-primary">本日の受付・精算へ</a>
