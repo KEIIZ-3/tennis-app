@@ -32,6 +32,11 @@
     box-shadow:0 6px 18px rgba(15, 23, 42, 0.04);
   }
 
+  .terms-section-important{
+    border-color:#fed7aa;
+    background:#fff7ed;
+  }
+
   .terms-section-title{
     margin:0 0 10px;
     font-size:18px;
@@ -91,6 +96,16 @@
 </div>
 
 <div class="terms-list">
+  <section class="terms-section terms-section-important">
+    <h2 class="terms-section-title">レッスン中の怪我・事故等について</h2>
+    <ol class="terms-body">
+      <li>レッスン参加中の怪我、事故、体調不良、持病の悪化、熱中症、接触事故、用具の破損・紛失等については、参加者ご本人の自己責任でご参加いただくものとします。</li>
+      <li>参加者は、ご自身の体調・体力・技術レベルを考慮し、無理のない範囲でレッスンに参加してください。</li>
+      <li>体調に不安がある場合、怪我をしている場合、または医師から運動を制限されている場合は、参加をお控えください。</li>
+      <li>主催者・コーチは、安全に配慮してレッスンを運営しますが、故意または重大な過失がある場合を除き、レッスン中または移動中に発生した怪我・事故・損害について責任を負いかねます。</li>
+    </ol>
+  </section>
+
   {% for section in terms_sections %}
     <section class="terms-section">
       <h2 class="terms-section-title">{{ section.title }}</h2>
