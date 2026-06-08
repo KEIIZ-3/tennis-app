@@ -209,6 +209,29 @@ def _is_2026_july_slot(start_at):
         return False
 
 
+def _build_reservation_url(request, availability_id, fixed_lesson_id, lesson_date_text):
+    query_parts = []
+
+    if availability_id:
+        query_parts.append(f"availability_id={availability_id}")
+    if fixed_lesson_id:
+        query_parts.append(f"fixed_lesson_id={fixed_lesson_id}")
+    if lesson_date_text:
+        query_parts.append(f"lesson_date={lesson_date_text}")
+
+    back_year = (request.GET.get("year") or "").strip()
+    back_month = (request.GET.get("month") or "").strip()
+    if back_year:
+        query_parts.append(f"year={back_year}")
+    if back_month:
+        query_parts.append(f"month={back_month}")
+
+    base_url = reverse("club:lesson_reservation_confirm")
+    if query_parts:
+        return base_url + "?" + "&".join(query_parts)
+    return base_url
+
+
 @login_required
 def lesson_calendar_member_list(request):
     is_coach_view = _is_coach_like(request.user)
@@ -357,6 +380,13 @@ def lesson_calendar_member_list(request):
     else:
         coach_name = _display_name(coach)
 
+    reservation_url = _build_reservation_url(
+        request,
+        availability_id=availability_id,
+        fixed_lesson_id=fixed_lesson_id,
+        lesson_date_text=lesson_date_text,
+    )
+
     return render(
         request,
         "coach/lesson_member_list.html",
@@ -380,5 +410,6 @@ def lesson_calendar_member_list(request):
             "back_month": request.GET.get("month") or "",
             "is_public_member_view": is_public_member_view,
             "is_coach_view": is_coach_view,
+            "reservation_url": reservation_url,
         },
     )
