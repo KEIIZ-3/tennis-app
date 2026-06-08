@@ -413,6 +413,7 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
 
     court_map_json = json.dumps(court_map, ensure_ascii=False)
     holiday_map_json = json.dumps(holiday_map, ensure_ascii=False)
+    is_2026_july = target_year == 2026 and target_month == 7
 
     injection = f"""
 <style id="lesson-calendar-court-notice-style">
@@ -424,6 +425,11 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
   }}
   .court-weather-notice .ticket-notice-icon{{
     background:#0ea5e9!important;
+  }}
+  .court-entry-deadline-note{{
+    margin-top:6px;
+    color:#9a3412;
+    font-weight:1000;
   }}
   .monthly-calendar td.is-japanese-holiday{{
     background:#fff1f2!important;
@@ -511,6 +517,7 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
   const holidayByDate = {holiday_map_json};
   const targetYear = {int(target_year)};
   const targetMonth = {int(target_month)};
+  const isJulyPreopen2026 = {str(is_2026_july).lower()};
 
   function ready(callback) {{
     if (document.readyState === "loading") {{
@@ -550,6 +557,10 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
     const monthNav = document.querySelector(".calendar-month-nav");
     if (!monthNav || document.querySelector(".court-weather-notice")) return;
 
+    const julyDeadlineText = isJulyPreopen2026
+      ? '<p class="ticket-notice-text court-entry-deadline-note">2026年7月分はコートキャンセル期限が1週間前のため、できるだけ開催日の1週間前までにエントリーをお願いします。</p>'
+      : '';
+
     const notice = document.createElement("div");
     notice.className = "ticket-notice court-weather-notice";
     notice.innerHTML =
@@ -557,6 +568,7 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
       '<div>' +
       '<p class="ticket-notice-title">雨天中止・コートについて</p>' +
       '<p class="ticket-notice-text">雨天中止の場合は、レッスン開始1時間前までを目安にご連絡します。コートは西猪名公園または尼崎記念公園となる可能性があります。各レッスン欄のコート表示をご確認ください。</p>' +
+      julyDeadlineText +
       '</div>';
 
     monthNav.parentNode.insertBefore(notice, monthNav);
@@ -654,7 +666,7 @@ class AdminDashboardMenuMiddleware(MiddlewareMixin):
     併せて、コート種別の管理サイト選択肢補正、
     2026年7月プレオープン一般レッスンの「最後の1名キャンセル不可」例外、
     レッスンカレンダーへの雨天・コート案内、各レッスンのコート種別・コート名表示、
-    日本の祝日背景色表示を適用します。
+    日本の祝日背景色表示、2026年7月分の1週間前エントリー案内を適用します。
     """
 
     shortcut_marker = 'href="/admin-dashboard/"'
