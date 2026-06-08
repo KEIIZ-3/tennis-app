@@ -198,10 +198,20 @@ def _slot_reservation_filter(*, availability, fixed_lesson, coach, court, lesson
     return base & candidates
 
 
+def _is_2026_july_slot(start_at):
+    if not start_at:
+        return False
+
+    try:
+        start_local = timezone.localtime(start_at) if timezone.is_aware(start_at) else start_at
+        return start_local.year == 2026 and start_local.month == 7
+    except Exception:
+        return False
+
+
 @login_required
 def lesson_calendar_member_list(request):
-    if not _is_coach_like(request.user):
-        return HttpResponse("Forbidden", status=403)
+    is_coach_view = _is_coach_like(request.user)
 
     availability_id = (request.GET.get("availability_id") or "").strip()
     fixed_lesson_id = (request.GET.get("fixed_lesson_id") or "").strip()
@@ -273,6 +283,10 @@ def lesson_calendar_member_list(request):
         target_level_label = _lesson_level_label(availability)
     else:
         return HttpResponse("対象レッスンが見つかりません。", status=404)
+
+    is_public_member_view = (not is_coach_view) and _is_2026_july_slot(start_at)
+    if not is_coach_view and not is_public_member_view:
+        return HttpResponse("Forbidden", status=403)
 
     reservation_filter = _slot_reservation_filter(
         availability=availability,
@@ -364,5 +378,7 @@ def lesson_calendar_member_list(request):
             "waitlist_rows": [_waitlist_row(waitlist) for waitlist in waitlists],
             "back_year": request.GET.get("year") or "",
             "back_month": request.GET.get("month") or "",
+            "is_public_member_view": is_public_member_view,
+            "is_coach_view": is_coach_view,
         },
     )
