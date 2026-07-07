@@ -682,7 +682,7 @@
       <a href="{% url 'club:coach_today_lessons' %}?days=1{% if selected_coach_id %}&coach_id={{ selected_coach_id }}{% endif %}" class="btn {% if display_days == 1 %}btn-primary{% endif %}">今日</a>
       <a href="{% url 'club:coach_today_lessons' %}?days=7{% if selected_coach_id %}&coach_id={{ selected_coach_id }}{% endif %}" class="btn {% if display_days == 7 %}btn-primary{% endif %}">7日間</a>
       <a href="{% url 'club:coach_today_lessons' %}?days=14{% if selected_coach_id %}&coach_id={{ selected_coach_id }}{% endif %}" class="btn {% if display_days == 14 %}btn-primary{% endif %}">14日間</a>
-      <a href="{% url 'club:coach_today_lessons' %}?days=28{% if selected_coach_id %}&coach_id={{ selected_coach_id }}{% endif %}" class="btn {% if display_days == 28 %}btn-primary{% endif %}">28日間</a>
+      <a href="{% url 'club:coach_today_lessons' %}?days=28{% if selected_coach_id %}&coach_id={{ selected_coach_id }}{% endif %}" class="btn {% if display_days == 28 %}btn-primary{% endif %}">過去1か月</a>
     </div>
 
     {% if is_staff_mode %}
@@ -992,8 +992,14 @@
   </section>
 
   <section>
-    <h2 class="section-title">期間内のレッスン <span class="badge">{{ summary.lesson_count }}</span></h2>
-    <p class="section-note">今日以外のレッスンも含めた確認用です。詳細な受付操作は当日枠で行う想定です。</p>
+    <h2 class="section-title">{% if display_days == 28 %}過去1か月のレッスン・回収状況{% else %}期間内のレッスン{% endif %} <span class="badge">{{ summary.lesson_count }}</span></h2>
+    <p class="section-note">
+      {% if display_days == 28 %}
+        過去1か月分の7月プレオープン参加費について、参加者ごとに「未回収 / 回収済み / 免除」を編集できます。
+      {% else %}
+        今日以外のレッスンも含めた確認用です。詳細な受付操作は当日枠で行う想定です。
+      {% endif %}
+    </p>
     {% if grouped_days %}
       <div class="day-group">
         {% for group in grouped_days %}
@@ -1028,20 +1034,40 @@
                       {% endif %}
                     </div>
                     {% if row.participant_rows %}
-                      <div class="people-section">
+                      <div class="people-section {% if row.payment_unpaid_count %}needs-payment{% endif %}">
                         <div class="people-heading">
-                          <span>参加者</span>
-                          <small>{{ row.participant_count }}名</small>
+                          <span>{% if display_days == 28 %}参加者・回収状況{% else %}参加者{% endif %}</span>
+                          <small>{{ row.participant_count }}名{% if row.payment_target_count %} / 未回収 {{ row.payment_unpaid_count }}名{% endif %}</small>
                         </div>
                         <div class="person-list">
                           {% for person in row.participant_rows %}
-                            <div class="person-row">
+                            <div class="person-row {% if person.payment_required and person.payment_status == 'paid' %}payment-paid{% elif person.payment_required and person.payment_status == 'waived' %}payment-waived{% elif person.payment_required %}payment-unpaid{% endif %}">
                               <div>
                                 <div class="person-name">{{ person.name }}</div>
                                 <div class="person-sub">
-                                  <span>{{ person.level }}</span>
-                                  {% if person.phone %}<span>{{ person.phone }}</span>{% else %}<span>電話未登録</span>{% endif %}
+                                  <span>レベル：{{ person.level }}</span>
+                                  {% if person.phone %}<span>電話：{{ person.phone }}</span>{% else %}<span>電話未登録</span>{% endif %}
                                 </div>
+                                {% if person.payment_required %}
+                                  <div class="payment-box {% if person.payment_status == 'paid' %}is-paid{% elif person.payment_status == 'waived' %}is-waived{% endif %}">
+                                    <div class="payment-label">
+                                      <span>参加費 {{ person.payment_amount }}円</span>
+                                      <span>{{ person.payment_status_label }}</span>
+                                    </div>
+                                    <div class="payment-actions">
+                                      {% for status_value, status_label in person.payment_status_options %}
+                                        <form method="post">
+                                          {% csrf_token %}
+                                          <input type="hidden" name="action" value="update_payment">
+                                          <input type="hidden" name="reservation_id" value="{{ person.reservation.id }}">
+                                          <input type="hidden" name="payment_status" value="{{ status_value }}">
+                                          <button type="submit" class="{% if person.payment_status == status_value %}is-active{% endif %}">{{ status_label }}</button>
+                                        </form>
+                                      {% endfor %}
+                                    </div>
+                                    <div class="payment-help">7月プレオープン：回収状況を更新できます。</div>
+                                  </div>
+                                {% endif %}
                               </div>
                               <div class="person-actions">
                                 {% if person.phone %}<a href="tel:{{ person.phone }}" class="mini-btn primary">電話</a>{% endif %}
