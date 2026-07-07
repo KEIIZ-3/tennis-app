@@ -56,7 +56,7 @@
       </div>
       <div class="field">
         <label for="note">追加連絡（任意）</label>
-        <textarea id="note" name="note" placeholder="例：受付付近に集合してください。">{{ note }}</textarea>
+        <textarea id="note" name="note" placeholder="例：受付付近に集合してください。">{% if note %}{{ note }}{% else %}コート付近に集合してください。{% endif %}</textarea>
       </div>
       <div class="actions"><button class="btn" type="submit" name="action" value="preview">文面を確認する</button></div>
     {% else %}
