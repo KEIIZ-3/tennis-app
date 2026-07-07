@@ -3017,8 +3017,14 @@ def coach_today_lessons(request):
     if display_days not in (1, 7, 14, 28):
         display_days = 7
 
-    range_start = today
-    range_end = today + timedelta(days=display_days - 1)
+    # 「過去1か月」は、今日を含む直近28日間を表示します。
+    # 今日・7日間・14日間はこれまでどおり未来の予定確認用です。
+    if display_days == 28:
+        range_start = today - timedelta(days=27)
+        range_end = today
+    else:
+        range_start = today
+        range_end = today + timedelta(days=display_days - 1)
 
     coach_queryset = User.objects.filter(role__in=("coach", "contractor_coach")).order_by("full_name", "username", "id")
 
@@ -3397,6 +3403,18 @@ def coach_today_lessons(request):
     today_rows = [row for row in lesson_rows if row["date"] == today]
     upcoming_rows = [row for row in lesson_rows if row["date"] != today]
     attention_rows = [row for row in lesson_rows if row["needs_attention"] and not row["is_past"]]
+
+    # 過去1か月表示では、終了済みレッスンも含めて参加費の回収状況を編集できるようにします。
+    for row in lesson_rows:
+        payment_rows = [
+            person for person in row["participant_rows"]
+            if person.get("payment_required")
+        ]
+        row["payment_target_count"] = len(payment_rows)
+        row["payment_unpaid_count"] = sum(
+            1 for person in payment_rows
+            if person.get("payment_status") == Reservation.PAYMENT_STATUS_UNPAID
+        )
 
     grouped_days = []
     day_cursor = range_start
