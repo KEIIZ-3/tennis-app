@@ -4008,6 +4008,9 @@ EXPENSE_APPROVAL_DRAFT = "draft"
 EXPENSE_APPROVAL_SUBMITTED = "submitted"
 EXPENSE_APPROVAL_APPROVED = "approved"
 EXPENSE_APPROVAL_RETURNED = "returned"
+# 雨天中止でコート運営会社から返金されるまで、通常経費から除外する状態です。
+EXPENSE_APPROVAL_REFUND_PENDING = "refund_pending"
+EXPENSE_APPROVAL_REFUNDED = "refunded"
 
 EXPENSE_TYPE_CHOICES = (
     (EXPENSE_TYPE_PERSONAL, "本人立替"),
@@ -4041,6 +4044,8 @@ EXPENSE_APPROVAL_CHOICES = (
     (EXPENSE_APPROVAL_SUBMITTED, "提出済み"),
     (EXPENSE_APPROVAL_APPROVED, "承認"),
     (EXPENSE_APPROVAL_RETURNED, "差戻し"),
+    (EXPENSE_APPROVAL_REFUND_PENDING, "雨天返金待ち"),
+    (EXPENSE_APPROVAL_REFUNDED, "雨天返金済み"),
 )
 
 EXPENSE_NOTE_META_PREFIX = "__EXPENSE_META__"
@@ -4101,6 +4106,110 @@ def _expense_parse_note(stored_note):
     return merged
 
 
+def _expense_is_refund_status(status):
+    return status in (
+        EXPENSE_APPROVAL_REFUND_PENDING,
+        EXPENSE_APPROVAL_REFUNDED,
+    )
+
+
+def _court_expense_matches_availability(expense, availability):
+    """
+    雨天中止の対象コート費用を安全に絞り込みます。
+
+    既存のCoachExpenseにはレッスンIDの専用列がないため、経費日付と
+    メモに記載されたコート名（または court:<ID>）で一致判定します。
+    例: 「西猪名公園：1コート 7/12 17-19」または「court:3」
+    """
+    if not expense or not availability or expense.category != CoachExpense.CATEGORY_COURT:
+        return False
+
+    try:
+        lesson_date = timezone.localtime(availability.start_at).date() if timezone.is_aware(availability.start_at) else availability.start_at.date()
+    except Exception:
+        return False
+
+    if expense.expense_date != lesson_date:
+        return False
+
+    meta = _expense_parse_note(expense.note)
+    slot_key = str(meta.get("court_refund_slot_key") or "").strip()
+    expected_slot_key = (
+        f"{lesson_date.isoformat()}|{availability.court_id}|"
+        f"{timezone.localtime(availability.start_at).strftime('%H:%M') if timezone.is_aware(availability.start_at) else availability.start_at.strftime('%H:%M')}"
+    )
+    if slot_key and slot_key == expected_slot_key:
+        return True
+
+    plain_note = str(meta.get("plain_note") or "")
+    court_name = str(getattr(availability, "court", "") or "").strip()
+    court_token = f"court:{getattr(availability, 'court_id', '')}"
+    return bool(
+        (court_name and court_name in plain_note)
+        or (getattr(availability, "court_id", None) and court_token in plain_note)
+    )
+
+
+def _mark_court_expenses_refund_pending_for_rain_cancel(availability, *, changed_by=None):
+    """
+    承認済みの対象コート費用を、雨天返金待ちへ自動差戻しします。
+    返金待ち・返金済み・未承認の経費は変更しません。
+    """
+    if not availability:
+        return 0
+
+    try:
+        lesson_date = timezone.localtime(availability.start_at).date() if timezone.is_aware(availability.start_at) else availability.start_at.date()
+        start_label = timezone.localtime(availability.start_at).strftime("%H:%M") if timezone.is_aware(availability.start_at) else availability.start_at.strftime("%H:%M")
+    except Exception:
+        return 0
+
+    changed_count = 0
+    court_expenses = CoachExpense.objects.filter(
+        expense_date=lesson_date,
+        category=CoachExpense.CATEGORY_COURT,
+    ).order_by("id")
+
+    for expense in court_expenses:
+        meta = _expense_parse_note(expense.note)
+        if meta.get("approval_status") != EXPENSE_APPROVAL_APPROVED:
+            continue
+        if not _court_expense_matches_availability(expense, availability):
+            continue
+
+        extra_meta = {
+            key: value
+            for key, value in meta.items()
+            if key not in {
+                "expense_type",
+                "receipt_status",
+                "receipt_check_status",
+                "approval_status",
+                "plain_note",
+            }
+        }
+        extra_meta.update(
+            {
+                "rain_canceled_at": timezone.now().isoformat(),
+                "rain_canceled_by_id": getattr(changed_by, "pk", None),
+                "rain_canceled_by_name": _display_name(changed_by),
+                "rain_canceled_lesson_label": f"{lesson_date:%Y/%m/%d} {start_label} / {getattr(availability, 'court', '')}",
+            }
+        )
+        expense.note = _expense_build_note(
+            meta.get("plain_note", ""),
+            expense_type=meta.get("expense_type", EXPENSE_TYPE_COMMON),
+            receipt_status=meta.get("receipt_status", EXPENSE_RECEIPT_NONE),
+            receipt_check_status=meta.get("receipt_check_status", EXPENSE_RECEIPT_CHECK_UNCHECKED),
+            approval_status=EXPENSE_APPROVAL_REFUND_PENDING,
+            extra_meta=extra_meta,
+        )
+        expense.save(update_fields=["note"])
+        changed_count += 1
+
+    return changed_count
+
+
 def _expense_meta_row(expense):
     meta = _expense_parse_note(getattr(expense, "note", ""))
     return {
@@ -4116,6 +4225,9 @@ def _expense_meta_row(expense):
         "receipt_check_status_label": _choice_label(EXPENSE_RECEIPT_CHECK_CHOICES, meta["receipt_check_status"]),
         "approval_status": meta["approval_status"],
         "approval_status_label": _choice_label(EXPENSE_APPROVAL_CHOICES, meta["approval_status"]),
+        "is_refund_pending": meta["approval_status"] == EXPENSE_APPROVAL_REFUND_PENDING,
+        "is_refunded": meta["approval_status"] == EXPENSE_APPROVAL_REFUNDED,
+        "rain_canceled_lesson_label": meta.get("rain_canceled_lesson_label", ""),
     }
 
 
@@ -5158,12 +5270,29 @@ def coach_expense_manage(request):
                 messages.error(request, "承認状態が不正です。")
                 return redirect("club:coach_expense_manage")
 
+            extra_meta = {
+                key: value
+                for key, value in current_meta.items()
+                if key not in {
+                    "expense_type",
+                    "receipt_status",
+                    "receipt_check_status",
+                    "approval_status",
+                    "plain_note",
+                }
+            }
+            if approval_status == EXPENSE_APPROVAL_REFUNDED:
+                extra_meta["refunded_at"] = timezone.now().isoformat()
+                extra_meta["refunded_by_id"] = getattr(request.user, "pk", None)
+                extra_meta["refunded_by_name"] = _display_name(request.user)
+
             expense.note = _expense_build_note(
                 plain_note,
                 expense_type=expense_type,
                 receipt_status=receipt_status,
                 receipt_check_status=receipt_check_status,
                 approval_status=approval_status,
+                extra_meta=extra_meta,
             )
             expense.save(update_fields=["note"])
             messages.success(request, "経費ステータスを更新しました。")
@@ -5264,12 +5393,26 @@ def coach_expense_manage(request):
         visible_queryset.filter(expense_date__gte=month_start, expense_date__lt=next_month)
     )
     current_month_meta_rows = [_expense_meta_row(expense) for expense in current_month_queryset]
-    current_month_total = sum(int(row["expense"].amount or 0) for row in current_month_meta_rows)
+    current_month_accounting_rows = [
+        row for row in current_month_meta_rows
+        if not _expense_is_refund_status(row["approval_status"])
+    ]
+    refund_pending_rows = [
+        row for row in current_month_meta_rows
+        if row["approval_status"] == EXPENSE_APPROVAL_REFUND_PENDING
+    ]
+    refunded_rows = [
+        row for row in current_month_meta_rows
+        if row["approval_status"] == EXPENSE_APPROVAL_REFUNDED
+    ]
+    current_month_total = sum(int(row["expense"].amount or 0) for row in current_month_accounting_rows)
+    refund_pending_total = sum(int(row["expense"].amount or 0) for row in refund_pending_rows)
+    refunded_total = sum(int(row["expense"].amount or 0) for row in refunded_rows)
 
     category_totals = {}
     expense_type_totals = {}
     approval_totals = {}
-    for row in current_month_meta_rows:
+    for row in current_month_accounting_rows:
         category_label = row["expense"].get_category_display()
         category_totals.setdefault(category_label, 0)
         category_totals[category_label] += int(row["expense"].amount or 0)
@@ -5306,6 +5449,10 @@ def coach_expense_manage(request):
             "expense_receipt_check_choices": EXPENSE_RECEIPT_CHECK_CHOICES,
             "expense_approval_choices": EXPENSE_APPROVAL_CHOICES,
             "current_month_total": current_month_total,
+            "refund_pending_total": refund_pending_total,
+            "refund_pending_count": len(refund_pending_rows),
+            "refunded_total": refunded_total,
+            "refunded_count": len(refunded_rows),
             "category_rows": category_rows,
             "expense_type_rows": expense_type_rows,
             "approval_rows": approval_rows,
@@ -6370,10 +6517,21 @@ def coach_availability_list(request):
                     continue
 
             if canceled_count > 0:
-                messages.success(
-                    request,
+                refund_pending_count = _mark_court_expenses_refund_pending_for_rain_cancel(
+                    availability,
+                    changed_by=request.user,
+                )
+                message_text = (
                     f"雨天中止を実行しました。対象予約 {canceled_count} 件を中止し、会員へ通知しました。"
                 )
+                if refund_pending_count:
+                    message_text += f" コート費用 {refund_pending_count} 件を「雨天返金待ち」に差し戻しました。"
+                else:
+                    message_text += (
+                        " 紐づく承認済みコート費用は見つかりませんでした。"
+                        " 経費メモにコート名（例：西猪名公園：1コート）または court:<コートID> を記載してください。"
+                    )
+                messages.success(request, message_text)
             else:
                 messages.warning(request, "雨天中止の対象予約はありませんでした。")
 
