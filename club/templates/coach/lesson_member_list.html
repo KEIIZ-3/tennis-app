@@ -32,6 +32,8 @@
   .person-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;}
   .mini-btn{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:6px 10px;border-radius:999px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;font-size:12px;font-weight:900;text-decoration:none;}
   .mini-btn.primary{border-color:#2563eb;background:#2563eb;color:#fff;}
+  .line-notice-btn{border-color:#06c755!important;background:#06c755!important;color:#fff!important;box-shadow:0 6px 14px rgba(6,199,85,.22);}
+  .line-notice-btn:hover{border-color:#05ad4a!important;background:#05ad4a!important;color:#fff!important;}
   .empty-box{padding:14px;border:1px dashed #cbd5e1;border-radius:14px;background:#f8fafc;color:#64748b;font-size:14px;line-height:1.7;text-align:center;font-weight:800;}
   @media(max-width:768px){
     .member-list-title{font-size:24px;}
@@ -65,7 +67,7 @@
         <a href="{{ reservation_url }}" class="btn btn-primary">このレッスンを予約する</a>
       {% endif %}
       {% if is_coach_view and active_rows.0.reservation %}
-        <a href="{% url 'club:court_number_line_notice' %}?slot_id={{ active_rows.0.reservation.pk }}" class="btn btn-primary">この参加者へコート番号をLINE連絡</a>
+        <a href="{% url 'club:court_number_line_notice' %}?slot_id={{ active_rows.0.reservation.pk }}" class="btn line-notice-btn">この参加者へコート番号をLINE連絡</a>
       {% endif %}
       <a href="{% url 'club:lesson_calendar' %}{% if back_year and back_month %}?year={{ back_year }}&month={{ back_month }}{% endif %}" class="btn">レッスンカレンダーへ戻る</a>
       {% if is_coach_view %}
