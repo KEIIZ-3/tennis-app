@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}コート番号LINE連絡{% endblock %}
+{% block content %}
+<style>
+.notice-page{display:grid;gap:14px;max-width:860px;margin:0 auto;}
+.notice-card{padding:18px;border:1px solid #dbeafe;border-radius:20px;background:#fff;box-shadow:0 8px 22px rgba(15,23,42,.06);}
+.notice-hero{background:linear-gradient(180deg,#eff6ff,#fff);}
+.notice-title{margin:0;color:#0f172a;font-size:26px;font-weight:1000;}
+.notice-lead{margin:8px 0 0;color:#475569;font-size:14px;line-height:1.7;font-weight:750;}
+.notice-warning{margin-top:12px;padding:11px;border:1px solid #fed7aa;border-radius:14px;background:#fff7ed;color:#9a3412;font-size:13px;line-height:1.7;font-weight:850;}
+.field{display:grid;gap:6px;margin-top:14px;}
+.field label{font-size:13px;font-weight:950;color:#334155;}
+.field select,.field input,.field textarea{box-sizing:border-box;width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:12px;font:inherit;}
+.field textarea{min-height:76px;resize:vertical;}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid #e5e7eb;font-weight:850;}
+.row:last-child{border-bottom:0;}
+.ok,.ng{padding:3px 8px;border-radius:999px;font-size:12px;white-space:nowrap;}
+.ok{background:#dcfce7;color:#166534;}.ng{background:#fee2e2;color:#991b1b;}
+.preview{margin:0;padding:13px;border-radius:14px;background:#0f172a;color:#fff;white-space:pre-wrap;font-size:13px;line-height:1.7;}
+.confirm{display:flex;gap:8px;align-items:flex-start;margin-top:14px;padding:12px;border:1px solid #bfdbfe;border-radius:14px;background:#eff6ff;font-size:13px;line-height:1.6;font-weight:850;}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
+.empty{padding:15px;text-align:center;color:#64748b;font-weight:800;}
+@media(max-width:768px){.grid{grid-template-columns:1fr}.notice-title{font-size:22px}.actions .btn{width:100%;}}
+</style>
+<div class="notice-page">
+  <section class="notice-card notice-hero">
+    <h1 class="notice-title">コート番号をLINEで連絡</h1>
+    <p class="notice-lead">対象レッスンの有効予約者だけに、当日のコート番号をLINE送信します。</p>
+    <p class="notice-warning">送信後の取り消しはできません。対象レッスン・送信人数・コート番号を確認してから送信してください。</p>
+  </section>
+
+  <form method="post" class="notice-card">
+    {% csrf_token %}
+    <div class="field">
+      <label for="slot_id">対象レッスン</label>
+      <select id="slot_id" name="slot_id" onchange="this.form.submit()">
+        <option value="">選択してください</option>
+        {% for slot in slots %}
+          <option value="{{ slot.pk }}" {% if selected_slot_id == slot.pk|stringformat:"s" %}selected{% endif %}>
+            {{ slot.start_at|date:"m/d（D） H:i" }}〜{{ slot.end_at|date:"H:i" }} / {{ slot.get_lesson_type_display }} / {{ slot.court }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if selected_slot %}
+      <div class="grid">
+        <div class="field">
+          <label for="court_number">コート番号</label>
+          <input id="court_number" name="court_number" value="{{ court_number }}" placeholder="例：3コート" required>
+        </div>
+        <div class="field">
+          <label>送信対象</label>
+          <input value="参加者 {{ participant_rows|length }}名 / LINE送信可 {{ line_ready_count }}名" readonly>
+        </div>
+      </div>
+      <div class="field">
+        <label for="note">追加連絡（任意）</label>
+        <textarea id="note" name="note" placeholder="例：受付付近に集合してください。">{{ note }}</textarea>
+      </div>
+      <div class="actions"><button class="btn" type="submit" name="action" value="preview">文面を確認する</button></div>
+    {% else %}
+      <p class="empty">送信したいレッスンを選択してください。</p>
+    {% endif %}
+  </form>
+
+  {% if selected_slot %}
+    <section class="notice-card">
+      <h2 style="margin:0;font-size:19px;">送信対象の参加者</h2>
+      {% for row in participant_rows %}
+        <div class="row"><span>{{ row.name }}</span>{% if row.line_ready %}<span class="ok">LINE送信可</span>{% else %}<span class="ng">LINE未連携</span>{% endif %}</div>
+      {% empty %}<p class="empty">有効な参加者はいません。</p>{% endfor %}
+    </section>
+    {% if message_preview %}
+      <section class="notice-card">
+        <h2 style="margin:0 0 10px;font-size:19px;">送信文面の確認</h2>
+        <pre class="preview">{{ message_preview }}</pre>
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="slot_id" value="{{ selected_slot.pk }}">
+          <input type="hidden" name="court_number" value="{{ court_number }}">
+          <input type="hidden" name="note" value="{{ note }}">
+          <label class="confirm"><input type="checkbox" name="confirm_send" value="yes"><span>対象レッスン・コート番号・送信対象を確認しました。LINE送信します。</span></label>
+          <div class="actions">
+            <button class="btn btn-primary" type="submit" name="action" value="send">参加者へLINE送信する</button>
+            <a class="btn" href="{% url 'club:coach_today_lessons' %}">本日の受付・精算へ戻る</a>
+          </div>
+        </form>
+      </section>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}
