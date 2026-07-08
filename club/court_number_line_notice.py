@@ -101,7 +101,6 @@ def _message_text(slot, court_number, note):
         f"日時：{start_at:%Y/%m/%d（%a） %H:%M}〜{end_at:%H:%M}",
         f"レッスン：{slot.get_lesson_type_display()}",
         f"担当コーチ：{_display_name(coach)}",
-        f"会場：{slot.court or '現地'}",
         f"コート番号：{court_number}",
     ]
     if note:
