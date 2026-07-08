@@ -91,6 +91,27 @@ def _line_ready(user):
     )
 
 
+def _court_place_name(court):
+    if not court:
+        return "現地"
+
+    court_type = str(getattr(court, "court_type", "") or "").strip()
+    court_type_labels = {
+        "sono": "西猪名公園テニスコート",
+        "amagasaki": "尼崎記念公園テニスコート",
+        "other": "その他テニスコート",
+    }
+    place_name = court_type_labels.get(court_type, "").strip()
+    if place_name:
+        return place_name
+
+    court_name = str(court or "").strip()
+    if court_name:
+        return court_name
+
+    return "現地"
+
+
 def _message_text(slot, court_number, note):
     start_at = _local(slot.start_at)
     end_at = _local(slot.end_at)
@@ -101,6 +122,7 @@ def _message_text(slot, court_number, note):
         f"日時：{start_at:%Y/%m/%d（%a） %H:%M}〜{end_at:%H:%M}",
         f"レッスン：{slot.get_lesson_type_display()}",
         f"担当コーチ：{_display_name(coach)}",
+        f"テニスコート：{_court_place_name(slot.court)}",
         f"コート番号：{court_number}",
     ]
     if note:
