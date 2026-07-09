@@ -41,6 +41,11 @@
     background:#eff6ff;
   }
 
+  .summary-card.refund{
+    border-color:#fecaca;
+    background:#fef2f2;
+  }
+
   .summary-label{
     color:var(--muted);
     font-size:12px;
@@ -63,6 +68,19 @@
     font-size:13px;
     line-height:1.7;
     margin-bottom:14px;
+  }
+
+  .court-link-box{
+    display:none;
+    padding:13px 14px;
+    border:1px solid #fed7aa;
+    background:#fff7ed;
+    border-radius:14px;
+    margin:0 0 14px;
+  }
+
+  .court-link-box.is-visible{
+    display:block;
   }
 
   .desktop-table-area{
@@ -133,6 +151,12 @@
     border-color:#bbf7d0;
     background:#ecfdf5;
     color:#166534;
+  }
+
+  .status-pill.refund{
+    border-color:#fecaca;
+    background:#fef2f2;
+    color:#991b1b;
   }
 
   .mobile-info-row{
@@ -229,10 +253,9 @@
 <div class="card">
   <h1 class="expense-title">経費登録</h1>
   <p class="expense-lead">
-    コーチ用の経費申請を登録できます。スマホでは入力と最近の登録確認をしやすく整理しています。
+    コーチ用の経費申請を登録できます。コート費用は、コート番号ではなく「施設名・日付・時間帯」で対象レッスンと紐づけます。
   </p>
 </div>
-
 
 <div class="card">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
@@ -254,36 +277,28 @@
     <div class="summary-value">{{ current_month_total }}円</div>
   </div>
 
-  {% if expense_type_rows %}
-    {% for row in expense_type_rows|slice:":2" %}
-      <div class="summary-card">
-        <div class="summary-label">{{ row.label }}</div>
-        <div class="summary-value">{{ row.amount }}円</div>
-      </div>
-    {% endfor %}
-  {% else %}
-    <div class="summary-card">
-      <div class="summary-label">登録状況</div>
-      <div class="summary-value">0円</div>
-    </div>
-    <div class="summary-card info">
-      <div class="summary-label">承認待ち</div>
-      <div class="summary-value">-</div>
-    </div>
-  {% endif %}
+  <div class="summary-card refund">
+    <div class="summary-label">雨天返金待ち</div>
+    <div class="summary-value">{{ refund_pending_total|default:0 }}円</div>
+    <p class="muted" style="margin:6px 0 0; font-size:12px;">{{ refund_pending_count|default:0 }}件 / 収支集計から除外中</p>
+  </div>
+
+  <div class="summary-card info">
+    <div class="summary-label">雨天返金済み</div>
+    <div class="summary-value">{{ refunded_total|default:0 }}円</div>
+    <p class="muted" style="margin:6px 0 0; font-size:12px;">{{ refunded_count|default:0 }}件</p>
+  </div>
 </div>
 
 <div class="grid-2">
   <div class="card">
     <h2 class="card-title">新規登録</h2>
 
-
     <div class="expense-note-box">
       <strong>入力のコツ：</strong><br>
-      スマホでは「日付 → 種別 → カテゴリ → 金額 → メモ」の順に入力してください。
-      領収書はLINEノートで保管し、この画面では確認状態を管理します。
+      コート費用を登録する場合は、カテゴリで「コート費用」を選び、対象レッスンを選択してください。<br>
+      コート番号は直前に決まるため、雨天返金の紐づけには使いません。
     </div>
-
 
     <form method="post">
       {% csrf_token %}
@@ -311,6 +326,25 @@
           {% endfor %}
         </select>
       </p>
+
+      <div id="court-refund-link-box" class="court-link-box">
+        <p style="margin:0 0 8px; font-size:13px; color:#9a3412; line-height:1.6;">
+          <strong>コート費用のみ必須：</strong><br>
+          雨天中止時に自動で返金待ちへ差し戻すため、対象レッスンを選択してください。
+        </p>
+        <label for="id_court_refund_slot_key">対象レッスン（施設名・日付・時間帯）</label>
+        <select id="id_court_refund_slot_key" name="court_refund_slot_key">
+          <option value="">対象レッスンを選択</option>
+          {% for row in court_refund_lesson_choices %}
+            <option value="{{ row.key }}">{{ row.label }}</option>
+          {% endfor %}
+        </select>
+        {% if not court_refund_lesson_choices %}
+          <p class="muted" style="margin:8px 0 0; font-size:12px;">
+            対象にできるレッスン枠が見つかりません。先にコーチスケジュールを登録してください。
+          </p>
+        {% endif %}
+      </div>
 
       <p>
         <label for="id_amount">金額</label>
@@ -352,7 +386,7 @@
 
       <p>
         <label for="id_note">メモ</label>
-        <textarea id="id_note" name="note" rows="4" placeholder="例: ボール購入 / 交通費 / LINEノート 4/9 投稿分"></textarea>
+        <textarea id="id_note" name="note" rows="4" placeholder="例: LINEノート 7/7 投稿分 / 領収書保管済み"></textarea>
       </p>
 
       <div class="actions">
@@ -385,7 +419,7 @@
         </table>
       </div>
     {% else %}
-      <p class="muted" style="margin:0;">今月の経費はまだ登録されていません。</p>
+      <p class="muted" style="margin:0;">今月の通常経費はまだ登録されていません。</p>
     {% endif %}
 
     {% if approval_rows %}
@@ -435,7 +469,7 @@
       </table>
     </div>
   {% else %}
-    <p class="muted" style="margin:0;">今月の経費はまだ登録されていません。</p>
+    <p class="muted" style="margin:0;">今月の通常経費はまだ登録されていません。</p>
   {% endif %}
 </div>
 
@@ -452,6 +486,7 @@
               <th>経費種別</th>
               <th>カテゴリ</th>
               <th>金額</th>
+              <th>対象レッスン</th>
               <th>領収書</th>
               <th>領収書確認</th>
               <th>承認状態</th>
@@ -469,14 +504,33 @@
                 <td>{{ row.expense_type_label }}</td>
                 <td>{{ row.expense.get_category_display }}</td>
                 <td>{{ row.expense.amount }}円</td>
+                <td>
+                  {% if row.court_refund_lesson_label %}
+                    {{ row.court_refund_lesson_label }}
+                  {% elif row.rain_canceled_lesson_label %}
+                    {{ row.rain_canceled_lesson_label }}
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
                 <td>{{ row.receipt_status_label }}</td>
                 <td>{{ row.receipt_check_status_label }}</td>
-                <td>{{ row.approval_status_label }}</td>
+                <td>
+                  {% if row.is_refund_pending or row.is_refunded %}
+                    <span class="status-pill refund">{{ row.approval_status_label }}</span>
+                  {% elif row.approval_status == "approved" %}
+                    <span class="status-pill done">{{ row.approval_status_label }}</span>
+                  {% elif row.approval_status == "submitted" or row.approval_status == "draft" %}
+                    <span class="status-pill pending">{{ row.approval_status_label }}</span>
+                  {% else %}
+                    <span class="status-pill">{{ row.approval_status_label }}</span>
+                  {% endif %}
+                </td>
                 <td>{{ row.plain_note|default:"-" }}</td>
                 {% if is_admin_mode %}
                   <td>{% if row.expense.created_by %}{{ row.expense.created_by.display_name }}{% else %}-{% endif %}</td>
                   <td>
-                    <form method="post" style="display:flex; flex-direction:column; gap:8px; min-width:180px;">
+                    <form method="post" style="display:flex; flex-direction:column; gap:8px; min-width:190px;">
                       {% csrf_token %}
                       <input type="hidden" name="action" value="update_meta">
                       <input type="hidden" name="expense_id" value="{{ row.expense.id }}">
@@ -525,7 +579,9 @@
                 <div class="mobile-expense-title">{{ row.expense.get_category_display }} / {{ row.expense.amount }}円</div>
                 <div class="mobile-expense-sub">{{ row.expense.expense_date|date:"Y-m-d" }} / {{ row.expense_type_label }}</div>
               </div>
-              {% if row.approval_status == "approved" %}
+              {% if row.is_refund_pending or row.is_refunded %}
+                <span class="status-pill refund">{{ row.approval_status_label }}</span>
+              {% elif row.approval_status == "approved" %}
                 <span class="status-pill done">{{ row.approval_status_label }}</span>
               {% elif row.approval_status == "submitted" or row.approval_status == "draft" %}
                 <span class="status-pill pending">{{ row.approval_status_label }}</span>
@@ -534,6 +590,18 @@
               {% endif %}
             </div>
 
+            <div class="mobile-info-row">
+              <div class="mobile-info-label">対象レッスン</div>
+              <div class="mobile-info-value">
+                {% if row.court_refund_lesson_label %}
+                  {{ row.court_refund_lesson_label }}
+                {% elif row.rain_canceled_lesson_label %}
+                  {{ row.rain_canceled_lesson_label }}
+                {% else %}
+                  -
+                {% endif %}
+              </div>
+            </div>
             <div class="mobile-info-row">
               <div class="mobile-info-label">領収書</div>
               <div class="mobile-info-value">{{ row.receipt_status_label }}</div>
@@ -592,4 +660,29 @@
     <p class="muted" style="margin:0;">まだ経費登録はありません。</p>
   {% endif %}
 </div>
+
+<script>
+  (function(){
+    const category = document.getElementById("id_category");
+    const box = document.getElementById("court-refund-link-box");
+    const slot = document.getElementById("id_court_refund_slot_key");
+
+    function syncCourtBox(){
+      if (!category || !box) return;
+      const isCourt = category.value === "court";
+      box.classList.toggle("is-visible", isCourt);
+      if (slot) {
+        slot.required = isCourt;
+        if (!isCourt) {
+          slot.value = "";
+        }
+      }
+    }
+
+    if (category) {
+      category.addEventListener("change", syncCourtBox);
+      syncCourtBox();
+    }
+  })();
+</script>
 {% endblock %}
