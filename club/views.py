@@ -4113,13 +4113,114 @@ def _expense_is_refund_status(status):
     )
 
 
+def _court_facility_key_for_court(court):
+    """
+    コート番号ではなく、施設単位でコート費用を紐づけます。
+    例: 西猪名公園テニスコート / 尼崎記念公園テニスコート
+    """
+    if not court:
+        return "facility:unknown"
+
+    court_type = str(getattr(court, "court_type", "") or "").strip()
+    if court_type:
+        return f"facility:{court_type}"
+
+    court_name = str(getattr(court, "name", "") or court or "").strip()
+    if court_name:
+        return f"facility_name:{court_name}"
+
+    return "facility:unknown"
+
+
+def _court_facility_label_for_court(court):
+    if not court:
+        return "現地"
+
+    court_type = str(getattr(court, "court_type", "") or "").strip()
+    label_map = {
+        "sono": "西猪名公園テニスコート",
+        "amagasaki": "尼崎記念公園テニスコート",
+        "other": "その他テニスコート",
+    }
+    if court_type in label_map:
+        return label_map[court_type]
+
+    court_name = str(getattr(court, "name", "") or court or "").strip()
+    return court_name or "現地"
+
+
+def _court_refund_slot_key(*, lesson_date, start_at, end_at, court):
+    start_local = timezone.localtime(start_at) if timezone.is_aware(start_at) else start_at
+    end_local = timezone.localtime(end_at) if timezone.is_aware(end_at) else end_at
+    if hasattr(lesson_date, "isoformat"):
+        date_text = lesson_date.isoformat()
+    else:
+        date_text = str(lesson_date)
+    return (
+        f"{date_text}|"
+        f"{_court_facility_key_for_court(court)}|"
+        f"{start_local:%H:%M}|"
+        f"{end_local:%H:%M}"
+    )
+
+
+def _availability_court_refund_slot_key(availability):
+    start_local = timezone.localtime(availability.start_at) if timezone.is_aware(availability.start_at) else availability.start_at
+    lesson_date = start_local.date()
+    return _court_refund_slot_key(
+        lesson_date=lesson_date,
+        start_at=availability.start_at,
+        end_at=availability.end_at,
+        court=availability.court,
+    )
+
+
+def _availability_court_refund_lesson_label(availability):
+    start_local = timezone.localtime(availability.start_at) if timezone.is_aware(availability.start_at) else availability.start_at
+    end_local = timezone.localtime(availability.end_at) if timezone.is_aware(availability.end_at) else availability.end_at
+    coach = getattr(availability, "substitute_coach", None) or getattr(availability, "coach", None)
+    return (
+        f"{start_local:%Y/%m/%d} {start_local:%H:%M}〜{end_local:%H:%M} / "
+        f"{_court_facility_label_for_court(getattr(availability, 'court', None))} / "
+        f"{_display_name(coach)} / {availability.get_lesson_type_display()}"
+    )
+
+
+def _court_refund_lesson_choices_for_user(user, *, start_date=None, end_date=None):
+    qs = CoachAvailability.objects.select_related("coach", "substitute_coach", "court").all()
+
+    if start_date:
+        qs = qs.filter(start_at__date__gte=start_date)
+    if end_date:
+        qs = qs.filter(start_at__date__lte=end_date)
+
+    if _is_coach_user(user) and not (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)):
+        qs = qs.filter(Q(coach=user) | Q(substitute_coach=user))
+
+    choices = OrderedDict()
+    for availability in qs.order_by("-start_at", "court_id", "coach_id", "id"):
+        try:
+            key = _availability_court_refund_slot_key(availability)
+            if key in choices:
+                continue
+            choices[key] = {
+                "key": key,
+                "label": _availability_court_refund_lesson_label(availability),
+                "facility_label": _court_facility_label_for_court(availability.court),
+            }
+        except Exception:
+            continue
+
+    return list(choices.values())
+
+
 def _court_expense_matches_availability(expense, availability):
     """
     雨天中止の対象コート費用を安全に絞り込みます。
 
-    既存のCoachExpenseにはレッスンIDの専用列がないため、経費日付と
-    メモに記載されたコート名（または court:<ID>）で一致判定します。
-    例: 「西猪名公園：1コート 7/12 17-19」または「court:3」
+    新運用では、経費登録時に選んだ「施設名＋日付＋時間帯」のキーで一致判定します。
+    コート番号は直前に決まるため、判定には使いません。
+    既存データ救済用として、メモ内の施設名・コート名・court:<ID> でも fallback 判定します。
     """
     if not expense or not availability or expense.category != CoachExpense.CATEGORY_COURT:
         return False
@@ -4134,18 +4235,17 @@ def _court_expense_matches_availability(expense, availability):
 
     meta = _expense_parse_note(expense.note)
     slot_key = str(meta.get("court_refund_slot_key") or "").strip()
-    expected_slot_key = (
-        f"{lesson_date.isoformat()}|{availability.court_id}|"
-        f"{timezone.localtime(availability.start_at).strftime('%H:%M') if timezone.is_aware(availability.start_at) else availability.start_at.strftime('%H:%M')}"
-    )
+    expected_slot_key = _availability_court_refund_slot_key(availability)
     if slot_key and slot_key == expected_slot_key:
         return True
 
     plain_note = str(meta.get("plain_note") or "")
+    facility_label = _court_facility_label_for_court(getattr(availability, "court", None))
     court_name = str(getattr(availability, "court", "") or "").strip()
     court_token = f"court:{getattr(availability, 'court_id', '')}"
     return bool(
-        (court_name and court_name in plain_note)
+        (facility_label and facility_label in plain_note)
+        or (court_name and court_name in plain_note)
         or (getattr(availability, "court_id", None) and court_token in plain_note)
     )
 
@@ -4160,7 +4260,6 @@ def _mark_court_expenses_refund_pending_for_rain_cancel(availability, *, changed
 
     try:
         lesson_date = timezone.localtime(availability.start_at).date() if timezone.is_aware(availability.start_at) else availability.start_at.date()
-        start_label = timezone.localtime(availability.start_at).strftime("%H:%M") if timezone.is_aware(availability.start_at) else availability.start_at.strftime("%H:%M")
     except Exception:
         return 0
 
@@ -4193,7 +4292,7 @@ def _mark_court_expenses_refund_pending_for_rain_cancel(availability, *, changed
                 "rain_canceled_at": timezone.now().isoformat(),
                 "rain_canceled_by_id": getattr(changed_by, "pk", None),
                 "rain_canceled_by_name": _display_name(changed_by),
-                "rain_canceled_lesson_label": f"{lesson_date:%Y/%m/%d} {start_label} / {getattr(availability, 'court', '')}",
+                "rain_canceled_lesson_label": _availability_court_refund_lesson_label(availability),
             }
         )
         expense.note = _expense_build_note(
@@ -4227,6 +4326,9 @@ def _expense_meta_row(expense):
         "approval_status_label": _choice_label(EXPENSE_APPROVAL_CHOICES, meta["approval_status"]),
         "is_refund_pending": meta["approval_status"] == EXPENSE_APPROVAL_REFUND_PENDING,
         "is_refunded": meta["approval_status"] == EXPENSE_APPROVAL_REFUNDED,
+        "court_refund_slot_key": meta.get("court_refund_slot_key", ""),
+        "court_refund_lesson_label": meta.get("court_refund_lesson_label", ""),
+        "court_refund_facility_label": meta.get("court_refund_facility_label", ""),
         "rain_canceled_lesson_label": meta.get("rain_canceled_lesson_label", ""),
     }
 
@@ -5231,6 +5333,16 @@ def coach_expense_manage(request):
     if not is_admin_mode:
         visible_queryset = visible_queryset.filter(created_by=request.user)
 
+    today = timezone.localdate()
+    court_refund_lesson_choices = _court_refund_lesson_choices_for_user(
+        request.user,
+        start_date=today - timedelta(days=60),
+        end_date=today + timedelta(days=120),
+    )
+    court_refund_lesson_choice_map = {
+        row["key"]: row for row in court_refund_lesson_choices
+    }
+
     if request.method == "POST":
         action = (request.POST.get("action") or "create").strip()
 
@@ -5302,6 +5414,7 @@ def coach_expense_manage(request):
         raw_category = (request.POST.get("category") or "").strip()
         raw_amount = (request.POST.get("amount") or "").strip()
         raw_note = (request.POST.get("note") or "").strip()
+        raw_court_refund_slot_key = (request.POST.get("court_refund_slot_key") or "").strip()
         raw_expense_type = (request.POST.get("expense_type") or EXPENSE_TYPE_PERSONAL).strip()
         raw_receipt_status = (request.POST.get("receipt_status") or EXPENSE_RECEIPT_NONE).strip()
 
@@ -5354,6 +5467,20 @@ def coach_expense_manage(request):
             messages.error(request, "金額は0円以上で入力してください。")
             return redirect("club:coach_expense_manage")
 
+        extra_meta = {}
+        if raw_category == CoachExpense.CATEGORY_COURT:
+            selected_court_refund_lesson = court_refund_lesson_choice_map.get(raw_court_refund_slot_key)
+            if not selected_court_refund_lesson:
+                messages.error(request, "コート費用は対象レッスンを選択してください。")
+                return redirect("club:coach_expense_manage")
+            extra_meta.update(
+                {
+                    "court_refund_slot_key": selected_court_refund_lesson["key"],
+                    "court_refund_lesson_label": selected_court_refund_lesson["label"],
+                    "court_refund_facility_label": selected_court_refund_lesson["facility_label"],
+                }
+            )
+
         try:
             expense = CoachExpense(
                 expense_date=expense_date_value,
@@ -5365,6 +5492,7 @@ def coach_expense_manage(request):
                     receipt_status=raw_receipt_status,
                     receipt_check_status=raw_receipt_check_status,
                     approval_status=raw_approval_status,
+                    extra_meta=extra_meta,
                 ),
                 created_by=request.user,
             )
@@ -5382,7 +5510,6 @@ def coach_expense_manage(request):
 
         return redirect("club:coach_expense_manage")
 
-    today = timezone.localdate()
     month_start = today.replace(day=1)
     if today.month == 12:
         next_month = date(today.year + 1, 1, 1)
@@ -5448,6 +5575,7 @@ def coach_expense_manage(request):
             "expense_receipt_choices": EXPENSE_RECEIPT_CHOICES,
             "expense_receipt_check_choices": EXPENSE_RECEIPT_CHECK_CHOICES,
             "expense_approval_choices": EXPENSE_APPROVAL_CHOICES,
+            "court_refund_lesson_choices": court_refund_lesson_choices,
             "current_month_total": current_month_total,
             "refund_pending_total": refund_pending_total,
             "refund_pending_count": len(refund_pending_rows),
@@ -6529,7 +6657,7 @@ def coach_availability_list(request):
                 else:
                     message_text += (
                         " 紐づく承認済みコート費用は見つかりませんでした。"
-                        " 経費メモにコート名（例：西猪名公園：1コート）または court:<コートID> を記載してください。"
+                        " 経費登録時に、対象レッスン（施設名・日付・時間帯）を選択しているか確認してください。"
                     )
                 messages.success(request, message_text)
             else:
