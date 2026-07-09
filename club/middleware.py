@@ -1223,9 +1223,13 @@ def _inject_family_profile_nav_button(request, html):
     """
     家族受講者プロフィール管理画面への導線を追加します。
 
-    base.htmlの巨大置換を避けるため、HTML応答時に以下を補正します。
-    - PC/タブレット用の上部メニューに「家族プロフィール」を追加
-    - スマホ用の下部ナビに「家族」を追加
+    前回の下部ナビ追加では、スマホ下部メニューが窮屈になり
+    レッスンカレンダー導線が見つけにくくなるため、下部ナビは元に戻します。
+
+    追加場所:
+    - 会員の上部メニュー: 「予約確認」の次
+    - コーチ/業務委託コーチの上部メニュー: 「予約確認」の次
+    - コーチメニューの「レッスン・予約管理」: 「レッスンカレンダー」の次
     """
     user = getattr(request, "user", None)
     if not user or not getattr(user, "is_authenticated", False):
@@ -1244,43 +1248,43 @@ def _inject_family_profile_nav_button(request, html):
         return html
 
     is_family_page = request.path.startswith("/family/")
-    family_active_class = " nav-primary" if is_family_page else ""
-    family_top_link = f'<a href="/family/" class="{family_active_class.strip()}">家族プロフィール</a>'
-    family_bottom_active_class = " is-active" if is_family_page else ""
-    family_bottom_link = (
-        f'<a href="/family/" class="{family_bottom_active_class.strip()}">'
-        '<span class="bottom-icon">👪</span><span>家族</span>'
-        '</a>'
-    )
+    family_class = "nav-primary" if is_family_page else ""
+    family_top_link = f'<a href="/family/" class="{family_class}">家族プロフィール</a>' if family_class else '<a href="/family/">家族プロフィール</a>'
+    family_coach_tab_active = " active" if is_family_page else ""
+    family_coach_tab_link = f'<a href="/family/" class="coach-tab{family_coach_tab_active}">家族プロフィール</a>'
 
-    # スマホ下部ナビは、家族ボタン追加に合わせて5列から6列へ広げます。
-    html = html.replace(
-        "grid-template-columns:repeat(5, minmax(0, 1fr));",
-        "grid-template-columns:repeat(6, minmax(0, 1fr));",
-        1,
-    )
+    # 会員の上部メニュー: 「予約確認」のブロック直後へ追加。
+    member_reservation_block_end = """              </a>
+              <a href="/tickets/">"""
+    if member_reservation_block_end in html:
+        html = html.replace(
+            member_reservation_block_end,
+            f"""              </a>
+              {family_top_link}
+              <a href="/tickets/">""",
+            1,
+        )
 
-    # 会員メニュー: 「チケット」の前に追加すると予約導線の近くで見つけやすい。
-    member_ticket_marker = '              <a href="/tickets/">'
-    if member_ticket_marker in html:
-        html = html.replace(member_ticket_marker, f"              {family_top_link}\n{member_ticket_marker}", 1)
+    # コーチ/業務委託コーチの上部メニュー: 「予約確認」の直後へ追加。
+    coach_top_reservation_marker = '              <a href="/reservations/">予約確認</a>'
+    if coach_top_reservation_marker in html:
+        html = html.replace(
+            coach_top_reservation_marker,
+            f'{coach_top_reservation_marker}\n              {family_top_link}',
+            1,
+        )
 
-    # コーチ/業務委託コーチ用の上部メニュー: 「使い方」の前に追加。
-    top_help_marker = '              <a href="/help/">使い方</a>'
-    if top_help_marker in html:
-        html = html.replace(top_help_marker, f"              {family_top_link}\n{top_help_marker}", 1)
-
-    # 会員スマホ下部ナビ: 「チケット」の前に追加。
-    member_bottom_ticket_marker = '        <a href="/tickets/"'
-    if member_bottom_ticket_marker in html:
-        html = html.replace(member_bottom_ticket_marker, f"        {family_bottom_link}\n{member_bottom_ticket_marker}", 1)
-
-    # コーチ/業務委託コーチスマホ下部ナビ: 「予約承認」の前に追加。
-    coach_bottom_reservation_marker = '        <a href="/reservations/"'
-    if coach_bottom_reservation_marker in html:
-        html = html.replace(coach_bottom_reservation_marker, f"        {family_bottom_link}\n{coach_bottom_reservation_marker}", 1)
+    # コーチメニュー「レッスン・予約管理」内: レッスンカレンダーの直後へ追加。
+    coach_lesson_calendar_marker = '                  <a href="/lesson-calendar/" class="coach-tab'
+    marker_index = html.find(coach_lesson_calendar_marker)
+    if marker_index != -1:
+        link_end_index = html.find("</a>", marker_index)
+        if link_end_index != -1:
+            insert_at = link_end_index + len("</a>")
+            html = html[:insert_at] + "\n                  " + family_coach_tab_link + html[insert_at:]
 
     return html
+
 
 
 def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
