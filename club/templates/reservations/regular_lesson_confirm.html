@@ -119,6 +119,81 @@
     font-weight:900;
   }
 
+  .participant-box{
+    margin-top:14px;
+    padding:14px;
+    border:1px solid #bbf7d0;
+    background:#f0fdf4;
+    border-radius:18px;
+  }
+
+  .participant-title{
+    margin:0;
+    color:#14532d;
+    font-size:16px;
+    line-height:1.4;
+    font-weight:1000;
+  }
+
+  .participant-lead{
+    margin:4px 0 12px;
+    color:#166534;
+    font-size:13px;
+    line-height:1.7;
+    font-weight:800;
+  }
+
+  .participant-options{
+    display:grid;
+    gap:8px;
+  }
+
+  .participant-option{
+    display:flex;
+    gap:10px;
+    align-items:flex-start;
+    padding:12px;
+    border:1px solid #bbf7d0;
+    background:#fff;
+    border-radius:14px;
+    cursor:pointer;
+  }
+
+  .participant-option.disabled{
+    cursor:not-allowed;
+    background:#f1f5f9;
+    border-color:#e2e8f0;
+    color:#64748b;
+  }
+
+  .participant-option input{
+    margin-top:4px;
+    width:auto;
+  }
+
+  .participant-name{
+    color:#0f172a;
+    font-size:15px;
+    line-height:1.45;
+    font-weight:1000;
+  }
+
+  .participant-meta{
+    margin-top:2px;
+    color:#64748b;
+    font-size:12px;
+    line-height:1.6;
+    font-weight:850;
+  }
+
+  .participant-warning{
+    margin-top:4px;
+    color:#9a3412;
+    font-size:12px;
+    line-height:1.5;
+    font-weight:900;
+  }
+
   .confirm-notice{
     padding:14px;
     border-radius:16px;
@@ -245,6 +320,40 @@
           <div class="confirm-info-value">{{ selected_lesson.waitlist_count }}名</div>
         </div>
       </div>
+
+      {% if selected_lesson.participant_choices %}
+        <div class="participant-box">
+          <h2 class="participant-title">参加者を選択</h2>
+          <p class="participant-lead">
+            親アカウントで予約し、実際に参加する本人または子供を選択してください。チケットは親アカウントから消費します。
+          </p>
+
+          <div class="participant-options">
+            {% for participant in selected_lesson.participant_choices %}
+              <label class="participant-option {% if not participant.can_book %}disabled{% endif %}">
+                <input
+                  type="radio"
+                  name="participant_key"
+                  value="{{ participant.key }}"
+                  form="lesson-reserve-form"
+                  {% if forloop.first and participant.can_book %}checked{% endif %}
+                  {% if not participant.can_book %}disabled{% endif %}
+                  required
+                >
+                <span>
+                  <span class="participant-name">{{ participant.name }}</span>
+                  <span class="participant-meta">
+                    {{ participant.relationship_label }} / レベル：{{ participant.level_label }}
+                  </span>
+                  {% if not participant.can_book %}
+                    <span class="participant-warning">{{ participant.disabled_reason }}</span>
+                  {% endif %}
+                </span>
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
     </section>
 
     <div class="confirm-notice">
@@ -260,7 +369,7 @@
     <section class="lesson-summary-card">
       <div class="confirm-actions">
         {% if selected_lesson.can_submit %}
-          <form method="post" action="{% url 'club:lesson_calendar' %}">
+          <form method="post" action="{% url 'club:lesson_calendar' %}" id="lesson-reserve-form">
             {% csrf_token %}
             <input type="hidden" name="action" value="reserve">
             <input type="hidden" name="year" value="{{ target_year }}">
