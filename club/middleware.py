@@ -1221,26 +1221,17 @@ def _calendar_target_year_month(request):
 
 def _inject_family_profile_nav_button(request, html):
     """
-    家族受講者プロフィール管理画面への導線を整理します。
+    会員メニューをスマホ前提で整理します。
 
     方針:
-    - 表示名は「家族」に統一。
-    - 会員は上部メニューに1つだけ表示。
-    - コーチ/業務委託コーチはコーチメニュー内に1つだけ表示。
+    - 「予約」は「レッスンカレンダー」に名称変更。
+    - 使用頻度の低い「LINE連携」「使い方」は会員メニュー内から外す。
+    - 「LINE連携」「使い方」はホーム下部の小さな補助リンクへ移動。
+    - 家族関連の表示名は「家族」に統一し、1つだけ表示。
     - スマホ下部ナビは5個のまま維持し、レッスンカレンダー導線を消さない。
-    - 会員メニュー内の「メニュー」リンクは「使い方」に変更し、二重メニュー感をなくす。
     """
     user = getattr(request, "user", None)
     if not user or not getattr(user, "is_authenticated", False):
-        return html
-
-    # 旧補正が残っている環境でも表示名を「家族」に寄せます。
-    html = html.replace(">家族プロフィール</a>", ">家族</a>")
-
-    # 会員メニュー内の「メニュー」リンクは意味が分かりづらいため「使い方」に変更します。
-    html = html.replace('href="/help/">メニュー</a>', 'href="/help/">使い方</a>')
-
-    if 'href="/family/"' in html:
         return html
 
     role = getattr(user, "role", "")
@@ -1249,39 +1240,72 @@ def _inject_family_profile_nav_button(request, html):
         or bool(getattr(user, "is_staff", False))
         or bool(getattr(user, "is_superuser", False))
     )
+
+    # 表示名を「家族」に統一。
+    html = html.replace(">家族プロフィール</a>", ">家族</a>")
+
+    # 会員メニューの「予約」は、目的が分かるように「レッスンカレンダー」へ変更。
+    html = html.replace('href="/lesson-calendar/">予約</a>', 'href="/lesson-calendar/">レッスンカレンダー</a>')
+
+    # 会員メニュー内から、使用頻度の低いリンクを外す。
+    # これらはホーム下部の補助リンクへ移動します。
+    html = html.replace('              <a href="/line/">LINE連携</a>\n', "")
+    html = html.replace('              <a href="/help/">使い方</a>\n', "")
+    html = html.replace('              <a href="/help/">メニュー</a>\n', "")
+
     if not can_use_family_profile:
         return html
 
     is_family_page = request.path.startswith("/family/")
 
-    # 通常会員: 上部メニューの「予約確認」の直後に1つだけ追加。
-    if role == "member":
-        family_class = "nav-primary" if is_family_page else ""
-        family_top_link = f'<a href="/family/" class="{family_class}">家族</a>' if family_class else '<a href="/family/">家族</a>'
+    # 家族リンクが未挿入の場合だけ追加。
+    if 'href="/family/"' not in html:
+        if role == "member":
+            family_class = "nav-primary" if is_family_page else ""
+            family_top_link = f'<a href="/family/" class="{family_class}">家族</a>' if family_class else '<a href="/family/">家族</a>'
 
-        member_reservation_block_end = """              </a>
+            member_reservation_block_end = """              </a>
               <a href="/tickets/">"""
-        if member_reservation_block_end in html:
-            html = html.replace(
-                member_reservation_block_end,
-                f"""              </a>
+            if member_reservation_block_end in html:
+                html = html.replace(
+                    member_reservation_block_end,
+                    f"""              </a>
               {family_top_link}
               <a href="/tickets/">""",
-                1,
-            )
-        return html
+                    1,
+                )
+        else:
+            family_coach_tab_active = " active" if is_family_page else ""
+            family_coach_tab_link = f'<a href="/family/" class="coach-tab{family_coach_tab_active}">家族</a>'
 
-    # コーチ/業務委託コーチ/admin: コーチメニュー「レッスン・予約管理」内に1つだけ追加。
-    family_coach_tab_active = " active" if is_family_page else ""
-    family_coach_tab_link = f'<a href="/family/" class="coach-tab{family_coach_tab_active}">家族</a>'
+            coach_lesson_calendar_marker = '                  <a href="/lesson-calendar/" class="coach-tab'
+            marker_index = html.find(coach_lesson_calendar_marker)
+            if marker_index != -1:
+                link_end_index = html.find("</a>", marker_index)
+                if link_end_index != -1:
+                    insert_at = link_end_index + len("</a>")
+                    html = html[:insert_at] + "\n                  " + family_coach_tab_link + html[insert_at:]
 
-    coach_lesson_calendar_marker = '                  <a href="/lesson-calendar/" class="coach-tab'
-    marker_index = html.find(coach_lesson_calendar_marker)
-    if marker_index != -1:
-        link_end_index = html.find("</a>", marker_index)
-        if link_end_index != -1:
-            insert_at = link_end_index + len("</a>")
-            html = html[:insert_at] + "\n                  " + family_coach_tab_link + html[insert_at:]
+    # ホーム下部にだけ、低頻度リンクを小さく配置。
+    # 通常導線からは外しつつ、必要な時にはアクセスできるようにします。
+    if request.path == "/" and "member-support-links-card" not in html:
+        support_links_html = """
+    <div class="wrap member-support-links-card" style="margin-top:18px;">
+      <div style="border:1px solid #e5e7eb;background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 6px 16px rgba(15,23,42,.04);">
+        <div style="font-size:12px;font-weight:900;color:#64748b;margin-bottom:6px;">補助リンク</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:13px;font-weight:850;color:#334155;">
+          <a href="/help/" style="text-decoration:underline;">使い方</a>
+          <a href="/line/" style="text-decoration:underline;">LINE連携</a>
+        </div>
+      </div>
+    </div>"""
+        html = html.replace("  </main>", support_links_html + "\n  </main>", 1)
+
+    # 念のため、前回の6列化指定が残っていても5列へ戻す。
+    html = html.replace(
+        "grid-template-columns:repeat(6, minmax(0, 1fr));",
+        "grid-template-columns:repeat(5, minmax(0, 1fr));",
+    )
 
     return html
 
