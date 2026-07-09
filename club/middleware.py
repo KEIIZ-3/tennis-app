@@ -673,6 +673,27 @@ def _base_japanese_holidays(year_value):
     return holidays
 
 
+def _lesson_calendar_special_closed_days_for_year(year_value):
+    """
+    レッスンカレンダー上で、祝日以外に休業期間として表示したい日を定義します。
+    2026/8/11〜2026/8/14 はお盆休みとして表示します。
+    """
+    try:
+        year_number = int(year_value)
+    except Exception:
+        return {}
+
+    if year_number != 2026:
+        return {}
+
+    return {
+        date(2026, 8, 11): "お盆休み",
+        date(2026, 8, 12): "お盆休み",
+        date(2026, 8, 13): "お盆休み",
+        date(2026, 8, 14): "お盆休み",
+    }
+
+
 def _japanese_holidays_for_year(year_value):
     holidays = dict(_base_japanese_holidays(year_value))
 
@@ -712,6 +733,7 @@ def _japanese_holiday_map_for_month(year_value, month_value):
     holidays = {}
     for target_year in {month_start.year, next_month.year}:
         holidays.update(_japanese_holidays_for_year(target_year))
+        holidays.update(_lesson_calendar_special_closed_days_for_year(target_year))
 
     return {
         target_date.isoformat(): holiday_name
@@ -1188,6 +1210,7 @@ class AdminDashboardMenuMiddleware(MiddlewareMixin):
     レッスンカレンダーへの雨天・コート案内、各レッスンのコート種別・コート名表示、
     日本の祝日背景色表示、2026年7月分の1週間前エントリー案内、
     2026年7月分の顧客向け参加状況表示、
+    2026年8月のお盆休み表示、
     固定レッスンの担当コーチ変更・定員再同期の安全運用を適用します。
     """
 
