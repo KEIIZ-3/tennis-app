@@ -364,7 +364,7 @@
           </p>
 
           <div class="participant-selected-summary" id="participant-selected-summary">
-            <div class="participant-selected-label">この予約の参加者</div>
+            <div class="participant-selected-label">この予約・キャンセル待ちの参加者</div>
             <div class="participant-selected-name" id="participant-selected-name">参加者を選択してください</div>
             <div class="participant-selected-meta" id="participant-selected-meta"></div>
           </div>
@@ -425,9 +425,10 @@
         {% endif %}
 
         {% if selected_lesson.can_join_waitlist %}
-          <form method="post" action="{% url 'club:lesson_calendar' %}">
+          <form method="post" action="{% url 'club:lesson_calendar' %}" id="lesson-waitlist-form">
             {% csrf_token %}
             <input type="hidden" name="action" value="join_waitlist">
+            <input type="hidden" name="participant_key" value="self" id="waitlist-participant-key">
             <input type="hidden" name="year" value="{{ target_year }}">
             <input type="hidden" name="month" value="{{ target_month }}">
             {% if selected_lesson.availability_id %}<input type="hidden" name="availability_id" value="{{ selected_lesson.availability_id }}">{% endif %}
@@ -470,6 +471,7 @@
       var checked = document.querySelector('input[name="participant_key"]:checked');
       var nameTarget = document.getElementById("participant-selected-name");
       var metaTarget = document.getElementById("participant-selected-meta");
+      var waitlistParticipantInput = document.getElementById("waitlist-participant-key");
 
       if (!nameTarget || !metaTarget) {
         return;
@@ -478,11 +480,18 @@
       if (!checked) {
         nameTarget.textContent = "参加者を選択してください";
         metaTarget.textContent = "";
+        if (waitlistParticipantInput) {
+          waitlistParticipantInput.value = "self";
+        }
         return;
       }
 
       nameTarget.textContent = checked.getAttribute("data-participant-name") || "参加者";
       metaTarget.textContent = checked.getAttribute("data-participant-meta") || "";
+
+      if (waitlistParticipantInput) {
+        waitlistParticipantInput.value = checked.value || "self";
+      }
     }
 
     document.addEventListener("change", function(event){
