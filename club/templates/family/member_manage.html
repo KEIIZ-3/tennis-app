@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}家族受講者プロフィール{% endblock %}
+
+{% block content %}
+<style>
+  .family-page{display:grid;gap:14px;}
+  .family-hero{padding:18px;border:1px solid #bfdbfe;border-radius:22px;background:linear-gradient(180deg,#eff6ff 0%,#fff 100%);box-shadow:0 10px 24px rgba(15,23,42,.08);}
+  .family-title{margin:0;color:#0f172a;font-size:28px;line-height:1.25;font-weight:1000;letter-spacing:-.02em;}
+  .family-lead{margin:8px 0 0;color:#475569;font-size:14px;line-height:1.8;font-weight:750;}
+  .family-note{padding:12px 14px;border:1px solid #fed7aa;border-radius:16px;background:#fff7ed;color:#9a3412;font-size:13px;line-height:1.7;font-weight:900;}
+  .family-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .family-card{padding:16px;border:1px solid #e5e7eb;border-radius:18px;background:#fff;box-shadow:0 8px 20px rgba(15,23,42,.05);}
+  .family-card-title{margin:0 0 10px;color:#0f172a;font-size:20px;line-height:1.35;font-weight:1000;}
+  .profile-list{display:grid;gap:10px;}
+  .profile-card{padding:13px;border:1px solid #e5e7eb;border-radius:15px;background:#f8fafc;}
+  .profile-card.inactive{background:#f1f5f9;color:#64748b;}
+  .profile-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;}
+  .profile-name{font-size:17px;line-height:1.35;font-weight:1000;color:#0f172a;}
+  .profile-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;color:#64748b;font-size:12px;font-weight:850;}
+  .pill{display:inline-flex;align-items:center;justify-content:center;padding:4px 8px;border-radius:999px;background:#e0f2fe;color:#075985;font-size:12px;font-weight:1000;}
+  .pill.off{background:#e2e8f0;color:#475569;}
+  .family-form{display:grid;gap:10px;}
+  .family-form label{font-weight:900;color:#334155;}
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .edit-box{margin-top:12px;padding-top:12px;border-top:1px solid #e5e7eb;}
+  .mini-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+  .mini-actions form{margin:0;}
+  @media(max-width:768px){
+    .family-title{font-size:24px;}
+    .family-grid{grid-template-columns:1fr;}
+    .form-grid{grid-template-columns:1fr;}
+    .profile-head{display:block;}
+    .mini-actions{display:grid;grid-template-columns:1fr;}
+    .mini-actions .btn,.mini-actions button{width:100%;}
+  }
+</style>
+
+<div class="family-page">
+  <section class="family-hero">
+    <h1 class="family-title">家族受講者プロフィール</h1>
+    <p class="family-lead">
+      親アカウントから、スマートフォンを持っていないお子様などの受講者プロフィールを管理できます。<br>
+      今後の予約画面で「誰が参加するか」を選べるようにするための第1弾です。
+    </p>
+  </section>
+
+  <div class="family-note">
+    チケットは親アカウントで家族共通管理する方針です。今回の段階では、プロフィール登録のみ追加しています。
+  </div>
+
+  <section class="family-grid">
+    <div class="family-card">
+      <h2 class="family-card-title">本人プロフィール</h2>
+      <div class="profile-card">
+        <div class="profile-name">{{ parent_row.full_name }}</div>
+        <div class="profile-meta">
+          <span class="pill">{{ parent_row.relationship_label }}</span>
+          <span>レベル：{{ parent_row.member_level_label }}</span>
+        </div>
+        <p class="muted" style="margin:8px 0 0;font-size:13px;line-height:1.7;">{{ parent_row.note }}</p>
+      </div>
+
+      <div class="spacer-16"></div>
+      <h2 class="family-card-title">家族受講者を追加</h2>
+      <form method="post" class="family-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="create">
+
+        <p>
+          <label for="id_full_name">受講者名</label>
+          <input type="text" id="id_full_name" name="full_name" placeholder="例：山田 花子" required>
+        </p>
+
+        <p>
+          <label for="id_kana">ふりがな</label>
+          <input type="text" id="id_kana" name="kana" placeholder="例：やまだ はなこ">
+        </p>
+
+        <div class="form-grid">
+          <p>
+            <label for="id_relationship">続柄</label>
+            <select id="id_relationship" name="relationship" required>
+              {% for value, label in relationship_choices %}
+                <option value="{{ value }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </p>
+
+          <p>
+            <label for="id_member_level">レベル</label>
+            <select id="id_member_level" name="member_level" required>
+              {% for value, label in level_choices %}
+                <option value="{{ value }}" {% if value == default_level %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </p>
+        </div>
+
+        <p>
+          <label for="id_birth_date">生年月日</label>
+          <input type="date" id="id_birth_date" name="birth_date">
+        </p>
+
+        <p>
+          <label for="id_note">メモ</label>
+          <textarea id="id_note" name="note" rows="3" placeholder="例：保護者同伴、左利き、注意点など"></textarea>
+        </p>
+
+        <button type="submit">受講者を追加する</button>
+      </form>
+    </div>
+
+    <div class="family-card">
+      <h2 class="family-card-title">登録済み家族受講者</h2>
+
+      {% if family_members %}
+        <div class="profile-list">
+          {% for member in family_members %}
+            <div class="profile-card {% if not member.is_active %}inactive{% endif %}">
+              <div class="profile-head">
+                <div>
+                  <div class="profile-name">{{ member.full_name }}</div>
+                  <div class="profile-meta">
+                    <span class="pill {% if not member.is_active %}off{% endif %}">{% if member.is_active %}有効{% else %}無効{% endif %}</span>
+                    <span>{{ member.relationship_label }}</span>
+                    <span>レベル：{{ member.member_level_label }}</span>
+                    {% if member.birth_date %}<span>生年月日：{{ member.birth_date|date:"Y-m-d" }}</span>{% endif %}
+                  </div>
+                </div>
+              </div>
+
+              {% if member.kana or member.note %}
+                <p class="muted" style="margin:8px 0 0;font-size:13px;line-height:1.7;">
+                  {% if member.kana %}ふりがな：{{ member.kana }}{% endif %}
+                  {% if member.kana and member.note %}<br>{% endif %}
+                  {% if member.note %}{{ member.note }}{% endif %}
+                </p>
+              {% endif %}
+
+              <details class="edit-box">
+                <summary style="font-weight:1000;cursor:pointer;">編集する</summary>
+                <form method="post" class="family-form" style="margin-top:10px;">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="update">
+                  <input type="hidden" name="member_id" value="{{ member.id }}">
+
+                  <p>
+                    <label>受講者名</label>
+                    <input type="text" name="full_name" value="{{ member.full_name }}" required>
+                  </p>
+
+                  <p>
+                    <label>ふりがな</label>
+                    <input type="text" name="kana" value="{{ member.kana }}">
+                  </p>
+
+                  <div class="form-grid">
+                    <p>
+                      <label>続柄</label>
+                      <select name="relationship" required>
+                        {% for value, label in relationship_choices %}
+                          <option value="{{ value }}" {% if value == member.relationship %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                      </select>
+                    </p>
+                    <p>
+                      <label>レベル</label>
+                      <select name="member_level" required>
+                        {% for value, label in level_choices %}
+                          <option value="{{ value }}" {% if value == member.member_level %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                      </select>
+                    </p>
+                  </div>
+
+                  <p>
+                    <label>生年月日</label>
+                    <input type="date" name="birth_date" value="{{ member.birth_date_value }}">
+                  </p>
+
+                  <p>
+                    <label>メモ</label>
+                    <textarea name="note" rows="3">{{ member.note }}</textarea>
+                  </p>
+
+                  <button type="submit">更新する</button>
+                </form>
+              </details>
+
+              <div class="mini-actions">
+                <form method="post">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="toggle_active">
+                  <input type="hidden" name="member_id" value="{{ member.id }}">
+                  {% if member.is_active %}
+                    <button type="submit" class="btn">無効にする</button>
+                  {% else %}
+                    <button type="submit" class="btn btn-primary">有効にする</button>
+                  {% endif %}
+                </form>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="muted" style="margin:0;line-height:1.7;">まだ家族受講者は登録されていません。</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <div class="actions">
+    <a href="{% url 'club:lesson_calendar' %}" class="btn">レッスンカレンダーへ戻る</a>
+    <a href="{% url 'club:tickets' %}" class="btn">チケット確認へ</a>
+  </div>
+</div>
+{% endblock %}
