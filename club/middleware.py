@@ -1217,6 +1217,72 @@ def _calendar_target_year_month(request):
     return target_year, target_month
 
 
+
+
+def _inject_family_profile_nav_button(request, html):
+    """
+    家族受講者プロフィール管理画面への導線を追加します。
+
+    base.htmlの巨大置換を避けるため、HTML応答時に以下を補正します。
+    - PC/タブレット用の上部メニューに「家族プロフィール」を追加
+    - スマホ用の下部ナビに「家族」を追加
+    """
+    user = getattr(request, "user", None)
+    if not user or not getattr(user, "is_authenticated", False):
+        return html
+
+    if 'href="/family/"' in html:
+        return html
+
+    role = getattr(user, "role", "")
+    can_use_family_profile = (
+        role in ("member", "contractor_coach")
+        or bool(getattr(user, "is_staff", False))
+        or bool(getattr(user, "is_superuser", False))
+    )
+    if not can_use_family_profile:
+        return html
+
+    is_family_page = request.path.startswith("/family/")
+    family_active_class = " nav-primary" if is_family_page else ""
+    family_top_link = f'<a href="/family/" class="{family_active_class.strip()}">家族プロフィール</a>'
+    family_bottom_active_class = " is-active" if is_family_page else ""
+    family_bottom_link = (
+        f'<a href="/family/" class="{family_bottom_active_class.strip()}">'
+        '<span class="bottom-icon">👪</span><span>家族</span>'
+        '</a>'
+    )
+
+    # スマホ下部ナビは、家族ボタン追加に合わせて5列から6列へ広げます。
+    html = html.replace(
+        "grid-template-columns:repeat(5, minmax(0, 1fr));",
+        "grid-template-columns:repeat(6, minmax(0, 1fr));",
+        1,
+    )
+
+    # 会員メニュー: 「チケット」の前に追加すると予約導線の近くで見つけやすい。
+    member_ticket_marker = '              <a href="/tickets/">'
+    if member_ticket_marker in html:
+        html = html.replace(member_ticket_marker, f"              {family_top_link}\n{member_ticket_marker}", 1)
+
+    # コーチ/業務委託コーチ用の上部メニュー: 「使い方」の前に追加。
+    top_help_marker = '              <a href="/help/">使い方</a>'
+    if top_help_marker in html:
+        html = html.replace(top_help_marker, f"              {family_top_link}\n{top_help_marker}", 1)
+
+    # 会員スマホ下部ナビ: 「チケット」の前に追加。
+    member_bottom_ticket_marker = '        <a href="/tickets/"'
+    if member_bottom_ticket_marker in html:
+        html = html.replace(member_bottom_ticket_marker, f"        {family_bottom_link}\n{member_bottom_ticket_marker}", 1)
+
+    # コーチ/業務委託コーチスマホ下部ナビ: 「予約承認」の前に追加。
+    coach_bottom_reservation_marker = '        <a href="/reservations/"'
+    if coach_bottom_reservation_marker in html:
+        html = html.replace(coach_bottom_reservation_marker, f"        {family_bottom_link}\n{coach_bottom_reservation_marker}", 1)
+
+    return html
+
+
 def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
     if not request.path.startswith("/lesson-calendar/"):
         return html
@@ -1641,6 +1707,7 @@ class AdminDashboardMenuMiddleware(MiddlewareMixin):
             return response
 
         html = _inject_lesson_calendar_notice_courts_and_holidays(request, html)
+        html = _inject_family_profile_nav_button(request, html)
 
         if user and getattr(user, "is_authenticated", False):
             is_coach_menu_user = (
