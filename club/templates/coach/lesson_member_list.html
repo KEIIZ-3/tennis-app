@@ -110,7 +110,11 @@
                   {% endif %}
                   <span>レベル：{{ row.level }}</span>
                   {% if is_coach_view %}
-                    {% if row.phone %}<span>電話：{{ row.phone }}</span>{% else %}<span>電話：未登録</span>{% endif %}
+                    {% if row.is_family_participant %}
+                      <span>続柄：{{ row.relationship_label }}</span>
+                      <span>保護者：{{ row.guardian_name }}</span>
+                    {% endif %}
+                    {% if row.phone %}<span>保護者電話：{{ row.phone }}</span>{% else %}<span>保護者電話：未登録</span>{% endif %}
                     <span>チケット：{{ row.tickets_used }}{% if row.tickets_used != "-" %}枚{% endif %}</span>
                     {% if row.payment_status_label %}<span>支払：{{ row.payment_status_label }}</span>{% endif %}
                   {% endif %}
@@ -142,7 +146,11 @@
                 <div class="person-name">{{ row.name }}</div>
                 <div class="person-meta">
                   <span>レベル：{{ row.level }}</span>
-                  {% if row.phone %}<span>電話：{{ row.phone }}</span>{% else %}<span>電話：未登録</span>{% endif %}
+                  {% if row.is_family_participant %}
+                    <span>続柄：{{ row.relationship_label }}</span>
+                    <span>保護者：{{ row.guardian_name }}</span>
+                  {% endif %}
+                  {% if row.phone %}<span>保護者電話：{{ row.phone }}</span>{% else %}<span>保護者電話：未登録</span>{% endif %}
                 </div>
               </div>
               <div class="person-actions">
