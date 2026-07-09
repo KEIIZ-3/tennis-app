@@ -50,6 +50,12 @@ from .models import (
     PREOPEN_CASH_PRICE,
     is_preopen_cash_lesson_date,
 )
+from .family_reservations import (
+    build_participant_choices_for_user,
+    resolve_reservation_participant,
+    save_reservation_participant_snapshot,
+    validate_participant_can_book_lesson,
+)
 from .notifications import (
     build_pending_request_for_coach_message,
     build_request_approved_for_member_message,
@@ -1356,8 +1362,15 @@ def lesson_calendar_view(request):
             else:
                 raise ValidationError("対象のレッスンが見つかりません。")
 
-            if not _user_can_book_lesson_levels(request.user, availability):
-                raise ValidationError("ご自身のレベルでは、このレッスンは予約できません。")
+            participant = resolve_reservation_participant(
+                request.user,
+                request.POST.get("participant_key") or "self",
+            )
+            validate_participant_can_book_lesson(
+                participant,
+                availability.target_level,
+                getattr(availability, "target_level_2", "") or "",
+            )
 
             active_count = Reservation.objects.filter(
                 coach=availability.coach,
@@ -1451,6 +1464,7 @@ def lesson_calendar_view(request):
                 )
                 reservation.full_clean()
                 reservation.save()
+                save_reservation_participant_snapshot(reservation, participant)
                 if reservation.tickets_used > 0:
                     reservation.consume_tickets(
                         reason=TicketLedger.REASON_RESERVATION_USE,
@@ -2286,6 +2300,13 @@ def lesson_reservation_confirm(request):
         if own_reservation:
             user_slot_status = own_reservation.status
 
+        participant_choices = build_participant_choices_for_user(
+            request.user,
+            target_level,
+            target_level_2,
+        )
+        has_bookable_participant = any(choice.get("can_book") for choice in participant_choices)
+
         can_submit = False
         can_join_waitlist = False
         can_cancel_waitlist = False
@@ -2313,8 +2334,8 @@ def lesson_reservation_confirm(request):
             disabled_reason = "このレッスンは予約済みです。"
         elif user_slot_status == Reservation.STATUS_PENDING:
             disabled_reason = "この時間帯に承認待ちの申請があります。"
-        elif not _slot_level_allowed(request.user, target_level, target_level_2):
-            disabled_reason = "ご自身のレベルでは、このレッスンは予約できません。"
+        elif not has_bookable_participant:
+            disabled_reason = "このレッスンを予約できる参加者がいません。参加者のレベルを確認してください。"
         elif int(active_count or 0) >= int(capacity or 0):
             if existing_waitlist:
                 disabled_reason = "このレッスンはキャンセル待ち登録済みです。"
@@ -2345,6 +2366,7 @@ def lesson_reservation_confirm(request):
             "waitlist_count": int(waitlist_count or 0),
             "ticket_label": _regular_lesson_payment_label(lesson_type, start_at),
             "confirm_note": _regular_lesson_confirm_note(lesson_type, start_at),
+            "participant_choices": participant_choices,
             "can_submit": can_submit,
             "can_join_waitlist": can_join_waitlist,
             "can_cancel_waitlist": can_cancel_waitlist,
