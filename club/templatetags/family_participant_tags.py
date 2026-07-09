@@ -101,5 +101,3 @@ def participant_for_reservation(reservation):
         "is_family": is_family,
         "has_snapshot": True,
     }
-
-```
