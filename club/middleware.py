@@ -649,7 +649,7 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
     if (!monthNav || document.querySelector(".court-weather-notice")) return;
 
     const julyDeadlineText = isJulyPreopen2026
-      ? '<p class="ticket-notice-text court-entry-deadline-note">2026年7月分はコートキャンセル期限が1週間前のため、できるだけ開催日の1週間前までにエントリーをお願いします。</p>'
+      ? '<p class="ticket-notice-text court-entry-deadline-note">2026年7月分はコートキャンセル期限が1週間前のため、開催日の1週間前までにエントリーをお願いします。</p>'
       : '';
 
     const notice = document.createElement("div");
