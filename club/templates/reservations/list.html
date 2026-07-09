@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load family_participant_tags %}
 {% block title %}予約・キャンセル待ち確認{% endblock %}
 
 {% block content %}
@@ -232,6 +233,23 @@
     font-weight:750;
   }
 
+  .participant-line{
+    padding:9px 10px;
+    border:1px solid #bbf7d0;
+    background:#f0fdf4;
+    border-radius:12px;
+    color:#14532d;
+    font-weight:950;
+  }
+
+  .participant-sub{
+    margin-top:2px;
+    color:#166534;
+    font-size:12px;
+    line-height:1.5;
+    font-weight:800;
+  }
+
   .reservation-message{
     margin-top:10px;
     padding:10px 12px;
@@ -346,7 +364,7 @@
     <h1 class="reservation-title">予約・キャンセル待ち確認</h1>
     <p class="reservation-lead">
       今後の予約、キャンセル待ち、過去の履歴をまとめて確認できます。
-      キャンセル待ちは、空きが出た場合に先頭の方へLINE通知します。
+      家族で予約した場合も、実際に参加する受講者名を確認できます。
     </p>
     <div class="reservation-primary-actions">
       <a href="{% url 'club:lesson_calendar' %}" class="btn btn-primary">レッスンを予約する</a>
@@ -377,18 +395,32 @@
       <span>今後の予約</span>
       <span class="section-count">{{ future_reservation_rows|length }}</span>
     </h2>
-    <p class="section-help">参加予定のレッスンです。詳細画面で参加状況やキャンセル可否を確認できます。</p>
+    <p class="section-help">参加予定のレッスンです。参加者名・詳細・キャンセル可否を確認できます。</p>
 
     {% if future_reservation_rows %}
       <div class="reservation-list">
         {% for row in future_reservation_rows %}
           {% with reservation=row.reservation %}
+            {% participant_for_reservation reservation as participant %}
             <article class="reservation-item">
               <div class="reservation-top">
                 <div class="reservation-date">{{ reservation.start_at|date:"Y/m/d H:i" }}〜{{ reservation.end_at|date:"H:i" }}</div>
                 <span class="status-badge">{{ reservation.get_status_display }}</span>
               </div>
               <div class="reservation-meta">
+                <div class="participant-line">
+                  参加者：{{ participant.name }}
+                  {% if participant.relationship_label %}（{{ participant.relationship_label }}）{% endif %}
+                  {% if participant.level_label %}
+                    <div class="participant-sub">レベル：{{ participant.level_label }}</div>
+                  {% endif %}
+                  {% if participant.is_family %}
+                    <div class="participant-sub">
+                      保護者：{{ participant.parent_name }}
+                      {% if participant.parent_phone %} / {{ participant.parent_phone }}{% endif %}
+                    </div>
+                  {% endif %}
+                </div>
                 <div>レッスン：{{ reservation.get_lesson_type_display }} / レベル：{{ reservation.get_target_level_display }}</div>
                 <div>コーチ：{{ row.assigned_coach_name }}{% if row.has_substitute %}（通常：{{ row.normal_coach_name }}）{% endif %}</div>
                 <div>コート：{{ reservation.court }}</div>
@@ -482,12 +514,26 @@
       <div class="reservation-list">
         {% for row in past_reservation_rows %}
           {% with reservation=row.reservation %}
+            {% participant_for_reservation reservation as participant %}
             <article class="reservation-item is-past">
               <div class="reservation-top">
                 <div class="reservation-date">{{ reservation.start_at|date:"Y/m/d H:i" }}〜{{ reservation.end_at|date:"H:i" }}</div>
                 <span class="status-badge">{{ reservation.get_status_display }}</span>
               </div>
               <div class="reservation-meta">
+                <div class="participant-line">
+                  参加者：{{ participant.name }}
+                  {% if participant.relationship_label %}（{{ participant.relationship_label }}）{% endif %}
+                  {% if participant.level_label %}
+                    <div class="participant-sub">レベル：{{ participant.level_label }}</div>
+                  {% endif %}
+                  {% if participant.is_family %}
+                    <div class="participant-sub">
+                      保護者：{{ participant.parent_name }}
+                      {% if participant.parent_phone %} / {{ participant.parent_phone }}{% endif %}
+                    </div>
+                  {% endif %}
+                </div>
                 <div>{{ reservation.get_lesson_type_display }} / {{ reservation.get_target_level_display }}</div>
                 <div>コーチ：{{ row.assigned_coach_name }} / コート：{{ reservation.court }}</div>
               </div>
@@ -514,12 +560,26 @@
       <div class="reservation-list">
         {% for row in canceled_reservation_rows %}
           {% with reservation=row.reservation %}
+            {% participant_for_reservation reservation as participant %}
             <article class="reservation-item is-canceled">
               <div class="reservation-top">
                 <div class="reservation-date">{{ reservation.start_at|date:"Y/m/d H:i" }}〜{{ reservation.end_at|date:"H:i" }}</div>
                 <span class="status-badge {% if reservation.status == 'rain_canceled' %}rain{% else %}canceled{% endif %}">{{ reservation.get_status_display }}</span>
               </div>
               <div class="reservation-meta">
+                <div class="participant-line">
+                  参加者：{{ participant.name }}
+                  {% if participant.relationship_label %}（{{ participant.relationship_label }}）{% endif %}
+                  {% if participant.level_label %}
+                    <div class="participant-sub">レベル：{{ participant.level_label }}</div>
+                  {% endif %}
+                  {% if participant.is_family %}
+                    <div class="participant-sub">
+                      保護者：{{ participant.parent_name }}
+                      {% if participant.parent_phone %} / {{ participant.parent_phone }}{% endif %}
+                    </div>
+                  {% endif %}
+                </div>
                 <div>{{ reservation.get_lesson_type_display }} / {{ reservation.get_target_level_display }}</div>
                 <div>コーチ：{{ row.assigned_coach_name }}</div>
               </div>
@@ -557,3 +617,5 @@
   </section>
 </div>
 {% endblock %}
+
+```
