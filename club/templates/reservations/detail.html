@@ -205,6 +205,17 @@
     background:#fff7ed;
   }
 
+  .privacy-note{
+    padding:14px;
+    border:1px solid #bfdbfe;
+    border-radius:14px;
+    background:#eff6ff;
+    color:#1e3a8a;
+    font-size:14px;
+    line-height:1.7;
+    font-weight:850;
+  }
+
   .waitlist-note{
     margin-top:10px;
     padding:10px 12px;
@@ -351,27 +362,33 @@
 
   <section class="detail-card">
     <h2 class="detail-card-title">同じレッスンの参加者</h2>
-    {% if same_slot_reservations %}
-      <div class="member-list">
-        {% for same_reservation in same_slot_reservations %}
-          {% participant_for_reservation same_reservation as same_participant %}
-          <div class="member-row">
-            <span class="member-main">
-              <span class="member-name">{{ same_participant.name }}</span>
-              <span class="member-sub">
-                {% if same_participant.relationship_label %}{{ same_participant.relationship_label }}{% endif %}
-                {% if same_participant.level_label %} / レベル：{{ same_participant.level_label }}{% endif %}
-                {% if same_participant.is_family %}
-                  / 保護者：{{ same_participant.parent_name }}{% if same_participant.parent_phone %} / {{ same_participant.parent_phone }}{% endif %}
-                {% endif %}
+    {% if user.is_staff or user.is_superuser or user.role == "coach" or user.role == "contractor_coach" %}
+      {% if same_slot_reservations %}
+        <div class="member-list">
+          {% for same_reservation in same_slot_reservations %}
+            {% participant_for_reservation same_reservation as same_participant %}
+            <div class="member-row">
+              <span class="member-main">
+                <span class="member-name">{{ same_participant.name }}</span>
+                <span class="member-sub">
+                  {% if same_participant.relationship_label %}{{ same_participant.relationship_label }}{% endif %}
+                  {% if same_participant.level_label %} / レベル：{{ same_participant.level_label }}{% endif %}
+                  {% if same_participant.is_family %}
+                    / 保護者：{{ same_participant.parent_name }}{% if same_participant.parent_phone %} / {{ same_participant.parent_phone }}{% endif %}
+                  {% endif %}
+                </span>
               </span>
-            </span>
-            <span>{{ same_reservation.get_status_display }}</span>
-          </div>
-        {% endfor %}
-      </div>
+              <span>{{ same_reservation.get_status_display }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-box">同じレッスンの参加者はいません。</div>
+      {% endif %}
     {% else %}
-      <div class="empty-box">同じレッスンの参加者はいません。</div>
+      <div class="privacy-note">
+        個人情報保護のため、他の参加者名は表示していません。参加人数と残り枠のみ確認できます。
+      </div>
     {% endif %}
   </section>
 
@@ -439,5 +456,3 @@
   </section>
 </div>
 {% endblock %}
-
-```
