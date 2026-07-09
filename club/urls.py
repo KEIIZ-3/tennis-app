@@ -3,6 +3,7 @@ from . import views
 from . import lesson_member_list
 from . import admin_dashboard
 from . import court_number_line_notice
+from . import family_members
 
 app_name = "club"
 
@@ -20,6 +21,7 @@ urlpatterns = [
     path("calendar/events/", views.calendar_events, name="calendar_events"),
     path("api/calendar/events/", views.calendar_events, name="calendar_events_api"),
     path("tickets/", views.tickets_view, name="tickets"),
+    path("family/", family_members.family_member_manage, name="family_member_manage"),
     path("help/", views.help_view, name="help"),
     path("terms/", views.terms_view, name="terms"),
     path("stringing/new/", views.stringing_order_create, name="stringing_order_create"),
