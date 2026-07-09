@@ -687,10 +687,10 @@ def _lesson_calendar_special_closed_days_for_year(year_value):
         return {}
 
     return {
-        date(2026, 8, 11): "お盆休み",
-        date(2026, 8, 12): "お盆休み",
-        date(2026, 8, 13): "お盆休み",
-        date(2026, 8, 14): "お盆休み",
+        date(2026, 8, 11): "お盆休み・休講",
+        date(2026, 8, 12): "お盆休み・休講",
+        date(2026, 8, 13): "お盆休み・休講",
+        date(2026, 8, 14): "お盆休み・休講",
     }
 
 
@@ -935,6 +935,7 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
     court_map_json = json.dumps(court_map, ensure_ascii=False)
     holiday_map_json = json.dumps(holiday_map, ensure_ascii=False)
     is_2026_july = target_year == 2026 and target_month == 7
+    is_2026_obon = target_year == 2026 and target_month == 8
 
     injection = f"""
 <style id="lesson-calendar-court-notice-style">
@@ -952,6 +953,15 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
     color:#9a3412;
     font-weight:1000;
   }}
+  .obon-closed-note{{
+    margin-top:8px;
+    padding:8px 10px;
+    border-radius:12px;
+    border:1px solid #fecaca;
+    background:#fff1f2;
+    color:#991b1b;
+    font-weight:1000;
+  }}
   .monthly-calendar td.is-japanese-holiday{{
     background:#fff1f2!important;
   }}
@@ -960,6 +970,28 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
   }}
   .monthly-calendar td.is-japanese-holiday.day-cell-past{{
     background:#fce7f3!important;
+  }}
+  .monthly-calendar td.is-obon-holiday{{
+    background:repeating-linear-gradient(135deg,#fff1f2 0,#fff1f2 8px,#ffe4e6 8px,#ffe4e6 16px)!important;
+    border:2px solid #fb7185!important;
+  }}
+  .monthly-calendar td.is-obon-holiday .day-number{{
+    color:#991b1b!important;
+    font-weight:1000!important;
+  }}
+  .monthly-calendar td.is-obon-holiday .holiday-name{{
+    display:flex;
+    width:100%;
+    margin:5px 0 4px;
+    padding:5px 4px;
+    border-radius:8px;
+    background:#be123c;
+    color:#fff;
+    border:1px solid #9f1239;
+    box-shadow:0 4px 10px rgba(190,18,60,.22);
+    font-size:11px;
+    line-height:1.15;
+    white-space:normal;
   }}
   .holiday-name{{
     display:inline-flex;
@@ -1017,6 +1049,18 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
       overflow:visible;
       text-overflow:clip;
     }}
+    .monthly-calendar td.is-obon-holiday .holiday-name{{
+      display:block;
+      margin-top:3px;
+      padding:3px 2px;
+      border-radius:6px;
+      font-size:7.4px;
+      line-height:1.05;
+      letter-spacing:-.08em;
+      white-space:normal;
+      overflow:visible;
+      text-overflow:clip;
+    }}
     .event-court{{
       margin-top:1px;
       font-size:5.8px;
@@ -1039,6 +1083,7 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
   const targetYear = {int(target_year)};
   const targetMonth = {int(target_month)};
   const isJulyPreopen2026 = {str(is_2026_july).lower()};
+  const isObonClosedMonth2026 = {str(is_2026_obon).lower()};
 
   function ready(callback) {{
     if (document.readyState === "loading") {{
@@ -1088,6 +1133,10 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
       ? '<p class="ticket-notice-text court-entry-deadline-note">2026年7月分はコートキャンセル期限が1週間前のため、開催日の1週間前までにエントリーをお願いします。</p>'
       : '';
 
+    const obonClosedText = isObonClosedMonth2026
+      ? '<p class="ticket-notice-text obon-closed-note">お盆休み：2026/8/11（火）〜8/14（金）はレッスン休講予定です。カレンダー内の赤い表示をご確認ください。</p>'
+      : '';
+
     const notice = document.createElement("div");
     notice.className = "ticket-notice court-weather-notice";
     notice.innerHTML =
@@ -1096,6 +1145,7 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
       '<p class="ticket-notice-title">雨天中止・コートについて</p>' +
       '<p class="ticket-notice-text">雨天中止の場合は、レッスン開始1時間前までを目安にご連絡します。コートは西猪名公園または尼崎記念公園となる可能性があります。各レッスン欄のコート表示をご確認ください。</p>' +
       julyDeadlineText +
+      obonClosedText +
       '</div>';
 
     monthNav.parentNode.insertBefore(notice, monthNav);
@@ -1117,6 +1167,9 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
       if (!holidayName) return;
 
       cell.classList.add("is-japanese-holiday");
+      if (String(holidayName).indexOf("お盆休み") !== -1) {{
+        cell.classList.add("is-obon-holiday");
+      }}
 
       const holidayElement = document.createElement("div");
       holidayElement.className = "holiday-name";
@@ -1210,7 +1263,7 @@ class AdminDashboardMenuMiddleware(MiddlewareMixin):
     レッスンカレンダーへの雨天・コート案内、各レッスンのコート種別・コート名表示、
     日本の祝日背景色表示、2026年7月分の1週間前エントリー案内、
     2026年7月分の顧客向け参加状況表示、
-    2026年8月のお盆休み表示、
+    2026年8月のお盆休み強調表示、
     固定レッスンの担当コーチ変更・定員再同期の安全運用を適用します。
     """
 
