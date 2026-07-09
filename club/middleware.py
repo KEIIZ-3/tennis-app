@@ -1489,7 +1489,7 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
 
     textNodes.forEach(function (node) {{
       const before = node.nodeValue || "";
-      const after = before.replace(/(\d+)\s*\/\s*\d+名/g, function (_match, count) {{
+      const after = before.replace(/(\\d+)\\s*\\/\\s*\\d+名/g, function (_match, count) {{
         return count + "/" + capacity + "名";
       }});
       if (after !== before) {{
@@ -1507,7 +1507,7 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
 
       const title = eventElement.getAttribute("title") || "";
       if (title) {{
-        eventElement.setAttribute("title", title.replace(/(\d+)\s*\/\s*\d+名/g, function (_match, count) {{
+        eventElement.setAttribute("title", title.replace(/(\\d+)\\s*\\/\\s*\\d+名/g, function (_match, count) {{
           return count + "/" + capacity + "名";
         }}));
       }}
