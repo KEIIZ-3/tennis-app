@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.db import connection
 from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, render
@@ -130,14 +131,68 @@ def _phone_label(user):
     return (getattr(user, "phone_number", "") or "").strip()
 
 
-def _member_row_from_reservation(reservation):
+def _reservation_participant_snapshot_map(reservations):
+    reservation_ids = [reservation.pk for reservation in reservations if getattr(reservation, "pk", None)]
+    if not reservation_ids:
+        return {}
+
+    placeholders = ",".join(["%s"] * len(reservation_ids))
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT
+                reservation_id,
+                participant_type,
+                participant_name,
+                participant_level_label,
+                relationship_label,
+                parent_id
+            FROM club_reservationparticipant
+            WHERE reservation_id IN ({placeholders})
+            """,
+            reservation_ids,
+        )
+        rows = cursor.fetchall()
+
+    result = {}
+    for row in rows:
+        (
+            reservation_id,
+            participant_type,
+            participant_name,
+            participant_level_label,
+            relationship_label,
+            parent_id,
+        ) = row
+        result[reservation_id] = {
+            "participant_type": participant_type or "self",
+            "participant_name": participant_name or "",
+            "participant_level_label": participant_level_label or "",
+            "relationship_label": relationship_label or "",
+            "parent_id": parent_id,
+        }
+    return result
+
+
+def _member_row_from_reservation(reservation, participant_snapshot=None):
     user = reservation.user
+    participant_snapshot = participant_snapshot or {}
+
+    participant_type = participant_snapshot.get("participant_type") or "self"
+    is_family_participant = participant_type == "family"
+    participant_name = participant_snapshot.get("participant_name") or _display_name(user)
+    participant_level = participant_snapshot.get("participant_level_label") or _level_label(getattr(user, "member_level", ""))
+    relationship_label = participant_snapshot.get("relationship_label") or "本人"
+
     return {
         "kind": "reservation",
         "reservation": reservation,
-        "name": _display_name(user),
+        "name": participant_name,
+        "guardian_name": _display_name(user),
         "phone": _phone_label(user),
-        "level": _level_label(getattr(user, "member_level", "")),
+        "level": participant_level,
+        "relationship_label": relationship_label,
+        "is_family_participant": is_family_participant,
         "status_label": reservation.get_status_display(),
         "detail_url": reverse("club:reservation_detail", kwargs={"pk": reservation.pk}),
         "payment_status_label": reservation.payment_status_badge_label()
@@ -154,6 +209,9 @@ def _member_row_from_fixed_member(user):
         "name": _display_name(user),
         "phone": _phone_label(user),
         "level": _level_label(getattr(user, "member_level", "")),
+        "guardian_name": "",
+        "relationship_label": "本人",
+        "is_family_participant": False,
         "status_label": "固定登録",
         "detail_url": "",
         "payment_status_label": "",
@@ -335,6 +393,8 @@ def lesson_calendar_member_list(request):
         .distinct()
     )
 
+    participant_snapshot_map = _reservation_participant_snapshot_map(active_reservations + pending_reservations)
+
     waitlists = list(
         LessonWaitlist.objects.select_related("user", "coach", "substitute_coach", "court", "fixed_lesson", "availability")
         .filter(
@@ -365,7 +425,10 @@ def lesson_calendar_member_list(request):
         except Exception:
             fixed_member_rows = []
 
-    active_rows = [_member_row_from_reservation(reservation) for reservation in active_reservations]
+    active_rows = [
+        _member_row_from_reservation(reservation, participant_snapshot_map.get(reservation.pk))
+        for reservation in active_reservations
+    ]
     active_rows.extend(fixed_member_rows)
 
     capacity = _capacity_for_slot(availability=availability, fixed_lesson=fixed_lesson)
@@ -404,7 +467,10 @@ def lesson_calendar_member_list(request):
             "pending_count": pending_count,
             "waitlist_count": waitlist_count,
             "active_rows": active_rows,
-            "pending_rows": [_member_row_from_reservation(reservation) for reservation in pending_reservations],
+            "pending_rows": [
+                _member_row_from_reservation(reservation, participant_snapshot_map.get(reservation.pk))
+                for reservation in pending_reservations
+            ],
             "waitlist_rows": [_waitlist_row(waitlist) for waitlist in waitlists],
             "back_year": request.GET.get("year") or "",
             "back_month": request.GET.get("month") or "",
