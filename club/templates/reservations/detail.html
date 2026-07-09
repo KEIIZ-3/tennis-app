@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load family_participant_tags %}
 {% block title %}予約詳細{% endblock %}
 
 {% block content %}
@@ -133,6 +134,37 @@
     font-weight:850;
   }
 
+  .participant-card{
+    margin-bottom:12px;
+    padding:13px;
+    border:1px solid #bbf7d0;
+    background:#f0fdf4;
+    border-radius:15px;
+  }
+
+  .participant-card-label{
+    color:#166534;
+    font-size:12px;
+    line-height:1.4;
+    font-weight:1000;
+  }
+
+  .participant-card-name{
+    margin-top:4px;
+    color:#052e16;
+    font-size:20px;
+    line-height:1.35;
+    font-weight:1000;
+  }
+
+  .participant-card-meta{
+    margin-top:3px;
+    color:#166534;
+    font-size:13px;
+    line-height:1.55;
+    font-weight:850;
+  }
+
   .member-list{
     display:grid;
     gap:8px;
@@ -149,6 +181,23 @@
     background:#f8fafc;
     font-size:14px;
     font-weight:850;
+  }
+
+  .member-main{
+    display:grid;
+    gap:2px;
+  }
+
+  .member-name{
+    color:#0f172a;
+    font-weight:1000;
+  }
+
+  .member-sub{
+    color:#64748b;
+    font-size:12px;
+    line-height:1.45;
+    font-weight:800;
   }
 
   .member-row.is-waiting{
@@ -217,6 +266,10 @@
       gap:2px;
     }
 
+    .participant-card-name{
+      font-size:18px;
+    }
+
     .member-row{
       display:grid;
       grid-template-columns:1fr;
@@ -233,6 +286,8 @@
     }
   }
 </style>
+
+{% participant_for_reservation reservation as participant %}
 
 <div class="detail-page">
   <section class="detail-hero">
@@ -256,6 +311,22 @@
   <section class="detail-grid">
     <div class="detail-card">
       <h2 class="detail-card-title">予約内容</h2>
+
+      <div class="participant-card">
+        <div class="participant-card-label">この予約の参加者</div>
+        <div class="participant-card-name">{{ participant.name }}</div>
+        <div class="participant-card-meta">
+          {% if participant.relationship_label %}{{ participant.relationship_label }}{% endif %}
+          {% if participant.level_label %} / レベル：{{ participant.level_label }}{% endif %}
+        </div>
+        {% if participant.is_family %}
+          <div class="participant-card-meta">
+            保護者：{{ participant.parent_name }}
+            {% if participant.parent_phone %} / {{ participant.parent_phone }}{% endif %}
+          </div>
+        {% endif %}
+      </div>
+
       <div class="detail-list">
         <div class="detail-row"><div class="detail-label">会員</div><div class="detail-value">{{ reservation.user.display_name }}</div></div>
         <div class="detail-row"><div class="detail-label">日時</div><div class="detail-value">{{ reservation.start_at|date:"Y/m/d H:i" }}〜{{ reservation.end_at|date:"H:i" }}</div></div>
@@ -283,8 +354,18 @@
     {% if same_slot_reservations %}
       <div class="member-list">
         {% for same_reservation in same_slot_reservations %}
+          {% participant_for_reservation same_reservation as same_participant %}
           <div class="member-row">
-            <span>{{ same_reservation.user.display_name }}</span>
+            <span class="member-main">
+              <span class="member-name">{{ same_participant.name }}</span>
+              <span class="member-sub">
+                {% if same_participant.relationship_label %}{{ same_participant.relationship_label }}{% endif %}
+                {% if same_participant.level_label %} / レベル：{{ same_participant.level_label }}{% endif %}
+                {% if same_participant.is_family %}
+                  / 保護者：{{ same_participant.parent_name }}{% if same_participant.parent_phone %} / {{ same_participant.parent_phone }}{% endif %}
+                {% endif %}
+              </span>
+            </span>
             <span>{{ same_reservation.get_status_display }}</span>
           </div>
         {% endfor %}
@@ -358,3 +439,5 @@
   </section>
 </div>
 {% endblock %}
+
+```
