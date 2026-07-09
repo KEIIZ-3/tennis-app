@@ -1479,6 +1479,7 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
 
   function replaceCapacityTextInElement(element, capacity) {{
     if (!element || !capacity) return;
+    // 日付の「7/17」などを壊さないため、「4/6名」のように末尾に「名」がある人数表示だけを置換します。
 
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     const textNodes = [];
@@ -1488,8 +1489,8 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
 
     textNodes.forEach(function (node) {{
       const before = node.nodeValue || "";
-      const after = before.replace(/(\d+)\s*\/\s*\d+(名?)/g, function (_match, count, suffix) {{
-        return count + "/" + capacity + suffix;
+      const after = before.replace(/(\d+)\s*\/\s*\d+名/g, function (_match, count) {{
+        return count + "/" + capacity + "名";
       }});
       if (after !== before) {{
         node.nodeValue = after;
@@ -1506,8 +1507,8 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
 
       const title = eventElement.getAttribute("title") || "";
       if (title) {{
-        eventElement.setAttribute("title", title.replace(/(\d+)\s*\/\s*\d+(名?)/g, function (_match, count, suffix) {{
-          return count + "/" + capacity + suffix;
+        eventElement.setAttribute("title", title.replace(/(\d+)\s*\/\s*\d+名/g, function (_match, count) {{
+          return count + "/" + capacity + "名";
         }}));
       }}
     }});
