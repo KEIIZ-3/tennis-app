@@ -59,7 +59,8 @@
     </p>
     {% if is_public_member_view %}
       <p class="public-note">
-        2026年7月プレオープン期間のため、現在の参加状況を確認できます。予約する場合は下の「このレッスンを予約する」ボタンから進んでください。表示する情報は参加者名とレベルのみです。
+        参加状況は人数のみ確認できます。個人情報保護のため、他のお客様の氏名・電話番号・レベルは表示していません。
+        予約する場合は下の「このレッスンを予約する」ボタンから進んでください。
       </p>
     {% endif %}
     <div class="member-list-actions">
@@ -86,39 +87,49 @@
     {% endif %}
   </section>
 
-  <section class="section-card">
-    <h2 class="section-title"><span>参加者</span><span class="count-badge">{{ active_count }}</span></h2>
-    {% if active_rows %}
-      <div class="person-list">
-        {% for row in active_rows %}
-          <div class="person-row {% if row.kind == 'fixed_member' %}fixed{% endif %}">
-            <div>
-              <div class="person-name">{{ row.name }}</div>
-              <div class="person-meta">
-                {% if is_coach_view %}
-                  <span class="status-badge {% if row.kind == 'fixed_member' %}fixed{% endif %}">{{ row.status_label }}</span>
-                {% endif %}
-                <span>レベル：{{ row.level }}</span>
-                {% if is_coach_view %}
-                  {% if row.phone %}<span>電話：{{ row.phone }}</span>{% else %}<span>電話：未登録</span>{% endif %}
-                  <span>チケット：{{ row.tickets_used }}{% if row.tickets_used != "-" %}枚{% endif %}</span>
-                  {% if row.payment_status_label %}<span>支払：{{ row.payment_status_label }}</span>{% endif %}
-                {% endif %}
-              </div>
-            </div>
-            {% if is_coach_view %}
-              <div class="person-actions">
-                {% if row.phone %}<a href="tel:{{ row.phone }}" class="mini-btn primary">電話</a>{% endif %}
-                {% if row.detail_url %}<a href="{{ row.detail_url }}" class="mini-btn">予約詳細</a>{% endif %}
-              </div>
-            {% endif %}
-          </div>
-        {% endfor %}
+  {% if is_public_member_view %}
+    <section class="section-card">
+      <h2 class="section-title"><span>参加人数</span><span class="count-badge">{{ active_count }}</span></h2>
+      <div class="empty-box">
+        現在 {{ active_count }}/{{ capacity }}名 が参加予定です。<br>
+        残り {{ remaining_count }}名 予約できます。
       </div>
-    {% else %}
-      <div class="empty-box">参加者はまだいません。</div>
-    {% endif %}
-  </section>
+    </section>
+  {% else %}
+    <section class="section-card">
+      <h2 class="section-title"><span>参加者</span><span class="count-badge">{{ active_count }}</span></h2>
+      {% if active_rows %}
+        <div class="person-list">
+          {% for row in active_rows %}
+            <div class="person-row {% if row.kind == 'fixed_member' %}fixed{% endif %}">
+              <div>
+                <div class="person-name">{{ row.name }}</div>
+                <div class="person-meta">
+                  {% if is_coach_view %}
+                    <span class="status-badge {% if row.kind == 'fixed_member' %}fixed{% endif %}">{{ row.status_label }}</span>
+                  {% endif %}
+                  <span>レベル：{{ row.level }}</span>
+                  {% if is_coach_view %}
+                    {% if row.phone %}<span>電話：{{ row.phone }}</span>{% else %}<span>電話：未登録</span>{% endif %}
+                    <span>チケット：{{ row.tickets_used }}{% if row.tickets_used != "-" %}枚{% endif %}</span>
+                    {% if row.payment_status_label %}<span>支払：{{ row.payment_status_label }}</span>{% endif %}
+                  {% endif %}
+                </div>
+              </div>
+              {% if is_coach_view %}
+                <div class="person-actions">
+                  {% if row.phone %}<a href="tel:{{ row.phone }}" class="mini-btn primary">電話</a>{% endif %}
+                  {% if row.detail_url %}<a href="{{ row.detail_url }}" class="mini-btn">予約詳細</a>{% endif %}
+                </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-box">参加者はまだいません。</div>
+      {% endif %}
+    </section>
+  {% endif %}
 
   {% if is_coach_view %}
     <section class="section-card">
