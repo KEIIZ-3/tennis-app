@@ -1,8 +1,3 @@
-対象ファイル: tennis-app/club/templatetags/family_participant_tags.py
-
-以下で全文置換してください。
-
-```python
 from django import template
 from django.db import connection
 
