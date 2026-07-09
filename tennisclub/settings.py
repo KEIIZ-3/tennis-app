@@ -66,6 +66,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "club.waitlist_participant_middleware.WaitlistParticipantMiddleware",
     "club.preopen_level_policy.PreopenLevelFreeMiddleware",
     "club.middleware.AdminDashboardMenuMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -87,7 +88,7 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
             ],
         },
-    },
+    }
 ]
 
 WSGI_APPLICATION = "tennisclub.wsgi.application"
