@@ -1509,7 +1509,10 @@ def lesson_calendar_view(request):
 
     active_slot_counts = {}
     pending_slot_counts = {}
+    fixed_lesson_active_counts = {}
+    fixed_lesson_pending_counts = {}
     user_slot_status_map = {}
+    user_fixed_lesson_status_map = {}
 
     for reservation in reservation_list:
         slot_key = _slot_key(
@@ -1520,15 +1523,33 @@ def lesson_calendar_view(request):
             end_at=reservation.end_at,
         )
 
+        fixed_lesson_key = None
+        if getattr(reservation, "fixed_lesson_id", None):
+            try:
+                reservation_start_local = _local_dt(reservation.start_at)
+                fixed_lesson_key = (str(reservation.fixed_lesson_id), reservation_start_local.date().isoformat())
+            except Exception:
+                fixed_lesson_key = None
+
         if reservation.status == Reservation.STATUS_ACTIVE:
             active_slot_counts.setdefault(slot_key, 0)
             active_slot_counts[slot_key] += 1
+            if fixed_lesson_key:
+                fixed_lesson_active_counts.setdefault(fixed_lesson_key, 0)
+                fixed_lesson_active_counts[fixed_lesson_key] += 1
         elif reservation.status == Reservation.STATUS_PENDING:
             pending_slot_counts.setdefault(slot_key, 0)
             pending_slot_counts[slot_key] += 1
+            if fixed_lesson_key:
+                fixed_lesson_pending_counts.setdefault(fixed_lesson_key, 0)
+                fixed_lesson_pending_counts[fixed_lesson_key] += 1
 
         if request.user.is_authenticated and reservation.user_id == request.user.pk:
             user_slot_status_map[slot_key] = reservation.status
+            if fixed_lesson_key:
+                current_fixed_status = user_fixed_lesson_status_map.get(fixed_lesson_key, "")
+                if reservation.status == Reservation.STATUS_ACTIVE or not current_fixed_status:
+                    user_fixed_lesson_status_map[fixed_lesson_key] = reservation.status
 
     waitlist_qs = (
         LessonWaitlist.objects.filter(
@@ -1540,7 +1561,9 @@ def lesson_calendar_view(request):
         .order_by("start_at", "created_at", "id")
     )
     waitlist_counts = {}
+    fixed_lesson_waitlist_counts = {}
     user_waitlist_map = {}
+    user_fixed_lesson_waitlist_map = {}
     for waitlist in waitlist_qs:
         slot_key = _slot_key(
             lesson_type=waitlist.lesson_type,
@@ -1551,8 +1574,23 @@ def lesson_calendar_view(request):
         )
         waitlist_counts.setdefault(slot_key, 0)
         waitlist_counts[slot_key] += 1
+
+        fixed_waitlist_key = None
+        if getattr(waitlist, "fixed_lesson_id", None):
+            try:
+                waitlist_start_local = _local_dt(waitlist.start_at)
+                fixed_waitlist_key = (str(waitlist.fixed_lesson_id), waitlist_start_local.date().isoformat())
+            except Exception:
+                fixed_waitlist_key = None
+
+        if fixed_waitlist_key:
+            fixed_lesson_waitlist_counts.setdefault(fixed_waitlist_key, 0)
+            fixed_lesson_waitlist_counts[fixed_waitlist_key] += 1
+
         if request.user.is_authenticated and waitlist.user_id == request.user.pk:
             user_waitlist_map[slot_key] = waitlist.pk
+            if fixed_waitlist_key:
+                user_fixed_lesson_waitlist_map[fixed_waitlist_key] = waitlist.pk
 
     weekday_short = ["月", "火", "水", "木", "金", "土", "日"]
 
@@ -1686,6 +1724,8 @@ def lesson_calendar_view(request):
         fixed_lesson_id="",
         lesson_date="",
         allow_fixed_booking=False,
+        user_slot_status_override="",
+        user_waitlist_id_override="",
     ):
         start_local = _local_dt(start_at)
         end_local = _local_dt(end_at)
@@ -1705,8 +1745,8 @@ def lesson_calendar_view(request):
             start_at=start_at,
             end_at=end_at,
         )
-        user_slot_status = user_slot_status_map.get(slot_key, "")
-        user_waitlist_id = user_waitlist_map.get(slot_key, "")
+        user_slot_status = user_slot_status_override or user_slot_status_map.get(slot_key, "")
+        user_waitlist_id = user_waitlist_id_override or user_waitlist_map.get(slot_key, "")
 
         if start_at < timezone.now():
             disabled_reason = "受付終了"
@@ -1863,9 +1903,28 @@ def lesson_calendar_view(request):
                     end_at=end_at,
                 )
 
-            fixed_member_count = len(list(fixed_lesson.members.all()))
-            member_count = max(int(active_slot_counts.get(slot_key, 0)), fixed_member_count)
-            pending_count = int(pending_slot_counts.get(slot_key, 0))
+            fixed_member_list = list(fixed_lesson.members.all())
+            fixed_member_count = len(fixed_member_list)
+            fixed_key = (str(fixed_lesson.pk), cursor_date.isoformat())
+            member_count = max(
+                int(active_slot_counts.get(slot_key, 0)),
+                int(fixed_lesson_active_counts.get(fixed_key, 0)),
+                fixed_member_count,
+            )
+            pending_count = max(
+                int(pending_slot_counts.get(slot_key, 0)),
+                int(fixed_lesson_pending_counts.get(fixed_key, 0)),
+            )
+            fixed_user_status = user_fixed_lesson_status_map.get(fixed_key, "")
+            fixed_user_waitlist_id = user_fixed_lesson_waitlist_map.get(fixed_key, "")
+
+            if (
+                not fixed_user_status
+                and request.user.is_authenticated
+                and request.user.pk in {member.pk for member in fixed_member_list}
+            ):
+                fixed_user_status = Reservation.STATUS_ACTIVE
+
             coach_names = _fixed_lesson_coach_names(fixed_lesson)
 
             item = _build_display_item(
@@ -1889,11 +1948,16 @@ def lesson_calendar_view(request):
                 capacity=capacity,
                 member_count=member_count,
                 pending_count=pending_count,
-                waitlist_count=int(waitlist_counts.get(slot_key, 0)),
+                waitlist_count=max(
+                    int(waitlist_counts.get(slot_key, 0)),
+                    int(fixed_lesson_waitlist_counts.get(fixed_key, 0)),
+                ),
                 status=status,
                 color_class=_coach_color_from_names(coach_names, getattr(primary_coach, "pk", None)),
                 color_combo_class=_coach_combo_class_from_names(coach_names),
                 allow_fixed_booking=bool(court),
+                user_slot_status_override=fixed_user_status,
+                user_waitlist_id_override=fixed_user_waitlist_id,
             )
 
             day_event_map.setdefault(cursor_date, [])
