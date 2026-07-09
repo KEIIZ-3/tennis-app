@@ -8,6 +8,7 @@ import urllib.request
 
 from django.conf import settings
 from django.core.mail import send_mail
+from django.db import connection
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,48 @@ def _payment_label(obj):
         return f"チケット{tickets}枚"
 
 
+def _reservation_participant_label(reservation):
+    if not reservation:
+        return "-"
+
+    reservation_id = getattr(reservation, "pk", None)
+    if reservation_id:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        participant_name,
+                        participant_level_label,
+                        relationship_label
+                    FROM club_reservationparticipant
+                    WHERE reservation_id = %s
+                    LIMIT 1
+                    """,
+                    [reservation_id],
+                )
+                row = cursor.fetchone()
+        except Exception:
+            row = None
+
+        if row:
+            participant_name, participant_level_label, relationship_label = row
+            parts = []
+            if participant_name:
+                parts.append(str(participant_name))
+            meta_parts = []
+            if relationship_label:
+                meta_parts.append(str(relationship_label))
+            if participant_level_label:
+                meta_parts.append(f"レベル: {participant_level_label}")
+            if meta_parts:
+                parts.append(f"（{' / '.join(meta_parts)}）")
+            if parts:
+                return "".join(parts)
+
+    return _safe_display_name(getattr(reservation, "user", None))
+
+
 def _reservation_common_lines(reservation):
     assigned_coach = None
     try:
@@ -73,6 +116,7 @@ def _reservation_common_lines(reservation):
 
     return [
         f"会員: {_safe_display_name(getattr(reservation, 'user', None))}",
+        f"参加者: {_reservation_participant_label(reservation)}",
         f"コーチ: {_safe_display_name(assigned_coach)}",
         f"種別: {_lesson_type_label(reservation)}",
         f"日時: {_format_datetime_range(getattr(reservation, 'start_at', None), getattr(reservation, 'end_at', None))}",
