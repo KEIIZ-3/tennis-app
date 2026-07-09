@@ -1,6 +1,7 @@
 import json
 from datetime import date, datetime, timedelta
 
+from django.db import transaction
 from django.utils import timezone
 from django.utils.deprecation import MiddlewareMixin
 
@@ -854,6 +855,227 @@ def _matching_availability_for_fixed(fixed_lesson, start_at, end_at):
         return None
 
 
+
+def _repair_fixed_lesson_slots_for_request(request):
+    """
+    固定レッスンの現在設定を、実データ側のレッスン枠・予約・キャンセル待ちへ同期します。
+
+    目的:
+    - FixedLesson が正、CoachAvailability / Reservation / LessonWaitlist が従。
+    - コーチ人数2→1なら、一般レッスン定員12→6へ実データも戻す。
+    - 担当コーチ変更時、既存参加者を消さず新担当コーチへ引き継ぐ。
+    - 古い CoachAvailability が残っても、固定レッスン由来の枠は現在設定へ寄せる。
+    """
+    path = getattr(request, "path", "") or ""
+    should_repair = (
+        path.startswith("/lesson-calendar/")
+        or path.startswith("/admin/club/fixedlesson/")
+        or path.startswith("/admin/club/coachavailability/")
+    )
+    if not should_repair:
+        return
+
+    try:
+        from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation
+    except Exception:
+        return
+
+    today = timezone.localdate()
+
+    try:
+        target_year = _parse_int(request.GET.get("year") or request.POST.get("year"), today.year)
+        target_month = _parse_int(request.GET.get("month") or request.POST.get("month"), today.month)
+        if target_month < 1 or target_month > 12:
+            target_month = today.month
+        range_start, range_end = _month_start_end(target_year, target_month)
+    except Exception:
+        range_start = today
+        range_end = today + timedelta(days=120)
+
+    # 管理画面保存直後の確認にも効くよう、少し先まで同期対象を広げます。
+    if path.startswith("/admin/club/fixedlesson/"):
+        range_start = min(range_start, today)
+        range_end = max(range_end, today + timedelta(days=120))
+
+    try:
+        fixed_lessons = (
+            FixedLesson.objects.filter(is_active=True)
+            .select_related("coach", "coach_2", "coach_3", "court")
+            .prefetch_related("members")
+            .order_by("weekday", "start_hour", "id")
+        )
+    except Exception:
+        return
+
+    def _safe_primary_coach(fixed_lesson):
+        try:
+            return fixed_lesson.primary_coach()
+        except Exception:
+            return getattr(fixed_lesson, "coach", None)
+
+    def _safe_capacity(fixed_lesson):
+        try:
+            effective_capacity = int(fixed_lesson.effective_capacity())
+        except Exception:
+            effective_capacity = int(getattr(fixed_lesson, "capacity", 0) or 0)
+
+        try:
+            member_count = fixed_lesson.members.count()
+        except Exception:
+            member_count = 0
+
+        return max(effective_capacity, int(member_count or 0), 1)
+
+    def _safe_int(value, default=1):
+        try:
+            return int(value or default)
+        except Exception:
+            return default
+
+    for fixed_lesson in fixed_lessons:
+        if not getattr(fixed_lesson, "court_id", None):
+            continue
+
+        primary_coach = _safe_primary_coach(fixed_lesson)
+        if not primary_coach:
+            continue
+
+        try:
+            occurrence_dates = _fixed_occurrence_dates(fixed_lesson, range_start, range_end)
+        except Exception:
+            occurrence_dates = []
+
+        for target_date in occurrence_dates:
+            start_at, end_at = _fixed_lesson_datetimes_safely(fixed_lesson, target_date)
+            if not start_at or not end_at:
+                continue
+
+            capacity = _safe_capacity(fixed_lesson)
+            coach_count = max(_safe_int(getattr(fixed_lesson, "coach_count", 1), 1), 1)
+            court_count = max(_safe_int(getattr(fixed_lesson, "court_count", coach_count), coach_count), 1)
+            target_level = getattr(fixed_lesson, "target_level", "") or ""
+            target_level_2 = getattr(fixed_lesson, "target_level_2", "") or ""
+            lesson_type = getattr(fixed_lesson, "lesson_type", "") or ""
+            note_text = f"固定レッスン: {getattr(fixed_lesson, 'title', '') or fixed_lesson.get_weekday_display()}"
+
+            slot_availability_qs = CoachAvailability.objects.filter(
+                court=fixed_lesson.court,
+                lesson_type=lesson_type,
+                start_at=start_at,
+                end_at=end_at,
+            ).order_by("id")
+
+            availability = slot_availability_qs.filter(coach=primary_coach).first()
+            if availability is None:
+                availability = slot_availability_qs.filter(note__startswith="固定レッスン:").first()
+            if availability is None:
+                availability = slot_availability_qs.first()
+
+            if availability is None:
+                try:
+                    availability = CoachAvailability.objects.create(
+                        coach=primary_coach,
+                        court=fixed_lesson.court,
+                        lesson_type=lesson_type,
+                        target_level=target_level,
+                        target_level_2=target_level_2,
+                        start_at=start_at,
+                        end_at=end_at,
+                        capacity=capacity,
+                        coach_count=coach_count,
+                        court_count=court_count,
+                        status=CoachAvailability.STATUS_OPEN,
+                        note=note_text,
+                    )
+                except Exception:
+                    continue
+            else:
+                update_values = {}
+                if getattr(availability, "coach_id", None) != getattr(primary_coach, "pk", None):
+                    update_values["coach"] = primary_coach
+                if getattr(availability, "court_id", None) != getattr(fixed_lesson.court, "pk", None):
+                    update_values["court"] = fixed_lesson.court
+                if getattr(availability, "capacity", None) != capacity:
+                    update_values["capacity"] = capacity
+                if getattr(availability, "coach_count", None) != coach_count:
+                    update_values["coach_count"] = coach_count
+                if getattr(availability, "court_count", None) != court_count:
+                    update_values["court_count"] = court_count
+                if getattr(availability, "target_level", "") != target_level:
+                    update_values["target_level"] = target_level
+                if getattr(availability, "target_level_2", "") != target_level_2:
+                    update_values["target_level_2"] = target_level_2
+                if getattr(availability, "lesson_type", "") != lesson_type:
+                    update_values["lesson_type"] = lesson_type
+                if not getattr(availability, "note", ""):
+                    update_values["note"] = note_text
+
+                if update_values:
+                    try:
+                        CoachAvailability.objects.filter(pk=availability.pk).update(**update_values)
+                        for field_name, value in update_values.items():
+                            setattr(availability, field_name, value)
+                    except Exception:
+                        continue
+
+            # 予約済み・承認待ちの顧客はキャンセルせず、現在の固定レッスン枠へ付け替えます。
+            try:
+                Reservation.objects.filter(
+                    fixed_lesson=fixed_lesson,
+                    start_at=start_at,
+                    end_at=end_at,
+                    status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+                ).update(
+                    coach=primary_coach,
+                    substitute_coach=getattr(availability, "substitute_coach", None),
+                    court=fixed_lesson.court,
+                    availability=availability,
+                    lesson_type=lesson_type,
+                    target_level=target_level,
+                    target_level_2=target_level_2,
+                    custom_ticket_price=getattr(availability, "custom_ticket_price", 0),
+                    custom_duration_hours=getattr(availability, "custom_duration_hours", 0),
+                )
+            except Exception:
+                pass
+
+            try:
+                LessonWaitlist.objects.filter(
+                    fixed_lesson=fixed_lesson,
+                    start_at=start_at,
+                    end_at=end_at,
+                    status=LessonWaitlist.STATUS_WAITING,
+                ).update(
+                    coach=primary_coach,
+                    substitute_coach=getattr(availability, "substitute_coach", None),
+                    court=fixed_lesson.court,
+                    availability=availability,
+                    lesson_type=lesson_type,
+                    target_level=target_level,
+                    target_level_2=target_level_2,
+                )
+            except Exception:
+                pass
+
+            # 固定レッスン由来の古い空き枠は、参加者を引き継いだ後なら削除します。
+            try:
+                old_availability_qs = slot_availability_qs.filter(note__startswith="固定レッスン:").exclude(pk=availability.pk)
+                for old_availability in old_availability_qs:
+                    has_reservations = Reservation.objects.filter(
+                        availability=old_availability,
+                        status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+                    ).exists()
+                    has_waitlists = LessonWaitlist.objects.filter(
+                        availability=old_availability,
+                        status=LessonWaitlist.STATUS_WAITING,
+                    ).exists()
+                    if has_reservations or has_waitlists:
+                        continue
+                    old_availability.delete()
+            except Exception:
+                pass
+
+
 def _build_lesson_calendar_court_map(request):
     today = timezone.localdate()
     target_year = _parse_int(request.GET.get("year"), today.year)
@@ -1386,6 +1608,7 @@ class AdminDashboardMenuMiddleware(MiddlewareMixin):
     2026年7月分の顧客向け参加状況表示、
     2026年8月のお盆休み強調表示、
     固定レッスンの担当コーチ変更・定員再同期の安全運用、
+    固定レッスン由来データの実同期、
     レッスンカレンダーの定員表示補正を適用します。
     """
 
@@ -1398,6 +1621,7 @@ class AdminDashboardMenuMiddleware(MiddlewareMixin):
         _patch_preopen_last_cancel_policy()
         _patch_availability_save_policy()
         _patch_fixed_lesson_sync_policy()
+        _repair_fixed_lesson_slots_for_request(request)
         return None
 
     def process_response(self, request, response):
