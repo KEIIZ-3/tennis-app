@@ -143,6 +143,37 @@
     font-weight:800;
   }
 
+  .participant-selected-summary{
+    margin:12px 0;
+    padding:13px;
+    border:1px solid #86efac;
+    background:#ffffff;
+    border-radius:16px;
+  }
+
+  .participant-selected-label{
+    color:#166534;
+    font-size:12px;
+    line-height:1.5;
+    font-weight:1000;
+  }
+
+  .participant-selected-name{
+    margin-top:4px;
+    color:#052e16;
+    font-size:18px;
+    line-height:1.4;
+    font-weight:1000;
+  }
+
+  .participant-selected-meta{
+    margin-top:2px;
+    color:#166534;
+    font-size:12px;
+    line-height:1.6;
+    font-weight:850;
+  }
+
   .participant-options{
     display:grid;
     gap:8px;
@@ -267,6 +298,10 @@
       border-radius:14px;
     }
 
+    .participant-selected-name{
+      font-size:17px;
+    }
+
     .confirm-actions{
       grid-template-columns:1fr;
     }
@@ -277,7 +312,7 @@
   <section class="confirm-hero">
     <h1 class="confirm-title">レッスン内容の確認</h1>
     <p class="confirm-lead">
-      予約前に、日時・レベル・担当コーチ・参加状況を確認してください。問題なければ下のボタンで確定します。
+      予約前に、日時・レベル・担当コーチ・参加者を確認してください。問題なければ下のボタンで確定します。
     </p>
   </section>
 
@@ -328,6 +363,12 @@
             親アカウントで予約し、実際に参加する本人または子供を選択してください。チケットは親アカウントから消費します。
           </p>
 
+          <div class="participant-selected-summary" id="participant-selected-summary">
+            <div class="participant-selected-label">この予約の参加者</div>
+            <div class="participant-selected-name" id="participant-selected-name">参加者を選択してください</div>
+            <div class="participant-selected-meta" id="participant-selected-meta"></div>
+          </div>
+
           <div class="participant-options">
             {% for participant in selected_lesson.participant_choices %}
               <label class="participant-option {% if not participant.can_book %}disabled{% endif %}">
@@ -336,6 +377,8 @@
                   name="participant_key"
                   value="{{ participant.key }}"
                   form="lesson-reserve-form"
+                  data-participant-name="{{ participant.name }}"
+                  data-participant-meta="{{ participant.relationship_label }} / レベル：{{ participant.level_label }}"
                   {% if forloop.first and participant.can_book %}checked{% endif %}
                   {% if not participant.can_book %}disabled{% endif %}
                   required
@@ -420,4 +463,36 @@
     </section>
   {% endif %}
 </div>
+
+<script>
+  (function(){
+    function updateSelectedParticipant(){
+      var checked = document.querySelector('input[name="participant_key"]:checked');
+      var nameTarget = document.getElementById("participant-selected-name");
+      var metaTarget = document.getElementById("participant-selected-meta");
+
+      if (!nameTarget || !metaTarget) {
+        return;
+      }
+
+      if (!checked) {
+        nameTarget.textContent = "参加者を選択してください";
+        metaTarget.textContent = "";
+        return;
+      }
+
+      nameTarget.textContent = checked.getAttribute("data-participant-name") || "参加者";
+      metaTarget.textContent = checked.getAttribute("data-participant-meta") || "";
+    }
+
+    document.addEventListener("change", function(event){
+      if (event.target && event.target.name === "participant_key") {
+        updateSelectedParticipant();
+      }
+    });
+
+    document.addEventListener("DOMContentLoaded", updateSelectedParticipant);
+    updateSelectedParticipant();
+  })();
+</script>
 {% endblock %}
