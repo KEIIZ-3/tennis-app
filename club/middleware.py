@@ -910,6 +910,80 @@ def _build_lesson_calendar_court_map(request):
     return court_map
 
 
+
+def _build_lesson_calendar_capacity_map(request):
+    """
+    レッスンカレンダー上の人数表示を、固定レッスンの現在設定に合わせます。
+
+    固定レッスンの担当コーチ人数を 2→1 に戻した場合、
+    古い CoachAvailability に capacity=12 が残っていても、
+    fixed_lesson_id + lesson_date のキーでは FixedLesson.effective_capacity() を優先します。
+    """
+    today = timezone.localdate()
+    target_year = _parse_int(request.GET.get("year"), today.year)
+    target_month = _parse_int(request.GET.get("month"), today.month)
+
+    if target_month < 1 or target_month > 12:
+        target_month = today.month
+
+    try:
+        month_start, next_month = _month_start_end(target_year, target_month)
+    except Exception:
+        month_start, next_month = _month_start_end(today.year, today.month)
+
+    capacity_map = {}
+
+    try:
+        from .models import CoachAvailability, FixedLesson
+
+        fixed_lessons = (
+            FixedLesson.objects.filter(is_active=True)
+            .select_related("coach", "coach_2", "coach_3", "court")
+            .prefetch_related("members")
+            .order_by("weekday", "start_hour", "id")
+        )
+
+        for fixed_lesson in fixed_lessons:
+            try:
+                fixed_capacity = int(fixed_lesson.effective_capacity())
+            except Exception:
+                fixed_capacity = int(getattr(fixed_lesson, "capacity", 0) or 0)
+
+            try:
+                fixed_member_count = fixed_lesson.members.count()
+            except Exception:
+                fixed_member_count = 0
+
+            display_capacity = max(fixed_capacity, fixed_member_count, 1)
+
+            for target_date in _fixed_occurrence_dates(fixed_lesson, month_start, next_month):
+                key = f"fixed-{fixed_lesson.pk}-{target_date:%Y%m%d}"
+                capacity_map[key] = display_capacity
+
+        availability_qs = (
+            CoachAvailability.objects.filter(
+                start_at__date__gte=month_start,
+                start_at__date__lt=next_month,
+            )
+            .select_related("court")
+            .order_by("start_at", "id")
+        )
+
+        for availability in availability_qs:
+            try:
+                availability_capacity = int(availability.effective_capacity())
+            except Exception:
+                availability_capacity = int(getattr(availability, "capacity", 0) or 0)
+
+            key = str(availability.pk)
+            capacity_map[key] = max(availability_capacity, 1)
+
+    except Exception:
+        return {}
+
+    return capacity_map
+
+
 def _calendar_target_year_month(request):
     today = timezone.localdate()
     target_year = _parse_int(request.GET.get("year"), today.year)
@@ -930,9 +1004,11 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
 
     target_year, target_month = _calendar_target_year_month(request)
     court_map = _build_lesson_calendar_court_map(request)
+    capacity_map = _build_lesson_calendar_capacity_map(request)
     holiday_map = _japanese_holiday_map_for_month(target_year, target_month)
 
     court_map_json = json.dumps(court_map, ensure_ascii=False)
+    capacity_map_json = json.dumps(capacity_map, ensure_ascii=False)
     holiday_map_json = json.dumps(holiday_map, ensure_ascii=False)
     is_2026_july = target_year == 2026 and target_month == 7
     is_2026_obon = target_year == 2026 and target_month == 8
@@ -1079,6 +1155,7 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
 <script id="lesson-calendar-court-notice-script">
 (function () {{
   const courtByKey = {court_map_json};
+  const capacityByKey = {capacity_map_json};
   const holidayByDate = {holiday_map_json};
   const targetYear = {int(target_year)};
   const targetMonth = {int(target_month)};
@@ -1178,6 +1255,49 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
     }});
   }}
 
+  function replaceCapacityTextInElement(element, capacity) {{
+    if (!element || !capacity) return;
+
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    while (walker.nextNode()) {{
+      textNodes.push(walker.currentNode);
+    }}
+
+    textNodes.forEach(function (node) {{
+      const before = node.nodeValue || "";
+      const after = before.replace(/(\d+)\s*\/\s*\d+(名?)/g, function (_match, count, suffix) {{
+        return count + "/" + capacity + suffix;
+      }});
+      if (after !== before) {{
+        node.nodeValue = after;
+      }}
+    }});
+  }}
+
+  function normalizeCapacityDisplays() {{
+    document.querySelectorAll(".calendar-event").forEach(function (eventElement) {{
+      const key = keyFromEvent(eventElement);
+      const capacity = capacityByKey[key];
+      if (!capacity) return;
+      replaceCapacityTextInElement(eventElement, capacity);
+
+      const title = eventElement.getAttribute("title") || "";
+      if (title) {{
+        eventElement.setAttribute("title", title.replace(/(\d+)\s*\/\s*\d+(名?)/g, function (_match, count, suffix) {{
+          return count + "/" + capacity + suffix;
+        }}));
+      }}
+    }});
+
+    document.querySelectorAll('.schedule-row[id^="lesson-"]').forEach(function (row) {{
+      const key = row.id.replace(/^lesson-/, "");
+      const capacity = capacityByKey[key];
+      if (!capacity) return;
+      replaceCapacityTextInElement(row, capacity);
+    }});
+  }}
+
   function addCourtToCalendarEvents() {{
     document.querySelectorAll(".calendar-event").forEach(function (eventElement) {{
       if (eventElement.querySelector(".event-court")) return;
@@ -1239,6 +1359,7 @@ def _inject_lesson_calendar_notice_courts_and_holidays(request, html):
   ready(function () {{
     addNotice();
     addHolidayBackgrounds();
+    normalizeCapacityDisplays();
     addCourtToCalendarEvents();
     routeJulyCardsToMemberList();
     addCourtToScheduleRows();
@@ -1264,7 +1385,8 @@ class AdminDashboardMenuMiddleware(MiddlewareMixin):
     日本の祝日背景色表示、2026年7月分の1週間前エントリー案内、
     2026年7月分の顧客向け参加状況表示、
     2026年8月のお盆休み強調表示、
-    固定レッスンの担当コーチ変更・定員再同期の安全運用を適用します。
+    固定レッスンの担当コーチ変更・定員再同期の安全運用、
+    レッスンカレンダーの定員表示補正を適用します。
     """
 
     shortcut_marker = 'href="/admin-dashboard/"'
