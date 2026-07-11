@@ -24,8 +24,7 @@ def _safe_phone(user):
     )
 
 
-def _fallback_participant(reservation):
-    parent = getattr(reservation, "user", None)
+def _fallback_participant_from_parent(parent):
     parent_name = _safe_display_name(parent)
     return {
         "name": parent_name,
@@ -38,24 +37,50 @@ def _fallback_participant(reservation):
     }
 
 
+def _fallback_participant(reservation):
+    parent = getattr(reservation, "user", None)
+    return _fallback_participant_from_parent(parent)
+
+
+def _empty_participant():
+    return {
+        "name": "-",
+        "level_label": "",
+        "relationship_label": "",
+        "parent_name": "-",
+        "parent_phone": "",
+        "is_family": False,
+        "has_snapshot": False,
+    }
+
+
+def _normalize_participant_row(row, fallback):
+    if not row:
+        return fallback
+
+    participant_name, participant_level_label, relationship_label, participant_type = row
+    participant_name = participant_name or fallback["name"]
+    participant_level_label = participant_level_label or fallback["level_label"]
+    relationship_label = relationship_label or fallback["relationship_label"]
+    participant_type = participant_type or "self"
+
+    is_family = participant_type == "family" or relationship_label not in ("", "本人", "self")
+
+    return {
+        "name": participant_name,
+        "level_label": participant_level_label,
+        "relationship_label": relationship_label,
+        "parent_name": fallback["parent_name"],
+        "parent_phone": fallback["parent_phone"],
+        "is_family": is_family,
+        "has_snapshot": True,
+    }
+
+
 @register.simple_tag
 def participant_for_reservation(reservation):
-    """
-    ReservationParticipant は models.py に正式追加していないため、
-    既存方針に合わせて club_reservationparticipant を direct SQL で参照します。
-
-    スナップショットが無い古い予約では、従来通り予約 user を本人として表示します。
-    """
     if not reservation:
-        return {
-            "name": "-",
-            "level_label": "",
-            "relationship_label": "",
-            "parent_name": "-",
-            "parent_phone": "",
-            "is_family": False,
-            "has_snapshot": False,
-        }
+        return _empty_participant()
 
     fallback = _fallback_participant(reservation)
     reservation_id = getattr(reservation, "pk", None)
@@ -84,20 +109,40 @@ def participant_for_reservation(reservation):
     if not row:
         return fallback
 
-    participant_name, participant_level_label, relationship_label, participant_type = row
-    participant_name = participant_name or fallback["name"]
-    participant_level_label = participant_level_label or fallback["level_label"]
-    relationship_label = relationship_label or fallback["relationship_label"]
-    participant_type = participant_type or "self"
+    return _normalize_participant_row(row, fallback)
 
-    is_family = participant_type == "family" or relationship_label not in ("", "本人", "self")
 
-    return {
-        "name": participant_name,
-        "level_label": participant_level_label,
-        "relationship_label": relationship_label,
-        "parent_name": fallback["parent_name"],
-        "parent_phone": fallback["parent_phone"],
-        "is_family": is_family,
-        "has_snapshot": True,
-    }
+@register.simple_tag
+def participant_for_waitlist(waitlist):
+    if not waitlist:
+        return _empty_participant()
+
+    parent = getattr(waitlist, "user", None)
+    fallback = _fallback_participant_from_parent(parent)
+    waitlist_id = getattr(waitlist, "pk", None)
+    if not waitlist_id:
+        return fallback
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    participant_name,
+                    participant_level_label,
+                    relationship_label,
+                    participant_type
+                FROM club_lessonwaitlistparticipant
+                WHERE waitlist_id = %s
+                LIMIT 1
+                """,
+                [waitlist_id],
+            )
+            row = cursor.fetchone()
+    except Exception:
+        return fallback
+
+    if not row:
+        return fallback
+
+    return _normalize_participant_row(row, fallback)
