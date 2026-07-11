@@ -4,368 +4,13 @@
 
 {% block content %}
 <style>
-  .reservation-page{
-    display:grid;
-    gap:14px;
-  }
-
-  .reservation-hero{
-    padding:18px;
-    border-radius:20px;
-    border:1px solid #bfdbfe;
-    background:linear-gradient(180deg,#eff6ff 0%,#ffffff 100%);
-    box-shadow:0 10px 24px rgba(15,23,42,.08);
-  }
-
-  .reservation-title{
-    margin:0;
-    color:#0f172a;
-    font-size:26px;
-    line-height:1.25;
-    font-weight:1000;
-    letter-spacing:-.02em;
-  }
-
-  .reservation-lead{
-    margin:8px 0 0;
-    color:#475569;
-    font-size:14px;
-    line-height:1.7;
-    font-weight:700;
-  }
-
-  .reservation-primary-actions{
-    display:flex;
-    gap:9px;
-    flex-wrap:wrap;
-    margin-top:14px;
-  }
-
-  .reservation-primary-actions .btn{
-    min-height:40px;
-    border-radius:12px;
-    padding:9px 13px;
-  }
-
-  .status-summary-grid{
-    display:grid;
-    grid-template-columns:repeat(3,minmax(0,1fr));
-    gap:10px;
-  }
-
-  .status-summary-card{
-    padding:13px;
-    border:1px solid #e5e7eb;
-    background:#fff;
-    border-radius:16px;
-    box-shadow:0 6px 16px rgba(15,23,42,.04);
-  }
-
-  .status-summary-card.primary{
-    border-color:#bfdbfe;
-    background:#eff6ff;
-  }
-
-  .status-summary-card.waiting{
-    border-color:#fed7aa;
-    background:#fff7ed;
-  }
-
-  .status-summary-card.done{
-    border-color:#bbf7d0;
-    background:#ecfdf5;
-  }
-
-  .status-summary-label{
-    color:#64748b;
-    font-size:12px;
-    line-height:1.3;
-    font-weight:900;
-  }
-
-  .status-summary-value{
-    margin-top:4px;
-    color:#0f172a;
-    font-size:25px;
-    line-height:1.1;
-    font-weight:1000;
-  }
-
-  .status-summary-note{
-    margin-top:5px;
-    color:#64748b;
-    font-size:12px;
-    line-height:1.45;
-    font-weight:700;
-  }
-
-  .section-card{
-    border:1px solid #e5e7eb;
-    background:#fff;
-    border-radius:18px;
-    padding:14px;
-    box-shadow:0 8px 20px rgba(15,23,42,.05);
-  }
-
-  .section-card.waiting-section{
-    border-color:#fed7aa;
-    background:#fffaf5;
-  }
-
-  .section-title{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:10px;
-    margin:0 0 7px;
-    color:#0f172a;
-    font-size:19px;
-    line-height:1.35;
-    font-weight:1000;
-  }
-
-  .section-help{
-    margin:0 0 12px;
-    color:#64748b;
-    font-size:13px;
-    line-height:1.7;
-    font-weight:750;
-  }
-
-  .section-count{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    min-width:28px;
-    height:28px;
-    padding:0 9px;
-    border-radius:999px;
-    background:#eff6ff;
-    color:#1d4ed8;
-    font-size:13px;
-    font-weight:1000;
-  }
-
-  .reservation-list{
-    display:grid;
-    gap:10px;
-  }
-
-  .reservation-item{
-    border:1px solid #dbeafe;
-    border-radius:16px;
-    padding:13px;
-    background:#f8fbff;
-  }
-
-  .reservation-item.is-past{
-    background:#f8fafc;
-    border-color:#e2e8f0;
-    opacity:.84;
-  }
-
-  .reservation-item.is-canceled{
-    background:#fff7ed;
-    border-color:#fed7aa;
-  }
-
-  .reservation-item.is-waiting{
-    background:#fff7ed;
-    border-color:#fdba74;
-  }
-
-  .reservation-top{
-    display:flex;
-    align-items:flex-start;
-    justify-content:space-between;
-    gap:10px;
-    flex-wrap:wrap;
-  }
-
-  .reservation-date{
-    color:#0f172a;
-    font-size:18px;
-    line-height:1.35;
-    font-weight:1000;
-  }
-
-  .status-badge{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    min-height:28px;
-    padding:5px 10px;
-    border-radius:999px;
-    background:#dbeafe;
-    color:#1d4ed8;
-    font-size:12px;
-    font-weight:1000;
-    white-space:nowrap;
-  }
-
-  .status-badge.waiting{
-    background:#fef3c7;
-    color:#92400e;
-  }
-
-  .status-badge.canceled{
-    background:#fee2e2;
-    color:#991b1b;
-  }
-
-  .status-badge.converted{
-    background:#dcfce7;
-    color:#166534;
-  }
-
-  .status-badge.rain{
-    background:#e0f2fe;
-    color:#075985;
-  }
-
-  .reservation-meta{
-    display:grid;
-    gap:5px;
-    margin-top:10px;
-    color:#334155;
-    font-size:13px;
-    line-height:1.55;
-    font-weight:750;
-  }
-
-  .participant-line{
-    padding:9px 10px;
-    border:1px solid #bbf7d0;
-    background:#f0fdf4;
-    border-radius:12px;
-    color:#14532d;
-    font-weight:950;
-  }
-
-  .participant-sub{
-    margin-top:2px;
-    color:#166534;
-    font-size:12px;
-    line-height:1.5;
-    font-weight:800;
-  }
-
-  .reservation-message{
-    margin-top:10px;
-    padding:10px 12px;
-    border-radius:13px;
-    border:1px solid #bfdbfe;
-    background:#eff6ff;
-    color:#1e3a8a;
-    font-size:13px;
-    line-height:1.65;
-    font-weight:850;
-  }
-
-  .reservation-message.waiting{
-    border-color:#fed7aa;
-    background:#fff7ed;
-    color:#9a3412;
-  }
-
-  .reservation-message.canceled{
-    border-color:#fecaca;
-    background:#fef2f2;
-    color:#991b1b;
-  }
-
-  .reservation-actions{
-    display:flex;
-    gap:8px;
-    flex-wrap:wrap;
-    margin-top:12px;
-  }
-
-  .reservation-actions .btn,
-  .reservation-actions button{
-    min-height:38px;
-    border-radius:12px;
-    padding:8px 12px;
-  }
-
-  .btn-danger{
-    background:#ef4444;
-    color:#fff;
-    border:1px solid #ef4444;
-  }
-
-  .btn-danger:hover{
-    background:#dc2626;
-    border-color:#dc2626;
-  }
-
-  .empty-box{
-    padding:14px;
-    border:1px dashed #cbd5e1;
-    border-radius:14px;
-    background:#f8fafc;
-    color:#64748b;
-    font-size:14px;
-    line-height:1.7;
-    text-align:center;
-  }
-
-  @media(max-width:768px){
-    .reservation-hero{
-      padding:15px;
-      border-radius:18px;
-    }
-
-    .reservation-title{
-      font-size:22px;
-    }
-
-    .reservation-primary-actions{
-      display:grid;
-      grid-template-columns:1fr;
-    }
-
-    .reservation-primary-actions .btn{
-      width:100%;
-    }
-
-    .status-summary-grid{
-      grid-template-columns:1fr;
-      gap:8px;
-    }
-
-    .section-card{
-      padding:12px;
-      border-radius:16px;
-    }
-
-    .reservation-item{
-      padding:12px;
-    }
-
-    .reservation-date{
-      font-size:16px;
-    }
-
-    .reservation-actions{
-      display:grid;
-      grid-template-columns:1fr;
-    }
-
-    .reservation-actions .btn,
-    .reservation-actions button{
-      width:100%;
-    }
-  }
+  .reservation-page{display:grid;gap:14px}.reservation-hero,.section-card{border:1px solid #e5e7eb;background:#fff;border-radius:18px;padding:14px;box-shadow:0 8px 20px rgba(15,23,42,.05)}.reservation-hero{border-color:#bfdbfe;background:linear-gradient(180deg,#eff6ff 0%,#fff 100%);padding:18px;border-radius:20px}.reservation-title{margin:0;color:#0f172a;font-size:26px;line-height:1.25;font-weight:1000}.reservation-lead{margin:8px 0 0;color:#475569;font-size:14px;line-height:1.7;font-weight:700}.reservation-primary-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}.reservation-primary-actions .btn{min-height:40px;border-radius:12px;padding:9px 13px}.status-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.status-summary-card{padding:13px;border:1px solid #e5e7eb;background:#fff;border-radius:16px}.status-summary-card.primary{border-color:#bfdbfe;background:#eff6ff}.status-summary-card.waiting{border-color:#fed7aa;background:#fff7ed}.status-summary-card.done{border-color:#bbf7d0;background:#ecfdf5}.status-summary-label{color:#64748b;font-size:12px;font-weight:900}.status-summary-value{margin-top:4px;color:#0f172a;font-size:25px;line-height:1.1;font-weight:1000}.status-summary-note{margin-top:5px;color:#64748b;font-size:12px;line-height:1.45}.section-card.waiting-section{border-color:#fed7aa;background:#fffaf5}.section-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 7px;color:#0f172a;font-size:19px;font-weight:1000}.section-help{margin:0 0 12px;color:#64748b;font-size:13px;line-height:1.7;font-weight:750}.section-count{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;padding:0 9px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:13px;font-weight:1000}.reservation-list{display:grid;gap:10px}.reservation-item{border:1px solid #dbeafe;border-radius:16px;padding:13px;background:#f8fbff}.reservation-item.is-past{background:#f8fafc;border-color:#e2e8f0;opacity:.84}.reservation-item.is-canceled,.reservation-item.is-waiting{background:#fff7ed;border-color:#fdba74}.reservation-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap}.reservation-date{color:#0f172a;font-size:18px;line-height:1.35;font-weight:1000}.status-badge{display:inline-flex;align-items:center;justify-content:center;min-height:28px;padding:5px 10px;border-radius:999px;background:#dbeafe;color:#1d4ed8;font-size:12px;font-weight:1000;white-space:nowrap}.status-badge.waiting{background:#fef3c7;color:#92400e}.status-badge.canceled{background:#fee2e2;color:#991b1b}.status-badge.converted{background:#dcfce7;color:#166534}.status-badge.rain{background:#e0f2fe;color:#075985}.reservation-meta{display:grid;gap:5px;margin-top:10px;color:#334155;font-size:13px;line-height:1.55;font-weight:750}.participant-line{padding:9px 10px;border:1px solid #bbf7d0;background:#f0fdf4;border-radius:12px;color:#14532d;font-weight:950}.participant-line.waiting{border-color:#fed7aa;background:#fff7ed;color:#9a3412}.participant-sub{margin-top:2px;color:#166534;font-size:12px;line-height:1.5;font-weight:800}.participant-line.waiting .participant-sub{color:#9a3412}.reservation-message{margin-top:10px;padding:10px 12px;border-radius:13px;border:1px solid #bfdbfe;background:#eff6ff;color:#1e3a8a;font-size:13px;line-height:1.65;font-weight:850}.reservation-message.waiting{border-color:#fed7aa;background:#fff7ed;color:#9a3412}.reservation-message.canceled{border-color:#fecaca;background:#fef2f2;color:#991b1b}.reservation-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.reservation-actions .btn,.reservation-actions button{min-height:38px;border-radius:12px;padding:8px 12px}.btn-danger{background:#ef4444;color:#fff;border:1px solid #ef4444}.empty-box{padding:14px;border:1px dashed #cbd5e1;border-radius:14px;background:#f8fafc;color:#64748b;font-size:14px;line-height:1.7;text-align:center}@media(max-width:768px){.reservation-title{font-size:22px}.reservation-primary-actions,.reservation-actions{display:grid;grid-template-columns:1fr}.reservation-primary-actions .btn,.reservation-actions .btn,.reservation-actions button{width:100%}.status-summary-grid{grid-template-columns:1fr}.reservation-date{font-size:16px}}
 </style>
 
 <div class="reservation-page">
   <section class="reservation-hero">
     <h1 class="reservation-title">予約・キャンセル待ち確認</h1>
-    <p class="reservation-lead">
-      今後の予約、キャンセル待ち、過去の履歴をまとめて確認できます。
-      家族で予約した場合も、実際に参加する受講者名を確認できます。
-    </p>
+    <p class="reservation-lead">今後の予約、キャンセル待ち、過去の履歴をまとめて確認できます。家族で予約した場合も、実際に参加する受講者名を確認できます。</p>
     <div class="reservation-primary-actions">
       <a href="{% url 'club:lesson_calendar' %}" class="btn btn-primary">レッスンを予約する</a>
       <a href="{% url 'club:tickets' %}" class="btn">チケットを確認する</a>
@@ -373,249 +18,58 @@
   </section>
 
   <section class="status-summary-grid" aria-label="予約状況サマリー">
-    <div class="status-summary-card primary">
-      <div class="status-summary-label">今後の予約</div>
-      <div class="status-summary-value">{{ future_reservation_rows|length }}件</div>
-      <div class="status-summary-note">予約中・承認待ちの予定です。</div>
-    </div>
-    <div class="status-summary-card waiting">
-      <div class="status-summary-label">キャンセル待ち中</div>
-      <div class="status-summary-value">{{ waiting_waitlist_rows|length }}件</div>
-      <div class="status-summary-note">空きが出た場合にLINEで案内します。</div>
-    </div>
-    <div class="status-summary-card done">
-      <div class="status-summary-label">過去の予約</div>
-      <div class="status-summary-value">{{ past_reservation_rows|length }}件</div>
-      <div class="status-summary-note">完了済みの参加履歴です。</div>
-    </div>
+    <div class="status-summary-card primary"><div class="status-summary-label">今後の予約</div><div class="status-summary-value">{{ future_reservation_rows|length }}件</div><div class="status-summary-note">予約中・承認待ちの予定です。</div></div>
+    <div class="status-summary-card waiting"><div class="status-summary-label">キャンセル待ち中</div><div class="status-summary-value">{{ waiting_waitlist_rows|length }}件</div><div class="status-summary-note">空きが出た場合にLINEで案内します。</div></div>
+    <div class="status-summary-card done"><div class="status-summary-label">過去の予約</div><div class="status-summary-value">{{ past_reservation_rows|length }}件</div><div class="status-summary-note">完了済みの参加履歴です。</div></div>
   </section>
 
   <section class="section-card">
-    <h2 class="section-title">
-      <span>今後の予約</span>
-      <span class="section-count">{{ future_reservation_rows|length }}</span>
-    </h2>
+    <h2 class="section-title"><span>今後の予約</span><span class="section-count">{{ future_reservation_rows|length }}</span></h2>
     <p class="section-help">参加予定のレッスンです。参加者名・詳細・キャンセル可否を確認できます。</p>
-
-    {% if future_reservation_rows %}
-      <div class="reservation-list">
-        {% for row in future_reservation_rows %}
-          {% with reservation=row.reservation %}
-            {% participant_for_reservation reservation as participant %}
-            <article class="reservation-item">
-              <div class="reservation-top">
-                <div class="reservation-date">{{ reservation.start_at|date:"Y/m/d H:i" }}〜{{ reservation.end_at|date:"H:i" }}</div>
-                <span class="status-badge">{{ reservation.get_status_display }}</span>
-              </div>
-              <div class="reservation-meta">
-                <div class="participant-line">
-                  参加者：{{ participant.name }}
-                  {% if participant.relationship_label %}（{{ participant.relationship_label }}）{% endif %}
-                  {% if participant.level_label %}
-                    <div class="participant-sub">レベル：{{ participant.level_label }}</div>
-                  {% endif %}
-                  {% if participant.is_family %}
-                    <div class="participant-sub">
-                      保護者：{{ participant.parent_name }}
-                      {% if participant.parent_phone %} / {{ participant.parent_phone }}{% endif %}
-                    </div>
-                  {% endif %}
-                </div>
-                <div>レッスン：{{ reservation.get_lesson_type_display }} / レベル：{{ reservation.get_target_level_display }}</div>
-                <div>コーチ：{{ row.assigned_coach_name }}{% if row.has_substitute %}（通常：{{ row.normal_coach_name }}）{% endif %}</div>
-                <div>コート：{{ reservation.court }}</div>
-                <div>消費チケット：{{ reservation.tickets_used }}枚</div>
-              </div>
-              {% if reservation.status == "pending" %}
-                <div class="reservation-message">現在、コーチの承認待ちです。承認または却下の結果はメールでご案内します。</div>
-              {% elif reservation.status == "active" %}
-                <div class="reservation-message">予約済みです。当日は開始時間に間に合うようにお越しください。</div>
-              {% endif %}
-              <div class="reservation-actions">
-                <a href="{% url 'club:reservation_detail' reservation.pk %}" class="btn btn-primary">詳細を見る</a>
-                {% if row.can_cancel %}
-                  <form method="post" action="{% url 'club:reservation_cancel' reservation.pk %}">
-                    {% csrf_token %}
-                    <button type="submit" class="btn-danger" onclick="return confirm('この予約をキャンセルしますか？');">キャンセル</button>
-                  </form>
-                {% else %}
-                  <button type="button" class="btn" disabled>{{ row.cancel_reason }}</button>
-                {% endif %}
-              </div>
-            </article>
-          {% endwith %}
-        {% endfor %}
-      </div>
-    {% else %}
-      <div class="empty-box">今後の予約はありません。レッスンカレンダーから参加したいレッスンを選んでください。</div>
-    {% endif %}
+    {% if future_reservation_rows %}<div class="reservation-list">
+      {% for row in future_reservation_rows %}{% with reservation=row.reservation %}{% participant_for_reservation reservation as participant %}
+        <article class="reservation-item">
+          <div class="reservation-top"><div class="reservation-date">{{ reservation.start_at|date:"Y/m/d H:i" }}〜{{ reservation.end_at|date:"H:i" }}</div><span class="status-badge">{{ reservation.get_status_display }}</span></div>
+          <div class="reservation-meta">
+            <div class="participant-line">参加者：{{ participant.name }}{% if participant.relationship_label %}（{{ participant.relationship_label }}）{% endif %}{% if participant.level_label %}<div class="participant-sub">レベル：{{ participant.level_label }}</div>{% endif %}{% if participant.is_family %}<div class="participant-sub">保護者：{{ participant.parent_name }}{% if participant.parent_phone %} / {{ participant.parent_phone }}{% endif %}</div>{% endif %}</div>
+            <div>レッスン：{{ reservation.get_lesson_type_display }} / レベル：{{ reservation.get_target_level_display }}</div><div>コーチ：{{ row.assigned_coach_name }}{% if row.has_substitute %}（通常：{{ row.normal_coach_name }}）{% endif %}</div><div>コート：{{ reservation.court }}</div><div>消費チケット：{{ reservation.tickets_used }}枚</div>
+          </div>
+          {% if reservation.status == "pending" %}<div class="reservation-message">現在、コーチの承認待ちです。承認または却下の結果はメールでご案内します。</div>{% elif reservation.status == "active" %}<div class="reservation-message">予約済みです。当日は開始時間に間に合うようにお越しください。</div>{% endif %}
+          <div class="reservation-actions"><a href="{% url 'club:reservation_detail' reservation.pk %}" class="btn btn-primary">詳細を見る</a>{% if row.can_cancel %}<form method="post" action="{% url 'club:reservation_cancel' reservation.pk %}">{% csrf_token %}<button type="submit" class="btn-danger" onclick="return confirm('この予約をキャンセルしますか？');">キャンセル</button></form>{% else %}<button type="button" class="btn" disabled>{{ row.cancel_reason }}</button>{% endif %}</div>
+        </article>
+      {% endwith %}{% endfor %}</div>{% else %}<div class="empty-box">今後の予約はありません。レッスンカレンダーから参加したいレッスンを選んでください。</div>{% endif %}
   </section>
 
   <section class="section-card waiting-section">
-    <h2 class="section-title">
-      <span>キャンセル待ち</span>
-      <span class="section-count">{{ waiting_waitlist_rows|length }}</span>
-    </h2>
-    <p class="section-help">
-      キャンセル待ち中のレッスンです。空きが出た場合、先頭の有効な方へLINE通知します。通知後の予約は先着順です。
-    </p>
-
-    {% if waiting_waitlist_rows %}
-      <div class="reservation-list">
-        {% for row in waiting_waitlist_rows %}
-          {% with waitlist=row.waitlist %}
-            <article class="reservation-item is-waiting">
-              <div class="reservation-top">
-                <div class="reservation-date">{{ waitlist.start_at|date:"Y/m/d H:i" }}〜{{ waitlist.end_at|date:"H:i" }}</div>
-                <span class="status-badge waiting">{{ waitlist.get_status_display }}</span>
-              </div>
-              <div class="reservation-meta">
-                <div>会員：{{ waitlist.user.display_name }}</div>
-                <div>レッスン：{{ waitlist.get_lesson_type_display }} / レベル：{{ waitlist.get_target_level_display }}</div>
-                <div>コーチ：{{ row.assigned_coach_name }}{% if row.has_substitute %}（通常：{{ row.normal_coach_name }}）{% endif %}</div>
-                <div>参加状況：{{ row.active_count }}/{{ row.capacity }}名{% if row.remaining_count > 0 %} / 空き {{ row.remaining_count }}名{% endif %}</div>
-                <div>登録日時：{{ waitlist.created_at|date:"Y/m/d H:i" }}</div>
-              </div>
-              <div class="reservation-message waiting">
-                現在キャンセル待ち中です。空きが出た場合、キャンセル待ち先頭の方へLINEでお知らせします。
-              </div>
-              <div class="reservation-actions">
-                {% if row.can_promote %}
-                  <form method="post" action="{% url 'club:lesson_waitlist_promote' waitlist.pk %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                    <button type="submit" class="btn btn-primary" onclick="return confirm('この会員を正式予約へ繰り上げますか？');">予約へ繰り上げ</button>
-                  </form>
-                {% endif %}
-                {% if row.can_cancel %}
-                  <form method="post" action="{% url 'club:lesson_waitlist_cancel' waitlist.pk %}">
-                    {% csrf_token %}
-                    <button type="submit" class="btn-danger" onclick="return confirm('このキャンセル待ちを取り消しますか？');">キャンセル待ち取消</button>
-                  </form>
-                {% endif %}
-              </div>
-            </article>
-          {% endwith %}
-        {% endfor %}
-      </div>
-    {% else %}
-      <div class="empty-box">現在のキャンセル待ちはありません。</div>
-    {% endif %}
+    <h2 class="section-title"><span>キャンセル待ち</span><span class="section-count">{{ waiting_waitlist_rows|length }}</span></h2>
+    <p class="section-help">キャンセル待ち中のレッスンです。空きが出た場合、先頭の有効な方へLINE通知します。通知後の予約は先着順です。</p>
+    {% if waiting_waitlist_rows %}<div class="reservation-list">
+      {% for row in waiting_waitlist_rows %}{% with waitlist=row.waitlist %}{% participant_for_waitlist waitlist as wait_participant %}
+        <article class="reservation-item is-waiting">
+          <div class="reservation-top"><div class="reservation-date">{{ waitlist.start_at|date:"Y/m/d H:i" }}〜{{ waitlist.end_at|date:"H:i" }}</div><span class="status-badge waiting">{{ waitlist.get_status_display }}</span></div>
+          <div class="reservation-meta">
+            <div class="participant-line waiting">参加者：{{ wait_participant.name }}{% if wait_participant.relationship_label %}（{{ wait_participant.relationship_label }}）{% endif %}{% if wait_participant.level_label %}<div class="participant-sub">レベル：{{ wait_participant.level_label }}</div>{% endif %}{% if wait_participant.is_family %}<div class="participant-sub">保護者：{{ wait_participant.parent_name }}{% if wait_participant.parent_phone %} / {{ wait_participant.parent_phone }}{% endif %}</div>{% endif %}</div>
+            <div>会員：{{ waitlist.user.display_name }}</div><div>レッスン：{{ waitlist.get_lesson_type_display }} / レベル：{{ waitlist.get_target_level_display }}</div><div>コーチ：{{ row.assigned_coach_name }}{% if row.has_substitute %}（通常：{{ row.normal_coach_name }}）{% endif %}</div><div>参加状況：{{ row.active_count }}/{{ row.capacity }}名{% if row.remaining_count > 0 %} / 空き {{ row.remaining_count }}名{% endif %}</div><div>登録日時：{{ waitlist.created_at|date:"Y/m/d H:i" }}</div>
+          </div>
+          <div class="reservation-message waiting">現在キャンセル待ち中です。空きが出た場合、キャンセル待ち先頭の方へLINEでお知らせします。</div>
+          <div class="reservation-actions">{% if row.can_promote %}<form method="post" action="{% url 'club:lesson_waitlist_promote' waitlist.pk %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button type="submit" class="btn btn-primary" onclick="return confirm('この会員を正式予約へ繰り上げますか？');">予約へ繰り上げ</button></form>{% endif %}{% if row.can_cancel %}<form method="post" action="{% url 'club:lesson_waitlist_cancel' waitlist.pk %}">{% csrf_token %}<button type="submit" class="btn-danger" onclick="return confirm('このキャンセル待ちを取り消しますか？');">キャンセル待ち取消</button></form>{% endif %}</div>
+        </article>
+      {% endwith %}{% endfor %}</div>{% else %}<div class="empty-box">現在のキャンセル待ちはありません。</div>{% endif %}
   </section>
 
   <section class="section-card">
-    <h2 class="section-title">
-      <span>過去の予約</span>
-      <span class="section-count">{{ past_reservation_rows|length }}</span>
-    </h2>
+    <h2 class="section-title"><span>過去の予約</span><span class="section-count">{{ past_reservation_rows|length }}</span></h2>
     <p class="section-help">参加済みのレッスン履歴です。</p>
-
-    {% if past_reservation_rows %}
-      <div class="reservation-list">
-        {% for row in past_reservation_rows %}
-          {% with reservation=row.reservation %}
-            {% participant_for_reservation reservation as participant %}
-            <article class="reservation-item is-past">
-              <div class="reservation-top">
-                <div class="reservation-date">{{ reservation.start_at|date:"Y/m/d H:i" }}〜{{ reservation.end_at|date:"H:i" }}</div>
-                <span class="status-badge">{{ reservation.get_status_display }}</span>
-              </div>
-              <div class="reservation-meta">
-                <div class="participant-line">
-                  参加者：{{ participant.name }}
-                  {% if participant.relationship_label %}（{{ participant.relationship_label }}）{% endif %}
-                  {% if participant.level_label %}
-                    <div class="participant-sub">レベル：{{ participant.level_label }}</div>
-                  {% endif %}
-                  {% if participant.is_family %}
-                    <div class="participant-sub">
-                      保護者：{{ participant.parent_name }}
-                      {% if participant.parent_phone %} / {{ participant.parent_phone }}{% endif %}
-                    </div>
-                  {% endif %}
-                </div>
-                <div>{{ reservation.get_lesson_type_display }} / {{ reservation.get_target_level_display }}</div>
-                <div>コーチ：{{ row.assigned_coach_name }} / コート：{{ reservation.court }}</div>
-              </div>
-              <div class="reservation-actions">
-                <a href="{% url 'club:reservation_detail' reservation.pk %}" class="btn">詳細を見る</a>
-              </div>
-            </article>
-          {% endwith %}
-        {% endfor %}
-      </div>
-    {% else %}
-      <div class="empty-box">過去の予約はありません。</div>
-    {% endif %}
+    {% if past_reservation_rows %}<div class="reservation-list">{% for row in past_reservation_rows %}{% with reservation=row.reservation %}{% participant_for_reservation reservation as participant %}<article class="reservation-item is-past"><div class="reservation-top"><div class="reservation-date">{{ reservation.start_at|date:"Y/m/d H:i" }}〜{{ reservation.end_at|date:"H:i" }}</div><span class="status-badge">{{ reservation.get_status_display }}</span></div><div class="reservation-meta"><div class="participant-line">参加者：{{ participant.name }}{% if participant.relationship_label %}（{{ participant.relationship_label }}）{% endif %}{% if participant.level_label %}<div class="participant-sub">レベル：{{ participant.level_label }}</div>{% endif %}{% if participant.is_family %}<div class="participant-sub">保護者：{{ participant.parent_name }}{% if participant.parent_phone %} / {{ participant.parent_phone }}{% endif %}</div>{% endif %}</div><div>{{ reservation.get_lesson_type_display }} / {{ reservation.get_target_level_display }}</div><div>コーチ：{{ row.assigned_coach_name }} / コート：{{ reservation.court }}</div></div><div class="reservation-actions"><a href="{% url 'club:reservation_detail' reservation.pk %}" class="btn">詳細を見る</a></div></article>{% endwith %}{% endfor %}</div>{% else %}<div class="empty-box">過去の予約はありません。</div>{% endif %}
   </section>
 
   <section class="section-card">
-    <h2 class="section-title">
-      <span>キャンセル済み・処理済み</span>
-      <span class="section-count">履歴</span>
-    </h2>
+    <h2 class="section-title"><span>キャンセル済み・処理済み</span><span class="section-count">履歴</span></h2>
     <p class="section-help">キャンセル済み予約、繰り上げ済み・取消済みのキャンセル待ち履歴です。</p>
-
-    {% if canceled_reservation_rows or processed_waitlist_rows %}
-      <div class="reservation-list">
-        {% for row in canceled_reservation_rows %}
-          {% with reservation=row.reservation %}
-            {% participant_for_reservation reservation as participant %}
-            <article class="reservation-item is-canceled">
-              <div class="reservation-top">
-                <div class="reservation-date">{{ reservation.start_at|date:"Y/m/d H:i" }}〜{{ reservation.end_at|date:"H:i" }}</div>
-                <span class="status-badge {% if reservation.status == 'rain_canceled' %}rain{% else %}canceled{% endif %}">{{ reservation.get_status_display }}</span>
-              </div>
-              <div class="reservation-meta">
-                <div class="participant-line">
-                  参加者：{{ participant.name }}
-                  {% if participant.relationship_label %}（{{ participant.relationship_label }}）{% endif %}
-                  {% if participant.level_label %}
-                    <div class="participant-sub">レベル：{{ participant.level_label }}</div>
-                  {% endif %}
-                  {% if participant.is_family %}
-                    <div class="participant-sub">
-                      保護者：{{ participant.parent_name }}
-                      {% if participant.parent_phone %} / {{ participant.parent_phone }}{% endif %}
-                    </div>
-                  {% endif %}
-                </div>
-                <div>{{ reservation.get_lesson_type_display }} / {{ reservation.get_target_level_display }}</div>
-                <div>コーチ：{{ row.assigned_coach_name }}</div>
-              </div>
-              {% if reservation.status == "rain_canceled" %}
-                <div class="reservation-message">雨天中止として処理されています。</div>
-              {% else %}
-                <div class="reservation-message canceled">キャンセル済みです。</div>
-              {% endif %}
-              <div class="reservation-actions">
-                <a href="{% url 'club:reservation_detail' reservation.pk %}" class="btn">詳細を見る</a>
-              </div>
-            </article>
-          {% endwith %}
-        {% endfor %}
-
-        {% for row in processed_waitlist_rows %}
-          {% with waitlist=row.waitlist %}
-            <article class="reservation-item is-past">
-              <div class="reservation-top">
-                <div class="reservation-date">{{ waitlist.start_at|date:"Y/m/d H:i" }}〜{{ waitlist.end_at|date:"H:i" }}</div>
-                <span class="status-badge {% if waitlist.status == 'converted' %}converted{% else %}canceled{% endif %}">{{ waitlist.get_status_display }}</span>
-              </div>
-              <div class="reservation-meta">
-                <div>会員：{{ waitlist.user.display_name }}</div>
-                <div>{{ waitlist.get_lesson_type_display }} / {{ waitlist.get_target_level_display }}</div>
-                <div>コーチ：{{ row.assigned_coach_name }}</div>
-              </div>
-            </article>
-          {% endwith %}
-        {% endfor %}
-      </div>
-    {% else %}
-      <div class="empty-box">キャンセル済み・処理済みの履歴はありません。</div>
-    {% endif %}
+    {% if canceled_reservation_rows or processed_waitlist_rows %}<div class="reservation-list">
+      {% for row in canceled_reservation_rows %}{% with reservation=row.reservation %}{% participant_for_reservation reservation as participant %}<article class="reservation-item is-canceled"><div class="reservation-top"><div class="reservation-date">{{ reservation.start_at|date:"Y/m/d H:i" }}〜{{ reservation.end_at|date:"H:i" }}</div><span class="status-badge {% if reservation.status == 'rain_canceled' %}rain{% else %}canceled{% endif %}">{{ reservation.get_status_display }}</span></div><div class="reservation-meta"><div class="participant-line">参加者：{{ participant.name }}{% if participant.relationship_label %}（{{ participant.relationship_label }}）{% endif %}{% if participant.level_label %}<div class="participant-sub">レベル：{{ participant.level_label }}</div>{% endif %}{% if participant.is_family %}<div class="participant-sub">保護者：{{ participant.parent_name }}{% if participant.parent_phone %} / {{ participant.parent_phone }}{% endif %}</div>{% endif %}</div><div>{{ reservation.get_lesson_type_display }} / {{ reservation.get_target_level_display }}</div><div>コーチ：{{ row.assigned_coach_name }}</div></div>{% if reservation.status == "rain_canceled" %}<div class="reservation-message">雨天中止として処理されています。</div>{% else %}<div class="reservation-message canceled">キャンセル済みです。</div>{% endif %}<div class="reservation-actions"><a href="{% url 'club:reservation_detail' reservation.pk %}" class="btn">詳細を見る</a></div></article>{% endwith %}{% endfor %}
+      {% for row in processed_waitlist_rows %}{% with waitlist=row.waitlist %}{% participant_for_waitlist waitlist as wait_participant %}<article class="reservation-item is-past"><div class="reservation-top"><div class="reservation-date">{{ waitlist.start_at|date:"Y/m/d H:i" }}〜{{ waitlist.end_at|date:"H:i" }}</div><span class="status-badge {% if waitlist.status == 'converted' %}converted{% else %}canceled{% endif %}">{{ waitlist.get_status_display }}</span></div><div class="reservation-meta"><div class="participant-line waiting">参加者：{{ wait_participant.name }}{% if wait_participant.relationship_label %}（{{ wait_participant.relationship_label }}）{% endif %}{% if wait_participant.level_label %}<div class="participant-sub">レベル：{{ wait_participant.level_label }}</div>{% endif %}</div><div>会員：{{ waitlist.user.display_name }}</div><div>{{ waitlist.get_lesson_type_display }} / {{ waitlist.get_target_level_display }}</div><div>コーチ：{{ row.assigned_coach_name }}</div></div></article>{% endwith %}{% endfor %}
+    </div>{% else %}<div class="empty-box">キャンセル済み・処理済みの履歴はありません。</div>{% endif %}
   </section>
 </div>
 {% endblock %}
-
-```
