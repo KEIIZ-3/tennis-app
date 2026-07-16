@@ -82,6 +82,27 @@ def _reservation_person_row(reservation):
         "payment_amount": int(reservation.payment_amount or 0),
         "payment_received_at": reservation.payment_received_at,
         "payment_status_options": payment_status_options,
+        "is_fixed_member": False,
+    }
+
+
+def _fixed_member_person_row(member_row):
+    member = member_row.get("user")
+
+    return {
+        "reservation": None,
+        "name": member_row.get("name") or _display_name(member),
+        "phone": member_row.get("phone") or _phone(member),
+        "level": member_row.get("level") or _level_label(member),
+        "status_label": "固定参加",
+        "detail_url": "",
+        "payment_required": False,
+        "payment_status": "",
+        "payment_status_label": "",
+        "payment_amount": 0,
+        "payment_received_at": None,
+        "payment_status_options": [],
+        "is_fixed_member": True,
     }
 
 
@@ -166,16 +187,19 @@ def _fix_lesson_row(row):
         reservations = list(row.get("reservations") or [])
 
     unique_reservations = []
-    seen_ids = set()
+    seen_reservation_ids = set()
+
     for reservation in reservations:
         reservation_id = getattr(reservation, "pk", None)
-        if not reservation_id or reservation_id in seen_ids:
+        if not reservation_id or reservation_id in seen_reservation_ids:
             continue
-        seen_ids.add(reservation_id)
+
+        seen_reservation_ids.add(reservation_id)
         unique_reservations.append(reservation)
 
     row["reservations"] = unique_reservations
-    row["participant_rows"] = [
+
+    reservation_person_rows = [
         _reservation_person_row(reservation)
         for reservation in unique_reservations
     ]
@@ -185,17 +209,30 @@ def _fix_lesson_row(row):
         for reservation in unique_reservations
     }
 
-    registered_member_rows = []
+    fixed_person_rows = []
+    seen_fixed_member_ids = set()
+
     for member_row in row.get("registered_member_rows") or []:
         member = member_row.get("user")
         member_id = getattr(member, "pk", None)
+
         if member_id and member_id in reserved_user_ids:
             continue
-        registered_member_rows.append(member_row)
 
-    row["registered_member_rows"] = registered_member_rows
+        if member_id and member_id in seen_fixed_member_ids:
+            continue
 
-    participant_count = len(row["participant_rows"]) + len(registered_member_rows)
+        if member_id:
+            seen_fixed_member_ids.add(member_id)
+
+        fixed_person_rows.append(_fixed_member_person_row(member_row))
+
+    row["participant_rows"] = reservation_person_rows + fixed_person_rows
+
+    # 固定参加メンバーは参加者一覧へ統合するため、別枠表示は消します。
+    row["registered_member_rows"] = []
+
+    participant_count = len(row["participant_rows"])
     capacity = int(row.get("capacity") or 0)
 
     row["participant_count"] = participant_count
@@ -204,9 +241,10 @@ def _fix_lesson_row(row):
 
     payment_rows = [
         person
-        for person in row["participant_rows"]
+        for person in reservation_person_rows
         if person.get("payment_required")
     ]
+
     row["payment_target_count"] = len(payment_rows)
     row["payment_unpaid_count"] = sum(
         1
@@ -245,11 +283,13 @@ def apply_today_lessons_count_patch():
 
                 all_reservations = []
                 seen_ids = set()
+
                 for row in lesson_rows:
                     for reservation in row.get("reservations") or []:
                         reservation_id = getattr(reservation, "pk", None)
                         if not reservation_id or reservation_id in seen_ids:
                             continue
+
                         seen_ids.add(reservation_id)
                         all_reservations.append(reservation)
 
