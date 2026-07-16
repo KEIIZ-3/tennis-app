@@ -14,7 +14,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
 from django.core import signing
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import Q, transaction
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -3097,12 +3097,15 @@ def coach_today_lessons(request):
     User = get_user_model()
     today = timezone.localdate()
 
+    is_admin_mode = bool(_is_staff_like(request.user) and not _is_coach_user(request.user))
+    default_display_days = 28 if is_admin_mode else 7
+
     try:
-        display_days = int(request.GET.get("days") or 7)
+        display_days = int(request.GET.get("days") or request.POST.get("days") or default_display_days)
     except Exception:
-        display_days = 7
+        display_days = default_display_days
     if display_days not in (1, 7, 14, 28):
-        display_days = 7
+        display_days = default_display_days
 
     # 「過去1か月」は、今日を含む直近28日間を表示します。
     # 今日・7日間・14日間はこれまでどおり未来の予定確認用です。
@@ -3120,13 +3123,18 @@ def coach_today_lessons(request):
         selected_coach_id = str(request.user.pk)
         is_staff_mode = False
     else:
-        selected_coach_id = (request.GET.get("coach_id") or "").strip()
-        selected_coach = (
-            coach_queryset.filter(pk=selected_coach_id).first()
-            if selected_coach_id
-            else coach_queryset.first()
-        )
-        selected_coach_id = str(selected_coach.pk) if selected_coach else ""
+        selected_coach_id = (
+            request.GET.get("coach_id")
+            or request.POST.get("coach_id")
+            or "all"
+        ).strip()
+        if selected_coach_id in ("", "all"):
+            selected_coach = None
+            selected_coach_id = "all"
+        else:
+            selected_coach = coach_queryset.filter(pk=selected_coach_id).first()
+            if selected_coach is None:
+                selected_coach_id = "all"
         is_staff_mode = True
 
     def _today_lessons_redirect():
@@ -3227,9 +3235,19 @@ def coach_today_lessons(request):
     def _member_person_row(member):
         return {
             "user": member,
+            "reservation": None,
             "name": _display_name(member),
             "phone": _safe_phone(member),
             "level": _safe_level(member),
+            "status_label": "固定参加",
+            "detail_url": reverse("club:coach_fixed_lesson_weekly"),
+            "payment_required": False,
+            "payment_status": "",
+            "payment_status_label": "",
+            "payment_amount": 0,
+            "payment_received_at": None,
+            "payment_status_options": [],
+            "is_fixed_member": True,
         }
 
     def _waitlist_person_row(waitlist):
@@ -3270,49 +3288,73 @@ def coach_today_lessons(request):
         if key in slot_map:
             return slot_map[key]
 
+        base_slot_filter = Q(
+            lesson_type=key[0],
+            start_at=start_at,
+            end_at=end_at,
+        )
+        relation_filter = Q(
+            coach_id=key[1] or None,
+            court_id=key[2] or None,
+        )
+        if fixed_lesson is not None:
+            relation_filter |= Q(fixed_lesson=fixed_lesson)
+        if availability is not None:
+            relation_filter |= Q(availability=availability)
+        slot_filter = base_slot_filter & relation_filter
+
         reservations = list(
-            Reservation.objects.select_related("user", "coach", "substitute_coach", "court")
-            .filter(
-                lesson_type=key[0],
-                coach_id=key[1] or None,
-                court_id=key[2] or None,
-                start_at=start_at,
-                end_at=end_at,
-                status=Reservation.STATUS_ACTIVE,
+            Reservation.objects.select_related(
+                "user",
+                "coach",
+                "substitute_coach",
+                "court",
+                "availability",
+                "fixed_lesson",
             )
+            .filter(slot_filter, status=Reservation.STATUS_ACTIVE)
             .order_by("user__full_name", "user__username", "id")
+            .distinct()
         )
 
         pending_reservations = list(
-            Reservation.objects.select_related("user", "coach", "substitute_coach", "court")
-            .filter(
-                lesson_type=key[0],
-                coach_id=key[1] or None,
-                court_id=key[2] or None,
-                start_at=start_at,
-                end_at=end_at,
-                status=Reservation.STATUS_PENDING,
+            Reservation.objects.select_related(
+                "user",
+                "coach",
+                "substitute_coach",
+                "court",
+                "availability",
+                "fixed_lesson",
             )
+            .filter(slot_filter, status=Reservation.STATUS_PENDING)
             .order_by("user__full_name", "user__username", "id")
+            .distinct()
         )
 
         waitlists = list(
-            LessonWaitlist.objects.select_related("user", "coach", "substitute_coach", "court")
-            .filter(
-                lesson_type=key[0],
-                coach_id=key[1] or None,
-                court_id=key[2] or None,
-                start_at=start_at,
-                end_at=end_at,
-                status=LessonWaitlist.STATUS_WAITING,
+            LessonWaitlist.objects.select_related(
+                "user",
+                "coach",
+                "substitute_coach",
+                "court",
+                "availability",
+                "fixed_lesson",
             )
+            .filter(slot_filter, status=LessonWaitlist.STATUS_WAITING)
             .order_by("created_at", "id")
+            .distinct()
         )
+
+        registered_member_rows = _fixed_registered_member_rows(fixed_lesson, reservations)
+        participant_rows = [
+            _reservation_person_row(reservation)
+            for reservation in reservations
+        ] + registered_member_rows
 
         start_local = _local(start_at)
         end_local = _local(end_at)
         lesson_date = start_local.date()
-        participant_count = len(reservations)
+        participant_count = len(participant_rows)
         remaining_count = max(int(capacity or 0) - participant_count, 0)
         is_today = lesson_date == today
         is_past = end_at < timezone.now()
@@ -3337,10 +3379,10 @@ def coach_today_lessons(request):
             "reservations": reservations,
             "pending_reservations": pending_reservations,
             "waitlists": waitlists,
-            "participant_rows": [_reservation_person_row(reservation) for reservation in reservations],
+            "participant_rows": participant_rows,
             "pending_rows": [_reservation_person_row(reservation) for reservation in pending_reservations],
             "waitlist_rows": [_waitlist_person_row(waitlist) for waitlist in waitlists],
-            "registered_member_rows": _fixed_registered_member_rows(fixed_lesson, reservations),
+            "registered_member_rows": [],
             "participant_count": participant_count,
             "pending_count": len(pending_reservations),
             "waitlist_count": len(waitlists),
@@ -3560,7 +3602,7 @@ def coach_today_lessons(request):
         request,
         "coach/today_lessons.html",
         {
-            "coach_options": coach_queryset,
+            "coach_options": ([{"pk": "all", "display_name": "全コーチ"}] + list(coach_queryset)) if is_staff_mode else coach_queryset,
             "selected_coach": selected_coach,
             "selected_coach_id": selected_coach_id,
             "is_staff_mode": is_staff_mode,
