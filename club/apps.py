@@ -10,8 +10,6 @@ class ClubConfig(AppConfig):
         from . import signals  # noqa
         from .court_type_policy import apply_court_type_policy
         from .preopen_level_policy import apply_preopen_level_policy
-        from .today_lessons_count_patch import apply_today_lessons_count_patch
 
         apply_court_type_policy()
         apply_preopen_level_policy()
-        apply_today_lessons_count_patch()
