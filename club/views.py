@@ -3098,8 +3098,9 @@ def coach_today_lessons(request):
     User = get_user_model()
     today = timezone.localdate()
 
-    is_admin_mode = bool(_is_staff_like(request.user) and not _is_coach_user(request.user))
-    default_display_days = 28 if is_admin_mode else 7
+    # コーチ・業務委託コーチ・adminの全アカウントで、
+    # 初期表示を「全コーチ・過去1か月」に統一します。
+    default_display_days = 28
 
     try:
         display_days = int(request.GET.get("days") or request.POST.get("days") or default_display_days)
@@ -3119,24 +3120,24 @@ def coach_today_lessons(request):
 
     coach_queryset = User.objects.filter(role__in=("coach", "contractor_coach")).order_by("full_name", "username", "id")
 
-    if _is_coach_user(request.user):
-        selected_coach = request.user
-        selected_coach_id = str(request.user.pk)
-        is_staff_mode = False
+    # コーチ本人も自分だけに固定せず、全コーチ分を確認・編集できます。
+    # coach_id が未指定または all の場合は、担当コーチによる絞り込みを行いません。
+    selected_coach_id = (
+        request.GET.get("coach_id")
+        or request.POST.get("coach_id")
+        or "all"
+    ).strip()
+
+    if selected_coach_id in ("", "all"):
+        selected_coach = None
+        selected_coach_id = "all"
     else:
-        selected_coach_id = (
-            request.GET.get("coach_id")
-            or request.POST.get("coach_id")
-            or "all"
-        ).strip()
-        if selected_coach_id in ("", "all"):
-            selected_coach = None
+        selected_coach = coach_queryset.filter(pk=selected_coach_id).first()
+        if selected_coach is None:
             selected_coach_id = "all"
-        else:
-            selected_coach = coach_queryset.filter(pk=selected_coach_id).first()
-            if selected_coach is None:
-                selected_coach_id = "all"
-        is_staff_mode = True
+
+    # コーチ・業務委託コーチ・adminの全員にコーチ切替欄を表示します。
+    is_staff_mode = True
 
     def _today_lessons_redirect():
         params = {"days": display_days}
