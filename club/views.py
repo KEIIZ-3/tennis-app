@@ -3353,24 +3353,51 @@ def coach_today_lessons(request):
             for reservation in reservations
         ] + registered_member_rows
 
-        # 過去レッスンは現在の固定レッスンマスタではなく、
-        # 予約レコードに保存された実際の担当コーチを優先して表示します。
-        actual_coach_names = []
-        for reservation in reservations:
+        # 固定レッスンの担当変更後は、予約作成時の旧コーチではなく、
+        # レッスンカレンダーと同じ固定レッスン側の担当コーチを優先します。
+        if fixed_lesson is not None:
             try:
-                actual_coach = reservation.assigned_coach()
+                fixed_coach_name = fixed_lesson.coach_display_names()
             except Exception:
-                actual_coach = (
-                    getattr(reservation, "substitute_coach", None)
-                    or getattr(reservation, "coach", None)
+                fixed_coach_name = ""
+
+            if fixed_coach_name and fixed_coach_name != "-":
+                coach_name = fixed_coach_name
+
+        elif availability is not None:
+            try:
+                availability_coach = availability.assigned_coach()
+            except Exception:
+                availability_coach = (
+                    getattr(availability, "substitute_coach", None)
+                    or getattr(availability, "coach", None)
                 )
 
-            actual_coach_name = _display_name(actual_coach)
-            if actual_coach_name and actual_coach_name != "-" and actual_coach_name not in actual_coach_names:
-                actual_coach_names.append(actual_coach_name)
+            availability_coach_name = _display_name(availability_coach)
+            if availability_coach_name and availability_coach_name != "-":
+                coach_name = availability_coach_name
 
-        if actual_coach_names:
-            coach_name = " / ".join(actual_coach_names)
+        else:
+            actual_coach_names = []
+            for reservation in reservations:
+                try:
+                    actual_coach = reservation.assigned_coach()
+                except Exception:
+                    actual_coach = (
+                        getattr(reservation, "substitute_coach", None)
+                        or getattr(reservation, "coach", None)
+                    )
+
+                actual_coach_name = _display_name(actual_coach)
+                if (
+                    actual_coach_name
+                    and actual_coach_name != "-"
+                    and actual_coach_name not in actual_coach_names
+                ):
+                    actual_coach_names.append(actual_coach_name)
+
+            if actual_coach_names:
+                coach_name = " / ".join(actual_coach_names)
 
         start_local = _local(start_at)
         end_local = _local(end_at)
