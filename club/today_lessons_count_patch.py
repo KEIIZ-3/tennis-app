@@ -166,6 +166,7 @@ def _find_fixed_lesson_for_row(row):
 
 
 def _related_active_reservations(row, fixed_lesson):
+    from .lesson_member_list import _slot_reservation_filter
     from .models import Reservation
 
     start_at = row.get("start_at")
@@ -175,62 +176,60 @@ def _related_active_reservations(row, fixed_lesson):
     if not start_at or not end_at:
         return list(row.get("reservations") or [])
 
+    current_reservations = list(row.get("reservations") or [])
+
     lesson_type = ""
+    coach = None
+    court = None
+
     if fixed_lesson:
         lesson_type = getattr(fixed_lesson, "lesson_type", "") or ""
-    if not lesson_type and availability:
-        lesson_type = getattr(availability, "lesson_type", "") or ""
-
-    current_reservations = row.get("reservations") or []
-    if not lesson_type and current_reservations:
-        lesson_type = getattr(current_reservations[0], "lesson_type", "") or ""
-
-    queryset = Reservation.objects.select_related(
-        "user",
-        "coach",
-        "substitute_coach",
-        "court",
-        "fixed_lesson",
-        "availability",
-    ).filter(
-        start_at=start_at,
-        end_at=end_at,
-        status=Reservation.STATUS_ACTIVE,
-    )
-
-    if lesson_type:
-        queryset = queryset.filter(lesson_type=lesson_type)
-
-    relation_filter = Q()
-
-    if fixed_lesson:
-        relation_filter |= Q(fixed_lesson=fixed_lesson)
-
-    if availability:
-        relation_filter |= Q(availability=availability)
-
-    for reservation in current_reservations:
-        relation_filter |= Q(
-            coach_id=getattr(reservation, "coach_id", None),
-            court_id=getattr(reservation, "court_id", None),
-        )
-
-    if fixed_lesson:
-        primary_coach = (
+        coach = (
             fixed_lesson.primary_coach()
             if hasattr(fixed_lesson, "primary_coach")
             else getattr(fixed_lesson, "coach", None)
         )
-        relation_filter |= Q(
-            coach_id=getattr(primary_coach, "pk", None),
-            court_id=getattr(fixed_lesson, "court_id", None),
-        )
+        court = getattr(fixed_lesson, "court", None)
 
-    if relation_filter:
-        queryset = queryset.filter(relation_filter)
+    if availability:
+        lesson_type = getattr(availability, "lesson_type", "") or lesson_type
+        coach = getattr(availability, "coach", None) or coach
+        court = getattr(availability, "court", None) or court
+
+    if current_reservations:
+        first_reservation = current_reservations[0]
+        lesson_type = getattr(first_reservation, "lesson_type", "") or lesson_type
+        coach = getattr(first_reservation, "coach", None) or coach
+        court = getattr(first_reservation, "court", None) or court
+
+    if not lesson_type:
+        return current_reservations
+
+    reservation_filter = _slot_reservation_filter(
+        availability=availability,
+        fixed_lesson=fixed_lesson,
+        coach=coach,
+        court=court,
+        lesson_type=lesson_type,
+        start_at=start_at,
+        end_at=end_at,
+    )
 
     return list(
-        queryset.order_by("user__full_name", "user__username", "id").distinct()
+        Reservation.objects.select_related(
+            "user",
+            "coach",
+            "substitute_coach",
+            "court",
+            "fixed_lesson",
+            "availability",
+        )
+        .filter(
+            reservation_filter,
+            status=Reservation.STATUS_ACTIVE,
+        )
+        .order_by("user__full_name", "user__username", "id")
+        .distinct()
     )
 
 
