@@ -576,27 +576,44 @@ def coach_today_lessons_view(request):
         or ""
     ).strip()
 
+    requested_days = (
+        request.GET.get("days")
+        or request.POST.get("days")
+        or ""
+    ).strip()
+
+    if admin_user and not requested_days:
+        requested_days = "28"
+
     if request.method == "POST":
+        if admin_user:
+            mutable_post = request.POST.copy()
+            mutable_post["days"] = requested_days or "28"
+            if not requested_coach_id:
+                mutable_post["coach_id"] = "all"
+            request.POST = mutable_post
+
         response = views.coach_today_lessons(request)
 
-        if admin_user and requested_coach_id in ("", "all"):
-            try:
-                display_days = int(
-                    request.GET.get("days")
-                    or request.POST.get("days")
-                    or 7
-                )
-            except Exception:
-                display_days = 7
-
+        if admin_user:
             return redirect(
                 f"{reverse('club:coach_today_lessons')}?"
-                f"{urlencode({'days': display_days, 'coach_id': 'all'})}"
+                f"{urlencode({
+                    'days': requested_days or '28',
+                    'coach_id': requested_coach_id or 'all',
+                })}"
             )
 
         return response
 
-    if admin_user and requested_coach_id in ("", "all"):
+    if admin_user:
+        mutable_get = request.GET.copy()
+        mutable_get["days"] = requested_days or "28"
+        mutable_get["coach_id"] = requested_coach_id or "all"
+        request.GET = mutable_get
+        requested_coach_id = request.GET["coach_id"]
+
+    if admin_user and requested_coach_id == "all":
         context = _admin_all_context(request)
         if context is not None:
             return render(
@@ -627,7 +644,6 @@ def coach_today_lessons_view(request):
         "coach/today_lessons.html",
         context,
     )
-
 
 def apply_today_lessons_count_patch():
     return None
