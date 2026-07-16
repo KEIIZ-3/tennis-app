@@ -3481,15 +3481,18 @@ def coach_today_lessons(request):
             if not court:
                 continue
 
+            # 固定レッスンの担当変更前に作成された旧Availabilityも、
+            # 参加者・回収状況を同じ枠へ統合するために取得します。
+            # 現在の担当コーチとの一致は条件にせず、日時・種別・コートを正とします。
             availability = (
                 CoachAvailability.objects.filter(
-                    coach=primary_coach,
                     court=court,
                     lesson_type=fixed.lesson_type,
                     start_at=start_at,
                     end_at=end_at,
                 )
                 .select_related("coach", "substitute_coach", "court")
+                .order_by("id")
                 .first()
             )
 
@@ -3505,9 +3508,18 @@ def coach_today_lessons(request):
                 except Exception:
                     capacity = max(int(availability.capacity or 0), int(capacity or 0), 1)
 
+            # 旧Availabilityがある場合は、そのコーチIDをスロットキーに使います。
+            # これにより後段のAvailability一覧で同じ枠が重複追加されません。
+            # 表示する担当名は _add_slot 内で現在のFixedLesson設定へ置き換えます。
+            slot_coach_id = (
+                availability.coach_id
+                if availability is not None
+                else getattr(primary_coach, "pk", None)
+            )
+
             key = _slot_key_for_row(
                 lesson_type=fixed.lesson_type,
-                coach_id=getattr(primary_coach, "pk", None),
+                coach_id=slot_coach_id,
                 court_id=getattr(court, "pk", None),
                 start_at=start_at,
                 end_at=end_at,
