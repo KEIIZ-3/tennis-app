@@ -3453,6 +3453,104 @@ def coach_today_lessons(request):
         except Exception:
             return max(int(getattr(availability, "capacity", 1) or 1), 1)
 
+    def _authoritative_fixed_lesson_for_availability(availability):
+        """
+        過去に担当変更されたAvailabilityでも、同一枠の予約が保持するFixedLessonを正本として返します。
+
+        FixedLessonの開催回数、曜日設定、表示期間、コーチ絞り込みの影響で
+        fixed_queryset側から先に行が作られなかった場合でも、旧Availability単独行として
+        旧コーチ名を表示させないための最終防御です。
+        """
+        if not availability:
+            return None
+
+        linked_fixed_lesson = (
+            Reservation.objects.filter(
+                availability=availability,
+                fixed_lesson__isnull=False,
+                start_at=availability.start_at,
+                end_at=availability.end_at,
+            )
+            .select_related(
+                "fixed_lesson",
+                "fixed_lesson__coach",
+                "fixed_lesson__coach_2",
+                "fixed_lesson__coach_3",
+                "fixed_lesson__court",
+            )
+            .order_by("id")
+            .values_list("fixed_lesson_id", flat=True)
+            .first()
+        )
+
+        if not linked_fixed_lesson:
+            linked_fixed_lesson = (
+                Reservation.objects.filter(
+                    fixed_lesson__isnull=False,
+                    lesson_type=availability.lesson_type,
+                    start_at=availability.start_at,
+                    end_at=availability.end_at,
+                )
+                .filter(
+                    Q(court=availability.court)
+                    | Q(availability=availability)
+                )
+                .order_by("id")
+                .values_list("fixed_lesson_id", flat=True)
+                .first()
+            )
+
+        if linked_fixed_lesson:
+            return (
+                FixedLesson.objects.select_related(
+                    "coach",
+                    "coach_2",
+                    "coach_3",
+                    "court",
+                )
+                .prefetch_related("members")
+                .filter(pk=linked_fixed_lesson)
+                .first()
+            )
+
+        start_local = _local(availability.start_at)
+        target_date = start_local.date()
+
+        candidates = (
+            FixedLesson.objects.filter(
+                is_active=True,
+                lesson_type=availability.lesson_type,
+                start_hour=start_local.hour,
+            )
+            .select_related(
+                "coach",
+                "coach_2",
+                "coach_3",
+                "court",
+            )
+            .prefetch_related("members")
+            .order_by("id")
+        )
+
+        if availability.court_id:
+            candidates = candidates.filter(
+                Q(court=availability.court)
+                | Q(court__isnull=True)
+            )
+
+        for fixed_lesson in candidates:
+            try:
+                if target_date in set(fixed_lesson.scheduled_occurrence_dates()):
+                    return fixed_lesson
+            except Exception:
+                repeat_start = getattr(fixed_lesson, "start_date", None)
+                if repeat_start and target_date < repeat_start:
+                    continue
+                if int(getattr(fixed_lesson, "weekday", -1)) == target_date.weekday():
+                    return fixed_lesson
+
+        return None
+
     fixed_queryset = (
         FixedLesson.objects.filter(is_active=True)
         .select_related("coach", "coach_2", "coach_3", "court")
@@ -3573,6 +3671,68 @@ def coach_today_lessons(request):
         ]
 
     for availability in availability_qs:
+        authoritative_fixed_lesson = _authoritative_fixed_lesson_for_availability(
+            availability
+        )
+
+        # 過去の担当変更後も、予約が紐づく現在のFixedLessonを表示の正本にします。
+        # 選択中のコーチ条件も、旧Availabilityのコーチではなく現在の固定レッスン担当で判定します。
+        if authoritative_fixed_lesson is not None:
+            if (
+                selected_coach is not None
+                and not _fixed_lesson_includes_coach(
+                    authoritative_fixed_lesson,
+                    selected_coach,
+                )
+            ):
+                continue
+
+            key = _slot_key_for_row(
+                lesson_type=availability.lesson_type,
+                coach_id=availability.coach_id,
+                court_id=availability.court_id,
+                start_at=availability.start_at,
+                end_at=availability.end_at,
+            )
+            if key in slot_map:
+                continue
+
+            fixed_capacity = (
+                authoritative_fixed_lesson.effective_capacity()
+                if hasattr(authoritative_fixed_lesson, "effective_capacity")
+                else authoritative_fixed_lesson.capacity
+            )
+            capacity = max(
+                _availability_capacity(availability),
+                int(fixed_capacity or 0),
+                1,
+            )
+
+            _add_slot(
+                key=key,
+                start_at=availability.start_at,
+                end_at=availability.end_at,
+                lesson_type_label=authoritative_fixed_lesson.get_lesson_type_display(),
+                target_level_label=(
+                    _lesson_level_label(authoritative_fixed_lesson)
+                    or authoritative_fixed_lesson.get_target_level_display()
+                ),
+                coach_name=_fixed_lesson_coach_names(
+                    authoritative_fixed_lesson
+                ),
+                court_name=str(
+                    authoritative_fixed_lesson.court
+                    or availability.court
+                ),
+                capacity=capacity,
+                title=_lesson_calendar_title(
+                    authoritative_fixed_lesson
+                ),
+                fixed_lesson=authoritative_fixed_lesson,
+                availability=availability,
+            )
+            continue
+
         key = _slot_key_for_row(
             lesson_type=availability.lesson_type,
             coach_id=availability.coach_id,
