@@ -4,6 +4,7 @@ from . import lesson_member_list
 from . import admin_dashboard
 from . import court_number_line_notice
 from . import family_members
+from . import today_lessons_count_patch
 
 app_name = "club"
 
@@ -37,7 +38,7 @@ urlpatterns = [
     path("reservations/<int:pk>/cancel/", views.reservation_cancel, name="reservation_cancel"),
     path("waitlists/<int:pk>/cancel/", views.lesson_waitlist_cancel, name="lesson_waitlist_cancel"),
     path("waitlists/<int:pk>/promote/", views.lesson_waitlist_promote, name="lesson_waitlist_promote"),
-    path("coach/today-lessons/", views.coach_today_lessons, name="coach_today_lessons"),
+    path("coach/today-lessons/", today_lessons_count_patch.coach_today_lessons_view, name="coach_today_lessons"),
     path("coach/court-number-line/", court_number_line_notice.court_number_line_notice, name="court_number_line_notice"),
     path("coach/availability/", views.coach_availability_list, name="coach_availability_list"),
     path("coach/availability/new/", views.coach_availability_create, name="coach_availability_create"),
