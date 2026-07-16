@@ -3462,13 +3462,30 @@ def coach_today_lessons(request):
     if selected_coach is not None:
         fixed_queryset = [fixed for fixed in fixed_queryset if _fixed_lesson_includes_coach(fixed, selected_coach)]
 
-    cursor = range_start
-    while cursor <= range_end:
-        for fixed in fixed_queryset:
-            if int(fixed.weekday) != int(cursor.weekday()):
-                continue
-            repeat_start = getattr(fixed, "start_date", None)
-            if repeat_start and cursor < repeat_start:
+    # レッスンカレンダーと同じ開催日生成ロジックを使用します。
+    # weekdayだけで判定すると、個別に設定された開催日や既存データの曜日差異により、
+    # FixedLessonが認識されず旧Availability単独行として表示されるためです。
+    for fixed in fixed_queryset:
+        try:
+            if hasattr(fixed, "scheduled_occurrence_dates"):
+                occurrence_dates = list(fixed.scheduled_occurrence_dates())
+            else:
+                repeat_start = getattr(fixed, "start_date", None) or range_start
+                first_offset = (int(fixed.weekday) - repeat_start.weekday()) % 7
+                first_date = repeat_start + timedelta(days=first_offset)
+                occurrence_count = max(
+                    int(getattr(fixed, "weeks_ahead", 1) or 1),
+                    1,
+                )
+                occurrence_dates = [
+                    first_date + timedelta(days=7 * index)
+                    for index in range(occurrence_count)
+                ]
+        except Exception:
+            occurrence_dates = []
+
+        for cursor in occurrence_dates:
+            if cursor < range_start or cursor > range_end:
                 continue
 
             try:
@@ -3538,8 +3555,6 @@ def coach_today_lessons(request):
                 fixed_lesson=fixed,
                 availability=availability,
             )
-
-        cursor += timedelta(days=1)
 
     availability_qs = (
         CoachAvailability.objects.filter(
