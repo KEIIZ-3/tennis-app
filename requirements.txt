@@ -4,6 +4,7 @@ whitenoise
 dj-database-url
 psycopg[binary]
 openpyxl
+jpholiday
 
 # background jobs / notifications
 celery
