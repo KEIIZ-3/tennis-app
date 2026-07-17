@@ -355,3 +355,149 @@ def coach_admin_settlement(request):
         "coach/admin_settlement.html",
         context,
     )
+
+@login_required
+@require_http_methods(["GET"])
+def coach_payroll_summary(request):
+    """コーチ本人・admin向けの統一月次精算明細。"""
+    user_role = str(getattr(request.user, "role", "") or "")
+    is_admin = bool(
+        getattr(request.user, "is_superuser", False)
+        or getattr(request.user, "is_staff", False)
+    )
+    is_coach = user_role in ("coach", "contractor_coach")
+    if not (is_admin or is_coach):
+        return HttpResponse("Forbidden", status=403)
+
+    today = timezone.localdate()
+    try:
+        selected_year = int(request.GET.get("year") or today.year)
+    except Exception:
+        selected_year = today.year
+    try:
+        selected_month = int(request.GET.get("month") or today.month)
+    except Exception:
+        selected_month = today.month
+
+    if selected_year < 2000 or selected_year > 2100:
+        selected_year = today.year
+    if selected_month < 1 or selected_month > 12:
+        selected_month = today.month
+
+    User = get_user_model()
+    coach_queryset = User.objects.filter(
+        role__in=("coach", "contractor_coach")
+    ).order_by("full_name", "username", "id")
+
+    if is_coach:
+        selected_coach = request.user
+        selected_coach_id = str(request.user.pk)
+    else:
+        selected_coach_id = (request.GET.get("coach_id") or "").strip()
+        selected_coach = (
+            coach_queryset.filter(pk=selected_coach_id).first()
+            if selected_coach_id
+            else coach_queryset.first()
+        )
+        selected_coach_id = str(selected_coach.pk) if selected_coach else ""
+
+    result = calculate_monthly_settlement(selected_year, selected_month)
+    settlement = result["settlement"]
+
+    selected_row = None
+    if selected_coach:
+        for row in result.get("coach_rows", []):
+            if getattr(row.get("coach"), "pk", None) == selected_coach.pk:
+                selected_row = row
+                break
+
+    if selected_row is None:
+        selected_row = {
+            "coach": selected_coach,
+            "coach_name": display_name(selected_coach),
+            "is_contractor_coach": bool(
+                selected_coach
+                and getattr(selected_coach, "role", "") == "contractor_coach"
+            ),
+            "reservation_count": 0,
+            "ticket_amount": 0,
+            "preopen_paid_amount": 0,
+            "preopen_unpaid_amount": 0,
+            "stringing_amount": 0,
+            "contractor_hourly_wage": int(
+                getattr(selected_coach, "contractor_hourly_wage", 0) or 0
+            ) if selected_coach else 0,
+            "contractor_work_hours_text": "0時間00分",
+            "contractor_work_slot_count": 0,
+            "contractor_hourly_pay_amount": 0,
+            "lesson_compensation_amount": 0,
+            "common_expense_share": 0,
+            "salary_due": 0,
+            "salary_paid": 0,
+            "unpaid_salary": 0,
+            "reimbursement_carry_in": 0,
+            "reimbursement_current_month": 0,
+            "reimbursement_due": 0,
+            "reimbursement_paid": 0,
+            "unpaid_reimbursement": 0,
+            "total_paid": 0,
+            "total_unpaid": 0,
+        }
+
+    payment_rows = []
+    for item in result.get("payout_history_rows", []):
+        payment = item.get("payment")
+        if payment and selected_coach and payment.coach_id == selected_coach.pk:
+            payment_rows.append(item)
+
+    previous_year, previous_month = _previous_month(
+        selected_year,
+        selected_month,
+    )
+    next_year, next_month = _next_month(selected_year, selected_month)
+
+    def payroll_url(year, month):
+        query = f"year={int(year)}&month={int(month)}"
+        if is_admin and selected_coach_id:
+            query += f"&coach_id={selected_coach_id}"
+        return f"{reverse('club:coach_payroll_summary')}?{query}"
+
+    salary_due = int(selected_row.get("salary_due") or 0)
+    salary_paid = int(selected_row.get("salary_paid") or 0)
+    reimbursement_due = int(selected_row.get("reimbursement_due") or 0)
+    reimbursement_paid = int(selected_row.get("reimbursement_paid") or 0)
+    unpaid_salary = int(selected_row.get("unpaid_salary") or 0)
+    unpaid_reimbursement = int(
+        selected_row.get("unpaid_reimbursement") or 0
+    )
+
+    return render(
+        request,
+        "coach/payroll_summary.html",
+        {
+            "selected_year": selected_year,
+            "selected_month": selected_month,
+            "month_label": f"{selected_year}年{selected_month}月",
+            "selected_coach": selected_coach,
+            "selected_coach_id": selected_coach_id,
+            "coach_options": coach_queryset,
+            "is_admin_mode": is_admin,
+            "is_staff_mode": is_admin,
+            "is_month_closed": settlement.is_closed,
+            "settlement_status_label": settlement.get_status_display(),
+            "row": selected_row,
+            "payment_rows": payment_rows,
+            "salary_due": salary_due,
+            "salary_paid": salary_paid,
+            "unpaid_salary": unpaid_salary,
+            "reimbursement_due": reimbursement_due,
+            "reimbursement_paid": reimbursement_paid,
+            "unpaid_reimbursement": unpaid_reimbursement,
+            "total_due": salary_due + reimbursement_due,
+            "total_paid": salary_paid + reimbursement_paid,
+            "total_unpaid": unpaid_salary + unpaid_reimbursement,
+            "prev_url": payroll_url(previous_year, previous_month),
+            "next_url": payroll_url(next_year, next_month),
+        },
+    )
+
