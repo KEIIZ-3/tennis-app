@@ -9,6 +9,7 @@ from . import lesson_execution
 from . import lesson_execution_storage  # noqa: F401
 from . import lesson_execution_canonical_patch  # noqa: F401
 from . import coach_portal
+from . import today_lesson_actions
 
 app_name = "club"
 
@@ -43,6 +44,7 @@ urlpatterns = [
     path("waitlists/<int:pk>/cancel/", views.lesson_waitlist_cancel, name="lesson_waitlist_cancel"),
     path("waitlists/<int:pk>/promote/", views.lesson_waitlist_promote, name="lesson_waitlist_promote"),
     path("coach/today-lessons/", views.coach_today_lessons, name="coach_today_lessons"),
+    path("coach/lesson-quick-action/", today_lesson_actions.lesson_quick_action, name="lesson_quick_action"),
     path("coach/court-number-line/", court_number_line_notice.court_number_line_notice, name="court_number_line_notice"),
     path("coach/availability/", views.coach_availability_list, name="coach_availability_list"),
     path("coach/availability/new/", views.coach_availability_create, name="coach_availability_create"),
