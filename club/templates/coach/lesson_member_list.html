@@ -9,8 +9,6 @@
   .member-list-lead{margin:8px 0 0;color:#475569;font-size:14px;line-height:1.7;font-weight:750;}
   .public-note{margin:10px 0 0;padding:10px 12px;border:1px solid #fed7aa;border-radius:14px;background:#fff7ed;color:#9a3412;font-size:13px;line-height:1.7;font-weight:900;}
   .member-list-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;}
-  .execution-btn{border-color:#16a34a!important;background:#16a34a!important;color:#fff!important;box-shadow:0 6px 14px rgba(22,163,74,.22);}
-  .execution-btn:hover{border-color:#15803d!important;background:#15803d!important;color:#fff!important;}
   .summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;}
   .summary-grid.public{grid-template-columns:repeat(2,minmax(0,1fr));}
   .summary-card{padding:14px;border:1px solid #e5e7eb;background:#fff;border-radius:18px;box-shadow:0 8px 20px rgba(15,23,42,.05);}
@@ -37,6 +35,15 @@
   .line-notice-btn{border-color:#06c755!important;background:#06c755!important;color:#fff!important;box-shadow:0 6px 14px rgba(6,199,85,.22);}
   .line-notice-btn:hover{border-color:#05ad4a!important;background:#05ad4a!important;color:#fff!important;}
   .empty-box{padding:14px;border:1px dashed #cbd5e1;border-radius:14px;background:#f8fafc;color:#64748b;font-size:14px;line-height:1.7;text-align:center;font-weight:800;}
+  .execution-panel{padding:16px;border:1px solid #86efac;border-radius:18px;background:linear-gradient(180deg,#f0fdf4 0%,#ffffff 100%);box-shadow:0 8px 20px rgba(22,101,52,.08);}
+  .execution-title{margin:0;color:#166534;font-size:20px;line-height:1.35;font-weight:1000;}
+  .execution-text{margin:6px 0 0;color:#475569;font-size:13px;line-height:1.7;font-weight:800;}
+  .execution-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px;}
+  .execution-actions form{margin:0;}
+  .execution-actions .btn{width:100%;min-height:44px;border-radius:12px;font-weight:1000;}
+  .btn-held{border-color:#16a34a!important;background:#16a34a!important;color:#fff!important;}
+  .btn-rain{border-color:#dc2626!important;background:#fff!important;color:#b91c1c!important;}
+  .btn-expense{border-color:#f59e0b!important;background:#fffbeb!important;color:#92400e!important;}
   @media(max-width:768px){
     .member-list-title{font-size:24px;}
     .member-list-actions{display:grid;grid-template-columns:1fr;}
@@ -45,6 +52,7 @@
     .person-row{grid-template-columns:1fr;}
     .person-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));justify-content:stretch;}
     .mini-btn{width:100%;}
+    .execution-actions{grid-template-columns:1fr;}
   }
   @media(max-width:420px){
     .summary-grid,.summary-grid.public{grid-template-columns:1fr;}
@@ -69,9 +77,6 @@
       {% if is_public_member_view and reservation_url %}
         <a href="{{ reservation_url }}" class="btn btn-primary">このレッスンを予約する</a>
       {% endif %}
-      {% if is_coach_view %}
-        <a href="{% url 'club:lesson_execution_manage' %}?year={{ start_at|date:'Y' }}&month={{ start_at|date:'n' }}#lesson-{{ request.GET.availability_id }}" class="btn execution-btn">このレッスンを実施管理</a>
-      {% endif %}
       {% if is_coach_view and active_rows.0.reservation %}
         <a href="{% url 'club:court_number_line_notice' %}?slot_id={{ active_rows.0.reservation.pk }}" class="btn line-notice-btn">この参加者へコート番号をLINE連絡</a>
       {% endif %}
@@ -82,6 +87,43 @@
       {% endif %}
     </div>
   </section>
+
+  {% if is_coach_view %}
+    <section class="execution-panel">
+      <h2 class="execution-title">このレッスンの終了処理</h2>
+      <p class="execution-text">
+        レッスン終了後は「実施済み」を登録してください。雨天中止では対象予約をキャンセルし、消費済みチケットを返却します。
+      </p>
+      {% if request.GET.availability_id %}
+        <div class="execution-actions">
+          <form method="post" action="{% url 'club:lesson_quick_action' %}">
+            {% csrf_token %}
+            <input type="hidden" name="year" value="{{ start_at|date:'Y' }}">
+            <input type="hidden" name="month" value="{{ start_at|date:'n' }}">
+            <input type="hidden" name="availability_id" value="{{ request.GET.availability_id }}">
+            <input type="hidden" name="action" value="held">
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <button type="submit" class="btn btn-held" onclick="return confirm('このレッスンを実施済みにしますか？');">実施済みにする</button>
+          </form>
+          <form method="post" action="{% url 'club:lesson_quick_action' %}">
+            {% csrf_token %}
+            <input type="hidden" name="year" value="{{ start_at|date:'Y' }}">
+            <input type="hidden" name="month" value="{{ start_at|date:'n' }}">
+            <input type="hidden" name="availability_id" value="{{ request.GET.availability_id }}">
+            <input type="hidden" name="action" value="rain_canceled">
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <button type="submit" class="btn btn-rain" onclick="return confirm('雨天中止として予約をキャンセルし、チケットを返却しますか？');">雨天中止</button>
+          </form>
+          <a href="{% url 'club:coach_expense_manage' %}?availability_id={{ request.GET.availability_id }}&date={{ start_at|date:'Y-m-d' }}" class="btn btn-expense">コート代を登録</a>
+        </div>
+      {% else %}
+        <div class="empty-box">
+          このレッスンは実施管理用の枠情報を確認できません。下の「レッスン実施管理」から対象月を確認してください。<br>
+          <a href="{% url 'club:lesson_execution_manage' %}?year={{ start_at|date:'Y' }}&month={{ start_at|date:'n' }}" class="btn" style="margin-top:10px;">レッスン実施管理へ</a>
+        </div>
+      {% endif %}
+    </section>
+  {% endif %}
 
   <section class="summary-grid {% if is_public_member_view %}public{% endif %}">
     <div class="summary-card primary"><div class="summary-label">参加者</div><div class="summary-value">{{ active_count }}/{{ capacity }}名</div></div>
