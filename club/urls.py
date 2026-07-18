@@ -5,6 +5,7 @@ from . import admin_dashboard
 from . import court_number_line_notice
 from . import family_members
 from . import settlement_views
+from . import lesson_execution
 
 app_name = "club"
 
@@ -51,6 +52,7 @@ urlpatterns = [
     path("coach/payroll-summary/", settlement_views.coach_payroll_summary, name="coach_payroll_summary"),
     path("coach/revenue-summary/", views.coach_revenue_summary, name="coach_revenue_summary"),
     path("coach/admin-settlement/", settlement_views.coach_admin_settlement, name="coach_admin_settlement"),
+    path("coach/lesson-execution/", lesson_execution.lesson_execution_manage, name="lesson_execution_manage"),
     path("coach/expenses/", views.coach_expense_manage, name="coach_expense_manage"),
     path("coach/survey-summary/", views.coach_schedule_survey_summary, name="schedule_survey_summary"),
     path("coach/activity-log/", views.coach_activity_log, name="coach_activity_log"),
