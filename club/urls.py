@@ -6,6 +6,7 @@ from . import court_number_line_notice
 from . import family_members
 from . import settlement_views
 from . import lesson_execution
+from . import lesson_execution_storage  # noqa: F401
 
 app_name = "club"
 
