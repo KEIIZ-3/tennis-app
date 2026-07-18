@@ -34,14 +34,17 @@
     {% csrf_token %}
     <div class="field">
       <label for="slot_id">対象レッスン</label>
-      <select id="slot_id" name="slot_id" onchange="this.form.submit()">
-        <option value="">選択してください</option>
-        {% for slot in slots %}
-          <option value="{{ slot.pk }}" {% if selected_slot_id == slot.pk|stringformat:"s" %}selected{% endif %}>
-            {{ slot.start_at|date:"m/d（D） H:i" }}〜{{ slot.end_at|date:"H:i" }} / {{ slot.get_lesson_type_display }} / {{ slot.court }}
-          </option>
-        {% endfor %}
-      </select>
+      {% if selected_slot %}
+        <input type="hidden" id="slot_id" name="slot_id" value="{{ selected_slot.pk }}">
+        <input value="{{ selected_slot.start_at|date:'m/d（D） H:i' }}〜{{ selected_slot.end_at|date:'H:i' }} / {{ selected_slot.get_lesson_type_display }} / {{ selected_slot.court }}" readonly>
+      {% else %}
+        <select id="slot_id" name="slot_id" onchange="this.form.submit()">
+          <option value="">選択してください</option>
+          {% for slot in slots %}
+            <option value="{{ slot.pk }}">{{ slot.start_at|date:"m/d（D） H:i" }}〜{{ slot.end_at|date:"H:i" }} / {{ slot.get_lesson_type_display }} / {{ slot.court }}</option>
+          {% endfor %}
+        </select>
+      {% endif %}
     </div>
     {% if selected_slot %}
       <div class="grid">

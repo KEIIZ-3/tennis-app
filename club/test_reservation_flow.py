@@ -1,10 +1,12 @@
-from datetime import date
+from datetime import date, datetime, timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
-from .models import Court, FixedLesson, LessonWaitlist, Reservation
+from .models import CoachAvailability, Court, FixedLesson, LessonWaitlist, Reservation
 
 
 class ReservationFlowSmokeTests(TestCase):
@@ -52,7 +54,7 @@ class ReservationFlowSmokeTests(TestCase):
             ticket_balance=0,
         )
 
-        self.lesson_date = date(2026, 7, 3)
+        self.lesson_date = timezone.localdate() + timedelta(days=7)
 
     def _create_user(self, *, username, role, full_name, ticket_balance=0):
         user = self.User.objects.create_user(
@@ -131,12 +133,16 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertNotEqual(response.status_code, 500)
 
     def test_member_can_reserve_regular_preopen_lesson_without_ticket_consumption(self):
-        fixed_lesson = self._create_fixed_lesson()
+        preopen_date = date(2026, 7, 3)
+        fixed_lesson = self._create_fixed_lesson(lesson_date=preopen_date)
+        mocked_now = timezone.make_aware(datetime(2026, 7, 2, 12, 0))
 
-        response = self._post_lesson_calendar_reserve(
-            user=self.member,
-            fixed_lesson=fixed_lesson,
-        )
+        with patch("django.utils.timezone.now", return_value=mocked_now):
+            response = self._post_lesson_calendar_reserve(
+                user=self.member,
+                fixed_lesson=fixed_lesson,
+                lesson_date=preopen_date,
+            )
 
         self.assertEqual(response.status_code, 302)
 
@@ -215,3 +221,75 @@ class ReservationFlowSmokeTests(TestCase):
                 status=LessonWaitlist.STATUS_WAITING,
             ).exists()
         )
+
+    def test_court_number_notice_uses_selected_calendar_lesson_without_dropdown(self):
+        lesson_date = timezone.localdate() + timedelta(days=1)
+        fixed_lesson = self._create_fixed_lesson(
+            lesson_date=lesson_date,
+            title="選択対象レッスン",
+        )
+        start_at, end_at = fixed_lesson._build_datetimes_for_date(lesson_date)
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=6,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        first_member = self._create_user(
+            username="line_first",
+            role=self.User.ROLE_MEMBER,
+            full_name="後藤 会員",
+        )
+        selected_member = self._create_user(
+            username="line_selected",
+            role=self.User.ROLE_MEMBER,
+            full_name="阿部 会員",
+        )
+        other_lesson_member = self._create_user(
+            username="line_other_lesson",
+            role=self.User.ROLE_MEMBER,
+            full_name="別枠 会員",
+        )
+        other_fixed_lesson = self._create_fixed_lesson(
+            lesson_date=lesson_date,
+            title="同時刻の別レッスン",
+        )
+
+        def create_reservation(user, target_fixed_lesson):
+            return Reservation.objects.create(
+                user=user,
+                coach=self.coach,
+                court=self.court,
+                availability=availability,
+                fixed_lesson=target_fixed_lesson,
+                lesson_type=Reservation.LESSON_GENERAL,
+                target_level=self.User.LEVEL_BEGINNER,
+                start_at=start_at,
+                end_at=end_at,
+                status=Reservation.STATUS_ACTIVE,
+            )
+
+        create_reservation(first_member, fixed_lesson)
+        selected_reservation = create_reservation(selected_member, fixed_lesson)
+        create_reservation(other_lesson_member, other_fixed_lesson)
+
+        self.client.force_login(self.coach)
+        response = self.client.get(
+            reverse("club:court_number_line_notice"),
+            data={"slot_id": selected_reservation.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["selected_slot"].pk, selected_reservation.pk)
+        self.assertContains(
+            response,
+            f'name="slot_id" value="{selected_reservation.pk}"',
+        )
+        self.assertNotContains(response, '<select id="slot_id"')
+        self.assertContains(response, "後藤 会員")
+        self.assertContains(response, "阿部 会員")
+        self.assertNotContains(response, "別枠 会員")
