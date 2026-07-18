@@ -28,6 +28,7 @@
   .action-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
   .action-card{display:flex;flex-direction:column;gap:7px;min-height:132px;padding:15px;border:1px solid #e2e8f0;border-radius:17px;background:#f8fafc;text-decoration:none;}
   .action-card.primary{border-color:#93c5fd;background:#eff6ff;}
+  .action-card.analytics{border-color:#c4b5fd;background:#f5f3ff;}
   .action-icon{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:12px;background:#0f172a;color:#fff;font-size:18px;font-weight:1000;}
   .action-title{margin:0;color:#0f172a;font-size:16px;font-weight:1000;}
   .action-text{margin:0;color:#64748b;font-size:12px;line-height:1.55;font-weight:750;}
@@ -50,6 +51,7 @@
     <p class="dashboard-lead">今日の受付、終了処理、承認待ち、回収状況を最初に確認できます。数字を押すと対象画面へ移動します。</p>
     <div class="dashboard-primary-actions">
       <a href="{% url 'club:coach_today_lessons' %}?days=1" class="btn btn-primary">本日の受付・精算</a>
+      <a href="{% url 'club:analytics_dashboard' %}" class="btn">分析ダッシュボード</a>
       <a href="{% url 'club:lesson_calendar' %}" class="btn">レッスンカレンダー</a>
       <a href="{% url 'club:lesson_execution_manage' %}?year={{ today|date:'Y' }}&month={{ today|date:'n' }}" class="btn">実施管理</a>
     </div>
@@ -122,6 +124,7 @@
       </div>
     </div>
     <div class="action-grid">
+      <a class="action-card analytics" href="{% url 'club:analytics_dashboard' %}"><span class="action-icon">析</span><h3 class="action-title">分析ダッシュボード</h3><p class="action-text">売上、レッスン実績、コーチ別実績、会員状況を期間別に確認します。</p><span class="action-cta">開く →</span></a>
       <a class="action-card primary" href="{% url 'club:coach_today_lessons' %}?days=1"><span class="action-icon">👥</span><h3 class="action-title">本日の受付・精算</h3><p class="action-text">参加者、電話、回収状況、終了処理を確認します。</p><span class="action-cta">開く →</span></a>
       <a class="action-card" href="{% url 'club:lesson_calendar' %}"><span class="action-icon">📅</span><h3 class="action-title">レッスンカレンダー</h3><p class="action-text">開催予定、参加人数、空き状況を確認します。</p><span class="action-cta">開く →</span></a>
       <a class="action-card" href="{% url 'club:reservation_list' %}"><span class="action-icon">✓</span><h3 class="action-title">予約・承認</h3><p class="action-text">予約申請、承認、キャンセル待ちを管理します。</p><span class="action-cta">開く →</span></a>
