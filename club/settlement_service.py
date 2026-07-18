@@ -391,7 +391,7 @@ def _current_payment_totals(settlement, coach):
     return salary_paid, reimbursement_paid
 
 
-def calculate_monthly_settlement(year, month, *, force=False):
+def _calculate_monthly_settlement_base(year, month, *, force=False):
     User = get_user_model()
     month_start, next_month, _start_at, _end_at = aware_month_range(year, month)
 
@@ -878,3 +878,15 @@ def calculate_monthly_settlement(year, month, *, force=False):
         "per_coach_common_expense": per_coach_common_expense,
         "payout_history_rows": payment_history_rows(settlement),
     }
+
+
+def calculate_monthly_settlement(year, month, *, force=False):
+    """月次精算の標準計算と会社財布ポリシーを一つの正式な入口で実行する。"""
+    from .settlement_balance_policy import _apply_wallet_policy
+
+    result = _calculate_monthly_settlement_base(
+        year,
+        month,
+        force=force,
+    )
+    return _apply_wallet_policy(result, year, month)
