@@ -7,7 +7,6 @@ from . import family_members
 from . import settlement_views
 from . import lesson_execution
 from . import lesson_execution_storage  # noqa: F401
-from . import lesson_execution_canonical_patch  # noqa: F401
 from . import coach_portal
 from . import today_lesson_actions
 from . import analytics_dashboard
