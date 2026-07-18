@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}コーチ業務ホーム{% endblock %}
+
+{% block content %}
+<style>
+  .coach-home{display:grid;gap:14px;max-width:1080px;margin:0 auto;padding-bottom:30px}
+  .hero{padding:18px;border:1px solid #bfdbfe;border-radius:22px;background:linear-gradient(135deg,#eff6ff 0%,#fff 58%,#f0fdf4 100%);box-shadow:0 10px 24px rgba(15,23,42,.06)}
+  .hero-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+  .title{margin:0;color:#0f172a;font-size:27px;line-height:1.25;font-weight:1000}
+  .lead{margin:7px 0 0;color:#64748b;font-size:13px;line-height:1.7;font-weight:750}
+  .date-badge{display:inline-flex;align-items:center;padding:8px 12px;border-radius:999px;border:1px solid #c7d2fe;background:#eef2ff;color:#3730a3;font-size:12px;font-weight:1000}
+  .section{padding:16px;border:1px solid #e5e7eb;border-radius:18px;background:#fff;box-shadow:0 8px 20px rgba(15,23,42,.05)}
+  .section-title{margin:0;color:#0f172a;font-size:19px;font-weight:1000}
+  .section-help{margin:5px 0 0;color:#64748b;font-size:12px;line-height:1.6;font-weight:750}
+  .card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin-top:13px}
+  .work-card{display:flex;flex-direction:column;justify-content:space-between;gap:12px;min-height:155px;padding:16px;border:1px solid #dbe3ee;border-radius:17px;background:#fff;text-decoration:none}
+  .work-card.primary{background:#0f172a;border-color:#0f172a;color:#fff}
+  .work-card.success{background:#f0fdf4;border-color:#bbf7d0}
+  .work-card.warn{background:#fff7ed;border-color:#fed7aa}
+  .work-card.info{background:#eff6ff;border-color:#bfdbfe}
+  .work-kicker{font-size:11px;font-weight:1000;color:#64748b}.primary .work-kicker{color:#cbd5e1}
+  .work-title{margin-top:5px;font-size:19px;line-height:1.35;font-weight:1000}
+  .work-text{margin-top:6px;color:#64748b;font-size:12px;line-height:1.6;font-weight:750}.primary .work-text{color:#dbeafe}
+  .work-action{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;font-weight:1000}
+  .arrow{font-size:20px;line-height:1}
+  .small-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:13px}
+  .small-link{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:13px;border:1px solid #e5e7eb;border-radius:14px;background:#fff;text-decoration:none}
+  .small-link strong{display:block;font-size:14px}.small-link span{display:block;margin-top:3px;color:#64748b;font-size:11px;line-height:1.45}
+  @media(max-width:760px){.coach-home{gap:11px}.hero,.section{padding:13px;border-radius:15px}.title{font-size:23px}.date-badge{width:100%;justify-content:center;border-radius:13px}.card-grid,.small-grid{grid-template-columns:1fr}.work-card{min-height:auto;padding:14px}.work-title{font-size:17px}}
+</style>
+
+<div class="coach-home">
+  <section class="hero">
+    <div class="hero-row">
+      <div>
+        <h1 class="title">コーチ業務ホーム</h1>
+        <p class="lead">毎日のレッスン対応から月末精算まで、実際の業務順に並べています。</p>
+      </div>
+      <div class="date-badge">{{ today|date:"Y年n月j日" }}</div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section-title">毎日使う機能</h2>
+    <p class="section-help">レッスン当日の確認と、終了後の実施登録を上から順に行います。</p>
+    <div class="card-grid">
+      <a class="work-card primary" href="{% url 'club:coach_today_lessons' %}">
+        <div>
+          <div class="work-kicker">STEP 1・当日確認</div>
+          <div class="work-title">本日の受付・参加者</div>
+          <div class="work-text">参加者、連絡先、現金回収、キャンセル待ちを確認します。</div>
+        </div>
+        <div class="work-action"><span>受付画面を開く</span><span class="arrow">›</span></div>
+      </a>
+
+      <a class="work-card success" href="{% url 'club:lesson_execution_manage' %}?year={{ current_year }}&month={{ current_month }}">
+        <div>
+          <div class="work-kicker">STEP 2・終了後</div>
+          <div class="work-title">レッスン実施管理</div>
+          <div class="work-text">実施済み、雨天中止、コート代返金を登録します。</div>
+        </div>
+        <div class="work-action"><span>実施管理を開く</span><span class="arrow">›</span></div>
+      </a>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section-title">経費・月末業務</h2>
+    <p class="section-help">立替経費を登録し、月末に会社財布からの最終受取額を確定します。</p>
+    <div class="card-grid">
+      <a class="work-card warn" href="{% url 'club:coach_expense_manage' %}">
+        <div>
+          <div class="work-kicker">随時</div>
+          <div class="work-title">経費・コート代登録</div>
+          <div class="work-text">支払ったコーチ、対象レッスン、領収書状況を登録します。</div>
+        </div>
+        <div class="work-action"><span>経費画面を開く</span><span class="arrow">›</span></div>
+      </a>
+
+      <a class="work-card info" href="{% url 'club:coach_admin_settlement' %}?year={{ current_year }}&month={{ current_month }}">
+        <div>
+          <div class="work-kicker">月末</div>
+          <div class="work-title">会社財布・月次精算</div>
+          <div class="work-text">売上、コート代、立替返金、業務委託負担、最終受取額を確認します。</div>
+        </div>
+        <div class="work-action"><span>月次精算を開く</span><span class="arrow">›</span></div>
+      </a>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2 class="section-title">その他の管理</h2>
+    <div class="small-grid">
+      <a class="small-link" href="{% url 'club:reservation_list' %}"><div><strong>予約・承認</strong><span>相談、承認待ち、キャンセルを確認</span></div><div>›</div></a>
+      <a class="small-link" href="{% url 'club:coach_fixed_lesson_weekly' %}"><div><strong>固定レッスン</strong><span>今後の予定と担当を確認</span></div><div>›</div></a>
+      <a class="small-link" href="{% url 'club:stringing_order_list' %}"><div><strong>ガット張り</strong><span>依頼と対応状況を確認</span></div><div>›</div></a>
+      <a class="small-link" href="{% url 'club:coach_revenue_summary' %}"><div><strong>収支管理</strong><span>売上と回収状況を確認</span></div><div>›</div></a>
+      <a class="small-link" href="{% url 'club:coach_payroll_summary' %}"><div><strong>コーチ別明細</strong><span>精算内訳を確認</span></div><div>›</div></a>
+      <a class="small-link" href="{% url 'club:lesson_calendar' %}"><div><strong>レッスンカレンダー</strong><span>会員表示と同じ予定を確認</span></div><div>›</div></a>
+      {% if is_admin_user %}
+        <a class="small-link" href="/admin/"><div><strong>Django管理</strong><span>マスタ・ユーザー・固定レッスン</span></div><div>›</div></a>
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}
