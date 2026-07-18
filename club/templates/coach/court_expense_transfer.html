@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load court_rates %}
 {% block title %}コート代登録{% endblock %}
 
 {% block content %}
@@ -99,6 +100,7 @@
 
 {{ availability.start_at|date:"c"|json_script:"court-start-at" }}
 {{ availability.end_at|date:"c"|json_script:"court-end-at" }}
+{{ availability.start_at|is_japanese_holiday|json_script:"court-is-holiday" }}
 {{ availability.court.court_type|default:""|json_script:"court-type" }}
 {{ availability.court.name|default:""|json_script:"court-name" }}
 {{ availability.court_count|default:1|json_script:"court-count" }}
@@ -117,6 +119,7 @@
 
   const startRaw = readJson("court-start-at");
   const endRaw = readJson("court-end-at");
+  const isHoliday = Boolean(readJson("court-is-holiday"));
   const courtType = String(readJson("court-type") || "").toLowerCase();
   const courtName = String(readJson("court-name") || "");
   const courtCount = Math.max(parseInt(readJson("court-count") || 1, 10), 1);
@@ -134,10 +137,9 @@
 
   const durationMinutes = Math.round((endAt.getTime() - startAt.getTime()) / 60000);
   const durationHours = durationMinutes / 60;
-  const day = startAt.getDay();
-
-  // 日曜日は祝日料金。祝日はサーバー側のjpholiday統合まで手動上書きで対応可能です。
-  const hourlyRate = day === 0 ? 1080 : 900;
+  const isSunday = startAt.getDay() === 0;
+  const premiumRate = isSunday || isHoliday;
+  const hourlyRate = premiumRate ? 1080 : 900;
   const baseAmount = Math.round(hourlyRate * durationHours * courtCount);
 
   const lightingStart = new Date(startAt);
@@ -150,10 +152,11 @@
   const lightingUnits = Math.ceil(lightingMinutes / 30);
   const lightingAmount = lightingUnits * 100 * courtCount;
   const total = baseAmount + lightingAmount;
+  const rateLabel = premiumRate ? "日曜・祝日" : "平日・土曜";
 
   amountInput.value = String(total);
   rateTotal.textContent = `自動計算：${total.toLocaleString("ja-JP")}円`;
-  rateDetail.textContent = `基本料 ${hourlyRate.toLocaleString("ja-JP")}円 × ${durationHours}時間 × ${courtCount}面 ＋ 照明料 ${lightingAmount.toLocaleString("ja-JP")}円`;
+  rateDetail.textContent = `${rateLabel}基本料 ${hourlyRate.toLocaleString("ja-JP")}円 × ${durationHours}時間 × ${courtCount}面 ＋ 照明料 ${lightingAmount.toLocaleString("ja-JP")}円`;
   rateBox.hidden = false;
 })();
 </script>
