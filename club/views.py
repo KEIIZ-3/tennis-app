@@ -1189,6 +1189,17 @@ def _fixed_lesson_includes_coach(fixed_lesson, coach):
 
 
 
+def _lesson_calendar_holiday_name(target_date):
+    if date(2026, 8, 11) <= target_date <= date(2026, 8, 14):
+        return "お盆休み・休講"
+    try:
+        import jpholiday
+
+        return jpholiday.is_holiday_name(target_date) or ""
+    except (ImportError, ValueError):
+        return ""
+
+
 @require_http_methods(["GET", "POST"])
 def lesson_calendar_view(request):
     _sync_fixed_lessons()
@@ -1890,12 +1901,34 @@ def lesson_calendar_view(request):
         reserve_url = f"{reverse('club:lesson_reservation_confirm')}?{urlencode(reserve_params)}"
         login_url = f"{reverse('club:line_login_start')}?{urlencode({'next': reserve_url})}"
 
+        member_list_url = (
+            f"{reverse('club:lesson_calendar_member_list')}?"
+            f"{urlencode({'availability_id': availability_id, 'fixed_lesson_id': fixed_lesson_id, 'lesson_date': lesson_date, 'year': target_year, 'month': target_month})}"
+        )
+        calendar_url = (
+            member_list_url
+            if target_year == 2026 and target_month == 7
+            else reserve_url
+        )
+
         return {
             "id": item_id,
             "availability_id": availability_id,
             "fixed_lesson_id": fixed_lesson_id,
             "lesson_date": lesson_date,
             "reserve_url": reserve_url,
+            "member_list_url": member_list_url,
+            "calendar_url": calendar_url,
+            "calendar_login_url": (
+                member_list_url
+                if target_year == 2026 and target_month == 7
+                else login_url
+            ),
+            "calendar_unavailable_url": (
+                member_list_url
+                if target_year == 2026 and target_month == 7
+                else f"#lesson-{item_id}"
+            ),
             "login_url": login_url,
             "source_kind": source_kind,
             "title": title,
@@ -2144,6 +2177,7 @@ def lesson_calendar_view(request):
                     "is_past": cursor < today,
                     "is_saturday": cursor.weekday() == 5,
                     "is_sunday": cursor.weekday() == 6,
+                    "holiday_name": _lesson_calendar_holiday_name(cursor),
                     "items": day_event_map.get(cursor, []),
                 }
             )
