@@ -10,6 +10,7 @@ from . import lesson_execution_storage  # noqa: F401
 from . import lesson_execution_canonical_patch  # noqa: F401
 from . import coach_portal
 from . import today_lesson_actions
+from . import analytics_dashboard
 
 app_name = "club"
 
@@ -21,6 +22,7 @@ urlpatterns = [
     path("logout/", views.logout_view, name="logout"),
     path("healthz/", views.healthz, name="healthz"),
     path("admin-dashboard/", admin_dashboard.admin_dashboard, name="admin_dashboard"),
+    path("analytics/", analytics_dashboard.analytics_dashboard, name="analytics_dashboard"),
     path("lesson-calendar/", views.lesson_calendar_view, name="lesson_calendar"),
     path("lesson-calendar/confirm/", views.lesson_reservation_confirm, name="lesson_reservation_confirm"),
     path("lesson-calendar/members/", lesson_member_list.lesson_calendar_member_list, name="lesson_calendar_member_list"),
