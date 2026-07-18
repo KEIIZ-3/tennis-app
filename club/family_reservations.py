@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError
-from django.db import connection
 from django.utils import timezone
+
+from .models import FamilyMember, LessonWaitlistParticipant, ReservationParticipant
 
 
 PARTICIPANT_SELF = "self"
@@ -59,18 +60,9 @@ def _parent_display_name(user):
 
 
 def _active_family_rows(parent):
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, full_name, relationship, member_level
-            FROM club_familymember
-            WHERE parent_id = %s
-              AND is_active = TRUE
-            ORDER BY full_name ASC, id ASC
-            """,
-            [parent.pk],
-        )
-        return cursor.fetchall()
+    return FamilyMember.objects.filter(parent=parent, is_active=True).order_by("full_name", "id").values_list(
+        "id", "full_name", "relationship", "member_level"
+    )
 
 
 def build_participant_choices_for_user(parent, target_level="", target_level_2=""):
@@ -146,32 +138,18 @@ def resolve_reservation_participant(parent, participant_key):
     except Exception:
         raise ValidationError("参加者の選択が不正です。")
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT id, full_name, relationship, member_level
-            FROM club_familymember
-            WHERE id = %s
-              AND parent_id = %s
-              AND is_active = TRUE
-            """,
-            [family_member_id, parent.pk],
-        )
-        row = cursor.fetchone()
-
-    if not row:
+    member = FamilyMember.objects.filter(pk=family_member_id, parent=parent, is_active=True).first()
+    if not member:
         raise ValidationError("選択された受講者プロフィールが見つかりません。")
-
-    member_id, full_name, relationship, member_level = row
     return {
-        "key": f"{PARTICIPANT_FAMILY_PREFIX}{member_id}",
+        "key": f"{PARTICIPANT_FAMILY_PREFIX}{member.pk}",
         "type": "family",
-        "family_member_id": member_id,
-        "name": full_name,
-        "relationship": relationship,
-        "relationship_label": _relationship_label(relationship),
-        "level": member_level,
-        "level_label": _level_label(user_model, member_level),
+        "family_member_id": member.pk,
+        "name": member.full_name,
+        "relationship": member.relationship,
+        "relationship_label": member.get_relationship_display(),
+        "level": member.member_level,
+        "level_label": _level_label(user_model, member.member_level),
     }
 
 
@@ -197,47 +175,43 @@ def validate_participant_can_book_lesson(participant, target_level="", target_le
 
 
 def save_reservation_participant_snapshot(reservation, participant):
-    now = timezone.now()
+    values = _snapshot_values(reservation.user_id, participant)
+    ReservationParticipant.objects.update_or_create(reservation=reservation, defaults=values)
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            INSERT INTO club_reservationparticipant
-                (
-                    reservation_id,
-                    parent_id,
-                    family_member_id,
-                    participant_type,
-                    participant_name,
-                    participant_level,
-                    participant_level_label,
-                    relationship_label,
-                    created_at,
-                    updated_at
-                )
-            VALUES
-                (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (reservation_id)
-            DO UPDATE SET
-                parent_id = EXCLUDED.parent_id,
-                family_member_id = EXCLUDED.family_member_id,
-                participant_type = EXCLUDED.participant_type,
-                participant_name = EXCLUDED.participant_name,
-                participant_level = EXCLUDED.participant_level,
-                participant_level_label = EXCLUDED.participant_level_label,
-                relationship_label = EXCLUDED.relationship_label,
-                updated_at = EXCLUDED.updated_at
-            """,
-            [
-                reservation.pk,
-                reservation.user_id,
-                participant.get("family_member_id"),
-                participant.get("type") or "self",
-                participant.get("name") or "",
-                participant.get("level") or "",
-                participant.get("level_label") or "",
-                participant.get("relationship_label") or "",
-                now,
-                now,
-            ],
-        )
+
+def save_waitlist_participant_snapshot(waitlist, participant):
+    values = _snapshot_values(waitlist.user_id, participant)
+    LessonWaitlistParticipant.objects.update_or_create(waitlist=waitlist, defaults=values)
+
+
+def copy_waitlist_participant_snapshot(waitlist, reservation):
+    snapshot = LessonWaitlistParticipant.objects.filter(waitlist=waitlist).first()
+    if not snapshot:
+        return False
+    ReservationParticipant.objects.update_or_create(
+        reservation=reservation,
+        defaults={
+            "parent_id": reservation.user_id,
+            "family_member_id": snapshot.family_member_id,
+            "participant_type": snapshot.participant_type,
+            "participant_name": snapshot.participant_name,
+            "participant_level": snapshot.participant_level,
+            "participant_level_label": snapshot.participant_level_label,
+            "relationship_label": snapshot.relationship_label,
+            "updated_at": timezone.now(),
+        },
+    )
+    return True
+
+
+def _snapshot_values(parent_id, participant):
+    return {
+        "parent_id": parent_id,
+        "family_member_id": participant.get("family_member_id"),
+        "participant_type": participant.get("type") or "self",
+        "participant_name": participant.get("name") or "",
+        "participant_level": participant.get("level") or "",
+        "participant_level_label": participant.get("level_label") or "",
+        "relationship_label": participant.get("relationship_label") or "",
+        "updated_at": timezone.now(),
+    }

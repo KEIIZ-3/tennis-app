@@ -3,19 +3,15 @@ from datetime import date
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
-from django.db import connection
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
+from .models import FamilyMember
 
-RELATIONSHIP_CHOICES = (
-    ("child", "子供"),
-    ("spouse", "配偶者"),
-    ("parent", "親"),
-    ("other", "その他"),
-)
+
+RELATIONSHIP_CHOICES = FamilyMember.RELATIONSHIP_CHOICES
 
 
 def _level_choices():
@@ -32,10 +28,6 @@ def _level_choices():
 
 def _choice_label(choices, value):
     return dict(choices).get(value, value or "-")
-
-
-def _table_name():
-    return "club_familymember"
 
 
 def _user_display_name(user):
@@ -55,53 +47,14 @@ def _date_or_none(value):
 
 
 def _family_member_rows(parent):
-    with connection.cursor() as cursor:
-        cursor.execute(
-            f"""
-            SELECT id, full_name, kana, relationship, birth_date, member_level, note, is_active, created_at, updated_at
-            FROM {_table_name()}
-            WHERE parent_id = %s
-            ORDER BY is_active DESC, full_name ASC, id ASC
-            """,
-            [parent.pk],
-        )
-        rows = cursor.fetchall()
-
     level_choices = _level_choices()
-    relationship_choices = RELATIONSHIP_CHOICES
-
-    result = []
-    for row in rows:
-        (
-            member_id,
-            full_name,
-            kana,
-            relationship,
-            birth_date,
-            member_level,
-            note,
-            is_active,
-            created_at,
-            updated_at,
-        ) = row
-        result.append(
-            {
-                "id": member_id,
-                "full_name": full_name,
-                "kana": kana,
-                "relationship": relationship,
-                "relationship_label": _choice_label(relationship_choices, relationship),
-                "birth_date": birth_date,
-                "birth_date_value": birth_date.isoformat() if birth_date else "",
-                "member_level": member_level,
-                "member_level_label": _choice_label(level_choices, member_level),
-                "note": note,
-                "is_active": bool(is_active),
-                "created_at": created_at,
-                "updated_at": updated_at,
-            }
-        )
-    return result
+    return [{
+        "id": member.pk, "full_name": member.full_name, "kana": member.kana,
+        "relationship": member.relationship, "relationship_label": member.get_relationship_display(),
+        "birth_date": member.birth_date, "birth_date_value": member.birth_date.isoformat() if member.birth_date else "",
+        "member_level": member.member_level, "member_level_label": _choice_label(level_choices, member.member_level),
+        "note": member.note, "is_active": member.is_active, "created_at": member.created_at, "updated_at": member.updated_at,
+    } for member in FamilyMember.objects.filter(parent=parent).order_by("-is_active", "full_name", "id")]
 
 
 def _get_family_member(parent, member_id):
@@ -110,30 +63,7 @@ def _get_family_member(parent, member_id):
     except Exception:
         return None
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            f"""
-            SELECT id, full_name, kana, relationship, birth_date, member_level, note, is_active
-            FROM {_table_name()}
-            WHERE id = %s AND parent_id = %s
-            """,
-            [member_id_int, parent.pk],
-        )
-        row = cursor.fetchone()
-
-    if not row:
-        return None
-
-    return {
-        "id": row[0],
-        "full_name": row[1],
-        "kana": row[2],
-        "relationship": row[3],
-        "birth_date": row[4],
-        "member_level": row[5],
-        "note": row[6],
-        "is_active": bool(row[7]),
-    }
+    return FamilyMember.objects.filter(pk=member_id_int, parent=parent).first()
 
 
 def _validate_payload(request):
@@ -194,27 +124,7 @@ def family_member_manage(request):
                 return redirect("club:family_member_manage")
 
             if action == "create":
-                now = timezone.now()
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        f"""
-                        INSERT INTO {_table_name()}
-                            (parent_id, full_name, kana, relationship, birth_date, member_level, note, is_active, created_at, updated_at)
-                        VALUES
-                            (%s, %s, %s, %s, %s, %s, %s, TRUE, %s, %s)
-                        """,
-                        [
-                            request.user.pk,
-                            payload["full_name"],
-                            payload["kana"],
-                            payload["relationship"],
-                            payload["birth_date"],
-                            payload["member_level"],
-                            payload["note"],
-                            now,
-                            now,
-                        ],
-                    )
+                FamilyMember.objects.create(parent=request.user, **payload)
                 messages.success(request, "受講者プロフィールを追加しました。")
                 return redirect("club:family_member_manage")
 
@@ -223,31 +133,10 @@ def family_member_manage(request):
                 messages.error(request, "対象の受講者プロフィールが見つかりません。")
                 return redirect("club:family_member_manage")
 
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    f"""
-                    UPDATE {_table_name()}
-                    SET full_name = %s,
-                        kana = %s,
-                        relationship = %s,
-                        birth_date = %s,
-                        member_level = %s,
-                        note = %s,
-                        updated_at = %s
-                    WHERE id = %s AND parent_id = %s
-                    """,
-                    [
-                        payload["full_name"],
-                        payload["kana"],
-                        payload["relationship"],
-                        payload["birth_date"],
-                        payload["member_level"],
-                        payload["note"],
-                        timezone.now(),
-                        member["id"],
-                        request.user.pk,
-                    ],
-                )
+            for field, value in payload.items():
+                setattr(member, field, value)
+            member.updated_at = timezone.now()
+            member.save(update_fields=[*payload.keys(), "updated_at"])
             messages.success(request, "受講者プロフィールを更新しました。")
             return redirect("club:family_member_manage")
 
@@ -257,17 +146,10 @@ def family_member_manage(request):
                 messages.error(request, "対象の受講者プロフィールが見つかりません。")
                 return redirect("club:family_member_manage")
 
-            next_active = not bool(member["is_active"])
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    f"""
-                    UPDATE {_table_name()}
-                    SET is_active = %s,
-                        updated_at = %s
-                    WHERE id = %s AND parent_id = %s
-                    """,
-                    [next_active, timezone.now(), member["id"], request.user.pk],
-                )
+            next_active = not member.is_active
+            member.is_active = next_active
+            member.updated_at = timezone.now()
+            member.save(update_fields=["is_active", "updated_at"])
             messages.success(request, "受講者プロフィールを有効にしました。" if next_active else "受講者プロフィールを無効にしました。")
             return redirect("club:family_member_manage")
 

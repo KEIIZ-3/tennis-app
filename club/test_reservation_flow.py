@@ -9,7 +9,14 @@ from django.urls import reverse
 from django.utils import timezone
 
 from . import lesson_execution
-from .models import CoachAvailability, Court, FixedLesson, LessonWaitlist, Reservation
+from .models import (
+    CoachAvailability,
+    Court,
+    FixedLesson,
+    LessonWaitlist,
+    LessonWaitlistParticipant,
+    Reservation,
+)
 
 
 class ReservationFlowSmokeTests(TestCase):
@@ -251,13 +258,15 @@ class ReservationFlowSmokeTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 302)
-        self.assertTrue(
-            LessonWaitlist.objects.filter(
+        waitlist = LessonWaitlist.objects.filter(
                 fixed_lesson=fixed_lesson,
                 user=self.member,
                 status=LessonWaitlist.STATUS_WAITING,
-            ).exists()
-        )
+            ).get()
+        snapshot = LessonWaitlistParticipant.objects.get(waitlist=waitlist)
+        self.assertEqual(snapshot.parent, self.member)
+        self.assertEqual(snapshot.participant_type, "self")
+        self.assertEqual(snapshot.participant_name, self.member.display_name())
 
         second_response = self._post_lesson_calendar_reserve(
             user=self.member,

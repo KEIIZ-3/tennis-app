@@ -89,6 +89,7 @@ class User(AbstractUser):
     def can_take_lessons(self):
         return self.role in self.LESSON_PARTICIPANT_ROLE_VALUES
 
+
     def contractor_hourly_wage_label(self):
         if self.is_contractor_coach() and int(self.contractor_hourly_wage or 0) > 0:
             return f"{int(self.contractor_hourly_wage):,}円/時"
@@ -129,6 +130,27 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.display_name()
+
+
+class FamilyMember(models.Model):
+    RELATIONSHIP_CHOICES = (("child", "子供"), ("spouse", "配偶者"), ("parent", "親"), ("other", "その他"))
+
+    parent = models.ForeignKey(User, on_delete=models.CASCADE, related_name="family_member_profiles", verbose_name="親アカウント")
+    full_name = models.CharField(max_length=120, verbose_name="受講者名")
+    kana = models.CharField(max_length=120, blank=True, default="", verbose_name="ふりがな")
+    relationship = models.CharField(max_length=30, choices=RELATIONSHIP_CHOICES, default="child", verbose_name="続柄")
+    birth_date = models.DateField(null=True, blank=True, verbose_name="生年月日")
+    member_level = models.CharField(max_length=30, choices=User.LEVEL_CHOICES, verbose_name="レベル")
+    note = models.TextField(blank=True, default="", verbose_name="メモ")
+    is_active = models.BooleanField(default=True, verbose_name="有効")
+    created_at = models.DateTimeField(default=timezone.now, verbose_name="作成日時")
+    updated_at = models.DateTimeField(default=timezone.now, verbose_name="更新日時")
+
+    class Meta:
+        ordering = ["parent_id", "-is_active", "full_name", "id"]
+        indexes = [models.Index(fields=["parent", "is_active"], name="family_parent_active_idx")]
+        verbose_name = "家族受講者プロフィール"
+        verbose_name_plural = "家族受講者プロフィール"
 
 
 class Court(models.Model):
@@ -2159,6 +2181,7 @@ class LessonWaitlist(models.Model):
             ),
         ]
 
+
     def __str__(self):
         return f"{self.user} / {self.get_lesson_type_display()} / {self.start_at:%Y-%m-%d %H:%M} / {self.get_status_display()}"
 
@@ -2276,6 +2299,40 @@ class LessonWaitlist(models.Model):
         self.status = self.STATUS_CONVERTED
         self.converted_at = now
         return True
+
+
+class ReservationParticipant(models.Model):
+    reservation = models.OneToOneField(Reservation, on_delete=models.CASCADE, related_name="participant_snapshot", verbose_name="予約")
+    parent = models.ForeignKey(User, on_delete=models.CASCADE, related_name="reservation_participant_snapshots", verbose_name="親アカウント")
+    family_member = models.ForeignKey(FamilyMember, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False, related_name="reservation_snapshots", verbose_name="家族受講者")
+    participant_type = models.CharField(max_length=20, default="self", verbose_name="参加者種別")
+    participant_name = models.CharField(max_length=120, verbose_name="参加者名")
+    participant_level = models.CharField(max_length=30, blank=True, default="", verbose_name="参加者レベル")
+    participant_level_label = models.CharField(max_length=50, blank=True, default="", verbose_name="参加者レベル表示")
+    relationship_label = models.CharField(max_length=50, blank=True, default="", verbose_name="続柄表示")
+    created_at = models.DateTimeField(default=timezone.now, verbose_name="作成日時")
+    updated_at = models.DateTimeField(default=timezone.now, verbose_name="更新日時")
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["parent", "participant_type"], name="res_part_parent_type_idx"), models.Index(fields=["family_member"], name="res_part_family_idx")]
+
+
+class LessonWaitlistParticipant(models.Model):
+    waitlist = models.OneToOneField(LessonWaitlist, on_delete=models.CASCADE, related_name="participant_snapshot", verbose_name="キャンセル待ち")
+    parent = models.ForeignKey(User, on_delete=models.CASCADE, related_name="lesson_waitlist_participant_snapshots", verbose_name="親アカウント")
+    family_member = models.ForeignKey(FamilyMember, on_delete=models.SET_NULL, null=True, blank=True, db_constraint=False, related_name="waitlist_snapshots", verbose_name="家族受講者")
+    participant_type = models.CharField(max_length=20, default="self", verbose_name="参加者種別")
+    participant_name = models.CharField(max_length=120, verbose_name="参加者名")
+    participant_level = models.CharField(max_length=30, blank=True, default="", verbose_name="参加者レベル")
+    participant_level_label = models.CharField(max_length=50, blank=True, default="", verbose_name="参加者レベル表示")
+    relationship_label = models.CharField(max_length=50, blank=True, default="", verbose_name="続柄表示")
+    created_at = models.DateTimeField(default=timezone.now, verbose_name="作成日時")
+    updated_at = models.DateTimeField(default=timezone.now, verbose_name="更新日時")
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["parent", "participant_type"], name="wait_part_parent_type_idx"), models.Index(fields=["family_member"], name="wait_part_family_idx")]
 
 
 class StringingOrder(models.Model):

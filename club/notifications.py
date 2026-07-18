@@ -8,7 +8,6 @@ import urllib.request
 
 from django.conf import settings
 from django.core.mail import send_mail
-from django.db import connection
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -71,26 +70,12 @@ def _reservation_participant_label(reservation):
 
     reservation_id = getattr(reservation, "pk", None)
     if reservation_id:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT
-                        participant_name,
-                        participant_level_label,
-                        relationship_label
-                    FROM club_reservationparticipant
-                    WHERE reservation_id = %s
-                    LIMIT 1
-                    """,
-                    [reservation_id],
-                )
-                row = cursor.fetchone()
-        except Exception:
-            row = None
-
-        if row:
-            participant_name, participant_level_label, relationship_label = row
+        from .models import ReservationParticipant
+        snapshot = ReservationParticipant.objects.filter(reservation_id=reservation_id).first()
+        if snapshot:
+            participant_name = snapshot.participant_name
+            participant_level_label = snapshot.participant_level_label
+            relationship_label = snapshot.relationship_label
             parts = []
             if participant_name:
                 parts.append(str(participant_name))
