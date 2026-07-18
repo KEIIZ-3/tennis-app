@@ -31,6 +31,9 @@ EXPENSE_APPROVAL_SUBMITTED = "submitted"
 EXPENSE_APPROVAL_APPROVED = "approved"
 
 EXPENSE_NOTE_META_PREFIX = "__EXPENSE_META__"
+COURT_TRANSFER_RECORD_KIND = "court_transfer"
+COURT_TRANSFER_REFUND_PENDING = "refund_pending"
+COURT_TRANSFER_REFUNDED = "refunded"
 
 
 def money(value):
@@ -124,6 +127,68 @@ def expense_meta_row(expense):
         "approval_status": approval_status,
         "is_payout": is_payout,
     }
+
+
+def apply_court_transfer_expenses(coach_map, expense_rows):
+    for row in coach_map.values():
+        row["court_use_deduction"] = 0
+        row["court_advance_credit"] = 0
+        row["court_transfer_net"] = 0
+        row["court_cost_burden"] = 0
+        row["wallet_reimbursement"] = 0
+
+    transfer_total = 0
+    for expense_row in expense_rows:
+        meta = expense_row["meta"]
+        if meta.get("record_kind") != COURT_TRANSFER_RECORD_KIND:
+            continue
+        if expense_row["approval_status"] != EXPENSE_APPROVAL_APPROVED:
+            continue
+        if meta.get("approval_status") in (
+            COURT_TRANSFER_REFUND_PENDING,
+            COURT_TRANSFER_REFUNDED,
+        ):
+            continue
+
+        amount = max(money(expense_row["expense"].amount), 0)
+        if amount <= 0:
+            continue
+
+        using_coach_ids = []
+        for value in meta.get("using_coach_ids") or []:
+            try:
+                coach_id = int(value)
+            except (TypeError, ValueError):
+                continue
+            if coach_id in coach_map and coach_id not in using_coach_ids:
+                using_coach_ids.append(coach_id)
+
+        if not using_coach_ids:
+            continue
+
+        base_amount, remainder = divmod(amount, len(using_coach_ids))
+        for index, coach_id in enumerate(using_coach_ids):
+            deduction = base_amount + (1 if index < remainder else 0)
+            coach_map[coach_id]["court_use_deduction"] += deduction
+            coach_map[coach_id]["court_cost_burden"] += deduction
+
+        try:
+            payer_coach_id = int(meta.get("payer_coach_id"))
+        except (TypeError, ValueError):
+            payer_coach_id = None
+
+        if payer_coach_id in coach_map:
+            coach_map[payer_coach_id]["court_advance_credit"] += amount
+            coach_map[payer_coach_id]["wallet_reimbursement"] += amount
+
+        transfer_total += amount
+
+    for row in coach_map.values():
+        row["court_transfer_net"] = (
+            row["court_advance_credit"] - row["court_use_deduction"]
+        )
+
+    return transfer_total
 
 
 def reservation_coaches_for_split(reservation):
@@ -442,6 +507,21 @@ def calculate_monthly_settlement(year, month, *, force=False):
                         0,
                     ),
                     "common_expense_share": saved.common_expense_share,
+                    "court_use_deduction": money(
+                        saved.calculation_snapshot.get("court_use_deduction")
+                    ),
+                    "court_advance_credit": money(
+                        saved.calculation_snapshot.get("court_advance_credit")
+                    ),
+                    "court_transfer_net": money(
+                        saved.calculation_snapshot.get("court_transfer_net")
+                    ),
+                    "court_cost_burden": money(
+                        saved.calculation_snapshot.get("court_use_deduction")
+                    ),
+                    "wallet_reimbursement": money(
+                        saved.calculation_snapshot.get("court_advance_credit")
+                    ),
                     "personal_reimbursement_due": saved.reimbursement_due,
                     "reimbursement_carry_in": saved.reimbursement_carry_in,
                     "reimbursement_current_month": saved.reimbursement_current_month,
@@ -601,6 +681,11 @@ def calculate_monthly_settlement(year, month, *, force=False):
         for row in all_expense_meta_rows
         if month_start <= row["expense"].expense_date < next_month
     ]
+    court_transfer_total = apply_court_transfer_expenses(
+        coach_map,
+        monthly_expense_meta_rows,
+    )
+
     approved_common_expense_rows = [
         row
         for row in monthly_expense_meta_rows
@@ -686,8 +771,14 @@ def calculate_monthly_settlement(year, month, *, force=False):
         lesson_and_work_amount = (
             lesson_compensation_amount + row["stringing_amount"]
         )
-        salary_due = max(
+        base_salary_due = max(
             lesson_and_work_amount - row["common_expense_share"],
+            0,
+        )
+        salary_due = max(
+            base_salary_due
+            - row["court_use_deduction"]
+            + row["court_advance_credit"],
             0,
         )
 
@@ -812,6 +903,15 @@ def calculate_monthly_settlement(year, month, *, force=False):
                     "lesson_and_work_amount": row[
                         "lesson_and_work_amount"
                     ],
+                    "court_use_deduction": row[
+                        "court_use_deduction"
+                    ],
+                    "court_advance_credit": row[
+                        "court_advance_credit"
+                    ],
+                    "court_transfer_net": row[
+                        "court_transfer_net"
+                    ],
                 },
                 "updated_at": timezone.now(),
             },
@@ -829,6 +929,7 @@ def calculate_monthly_settlement(year, month, *, force=False):
         "per_coach_common_expense": per_coach_common_expense,
         "common_expense_base_total": common_expense_base_total,
         "contractor_hourly_pay_total": contractor_hourly_pay_total,
+        "court_transfer_total": court_transfer_total,
     }
     settlement.updated_at = timezone.now()
     settlement.save(update_fields=["calculation_snapshot", "updated_at"])
@@ -854,6 +955,7 @@ def calculate_monthly_settlement(year, month, *, force=False):
         "cash_in_total": cash_in_total,
         "approved_common_expense_total": approved_common_expense_total,
         "contractor_hourly_pay_total": contractor_hourly_pay_total,
+        "court_transfer_total": court_transfer_total,
         "common_expense_base_total": common_expense_base_total,
         "common_expense_participant_count": common_expense_participant_count,
         "salary_due_total": salary_due_total,
