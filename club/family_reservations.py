@@ -2,6 +2,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from .models import FamilyMember, LessonWaitlistParticipant, ReservationParticipant
+from .models import LessonTypeMixin, is_preopen_cash_lesson_date
 
 
 PARTICIPANT_SELF = "self"
@@ -153,7 +154,16 @@ def resolve_reservation_participant(parent, participant_key):
     }
 
 
-def validate_participant_can_book_lesson(participant, target_level="", target_level_2=""):
+def validate_participant_can_book_lesson(
+    participant,
+    target_level="",
+    target_level_2="",
+    *,
+    lesson_type="",
+    start_at=None,
+):
+    if lesson_type == LessonTypeMixin.LESSON_GENERAL and is_preopen_cash_lesson_date(start_at):
+        return
     # family member の parent は予約レコードの user で管理するため、ここではレベルのみ検証する。
     # level_label は保存済みの表示用で、比較には level を使う。
     class DummyUserModel:

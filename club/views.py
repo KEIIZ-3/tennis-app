@@ -561,11 +561,15 @@ def _lesson_level_label(obj):
     return "・".join(labels)
 
 
-def _user_can_book_lesson_levels(user, obj):
+def _user_can_book_lesson_levels(user, obj, *, start_at=None):
     if not user or not getattr(user, "is_authenticated", False):
         return False
     levels = _lesson_level_values(obj)
     if not levels:
+        return True
+    lesson_type = getattr(obj, "lesson_type", "")
+    lesson_start = start_at or getattr(obj, "start_at", None)
+    if lesson_type == Reservation.LESSON_GENERAL and is_preopen_cash_lesson_date(lesson_start):
         return True
     if hasattr(user, "can_book_any_level"):
         return user.can_book_any_level(*levels)
@@ -574,9 +578,11 @@ def _user_can_book_lesson_levels(user, obj):
     return True
 
 
-def _slot_level_allowed(user, target_level, target_level_2=""):
+def _slot_level_allowed(user, target_level, target_level_2="", *, lesson_type="", start_at=None):
     if not user or not getattr(user, "is_authenticated", False):
         return False
+    if lesson_type == Reservation.LESSON_GENERAL and is_preopen_cash_lesson_date(start_at):
+        return True
     if hasattr(user, "can_book_any_level"):
         return user.can_book_any_level(target_level, target_level_2)
     if hasattr(user, "can_book_level"):
@@ -1373,6 +1379,8 @@ def lesson_calendar_view(request):
                 participant,
                 availability.target_level,
                 getattr(availability, "target_level_2", "") or "",
+                lesson_type=availability.lesson_type,
+                start_at=availability.start_at,
             )
 
             active_count = Reservation.objects.filter(
@@ -1858,7 +1866,13 @@ def lesson_calendar_view(request):
             disabled_reason = "予約済みです。"
         elif user_slot_status == Reservation.STATUS_PENDING:
             disabled_reason = "承認待ちの申請があります。"
-        elif not _slot_level_allowed(request.user, target_level, target_level_2):
+        elif not _slot_level_allowed(
+            request.user,
+            target_level,
+            target_level_2,
+            lesson_type=lesson_type,
+            start_at=start_at,
+        ):
             disabled_reason = "ご自身のレベルでは予約できません。"
         elif int(member_count or 0) >= int(capacity or 0):
             if user_waitlist_id:
@@ -6660,7 +6674,11 @@ def reservation_create(request):
 
             if hasattr(request.user, "can_book_level") and selected_lesson and regular_fixed_lesson_id:
                 fixed_lesson = FixedLesson.objects.filter(pk=regular_fixed_lesson_id).first()
-                if fixed_lesson and not _user_can_book_lesson_levels(request.user, fixed_lesson):
+                if fixed_lesson and not _user_can_book_lesson_levels(
+                    request.user,
+                    fixed_lesson,
+                    start_at=start_at,
+                ):
                     selected_lesson["can_submit"] = False
                     selected_lesson["can_join_waitlist"] = False
                     selected_lesson["disabled_reason"] = "ご自身のレベルでは予約できません。"

@@ -108,10 +108,6 @@ class User(AbstractUser):
         return self.LEVEL_ORDER.get(self.member_level, 0)
 
     def can_book_level(self, target_level: str) -> bool:
-        from .middleware import preopen_level_free_enabled
-
-        if preopen_level_free_enabled():
-            return True
         if not target_level or target_level == self.LEVEL_ALL:
             return True
         return self.level_rank() >= self.LEVEL_ORDER.get(target_level, 999)
