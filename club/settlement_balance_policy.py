@@ -1,518 +1,963 @@
 from collections import defaultdict
-from datetime import date, datetime, time
-from decimal import Decimal, ROUND_FLOOR
+from datetime import date
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db.models import Sum
 from django.utils import timezone
 
-MAIN_COACH_NAMES = ("飯塚研太朗", "清水峻平", "井上春佳")
-WEEKDAY_RATE = 900
-HOLIDAY_RATE = 1200
-LIGHTING_RATE = 400
+
+MAIN_COACH_NAMES = (
+    "飯塚研太朗",
+    "清水峻平",
+    "井上春佳",
+)
+
+WEEKDAY_COURT_RATE_PER_HOUR = 900
+WEEKEND_HOLIDAY_COURT_RATE_PER_HOUR = 1200
+LIGHTING_RATE_PER_HOUR = 400
+
+EXPENSE_TYPE_PERSONAL = "personal"
+EXPENSE_TYPE_COMMON = "common"
+EXPENSE_APPROVAL_APPROVED = "approved"
+EXPENSE_NOTE_META_PREFIX = "__EXPENSE_META__"
 
 try:
-    import jpholiday  # type: ignore
-except Exception:  # pragma: no cover
+    import jpholiday
+except ImportError:  # pragma: no cover
     jpholiday = None
 
 
-def money(value):
+def _money(value):
     try:
         return int(value or 0)
-    except Exception:
+    except (TypeError, ValueError):
         return 0
 
 
-def name(user):
+def _display_name(user):
     if not user:
         return ""
     try:
         return str(user.display_name() or "").strip()
     except Exception:
-        return str(getattr(user, "full_name", "") or getattr(user, "username", "") or "").strip()
+        return str(
+            getattr(user, "full_name", "")
+            or getattr(user, "username", "")
+            or ""
+        ).strip()
 
 
-def main_coaches():
+def _main_coaches():
     User = get_user_model()
-    found = {name(user): user for user in User.objects.filter(role="coach").order_by("id")}
-    return [found[value] for value in MAIN_COACH_NAMES if value in found]
+    users_by_name = {
+        _display_name(user): user
+        for user in User.objects.filter(role="coach").order_by("id")
+    }
+    return [
+        users_by_name[coach_name]
+        for coach_name in MAIN_COACH_NAMES
+        if coach_name in users_by_name
+    ]
 
 
-def month_range(year, month):
-    start = date(int(year), int(month), 1)
-    end = date(int(year) + 1, 1, 1) if int(month) == 12 else date(int(year), int(month) + 1, 1)
-    return start, end
+def _month_range(year, month):
+    start_date = date(int(year), int(month), 1)
+    if int(month) == 12:
+        end_date = date(int(year) + 1, 1, 1)
+    else:
+        end_date = date(int(year), int(month) + 1, 1)
+    return start_date, end_date
 
 
-def local(value):
-    return timezone.localtime(value) if value and timezone.is_aware(value) else value
+def _local_datetime(value):
+    if value and timezone.is_aware(value):
+        return timezone.localtime(value)
+    return value
 
 
-def split_amount(amount, coach_ids):
-    coach_ids = [coach_id for coach_id in coach_ids if coach_id]
-    if not coach_ids:
-        return {}
-    base, remainder = divmod(money(amount), len(coach_ids))
+def _parse_expense_note(stored_note):
+    import json
+
+    defaults = {
+        "expense_type": EXPENSE_TYPE_COMMON,
+        "receipt_status": "none",
+        "receipt_check_status": "unchecked",
+        "approval_status": EXPENSE_APPROVAL_APPROVED,
+    }
+    text = stored_note or ""
+
+    if not text.startswith(EXPENSE_NOTE_META_PREFIX):
+        return {
+            **defaults,
+            "plain_note": text.strip(),
+        }
+
+    try:
+        first_line, plain_note = text.split("\n", 1)
+    except ValueError:
+        first_line = text
+        plain_note = ""
+
+    raw_json = first_line[len(EXPENSE_NOTE_META_PREFIX):].strip()
+    try:
+        parsed = json.loads(raw_json or "{}")
+    except Exception:
+        parsed = {}
+
     return {
-        coach_id: base + (1 if index < remainder else 0)
-        for index, coach_id in enumerate(coach_ids)
+        **defaults,
+        **parsed,
+        "plain_note": (plain_note or "").strip(),
     }
 
 
-def is_holiday(target):
-    if target.weekday() >= 5:
+def _is_japanese_holiday(target_date):
+    if target_date.weekday() >= 5:
         return True
+
     if jpholiday is None:
         return False
+
     try:
-        return bool(jpholiday.is_holiday(target))
+        return bool(jpholiday.is_holiday(target_date))
     except Exception:
         return False
 
 
-def lighting_start_hour(target):
-    if target.month in (5, 6, 7, 8):
+def _lighting_start_hour(target_date):
+    if target_date.month in (5, 6, 7, 8):
         return 19
-    if target.month in (3, 4, 9):
+    if target_date.month in (3, 4, 9):
         return 18
     return 17
 
 
-def hours(start_at, end_at):
-    if not start_at or not end_at or end_at <= start_at:
-        return Decimal("0")
-    return Decimal(str((end_at - start_at).total_seconds())) / Decimal("3600")
+def _overlap_hours(start_at, end_at, boundary_hour):
+    start_local = _local_datetime(start_at)
+    end_local = _local_datetime(end_at)
 
-
-def court_cost(start_at, end_at, court_count=1):
-    start_at = local(start_at)
-    end_at = local(end_at)
-    if not start_at or not end_at:
+    if not start_local or not end_local or end_local <= start_local:
         return 0
-    base_rate = HOLIDAY_RATE if is_holiday(start_at.date()) else WEEKDAY_RATE
-    light_start = datetime.combine(start_at.date(), time(lighting_start_hour(start_at.date())))
-    if timezone.is_aware(start_at):
-        light_start = timezone.make_aware(light_start, timezone.get_current_timezone())
-    light_hours = hours(max(start_at, light_start), end_at)
-    amount = (
-        hours(start_at, end_at) * Decimal(base_rate)
-        + light_hours * Decimal(LIGHTING_RATE)
-    ) * Decimal(max(money(court_count), 1))
-    return int(amount.quantize(Decimal("1"), rounding=ROUND_FLOOR))
 
+    boundary = start_local.replace(
+        hour=boundary_hour,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    overlap_start = max(start_local, boundary)
+    if end_local <= overlap_start:
+        return 0
 
-def facility_key(court):
-    court_type = str(getattr(court, "court_type", "") or "").strip()
-    if court_type:
-        return f"facility:{court_type}"
-    court_name = str(getattr(court, "name", "") or court or "").strip()
-    return f"facility_name:{court_name}" if court_name else "facility:unknown"
-
-
-def court_slot_key(reservation):
-    start_at = local(reservation.start_at)
-    end_at = local(reservation.end_at)
-    return (
-        f"{start_at.date().isoformat()}|{facility_key(reservation.court)}|"
-        f"{start_at:%H:%M}|{end_at:%H:%M}"
+    return max(
+        int((end_local - overlap_start).total_seconds() // 3600),
+        0,
     )
 
 
-def reservation_group_key(reservation):
-    if getattr(reservation, "availability_id", None):
-        return ("availability", reservation.availability_id)
-    return (
-        reservation.lesson_type,
-        reservation.court_id,
+def _reservation_duration_hours(reservation):
+    try:
+        seconds = (reservation.end_at - reservation.start_at).total_seconds()
+        return max(int(seconds // 3600), 0)
+    except Exception:
+        return 0
+
+
+def _automatic_court_cost(reservation):
+    start_local = _local_datetime(reservation.start_at)
+    if not start_local:
+        return 0
+
+    duration_hours = _reservation_duration_hours(reservation)
+    if duration_hours <= 0:
+        return 0
+
+    base_rate = (
+        WEEKEND_HOLIDAY_COURT_RATE_PER_HOUR
+        if _is_japanese_holiday(start_local.date())
+        else WEEKDAY_COURT_RATE_PER_HOUR
+    )
+    court_count = max(int(getattr(reservation, "court_count", 1) or 1), 1)
+    base_cost = base_rate * duration_hours * court_count
+
+    lighting_hours = _overlap_hours(
         reservation.start_at,
         reservation.end_at,
-        getattr(reservation, "fixed_lesson_id", None),
+        _lighting_start_hour(start_local.date()),
     )
+    lighting_cost = LIGHTING_RATE_PER_HOUR * lighting_hours * court_count
+
+    return base_cost + lighting_cost
 
 
-def assigned_coaches(reservation):
-    from .settlement_service import reservation_coaches_for_split
-
-    result = []
-    seen = set()
-    for coach in reservation_coaches_for_split(reservation):
-        if coach.pk not in seen:
-            seen.add(coach.pk)
-            result.append(coach)
-    return result
-
-
-def approved_expenses(year, month):
-    from .settlement_service import expense_meta_row
-    from .models import CoachExpense
-
-    start, end = month_range(year, month)
-    rows = []
-    for expense in (
-        CoachExpense.objects.filter(expense_date__gte=start, expense_date__lt=end)
-        .select_related("created_by")
-        .order_by("expense_date", "id")
+def _reservation_coaches(reservation):
+    substitute = getattr(reservation, "substitute_coach", None)
+    if substitute and getattr(substitute, "role", "") in (
+        "coach",
+        "contractor_coach",
     ):
-        meta_row = expense_meta_row(expense)
-        if meta_row["is_payout"] or meta_row["approval_status"] != "approved":
-            continue
-        rows.append((expense, meta_row))
-    return rows
+        return [substitute]
 
+    fixed_lesson = getattr(reservation, "fixed_lesson", None)
+    if fixed_lesson:
+        try:
+            coaches = [
+                coach
+                for coach in fixed_lesson.all_coaches()
+                if coach
+                and getattr(coach, "role", "") in (
+                    "coach",
+                    "contractor_coach",
+                )
+            ]
+            if coaches:
+                return coaches
+        except Exception:
+            pass
 
-def build_expense_ledger(year, month, mains):
-    from .models import CoachExpense, Reservation
-
-    start, end = month_range(year, month)
-    main_ids = {coach.pk for coach in mains}
-    approved = approved_expenses(year, month)
-    court_expenses = defaultdict(list)
-    other_expenses = []
-    for expense, meta_row in approved:
-        if expense.category == CoachExpense.CATEGORY_COURT:
-            key = str((meta_row.get("meta") or {}).get("court_refund_slot_key") or "").strip()
-            if key:
-                court_expenses[key].append(expense)
-        else:
-            other_expenses.append(expense)
-
-    grouped = {}
-    reservations = (
-        Reservation.objects.filter(
-            start_at__date__gte=start,
-            start_at__date__lt=end,
-            status=Reservation.STATUS_ACTIVE,
+    try:
+        assigned = reservation.assigned_coach()
+    except Exception:
+        assigned = (
+            getattr(reservation, "substitute_coach", None)
+            or getattr(reservation, "coach", None)
         )
-        .select_related(
-            "coach", "substitute_coach", "court", "availability", "fixed_lesson",
-            "fixed_lesson__coach", "fixed_lesson__coach_2", "fixed_lesson__coach_3",
-        )
-        .order_by("start_at", "id")
-    )
-    for reservation in reservations:
-        grouped.setdefault(reservation_group_key(reservation), reservation)
 
-    burden = defaultdict(int)
-    reimbursement = defaultdict(int)
-    court_rows = []
-    unmatched = []
-    total_court = 0
+    if assigned and getattr(assigned, "role", "") in (
+        "coach",
+        "contractor_coach",
+    ):
+        return [assigned]
 
-    for reservation in grouped.values():
-        availability = getattr(reservation, "availability", None)
-        amount = court_cost(
-            reservation.start_at,
-            reservation.end_at,
-            getattr(availability, "court_count", 1) or 1,
-        )
-        key = court_slot_key(reservation)
-        linked = court_expenses.get(key, [])
-        payer = linked[0].created_by if linked else None
-        coaches = assigned_coaches(reservation)
-        assigned_main = [coach for coach in coaches if coach.pk in main_ids]
-        contractors = [coach for coach in coaches if getattr(coach, "role", "") == "contractor_coach"]
-        burden_coaches = assigned_main if assigned_main else (list(mains) if contractors else [])
+    return []
 
-        if amount <= 0 or not payer or payer.pk not in main_ids or not burden_coaches:
-            if amount > 0:
-                unmatched.append({
-                    "slot_key": key,
-                    "lesson": f"{local(reservation.start_at):%Y/%m/%d %H:%M}〜{local(reservation.end_at):%H:%M}",
-                    "court": str(reservation.court),
-                    "amount": amount,
-                    "reason": "承認済みコート経費の立替者、または負担コーチが未確定です。",
-                })
-            continue
 
-        shares = split_amount(amount, [coach.pk for coach in burden_coaches])
-        for coach_id, share in shares.items():
-            burden[coach_id] += share
-        reimbursement[payer.pk] += amount
-        total_court += amount
-        court_rows.append({
-            "slot_key": key,
-            "lesson": f"{local(reservation.start_at):%Y/%m/%d %H:%M}〜{local(reservation.end_at):%H:%M}",
-            "court": str(reservation.court),
-            "amount": amount,
-            "payer_id": payer.pk,
-            "payer_name": name(payer),
-            "burden_names": [name(coach) for coach in burden_coaches],
-            "burden_shares": {str(key): value for key, value in shares.items()},
-            "contractor_only": bool(contractors and not assigned_main),
-        })
+def _split_amount(amount, coach_ids):
+    unique_ids = list(dict.fromkeys(coach_id for coach_id in coach_ids if coach_id))
+    if not unique_ids:
+        return {}
 
-    other_total = 0
-    for expense in other_expenses:
-        other_total += money(expense.amount)
-        if expense.created_by_id in main_ids:
-            reimbursement[expense.created_by_id] += money(expense.amount)
-
+    base_amount, remainder = divmod(_money(amount), len(unique_ids))
     return {
-        "court_total": total_court,
-        "court_burden": dict(burden),
-        "reimbursement": dict(reimbursement),
-        "other_total": other_total,
-        "court_rows": court_rows,
-        "unmatched": unmatched,
+        coach_id: base_amount + (1 if index < remainder else 0)
+        for index, coach_id in enumerate(unique_ids)
     }
 
 
-def previous_balance(coach, year, month):
-    from .settlement_models import CoachMonthlySettlement
+def _slot_key_for_reservation(reservation):
+    start_local = _local_datetime(reservation.start_at)
+    end_local = _local_datetime(reservation.end_at)
 
-    previous_year, previous_month = (int(year) - 1, 12) if int(month) == 1 else (int(year), int(month) - 1)
-    saved = CoachMonthlySettlement.objects.filter(
-        monthly_settlement__year=previous_year,
-        monthly_settlement__month=previous_month,
-        coach=coach,
-    ).first()
-    if not saved:
-        return 0
-    snapshot = saved.calculation_snapshot or {}
-    return money(snapshot.get("closing_compensation_balance", saved.salary_unpaid))
+    if not start_local or not end_local:
+        return ""
+
+    court = getattr(reservation, "court", None)
+    court_type = str(getattr(court, "court_type", "") or "").strip()
+    if court_type:
+        facility_key = f"facility:{court_type}"
+    else:
+        court_name = str(getattr(court, "name", "") or court or "").strip()
+        facility_key = (
+            f"facility_name:{court_name}"
+            if court_name
+            else "facility:unknown"
+        )
+
+    return (
+        f"{start_local.date().isoformat()}|"
+        f"{facility_key}|"
+        f"{start_local:%H:%M}|"
+        f"{end_local:%H:%M}"
+    )
 
 
-def salary_paid(settlement, coach):
+def _is_court_expense(expense):
+    try:
+        from .models import CoachExpense
+
+        return expense.category == CoachExpense.CATEGORY_COURT
+    except Exception:
+        return False
+
+
+def _approved_monthly_expenses(month_start, next_month):
+    from .models import CoachExpense
+
+    rows = []
+    queryset = (
+        CoachExpense.objects.filter(
+            expense_date__gte=month_start,
+            expense_date__lt=next_month,
+        )
+        .select_related("created_by")
+        .order_by("expense_date", "id")
+    )
+
+    for expense in queryset:
+        meta = _parse_expense_note(expense.note)
+        if meta.get("approval_status") != EXPENSE_APPROVAL_APPROVED:
+            continue
+
+        expense_type = str(meta.get("expense_type") or EXPENSE_TYPE_COMMON)
+        if expense_type not in (EXPENSE_TYPE_PERSONAL, EXPENSE_TYPE_COMMON):
+            continue
+
+        rows.append(
+            {
+                "expense": expense,
+                "meta": meta,
+                "expense_type": expense_type,
+                "amount": _money(expense.amount),
+                "payer_id": getattr(expense, "created_by_id", None),
+                "is_court": _is_court_expense(expense),
+                "slot_key": str(meta.get("court_refund_slot_key") or "").strip(),
+            }
+        )
+
+    return rows
+
+
+def _eligible_reservations(year, month):
+    from .models import Reservation
+
+    month_start, next_month = _month_range(year, month)
+    now = timezone.now()
+
+    return list(
+        Reservation.objects.filter(
+            start_at__date__gte=month_start,
+            start_at__date__lt=next_month,
+            status=Reservation.STATUS_ACTIVE,
+            end_at__lte=now,
+        )
+        .select_related(
+            "coach",
+            "substitute_coach",
+            "court",
+            "fixed_lesson",
+            "fixed_lesson__coach",
+            "fixed_lesson__coach_2",
+            "fixed_lesson__coach_3",
+        )
+        .order_by("start_at", "id")
+    )
+
+
+def _build_court_cost_policy(year, month, main_coach_ids):
+    month_start, next_month = _month_range(year, month)
+    reservations = _eligible_reservations(year, month)
+    expenses = _approved_monthly_expenses(month_start, next_month)
+
+    court_expenses_by_slot = defaultdict(list)
+    unlinked_court_expenses = []
+
+    for row in expenses:
+        if not row["is_court"]:
+            continue
+        if row["slot_key"]:
+            court_expenses_by_slot[row["slot_key"]].append(row)
+        else:
+            unlinked_court_expenses.append(row)
+
+    burden_by_coach = defaultdict(int)
+    reimbursement_by_coach = defaultdict(int)
+    detail_rows = []
+    unmatched_expected_total = 0
+    used_expense_ids = set()
+
+    for reservation in reservations:
+        expected_cost = _automatic_court_cost(reservation)
+        slot_key = _slot_key_for_reservation(reservation)
+        linked_expenses = court_expenses_by_slot.get(slot_key, [])
+
+        matched_expense = None
+        for candidate in linked_expenses:
+            expense_id = candidate["expense"].pk
+            if expense_id not in used_expense_ids:
+                matched_expense = candidate
+                used_expense_ids.add(expense_id)
+                break
+
+        if matched_expense:
+            finalized_cost = matched_expense["amount"]
+            payer_id = matched_expense["payer_id"]
+            if payer_id:
+                reimbursement_by_coach[payer_id] += finalized_cost
+            is_finalized = True
+        else:
+            finalized_cost = 0
+            payer_id = None
+            is_finalized = False
+            unmatched_expected_total += expected_cost
+
+        coaches = _reservation_coaches(reservation)
+        regular_main_ids = [
+            coach.pk
+            for coach in coaches
+            if coach.pk in main_coach_ids
+            and getattr(coach, "role", "") == "coach"
+        ]
+        contractor_only = bool(coaches) and all(
+            getattr(coach, "role", "") == "contractor_coach"
+            for coach in coaches
+        )
+
+        if contractor_only:
+            burden_targets = list(main_coach_ids)
+            burden_rule = "業務委託コーチのみのためメインコーチ3人負担"
+        elif regular_main_ids:
+            burden_targets = regular_main_ids
+            burden_rule = "担当メインコーチ負担"
+        else:
+            burden_targets = []
+            burden_rule = "負担先未確定"
+
+        if finalized_cost and burden_targets:
+            for coach_id, allocated in _split_amount(
+                finalized_cost,
+                burden_targets,
+            ).items():
+                burden_by_coach[coach_id] += allocated
+
+        detail_rows.append(
+            {
+                "reservation_id": reservation.pk,
+                "start_at": reservation.start_at.isoformat(),
+                "end_at": reservation.end_at.isoformat(),
+                "slot_key": slot_key,
+                "expected_cost": expected_cost,
+                "finalized_cost": finalized_cost,
+                "payer_id": payer_id,
+                "burden_target_ids": burden_targets,
+                "burden_rule": burden_rule,
+                "is_finalized": is_finalized,
+            }
+        )
+
+    unused_registered_total = 0
+    for row in expenses:
+        if not row["is_court"]:
+            continue
+        if row["expense"].pk in used_expense_ids:
+            continue
+        unused_registered_total += row["amount"]
+
+    return {
+        "burden_by_coach": dict(burden_by_coach),
+        "reimbursement_by_coach": dict(reimbursement_by_coach),
+        "detail_rows": detail_rows,
+        "finalized_court_cost_total": sum(burden_by_coach.values()),
+        "court_reimbursement_total": sum(reimbursement_by_coach.values()),
+        "unmatched_expected_total": unmatched_expected_total,
+        "unused_registered_total": unused_registered_total,
+        "unlinked_court_expense_ids": [
+            row["expense"].pk for row in unlinked_court_expenses
+        ],
+    }
+
+
+def _build_other_expense_policy(year, month, main_coach_ids):
+    month_start, next_month = _month_range(year, month)
+    expenses = _approved_monthly_expenses(month_start, next_month)
+
+    burden_by_coach = defaultdict(int)
+    reimbursement_by_coach = defaultdict(int)
+    detail_rows = []
+
+    for row in expenses:
+        if row["is_court"]:
+            continue
+
+        amount = row["amount"]
+        payer_id = row["payer_id"]
+        if payer_id:
+            reimbursement_by_coach[payer_id] += amount
+
+        if row["expense_type"] == EXPENSE_TYPE_COMMON:
+            target_ids = list(main_coach_ids)
+            rule = "メインコーチ3人均等負担"
+        else:
+            target_ids = [payer_id] if payer_id else []
+            rule = "本人負担"
+
+        for coach_id, allocated in _split_amount(amount, target_ids).items():
+            burden_by_coach[coach_id] += allocated
+
+        detail_rows.append(
+            {
+                "expense_id": row["expense"].pk,
+                "amount": amount,
+                "payer_id": payer_id,
+                "burden_target_ids": target_ids,
+                "burden_rule": rule,
+            }
+        )
+
+    return {
+        "burden_by_coach": dict(burden_by_coach),
+        "reimbursement_by_coach": dict(reimbursement_by_coach),
+        "detail_rows": detail_rows,
+        "expense_total": sum(row["amount"] for row in detail_rows),
+        "reimbursement_total": sum(reimbursement_by_coach.values()),
+    }
+
+
+def _active_salary_payment_total(settlement, coach):
     from .settlement_models import SettlementPayment
 
-    return money(SettlementPayment.objects.filter(
+    result = SettlementPayment.objects.filter(
         monthly_settlement=settlement,
         coach=coach,
         payment_type=SettlementPayment.PAYMENT_TYPE_SALARY,
         is_reversed=False,
-    ).aggregate(total=Sum("amount")).get("total"))
+    ).aggregate(total=Sum("amount"))
+    return _money(result.get("total"))
 
 
-def allocate_residual(rows, amount):
-    eligible = [row for row in rows if row["is_main_coach"]]
-    if amount <= 0 or not eligible:
-        return
-    weights = [max(money(row["gross_contribution"]), 0) for row in eligible]
-    if sum(weights) <= 0:
-        weights = [1] * len(eligible)
-    remaining = amount
-    total_weight = sum(weights)
-    for index, row in enumerate(eligible):
-        share = remaining if index == len(eligible) - 1 else int(amount * weights[index] / total_weight)
-        remaining -= share
-        row["wallet_residual_allocation"] += share
-        row["balance_before_payment"] += share
-
-
-def apply_wallet_result(result, year, month):
+def _apply_wallet_policy(result, year, month):
     from .settlement_models import CoachMonthlySettlement
 
     settlement = result.get("settlement")
-    rows = list(result.get("coach_rows") or [])
-    if not settlement or settlement.is_closed or not rows:
+    if settlement is None or settlement.is_closed:
         return result
 
-    mains = main_coaches()
-    if not mains:
+    coach_rows = list(result.get("coach_rows") or [])
+    if not coach_rows:
         return result
-    main_ids = {coach.pk for coach in mains}
-    ledger = build_expense_ledger(year, month, mains)
-    contractor_total = money(result.get("contractor_hourly_pay_total"))
-    shared_total = ledger["other_total"] + contractor_total
-    shared = split_amount(shared_total, [coach.pk for coach in mains])
 
-    lesson_revenue = money(result.get("ticket_amount_total")) + money(result.get("preopen_paid_total"))
-    stringing_revenue = money(result.get("stringing_total"))
-    wallet_revenue = lesson_revenue + stringing_revenue
+    main_coach_list = _main_coaches()
+    main_coach_ids = [coach.pk for coach in main_coach_list]
+    main_coach_id_set = set(main_coach_ids)
 
-    for row in rows:
-        coach = row["coach"]
-        coach_id = coach.pk
-        row["is_main_coach"] = coach_id in main_ids
-        row["gross_contribution"] = (
-            money(row.get("ticket_amount"))
-            + money(row.get("preopen_paid_amount"))
-            + money(row.get("stringing_amount"))
-        )
-        row["court_expense_burden"] = money(ledger["court_burden"].get(coach_id))
-        row["shared_operating_expense"] = money(shared.get(coach_id)) if row["is_main_coach"] else 0
-        row["court_expense_reimbursement"] = money(ledger["reimbursement"].get(coach_id))
-        row["wallet_residual_allocation"] = 0
+    court_policy = _build_court_cost_policy(
+        year,
+        month,
+        main_coach_ids,
+    )
+    other_expense_policy = _build_other_expense_policy(
+        year,
+        month,
+        main_coach_ids,
+    )
 
-        if row.get("is_contractor_coach"):
-            current = money(row.get("contractor_hourly_pay_amount")) + money(row.get("stringing_amount"))
-        elif row["is_main_coach"]:
-            current = row["gross_contribution"] - row["court_expense_burden"] - row["shared_operating_expense"]
-        else:
-            current = money(row.get("stringing_amount"))
+    contractor_pay_total = sum(
+        _money(row.get("contractor_hourly_pay_amount"))
+        for row in coach_rows
+        if row.get("is_contractor_coach")
+    )
+    contractor_share_by_main = _split_amount(
+        contractor_pay_total,
+        main_coach_ids,
+    )
 
-        opening = previous_balance(coach, year, month)
-        row["current_month_compensation"] = current
-        row["opening_compensation_balance"] = opening
-        row["balance_before_payment"] = opening + current
-        row["salary_paid"] = salary_paid(settlement, coach)
-        row["common_expense_share"] = row["court_expense_burden"] + row["shared_operating_expense"]
+    total_company_revenue = sum(
+        _money(row.get("ticket_amount"))
+        + _money(row.get("preopen_paid_amount"))
+        + _money(row.get("stringing_amount"))
+        for row in coach_rows
+    )
 
-        existing_due = money(row.get("reimbursement_due"))
-        auto_due = row["court_expense_reimbursement"]
-        row["reimbursement_due"] = existing_due + auto_due
-        row["personal_reimbursement_due"] = row["reimbursement_due"]
-        row["reimbursement_current_month"] = money(row.get("reimbursement_current_month")) + auto_due
-
-    fixed_outflow = sum(money(row.get("reimbursement_due")) for row in rows) + contractor_total
-    available_main = max(wallet_revenue - fixed_outflow, 0)
-    positive_main = sum(max(money(row["balance_before_payment"]), 0) for row in rows if row["is_main_coach"])
-
-    if positive_main > available_main:
-        eligible = [row for row in rows if row["is_main_coach"] and row["balance_before_payment"] > 0]
-        remaining = available_main
-        for index, row in enumerate(eligible):
-            capped = remaining if index == len(eligible) - 1 else int(available_main * row["balance_before_payment"] / positive_main)
-            remaining -= capped
-            row["balance_before_payment"] = capped
-    else:
-        allocate_residual(rows, available_main - positive_main)
-
-    totals = defaultdict(int)
-    for row in rows:
-        balance = money(row["balance_before_payment"])
-        paid = money(row["salary_paid"])
-        closing = balance - paid
-        row["salary_due"] = max(balance, 0)
-        row["unpaid_salary"] = max(closing, 0)
-        row["negative_carry"] = max(-closing, 0)
-        row["closing_compensation_balance"] = closing
-        row["unpaid_reimbursement"] = max(money(row["reimbursement_due"]) - money(row.get("reimbursement_paid")), 0)
-        row["total_unpaid"] = row["unpaid_salary"] + row["unpaid_reimbursement"]
-        row["total_paid"] = paid + money(row.get("reimbursement_paid"))
-
-        saved = CoachMonthlySettlement.objects.filter(monthly_settlement=settlement, coach=row["coach"]).first()
-        if saved:
-            snapshot = dict(saved.calculation_snapshot or {})
-            snapshot.update({
-                "wallet_policy": "zero_reserve_monthly_wallet",
-                "is_main_coach": row["is_main_coach"],
-                "gross_contribution": row["gross_contribution"],
-                "court_expense_burden": row["court_expense_burden"],
-                "court_expense_reimbursement": row["court_expense_reimbursement"],
-                "shared_operating_expense": row["shared_operating_expense"],
-                "wallet_residual_allocation": row["wallet_residual_allocation"],
-                "current_month_compensation": row["current_month_compensation"],
-                "opening_compensation_balance": row["opening_compensation_balance"],
-                "balance_before_payment": balance,
-                "closing_compensation_balance": closing,
-                "negative_carry": row["negative_carry"],
-            })
-            saved.common_expense_share = row["common_expense_share"]
-            saved.reimbursement_due = row["reimbursement_due"]
-            saved.reimbursement_current_month = row["reimbursement_current_month"]
-            saved.salary_due = row["salary_due"]
-            saved.salary_paid = paid
-            saved.salary_unpaid = row["unpaid_salary"]
-            saved.reimbursement_paid = money(row.get("reimbursement_paid"))
-            saved.reimbursement_unpaid = row["unpaid_reimbursement"]
-            saved.calculation_snapshot = snapshot
-            saved.updated_at = timezone.now()
-            saved.save()
-
-        totals["salary_due"] += row["salary_due"]
-        totals["salary_paid"] += paid
-        totals["reimbursement_due"] += row["reimbursement_due"]
-        totals["reimbursement_paid"] += money(row.get("reimbursement_paid"))
-        totals["unpaid_salary"] += row["unpaid_salary"]
-        totals["unpaid_reimbursement"] += row["unpaid_reimbursement"]
-        totals["negative_carry"] += row["negative_carry"]
-
-    recorded_out = totals["salary_paid"] + totals["reimbursement_paid"]
-    wallet_balance = max(wallet_revenue - recorded_out, 0)
-    settlement.opening_balance = 0
-    settlement.ticket_cash_in = money(result.get("ticket_amount_total"))
-    settlement.preopen_cash_in = money(result.get("preopen_paid_total"))
-    settlement.stringing_cash_in = stringing_revenue
-    settlement.cash_in_total = wallet_revenue
-    settlement.salary_cash_out = totals["salary_paid"]
-    settlement.reimbursement_cash_out = totals["reimbursement_paid"]
-    settlement.common_expense_cash_out = 0
-    settlement.contractor_cash_out = contractor_total
-    settlement.cash_out_total = recorded_out
-    settlement.unpaid_salary_total = totals["unpaid_salary"]
-    settlement.unpaid_reimbursement_total = totals["unpaid_reimbursement"]
-    settlement.closing_balance = wallet_balance
-    settlement.calculation_snapshot = {
-        **(settlement.calculation_snapshot or {}),
-        "wallet_policy": "zero_reserve_monthly_wallet",
-        "company_is_wallet": True,
-        "main_coach_names": list(MAIN_COACH_NAMES),
-        "main_coach_ids": [coach.pk for coach in mains],
-        "lesson_wallet_revenue": lesson_revenue,
-        "stringing_wallet_revenue": stringing_revenue,
-        "wallet_revenue_total": wallet_revenue,
-        "court_cost_total": ledger["court_total"],
-        "court_ledger_rows": ledger["court_rows"],
-        "court_unmatched_rows": ledger["unmatched"],
-        "shared_operating_expense_total": shared_total,
-        "contractor_hourly_pay_total": contractor_total,
-        "available_for_main_compensation": available_main,
-        "negative_carry_total": totals["negative_carry"],
+    row_by_coach_id = {
+        getattr(row.get("coach"), "pk", None): row
+        for row in coach_rows
     }
+
+    final_total_before_adjustment = 0
+
+    for row in coach_rows:
+        coach = row.get("coach")
+        coach_id = getattr(coach, "pk", None)
+        is_contractor = bool(row.get("is_contractor_coach"))
+
+        lesson_revenue = (
+            _money(row.get("ticket_amount"))
+            + _money(row.get("preopen_paid_amount"))
+        )
+        stringing_revenue = _money(row.get("stringing_amount"))
+
+        court_burden = _money(
+            court_policy["burden_by_coach"].get(coach_id)
+        )
+        other_expense_burden = _money(
+            other_expense_policy["burden_by_coach"].get(coach_id)
+        )
+        contractor_burden = _money(
+            contractor_share_by_main.get(coach_id)
+        )
+
+        court_reimbursement = _money(
+            court_policy["reimbursement_by_coach"].get(coach_id)
+        )
+        other_expense_reimbursement = _money(
+            other_expense_policy["reimbursement_by_coach"].get(coach_id)
+        )
+        reimbursement_total = (
+            court_reimbursement + other_expense_reimbursement
+        )
+
+        if is_contractor:
+            earned_amount = (
+                _money(row.get("contractor_hourly_pay_amount"))
+                + stringing_revenue
+            )
+            burden_total = 0
+        else:
+            earned_amount = lesson_revenue + stringing_revenue
+            burden_total = (
+                court_burden
+                + other_expense_burden
+                + contractor_burden
+            )
+
+        final_entitlement = (
+            earned_amount
+            + reimbursement_total
+            - burden_total
+        )
+
+        row.update(
+            {
+                "is_main_coach": coach_id in main_coach_id_set,
+                "company_revenue_contribution": (
+                    lesson_revenue + stringing_revenue
+                ),
+                "court_cost_burden": court_burden,
+                "other_expense_burden": other_expense_burden,
+                "contractor_cost_burden": contractor_burden,
+                "total_cost_burden": burden_total,
+                "court_reimbursement": court_reimbursement,
+                "other_expense_reimbursement": (
+                    other_expense_reimbursement
+                ),
+                "wallet_reimbursement": reimbursement_total,
+                "wallet_earned_amount": earned_amount,
+                "wallet_final_entitlement": final_entitlement,
+                "wallet_balance_adjustment": 0,
+            }
+        )
+        final_total_before_adjustment += final_entitlement
+
+    wallet_difference = total_company_revenue - final_total_before_adjustment
+
+    adjustment_by_coach = {}
+    if wallet_difference != 0 and main_coach_ids:
+        positive_contributions = {
+            coach_id: max(
+                _money(
+                    row_by_coach_id.get(coach_id, {}).get(
+                        "company_revenue_contribution"
+                    )
+                ),
+                0,
+            )
+            for coach_id in main_coach_ids
+        }
+        contribution_total = sum(positive_contributions.values())
+
+        if contribution_total > 0:
+            allocated = 0
+            for index, coach_id in enumerate(main_coach_ids):
+                if index == len(main_coach_ids) - 1:
+                    adjustment = wallet_difference - allocated
+                else:
+                    adjustment = int(
+                        wallet_difference
+                        * positive_contributions[coach_id]
+                        / contribution_total
+                    )
+                    allocated += adjustment
+                adjustment_by_coach[coach_id] = adjustment
+        else:
+            adjustment_by_coach = _split_amount(
+                wallet_difference,
+                main_coach_ids,
+            )
+
+        for coach_id, adjustment in adjustment_by_coach.items():
+            row = row_by_coach_id.get(coach_id)
+            if row is None:
+                continue
+            row["wallet_balance_adjustment"] = adjustment
+            row["wallet_final_entitlement"] += adjustment
+
+    salary_due_total = 0
+    salary_paid_total = 0
+    unpaid_salary_total = 0
+    negative_carry_total = 0
+
+    for row in coach_rows:
+        coach = row.get("coach")
+        final_entitlement = _money(row.get("wallet_final_entitlement"))
+        salary_paid = _active_salary_payment_total(settlement, coach)
+
+        salary_due = max(final_entitlement, 0)
+        closing_balance = final_entitlement - salary_paid
+        unpaid_salary = max(closing_balance, 0)
+        negative_carry = max(-closing_balance, 0)
+
+        row.update(
+            {
+                "salary_due": salary_due,
+                "salary_paid": salary_paid,
+                "unpaid_salary": unpaid_salary,
+                "negative_carry": negative_carry,
+                "closing_compensation_balance": closing_balance,
+                "personal_reimbursement_due": _money(
+                    row.get("wallet_reimbursement")
+                ),
+                "reimbursement_due": _money(
+                    row.get("wallet_reimbursement")
+                ),
+                "unpaid_reimbursement": 0,
+                "total_unpaid": unpaid_salary,
+                "total_paid": salary_paid,
+                "common_expense_share": _money(
+                    row.get("total_cost_burden")
+                ),
+            }
+        )
+
+        saved_row = CoachMonthlySettlement.objects.filter(
+            monthly_settlement=settlement,
+            coach=coach,
+        ).first()
+
+        if saved_row is not None:
+            snapshot = dict(saved_row.calculation_snapshot or {})
+            snapshot.update(
+                {
+                    "wallet_policy": True,
+                    "is_main_coach": bool(
+                        row.get("is_main_coach")
+                    ),
+                    "company_revenue_contribution": _money(
+                        row.get("company_revenue_contribution")
+                    ),
+                    "court_cost_burden": _money(
+                        row.get("court_cost_burden")
+                    ),
+                    "other_expense_burden": _money(
+                        row.get("other_expense_burden")
+                    ),
+                    "contractor_cost_burden": _money(
+                        row.get("contractor_cost_burden")
+                    ),
+                    "total_cost_burden": _money(
+                        row.get("total_cost_burden")
+                    ),
+                    "court_reimbursement": _money(
+                        row.get("court_reimbursement")
+                    ),
+                    "other_expense_reimbursement": _money(
+                        row.get("other_expense_reimbursement")
+                    ),
+                    "wallet_reimbursement": _money(
+                        row.get("wallet_reimbursement")
+                    ),
+                    "wallet_earned_amount": _money(
+                        row.get("wallet_earned_amount")
+                    ),
+                    "wallet_balance_adjustment": _money(
+                        row.get("wallet_balance_adjustment")
+                    ),
+                    "wallet_final_entitlement": final_entitlement,
+                    "closing_compensation_balance": closing_balance,
+                    "negative_carry": negative_carry,
+                }
+            )
+
+            saved_row.common_expense_share = _money(
+                row.get("total_cost_burden")
+            )
+            saved_row.reimbursement_due = _money(
+                row.get("wallet_reimbursement")
+            )
+            saved_row.reimbursement_current_month = _money(
+                row.get("wallet_reimbursement")
+            )
+            saved_row.reimbursement_carry_in = 0
+            saved_row.salary_due = salary_due
+            saved_row.salary_paid = salary_paid
+            saved_row.salary_unpaid = unpaid_salary
+            saved_row.reimbursement_paid = 0
+            saved_row.reimbursement_unpaid = 0
+            saved_row.calculation_snapshot = snapshot
+            saved_row.updated_at = timezone.now()
+            saved_row.save(
+                update_fields=[
+                    "common_expense_share",
+                    "reimbursement_due",
+                    "reimbursement_current_month",
+                    "reimbursement_carry_in",
+                    "salary_due",
+                    "salary_paid",
+                    "salary_unpaid",
+                    "reimbursement_paid",
+                    "reimbursement_unpaid",
+                    "calculation_snapshot",
+                    "updated_at",
+                ]
+            )
+
+        salary_due_total += salary_due
+        salary_paid_total += salary_paid
+        unpaid_salary_total += unpaid_salary
+        negative_carry_total += negative_carry
+
+    settlement.opening_balance = 0
+    settlement.cash_in_total = total_company_revenue
+    settlement.ticket_cash_in = _money(
+        result.get("ticket_amount_total")
+    )
+    settlement.preopen_cash_in = _money(
+        result.get("preopen_paid_total")
+    )
+    settlement.stringing_cash_in = _money(
+        result.get("stringing_total")
+    )
+    settlement.salary_cash_out = salary_paid_total
+    settlement.reimbursement_cash_out = 0
+    settlement.common_expense_cash_out = 0
+    settlement.contractor_cash_out = contractor_pay_total
+    settlement.cash_out_total = salary_paid_total
+    settlement.unpaid_salary_total = unpaid_salary_total
+    settlement.unpaid_reimbursement_total = 0
+    settlement.closing_balance = max(
+        total_company_revenue - salary_paid_total,
+        0,
+    )
+
+    settlement_snapshot = dict(settlement.calculation_snapshot or {})
+    settlement_snapshot.update(
+        {
+            "wallet_policy": True,
+            "company_internal_reserve": 0,
+            "company_revenue_definition": (
+                "ticket_consumption + collected_cash + stringing"
+            ),
+            "main_coach_names": list(MAIN_COACH_NAMES),
+            "main_coach_ids": main_coach_ids,
+            "total_company_revenue": total_company_revenue,
+            "contractor_pay_total": contractor_pay_total,
+            "contractor_share_by_main": contractor_share_by_main,
+            "court_policy": court_policy,
+            "other_expense_policy": other_expense_policy,
+            "wallet_difference_before_adjustment": wallet_difference,
+            "wallet_adjustment_by_coach": adjustment_by_coach,
+            "negative_carry_total": negative_carry_total,
+        }
+    )
+    settlement.calculation_snapshot = settlement_snapshot
     settlement.updated_at = timezone.now()
     settlement.save()
 
-    result.update({
-        "coach_rows": rows,
-        "company_is_wallet": True,
-        "wallet_policy": "zero_reserve_monthly_wallet",
-        "opening_balance": 0,
-        "cash_in_total": wallet_revenue,
-        "company_balance": wallet_balance,
-        "lesson_wallet_revenue": lesson_revenue,
-        "stringing_wallet_revenue": stringing_revenue,
-        "wallet_revenue_total": wallet_revenue,
-        "court_cost_total": ledger["court_total"],
-        "court_ledger_rows": ledger["court_rows"],
-        "court_unmatched_rows": ledger["unmatched"],
-        "approved_common_expense_total": ledger["other_total"],
-        "common_expense_base_total": shared_total,
-        "common_expense_participant_count": len(mains),
-        "per_coach_common_expense": int(shared_total / max(len(mains), 1)),
-        "salary_due_total": totals["salary_due"],
-        "salary_paid_total": totals["salary_paid"],
-        "reimbursement_due_total": totals["reimbursement_due"],
-        "reimbursement_paid_total": totals["reimbursement_paid"],
-        "unpaid_salary_total": totals["unpaid_salary"],
-        "unpaid_reimbursement_total": totals["unpaid_reimbursement"],
-        "negative_carry_total": totals["negative_carry"],
-    })
+    result.update(
+        {
+            "coach_rows": coach_rows,
+            "cash_in_total": total_company_revenue,
+            "company_balance": settlement.closing_balance,
+            "opening_balance": 0,
+            "salary_due_total": salary_due_total,
+            "salary_paid_total": salary_paid_total,
+            "unpaid_salary_total": unpaid_salary_total,
+            "reimbursement_due_total": 0,
+            "reimbursement_paid_total": 0,
+            "unpaid_reimbursement_total": 0,
+            "cash_out_total": salary_paid_total,
+            "approved_common_expense_total": (
+                other_expense_policy["expense_total"]
+            ),
+            "contractor_hourly_pay_total": contractor_pay_total,
+            "common_expense_base_total": (
+                other_expense_policy["expense_total"]
+                + contractor_pay_total
+            ),
+            "common_expense_participant_count": len(main_coach_ids),
+            "court_cost_total": court_policy[
+                "finalized_court_cost_total"
+            ],
+            "court_cost_expected_unregistered_total": court_policy[
+                "unmatched_expected_total"
+            ],
+            "court_cost_registered_unused_total": court_policy[
+                "unused_registered_total"
+            ],
+            "wallet_policy": True,
+            "wallet_revenue_total": total_company_revenue,
+            "wallet_remaining_payable": settlement.closing_balance,
+            "negative_carry_total": negative_carry_total,
+        }
+    )
     return result
 
 
-def apply_payment_guard():
+def _apply_payment_guard():
     from .settlement_models import SettlementPayment
 
-    if getattr(SettlementPayment.save, "_wallet_guard_applied", False):
+    if getattr(
+        SettlementPayment.save,
+        "_wallet_payment_guard_applied",
+        False,
+    ):
         return
+
     original_save = SettlementPayment.save
 
     def guarded_save(self, *args, **kwargs):
-        if self._state.adding and not self.legacy_coach_expense_id:
+        is_new = bool(getattr(self._state, "adding", False))
+
+        if is_new and not self.is_reversed:
+            payment_amount = _money(self.amount)
+            if payment_amount <= 0:
+                raise ValidationError(
+                    "支払金額は1円以上にしてください。"
+                )
+
             from .settlement_service import calculate_monthly_settlement
 
-            result = calculate_monthly_settlement(self.monthly_settlement.year, self.monthly_settlement.month)
-            row = next((item for item in result.get("coach_rows", []) if item["coach"].pk == self.coach_id), None)
-            if self.payment_type == SettlementPayment.PAYMENT_TYPE_SALARY:
-                limit = money(row.get("unpaid_salary")) if row else 0
-            else:
-                limit = money(row.get("unpaid_reimbursement")) if row else 0
-            if money(self.amount) > limit:
-                raise ValidationError(f"支払可能上限は{limit:,}円です。会社の財布をマイナスにはできません。")
-            remaining = max(
-                money(result.get("wallet_revenue_total"))
-                - money(result.get("salary_paid_total"))
-                - money(result.get("reimbursement_paid_total")),
-                0,
+            result = calculate_monthly_settlement(
+                self.monthly_settlement.year,
+                self.monthly_settlement.month,
             )
-            if money(self.amount) > remaining:
-                raise ValidationError(f"会社の財布残高を超えています。現在の支払可能上限は{remaining:,}円です。")
+
+            company_available = _money(
+                result.get("wallet_remaining_payable")
+            )
+            target_row = next(
+                (
+                    row
+                    for row in result.get("coach_rows", [])
+                    if getattr(row.get("coach"), "pk", None)
+                    == self.coach_id
+                ),
+                None,
+            )
+            coach_available = _money(
+                (target_row or {}).get("unpaid_salary")
+            )
+
+            if self.payment_type == self.PAYMENT_TYPE_REIMBURSEMENT:
+                raise ValidationError(
+                    "会社＝財布方式では、立替返金は月末一括精算額に"
+                    "含まれます。支払種別は「給与支払い」を選択してください。"
+                )
+
+            if payment_amount > coach_available:
+                raise ValidationError(
+                    "支払額がこのコーチの支払可能額を超えています。"
+                    f"支払可能上限は{coach_available:,}円です。"
+                )
+
+            if payment_amount > company_available:
+                raise ValidationError(
+                    "支払額が会社の当月売上残高を超えています。"
+                    f"会社財布の支払可能残高は{company_available:,}円です。"
+                )
+
         return original_save(self, *args, **kwargs)
 
-    guarded_save._wallet_guard_applied = True
+    guarded_save._wallet_payment_guard_applied = True
     guarded_save._original_save = original_save
     SettlementPayment.save = guarded_save
 
@@ -520,15 +965,39 @@ def apply_payment_guard():
 def apply_settlement_balance_policy():
     from . import settlement_service
 
-    if getattr(settlement_service.calculate_monthly_settlement, "_wallet_policy_applied", False):
-        apply_payment_guard()
+    current_calculate = settlement_service.calculate_monthly_settlement
+
+    if getattr(
+        current_calculate,
+        "_wallet_policy_applied",
+        False,
+    ):
+        _apply_payment_guard()
         return
-    original = settlement_service.calculate_monthly_settlement
 
-    def calculate(year, month, *, force=False):
-        return apply_wallet_result(original(year, month, force=force), year, month)
+    original_calculate = getattr(
+        current_calculate,
+        "_original_calculate",
+        current_calculate,
+    )
 
-    calculate._wallet_policy_applied = True
-    calculate._original_calculate = original
-    settlement_service.calculate_monthly_settlement = calculate
-    apply_payment_guard()
+    def calculate_with_wallet_policy(year, month, *, force=False):
+        result = original_calculate(
+            year,
+            month,
+            force=force,
+        )
+        return _apply_wallet_policy(
+            result,
+            year,
+            month,
+        )
+
+    calculate_with_wallet_policy._wallet_policy_applied = True
+    calculate_with_wallet_policy._original_calculate = original_calculate
+
+    settlement_service.calculate_monthly_settlement = (
+        calculate_with_wallet_policy
+    )
+
+    _apply_payment_guard()
