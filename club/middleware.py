@@ -7,139 +7,8 @@ from django.utils.deprecation import MiddlewareMixin
 
 
 _CANCEL_POLICY_PATCHED = False
-_COURT_TYPE_POLICY_PATCHED = False
-_LEVEL_ALL_POLICY_PATCHED = False
 _AVAILABILITY_SAVE_POLICY_PATCHED = False
 _FIXED_LESSON_SYNC_POLICY_PATCHED = False
-
-
-def _patch_court_type_choices():
-    """
-    管理サイトの「コート種別」プルダウンを運用名に合わせます。
-
-    既存DB値:
-    - sono: 西猪名公園
-    - other: その他
-
-    追加DB値:
-    - amagasaki: 尼崎記念公園
-
-    Courtモデル本体の巨大置換を避けるため、リクエスト処理前に
-    モデルフィールドのchoicesを補正し、管理サイトのフォーム生成・保存検証に反映します。
-    """
-    global _COURT_TYPE_POLICY_PATCHED
-
-    if _COURT_TYPE_POLICY_PATCHED:
-        return
-
-    try:
-        from .models import Court
-    except Exception:
-        return
-
-    court_type_choices = (
-        ("sono", "西猪名公園"),
-        ("amagasaki", "尼崎記念公園"),
-        ("other", "その他"),
-    )
-
-    try:
-        Court.COURT_SONO = "sono"
-        Court.COURT_AMAGASAKI = "amagasaki"
-        Court.COURT_OTHER = "other"
-        Court.COURT_TYPE_CHOICES = court_type_choices
-
-        field = Court._meta.get_field("court_type")
-        field.choices = court_type_choices
-        field.default = "sono"
-
-        _COURT_TYPE_POLICY_PATCHED = True
-    except Exception:
-        return
-
-
-
-def _patch_all_level_choices():
-    """
-    固定レッスン・コーチスケジュール・予約の対象レベルに「全レベル」を追加します。
-
-    DB上は target_level / target_level_2 に "all" を保存します。
-    「全レベル」は会員レベル判定を通すため、予約時は誰でも予約可能として扱います。
-    会員本人の member_level には追加せず、レッスン側の対象レベルだけに適用します。
-    """
-    global _LEVEL_ALL_POLICY_PATCHED
-
-    if _LEVEL_ALL_POLICY_PATCHED:
-        return
-
-    try:
-        from .models import CoachAvailability, FixedLesson, Reservation, User
-    except Exception:
-        return
-
-    level_all_value = "all"
-    level_all_label = "全レベル"
-
-    base_level_choices = tuple(User.LEVEL_CHOICES)
-    target_level_choices = ((level_all_value, level_all_label),) + base_level_choices
-    optional_target_level_choices = (("", "指定なし"),) + target_level_choices
-
-    try:
-        User.LEVEL_ALL = level_all_value
-
-        original_level_label = getattr(User, "_original_level_label_for_all_policy", None)
-        if original_level_label is None:
-            original_level_label = User.level_label
-            User._original_level_label_for_all_policy = original_level_label
-
-        def level_label_with_all(cls, level_value: str) -> str:
-            if level_value == level_all_value:
-                return level_all_label
-            try:
-                return original_level_label(level_value)
-            except TypeError:
-                return original_level_label(cls, level_value)
-
-        User.level_label = classmethod(level_label_with_all)
-
-        original_can_book_level = getattr(User, "_original_can_book_level_for_all_policy", None)
-        if original_can_book_level is None:
-            original_can_book_level = User.can_book_level
-            User._original_can_book_level_for_all_policy = original_can_book_level
-
-        def can_book_level_with_all(self, target_level: str) -> bool:
-            if target_level == level_all_value:
-                return True
-            return original_can_book_level(self, target_level)
-
-        User.can_book_level = can_book_level_with_all
-
-        original_can_book_any_level = getattr(User, "_original_can_book_any_level_for_all_policy", None)
-        if original_can_book_any_level is None:
-            original_can_book_any_level = User.can_book_any_level
-            User._original_can_book_any_level_for_all_policy = original_can_book_any_level
-
-        def can_book_any_level_with_all(self, *target_levels: str) -> bool:
-            levels = [level for level in target_levels if level]
-            if not levels:
-                return True
-            if level_all_value in levels:
-                return True
-            return original_can_book_any_level(self, *levels)
-
-        User.can_book_any_level = can_book_any_level_with_all
-
-        for model_class in (CoachAvailability, FixedLesson, Reservation):
-            target_level_field = model_class._meta.get_field("target_level")
-            target_level_field.choices = target_level_choices
-
-            target_level_2_field = model_class._meta.get_field("target_level_2")
-            target_level_2_field.choices = optional_target_level_choices
-
-        _LEVEL_ALL_POLICY_PATCHED = True
-    except Exception:
-        return
-
 
 
 def _is_2026_july_preopen_general_reservation(reservation) -> bool:
@@ -1711,8 +1580,6 @@ class AdminDashboardMenuMiddleware(MiddlewareMixin):
     daily_group_marker = '<h2 class="coach-menu-group-title">日常業務</h2>\n                <div class="coach-tabs">'
 
     def process_request(self, request):
-        _patch_court_type_choices()
-        _patch_all_level_choices()
         _patch_preopen_last_cancel_policy()
         _patch_availability_save_policy()
         _patch_fixed_lesson_sync_policy()
