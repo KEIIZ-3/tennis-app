@@ -3,14 +3,13 @@ from datetime import date, datetime, timedelta
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from django.db import connection
 from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation
+from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation, ReservationParticipant
 
 
 def _display_name(user):
@@ -172,43 +171,14 @@ def _reservation_participant_snapshot_map(reservations):
     if not reservation_ids:
         return {}
 
-    placeholders = ",".join(["%s"] * len(reservation_ids))
-
-    with connection.cursor() as cursor:
-        cursor.execute(
-            f"""
-            SELECT
-                reservation_id,
-                participant_type,
-                participant_name,
-                participant_level_label,
-                relationship_label,
-                parent_id
-            FROM club_reservationparticipant
-            WHERE reservation_id IN ({placeholders})
-            """,
-            reservation_ids,
-        )
-        rows = cursor.fetchall()
-
     result = {}
-
-    for row in rows:
-        (
-            reservation_id,
-            participant_type,
-            participant_name,
-            participant_level_label,
-            relationship_label,
-            parent_id,
-        ) = row
-
-        result[reservation_id] = {
-            "participant_type": participant_type or "self",
-            "participant_name": participant_name or "",
-            "participant_level_label": participant_level_label or "",
-            "relationship_label": relationship_label or "",
-            "parent_id": parent_id,
+    for snapshot in ReservationParticipant.objects.filter(reservation_id__in=reservation_ids):
+        result[snapshot.reservation_id] = {
+            "participant_type": snapshot.participant_type or "self",
+            "participant_name": snapshot.participant_name or "",
+            "participant_level_label": snapshot.participant_level_label or "",
+            "relationship_label": snapshot.relationship_label or "",
+            "parent_id": snapshot.parent_id,
         }
 
     return result

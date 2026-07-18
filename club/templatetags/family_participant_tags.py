@@ -1,5 +1,6 @@
 from django import template
-from django.db import connection
+
+from club.models import LessonWaitlistParticipant, ReservationParticipant
 
 register = template.Library()
 
@@ -87,29 +88,10 @@ def participant_for_reservation(reservation):
     if not reservation_id:
         return fallback
 
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    participant_name,
-                    participant_level_label,
-                    relationship_label,
-                    participant_type
-                FROM club_reservationparticipant
-                WHERE reservation_id = %s
-                LIMIT 1
-                """,
-                [reservation_id],
-            )
-            row = cursor.fetchone()
-    except Exception:
+    snapshot = ReservationParticipant.objects.filter(reservation_id=reservation_id).first()
+    if not snapshot:
         return fallback
-
-    if not row:
-        return fallback
-
-    return _normalize_participant_row(row, fallback)
+    return _normalize_participant_row((snapshot.participant_name, snapshot.participant_level_label, snapshot.relationship_label, snapshot.participant_type), fallback)
 
 
 @register.simple_tag
@@ -123,26 +105,7 @@ def participant_for_waitlist(waitlist):
     if not waitlist_id:
         return fallback
 
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    participant_name,
-                    participant_level_label,
-                    relationship_label,
-                    participant_type
-                FROM club_lessonwaitlistparticipant
-                WHERE waitlist_id = %s
-                LIMIT 1
-                """,
-                [waitlist_id],
-            )
-            row = cursor.fetchone()
-    except Exception:
+    snapshot = LessonWaitlistParticipant.objects.filter(waitlist_id=waitlist_id).first()
+    if not snapshot:
         return fallback
-
-    if not row:
-        return fallback
-
-    return _normalize_participant_row(row, fallback)
+    return _normalize_participant_row((snapshot.participant_name, snapshot.participant_level_label, snapshot.relationship_label, snapshot.participant_type), fallback)

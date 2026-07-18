@@ -53,8 +53,10 @@ from .models import (
 )
 from .family_reservations import (
     build_participant_choices_for_user,
+    copy_waitlist_participant_snapshot,
     resolve_reservation_participant,
     save_reservation_participant_snapshot,
+    save_waitlist_participant_snapshot,
     validate_participant_can_book_lesson,
 )
 from .notifications import (
@@ -1484,6 +1486,7 @@ def lesson_calendar_view(request):
                             note="レッスンカレンダーから登録",
                         )
                         waitlist.save()
+                        save_waitlist_participant_snapshot(waitlist, participant)
                 except IntegrityError:
                     messages.info(
                         request,
@@ -6982,8 +6985,6 @@ def lesson_waitlist_cancel(request, pk):
 
 
 @login_required
-
-@login_required
 @require_POST
 def lesson_waitlist_promote(request, pk):
     waitlist = get_object_or_404(
@@ -7060,6 +7061,7 @@ def lesson_waitlist_promote(request, pk):
             )
             reservation.full_clean()
             reservation.save()
+            copy_waitlist_participant_snapshot(waitlist, reservation)
             reservation.consume_tickets(
                 reason=TicketLedger.REASON_RESERVATION_USE,
                 created_by=request.user,
