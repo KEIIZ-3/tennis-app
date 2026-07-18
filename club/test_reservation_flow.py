@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -222,6 +223,21 @@ class ReservationFlowSmokeTests(TestCase):
             ).exists()
         )
 
+        second_response = self._post_lesson_calendar_reserve(
+            user=self.member,
+            fixed_lesson=fixed_lesson,
+            action="join_waitlist",
+        )
+        self.assertEqual(second_response.status_code, 302)
+        self.assertEqual(
+            LessonWaitlist.objects.filter(
+                fixed_lesson=fixed_lesson,
+                user=self.member,
+                status=LessonWaitlist.STATUS_WAITING,
+            ).count(),
+            1,
+        )
+
     def test_court_number_notice_uses_selected_calendar_lesson_without_dropdown(self):
         lesson_date = timezone.localdate() + timedelta(days=1)
         fixed_lesson = self._create_fixed_lesson(
@@ -293,3 +309,28 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertContains(response, "後藤 会員")
         self.assertContains(response, "阿部 会員")
         self.assertNotContains(response, "別枠 会員")
+
+        cache.clear()
+        send_data = {
+            "slot_id": selected_reservation.pk,
+            "court_number": "3コート",
+            "note": "テスト連絡",
+            "confirm_send": "yes",
+            "action": "send",
+        }
+        with patch(
+            "club.court_number_line_notice.notify_user_line_only",
+            return_value={"line": True, "email": False},
+        ) as notify_mock:
+            first_send = self.client.post(
+                reverse("club:court_number_line_notice"),
+                data=send_data,
+            )
+            duplicate_send = self.client.post(
+                reverse("club:court_number_line_notice"),
+                data=send_data,
+            )
+
+        self.assertEqual(first_send.status_code, 302)
+        self.assertEqual(duplicate_send.status_code, 302)
+        self.assertEqual(notify_mock.call_count, 2)

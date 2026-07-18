@@ -78,7 +78,7 @@
         <a href="{{ reservation_url }}" class="btn btn-primary">このレッスンを予約する</a>
       {% endif %}
       {% if is_coach_view and active_rows.0.reservation %}
-        <a href="{% url 'club:court_number_line_notice' %}?slot_id={{ active_rows.0.reservation.pk }}" class="btn line-notice-btn">この参加者へコート番号をLINE連絡</a>
+        <a href="{% url 'club:court_number_line_notice' %}?slot_id={{ active_rows.0.reservation.pk }}" class="btn line-notice-btn">このレッスンの参加者へコート番号をLINE連絡</a>
       {% endif %}
       <a href="{% url 'club:lesson_calendar' %}{% if back_year and back_month %}?year={{ back_year }}&month={{ back_month }}{% endif %}" class="btn">レッスンカレンダーへ戻る</a>
       {% if is_coach_view %}
