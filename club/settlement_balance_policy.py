@@ -19,8 +19,10 @@ LIGHTING_RATE_PER_HOUR = 400
 
 EXPENSE_TYPE_PERSONAL = "personal"
 EXPENSE_TYPE_COMMON = "common"
+EXPENSE_TYPE_COURT_TRANSFER = "court_transfer"
 EXPENSE_APPROVAL_APPROVED = "approved"
 EXPENSE_NOTE_META_PREFIX = "__EXPENSE_META__"
+COURT_TRANSFER_RECORD_KIND = "court_transfer"
 
 try:
     import jpholiday
@@ -300,7 +302,11 @@ def _approved_monthly_expenses(month_start, next_month):
             continue
 
         expense_type = str(meta.get("expense_type") or EXPENSE_TYPE_COMMON)
-        if expense_type not in (EXPENSE_TYPE_PERSONAL, EXPENSE_TYPE_COMMON):
+        if expense_type not in (
+            EXPENSE_TYPE_PERSONAL,
+            EXPENSE_TYPE_COMMON,
+            EXPENSE_TYPE_COURT_TRANSFER,
+        ):
             continue
 
         rows.append(
@@ -344,10 +350,78 @@ def _eligible_reservations(year, month):
     )
 
 
-def _build_court_cost_policy(year, month, main_coach_ids):
+def _court_transfer_allocation(expense_rows, eligible_coach_ids):
+    eligible_coach_id_set = set(eligible_coach_ids)
+    burden_by_coach = defaultdict(int)
+    reimbursement_by_coach = defaultdict(int)
+    detail_rows = []
+
+    for row in expense_rows:
+        meta = row["meta"]
+        if meta.get("record_kind") != COURT_TRANSFER_RECORD_KIND:
+            continue
+
+        using_coach_ids = []
+        for value in meta.get("using_coach_ids") or []:
+            try:
+                coach_id = int(value)
+            except (TypeError, ValueError):
+                continue
+            if (
+                coach_id in eligible_coach_id_set
+                and coach_id not in using_coach_ids
+            ):
+                using_coach_ids.append(coach_id)
+
+        amount = max(_money(row["amount"]), 0)
+        if amount <= 0 or not using_coach_ids:
+            continue
+
+        for coach_id, allocated in _split_amount(
+            amount,
+            using_coach_ids,
+        ).items():
+            burden_by_coach[coach_id] += allocated
+
+        try:
+            payer_id = int(meta.get("payer_coach_id"))
+        except (TypeError, ValueError):
+            payer_id = None
+        if payer_id in eligible_coach_id_set:
+            reimbursement_by_coach[payer_id] += amount
+
+        detail_rows.append(
+            {
+                "expense_id": row["expense"].pk,
+                "amount": amount,
+                "payer_id": payer_id,
+                "burden_target_ids": using_coach_ids,
+                "burden_rule": "登録された利用コーチで均等負担",
+                "is_court_transfer": True,
+            }
+        )
+
+    return {
+        "burden_by_coach": dict(burden_by_coach),
+        "reimbursement_by_coach": dict(reimbursement_by_coach),
+        "detail_rows": detail_rows,
+        "expense_ids": {row["expense_id"] for row in detail_rows},
+        "total": sum(row["amount"] for row in detail_rows),
+    }
+
+
+def _build_court_cost_policy(
+    year,
+    month,
+    main_coach_ids,
+    eligible_coach_ids,
+):
     month_start, next_month = _month_range(year, month)
     reservations = _eligible_reservations(year, month)
     expenses = _approved_monthly_expenses(month_start, next_month)
+
+    transfer = _court_transfer_allocation(expenses, eligible_coach_ids)
+    transfer_expense_ids = transfer["expense_ids"]
 
     court_expenses_by_slot = defaultdict(list)
     unlinked_court_expenses = []
@@ -355,16 +429,21 @@ def _build_court_cost_policy(year, month, main_coach_ids):
     for row in expenses:
         if not row["is_court"]:
             continue
+        if row["expense"].pk in transfer_expense_ids:
+            continue
         if row["slot_key"]:
             court_expenses_by_slot[row["slot_key"]].append(row)
         else:
             unlinked_court_expenses.append(row)
 
-    burden_by_coach = defaultdict(int)
-    reimbursement_by_coach = defaultdict(int)
-    detail_rows = []
+    burden_by_coach = defaultdict(int, transfer["burden_by_coach"])
+    reimbursement_by_coach = defaultdict(
+        int,
+        transfer["reimbursement_by_coach"],
+    )
+    detail_rows = list(transfer["detail_rows"])
     unmatched_expected_total = 0
-    used_expense_ids = set()
+    used_expense_ids = set(transfer_expense_ids)
 
     for reservation in reservations:
         expected_cost = _automatic_court_cost(reservation)
@@ -454,6 +533,7 @@ def _build_court_cost_policy(year, month, main_coach_ids):
         "unlinked_court_expense_ids": [
             row["expense"].pk for row in unlinked_court_expenses
         ],
+        "court_transfer_total": transfer["total"],
     }
 
 
@@ -529,11 +609,17 @@ def _apply_wallet_policy(result, year, month):
     main_coach_list = _main_coaches()
     main_coach_ids = [coach.pk for coach in main_coach_list]
     main_coach_id_set = set(main_coach_ids)
+    eligible_coach_ids = [
+        getattr(row.get("coach"), "pk", None)
+        for row in coach_rows
+        if getattr(row.get("coach"), "pk", None) is not None
+    ]
 
     court_policy = _build_court_cost_policy(
         year,
         month,
         main_coach_ids,
+        eligible_coach_ids,
     )
     other_expense_policy = _build_other_expense_policy(
         year,
