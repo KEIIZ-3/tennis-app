@@ -197,6 +197,46 @@ class ReservationFlowSmokeTests(TestCase):
         self.member.refresh_from_db()
         self.assertEqual(self.member.ticket_balance, 0)
 
+    def test_preopen_level_exception_uses_actual_lesson_date(self):
+        preopen_date = date(2026, 7, 3)
+        fixed_lesson = self._create_fixed_lesson(lesson_date=preopen_date)
+        fixed_lesson.target_level = self.User.LEVEL_ADVANCED
+        fixed_lesson.save(update_fields=["target_level"])
+        mocked_now = timezone.make_aware(datetime(2026, 7, 2, 12, 0))
+
+        with patch("django.utils.timezone.now", return_value=mocked_now):
+            response = self._post_lesson_calendar_reserve(
+                user=self.member,
+                fixed_lesson=fixed_lesson,
+                lesson_date=preopen_date,
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(Reservation.objects.filter(user=self.member, fixed_lesson=fixed_lesson).exists())
+
+    def test_preopen_query_parameters_cannot_bypass_level_for_august_lesson(self):
+        lesson_date = date(2026, 8, 7)
+        fixed_lesson = self._create_fixed_lesson(lesson_date=lesson_date)
+        fixed_lesson.target_level = self.User.LEVEL_ADVANCED
+        fixed_lesson.save(update_fields=["target_level"])
+        mocked_now = timezone.make_aware(datetime(2026, 8, 6, 12, 0))
+        self.client.force_login(self.member)
+
+        with patch("django.utils.timezone.now", return_value=mocked_now):
+            response = self.client.post(
+                reverse("club:lesson_calendar"),
+                data={
+                    "action": "reserve",
+                    "fixed_lesson_id": fixed_lesson.pk,
+                    "lesson_date": lesson_date.isoformat(),
+                    "year": "2026",
+                    "month": "7",
+                },
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Reservation.objects.filter(user=self.member, fixed_lesson=fixed_lesson).exists())
+
     def test_contractor_coach_can_take_other_coach_lesson(self):
         fixed_lesson = self._create_fixed_lesson(
             coach=self.coach,
