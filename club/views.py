@@ -1447,6 +1447,29 @@ def lesson_calendar_view(request):
                 return redirect(redirect_url)
 
             with transaction.atomic():
+                availability = (
+                    CoachAvailability.objects.select_for_update()
+                    .select_related("coach", "substitute_coach", "court")
+                    .get(pk=availability.pk)
+                )
+                locked_active_count = Reservation.objects.filter(
+                    coach=availability.coach,
+                    court=availability.court,
+                    lesson_type=availability.lesson_type,
+                    start_at=availability.start_at,
+                    end_at=availability.end_at,
+                    status=Reservation.STATUS_ACTIVE,
+                ).count()
+                if fixed_lesson is not None:
+                    locked_active_count = max(
+                        locked_active_count,
+                        fixed_lesson.members.count(),
+                    )
+                if locked_active_count >= _capacity_for_availability(availability):
+                    raise ValidationError(
+                        "このレッスンは直前に満員になりました。キャンセル待ちをご利用ください。"
+                    )
+
                 reservation = Reservation(
                     user=request.user,
                     coach=availability.coach,
