@@ -475,6 +475,9 @@ def _can_user_cancel_reservation(user, reservation):
     if _is_reservation_canceled(reservation):
         return False, "この予約はすでにキャンセル済みです。"
 
+    if reservation.is_preopen_cash_lesson():
+        return True, ""
+
     if _is_staff_like(user) or reservation.coach_id == getattr(user, "pk", None) or getattr(
         reservation, "substitute_coach_id", None
     ) == getattr(user, "pk", None):

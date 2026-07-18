@@ -67,7 +67,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "club.waitlist_participant_middleware.WaitlistParticipantMiddleware",
-    "club.preopen_level_policy.PreopenLevelFreeMiddleware",
+    "club.middleware.PreopenLevelFreeMiddleware",
     "club.middleware.AdminDashboardMenuMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
