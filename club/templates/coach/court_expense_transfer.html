@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load court_rates %}
 {% block title %}コート代登録{% endblock %}
 
 {% block content %}
@@ -17,6 +18,9 @@
   label{display:block;margin-bottom:6px;color:#334155;font-size:13px;font-weight:1000}
   input,select{box-sizing:border-box;width:100%;min-height:48px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#0f172a;font-size:16px;font-weight:800}
   .help{margin:6px 0 0;color:#64748b;font-size:12px;line-height:1.6;font-weight:750}
+  .rate-box{padding:13px;border:1px solid #86efac;border-radius:14px;background:#f0fdf4;color:#166534;font-size:13px;line-height:1.75;font-weight:850}
+  .rate-box strong{font-size:16px}
+  .rate-box a{color:#166534;text-decoration:underline}
   .calculation{padding:13px;border:1px solid #bfdbfe;border-radius:14px;background:#eff6ff;color:#1e3a8a;font-size:13px;line-height:1.75;font-weight:850}
   .actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}
   .actions .btn{width:100%;min-height:48px;border-radius:12px;font-weight:1000}
@@ -57,6 +61,13 @@
       <div>
         <label for="amount">コート代</label>
         <input id="amount" name="amount" type="number" min="1" step="1" inputmode="numeric" placeholder="例：2400" required>
+        <p class="help">尼崎記念公園は公式料金から自動計算します。実際の支払額が異なる場合は上書きできます。</p>
+      </div>
+
+      <div id="rate_box" class="rate-box" hidden>
+        <strong id="rate_total"></strong><br>
+        <span id="rate_detail"></span><br>
+        <a href="https://www.aspf.or.jp/park/tennis.html#gsc.tab=0" target="_blank" rel="noopener noreferrer">尼崎市スポーツ振興事業団の料金表を確認</a>
       </div>
 
       <div>
@@ -86,4 +97,67 @@
     </form>
   </section>
 </div>
+
+{{ availability.start_at|date:"c"|json_script:"court-start-at" }}
+{{ availability.end_at|date:"c"|json_script:"court-end-at" }}
+{{ availability.start_at|is_japanese_holiday|json_script:"court-is-holiday" }}
+{{ availability.court.court_type|default:""|json_script:"court-type" }}
+{{ availability.court.name|default:""|json_script:"court-name" }}
+{{ availability.court_count|default:1|json_script:"court-count" }}
+
+<script>
+(function () {
+  const amountInput = document.getElementById("amount");
+  const rateBox = document.getElementById("rate_box");
+  const rateTotal = document.getElementById("rate_total");
+  const rateDetail = document.getElementById("rate_detail");
+
+  const readJson = (id) => {
+    const element = document.getElementById(id);
+    return element ? JSON.parse(element.textContent) : null;
+  };
+
+  const startRaw = readJson("court-start-at");
+  const endRaw = readJson("court-end-at");
+  const isHoliday = Boolean(readJson("court-is-holiday"));
+  const courtType = String(readJson("court-type") || "").toLowerCase();
+  const courtName = String(readJson("court-name") || "");
+  const courtCount = Math.max(parseInt(readJson("court-count") || 1, 10), 1);
+  const isAmagasaki = courtType === "amagasaki" || (courtName.includes("尼崎") && courtName.includes("記念"));
+
+  if (!isAmagasaki || !startRaw || !endRaw) {
+    return;
+  }
+
+  const startAt = new Date(startRaw);
+  const endAt = new Date(endRaw);
+  if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime()) || endAt <= startAt) {
+    return;
+  }
+
+  const durationMinutes = Math.round((endAt.getTime() - startAt.getTime()) / 60000);
+  const durationHours = durationMinutes / 60;
+  const isSunday = startAt.getDay() === 0;
+  const premiumRate = isSunday || isHoliday;
+  const hourlyRate = premiumRate ? 1080 : 900;
+  const baseAmount = Math.round(hourlyRate * durationHours * courtCount);
+
+  const lightingStart = new Date(startAt);
+  lightingStart.setHours(19, 0, 0, 0);
+  const lightingEnd = new Date(startAt);
+  lightingEnd.setHours(21, 0, 0, 0);
+  const overlapStart = Math.max(startAt.getTime(), lightingStart.getTime());
+  const overlapEnd = Math.min(endAt.getTime(), lightingEnd.getTime());
+  const lightingMinutes = Math.max(0, Math.round((overlapEnd - overlapStart) / 60000));
+  const lightingUnits = Math.ceil(lightingMinutes / 30);
+  const lightingAmount = lightingUnits * 100 * courtCount;
+  const total = baseAmount + lightingAmount;
+  const rateLabel = premiumRate ? "日曜・祝日" : "平日・土曜";
+
+  amountInput.value = String(total);
+  rateTotal.textContent = `自動計算：${total.toLocaleString("ja-JP")}円`;
+  rateDetail.textContent = `${rateLabel}基本料 ${hourlyRate.toLocaleString("ja-JP")}円 × ${durationHours}時間 × ${courtCount}面 ＋ 照明料 ${lightingAmount.toLocaleString("ja-JP")}円`;
+  rateBox.hidden = false;
+})();
+</script>
 {% endblock %}
