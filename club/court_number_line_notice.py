@@ -12,7 +12,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from .models import Reservation
-from .notifications import notify_user_line_only
+from .notifications import notify_user_email_only, notify_user_line_only
 
 
 def _is_coach_like(user):
@@ -135,6 +135,10 @@ def _line_ready(user):
     )
 
 
+def _email_ready(user):
+    return bool((getattr(user, "email", "") or "").strip())
+
+
 def _court_place_name(court):
     if not court:
         return "現地"
@@ -232,7 +236,13 @@ def court_number_line_notice(request):
             ready = _line_ready(reservation.user)
             if ready:
                 line_ready_count += 1
-            rows.append({"name": _display_name(reservation.user), "line_ready": ready})
+            rows.append(
+                {
+                    "name": _display_name(reservation.user),
+                    "line_ready": ready,
+                    "email_ready": _email_ready(reservation.user),
+                }
+            )
 
         if court_number:
             preview = _message_text(selected_slot, court_number, note)
@@ -245,7 +255,8 @@ def court_number_line_notice(request):
         elif request.POST.get("confirm_send") != "yes":
             messages.error(request, "送信前確認にチェックしてください。")
         else:
-            sent = 0
+            line_sent = 0
+            email_sent = 0
             failed = 0
             message_text = _message_text(selected_slot, court_number, note)
             delivery_cache_key = _delivery_cache_key(selected_slot, message_text)
@@ -265,16 +276,36 @@ def court_number_line_notice(request):
                     subject="Play Design Tennis コート番号のお知らせ",
                 )
                 if result.get("line"):
-                    sent += 1
+                    line_sent += 1
                 else:
-                    failed += 1
+                    email_result = notify_user_email_only(
+                        reservation.user,
+                        message_text,
+                        subject="Play Design Tennis コート番号のお知らせ",
+                    )
+                    if email_result.get("email"):
+                        email_sent += 1
+                    else:
+                        failed += 1
 
-            _finish_delivery_lock(delivery_cache_key, sent)
+            delivered = line_sent + email_sent
+            _finish_delivery_lock(delivery_cache_key, delivered)
 
-            if sent:
-                messages.success(request, f"コート番号を {sent} 名へLINE送信しました。")
+            if line_sent:
+                messages.success(
+                    request,
+                    f"コート番号を {line_sent} 名へLINE送信しました。",
+                )
+            if email_sent:
+                messages.success(
+                    request,
+                    f"LINE送信できなかった {email_sent} 名へメールで補完連絡しました。",
+                )
             if failed:
-                messages.warning(request, f"{failed} 名にはLINE送信できませんでした。LINE連携状況をご確認ください。")
+                messages.warning(
+                    request,
+                    f"{failed} 名にはLINE・メールとも送信できませんでした。連絡先をご確認ください。",
+                )
             return redirect(f"{reverse('club:court_number_line_notice')}?slot_id={selected_slot.pk}")
 
     return render(

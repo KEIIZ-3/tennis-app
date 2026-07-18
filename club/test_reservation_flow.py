@@ -320,17 +320,25 @@ class ReservationFlowSmokeTests(TestCase):
         }
         with patch(
             "club.court_number_line_notice.notify_user_line_only",
-            return_value={"line": True, "email": False},
-        ) as notify_mock:
-            first_send = self.client.post(
-                reverse("club:court_number_line_notice"),
-                data=send_data,
-            )
-            duplicate_send = self.client.post(
-                reverse("club:court_number_line_notice"),
-                data=send_data,
-            )
+            side_effect=[
+                {"line": False, "email": False},
+                {"line": True, "email": False},
+            ],
+        ) as line_notify_mock:
+            with patch(
+                "club.court_number_line_notice.notify_user_email_only",
+                return_value={"line": False, "email": True},
+            ) as email_notify_mock:
+                first_send = self.client.post(
+                    reverse("club:court_number_line_notice"),
+                    data=send_data,
+                )
+                duplicate_send = self.client.post(
+                    reverse("club:court_number_line_notice"),
+                    data=send_data,
+                )
 
         self.assertEqual(first_send.status_code, 302)
         self.assertEqual(duplicate_send.status_code, 302)
-        self.assertEqual(notify_mock.call_count, 2)
+        self.assertEqual(line_notify_mock.call_count, 2)
+        self.assertEqual(email_notify_mock.call_count, 1)
