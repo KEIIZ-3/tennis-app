@@ -1541,6 +1541,72 @@ class Reservation(models.Model, LessonTypeMixin):
             qs = qs.exclude(pk=self.pk)
         return qs
 
+    def _is_new_activation(self):
+        if self.status != self.STATUS_ACTIVE:
+            return False
+        if not self.pk:
+            return True
+        previous_status = (
+            Reservation.objects.filter(pk=self.pk)
+            .values_list("status", flat=True)
+            .first()
+        )
+        return previous_status != self.STATUS_ACTIVE
+
+    def _capacity_for_activation(self):
+        availability = None
+        if self.availability_id:
+            availability = (
+                CoachAvailability.objects.select_for_update()
+                .filter(pk=self.availability_id)
+                .first()
+            )
+        if availability is None:
+            matching = self.matching_availability()
+            if matching is not None:
+                availability = (
+                    CoachAvailability.objects.select_for_update()
+                    .filter(pk=matching.pk)
+                    .first()
+                )
+        if availability is not None:
+            return max(
+                int(availability.effective_capacity()),
+                int(availability.capacity or 0),
+                1,
+            )
+
+        fixed_lesson = None
+        if self.fixed_lesson_id:
+            fixed_lesson = (
+                FixedLesson.objects.select_for_update()
+                .filter(pk=self.fixed_lesson_id)
+                .first()
+            )
+        if fixed_lesson is not None:
+            return max(
+                int(fixed_lesson.effective_capacity()),
+                int(fixed_lesson.capacity or 0),
+                1,
+            )
+        return 1
+
+    def _validate_capacity_before_activation(self):
+        if not self._is_new_activation():
+            return
+
+        capacity = self._capacity_for_activation()
+        active_count = self.active_slot_reservations_qs().count()
+        fixed_member_count = 0
+        if self.fixed_lesson_id:
+            fixed_member_count = self.fixed_lesson.members.count()
+
+        if max(active_count, fixed_member_count) >= capacity:
+            raise ValidationError(
+                f"このレッスンは満員です（定員{capacity}名）。"
+                "キャンセル待ちをご利用ください。"
+            )
+
     def clean(self):
         if not self.start_at or not self.end_at:
             return
@@ -1683,8 +1749,10 @@ class Reservation(models.Model, LessonTypeMixin):
                     raise ValidationError("このグループ枠は満員です。")
 
     def save(self, *args, **kwargs):
-        self.full_clean()
-        return super().save(*args, **kwargs)
+        with transaction.atomic():
+            self._validate_capacity_before_activation()
+            self.full_clean()
+            return super().save(*args, **kwargs)
 
     def active_count_in_same_slot(self):
         return Reservation.objects.filter(

@@ -8,7 +8,6 @@ class ClubConfig(AppConfig):
 
     def ready(self):
         from . import signals  # noqa
-        from .capacity_guard import apply_reservation_capacity_guard
         from .court_type_policy import apply_court_type_policy
         from .preopen_level_policy import apply_preopen_level_policy
         from .settlement_balance_policy import (
@@ -17,5 +16,4 @@ class ClubConfig(AppConfig):
 
         apply_court_type_policy()
         apply_preopen_level_policy()
-        apply_reservation_capacity_guard()
         apply_settlement_balance_policy()
