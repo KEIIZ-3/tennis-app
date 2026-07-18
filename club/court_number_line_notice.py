@@ -1,7 +1,9 @@
 from collections import OrderedDict
+from hashlib import sha256
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
@@ -173,6 +175,35 @@ def _message_text(slot, court_number, note):
     return "\n".join(lines)
 
 
+def _delivery_cache_key(slot, message_text):
+    slot_identity = (
+        f"{slot.fixed_lesson_id or 0}:"
+        f"{slot.availability_id or 0}:"
+        f"{slot.start_at.isoformat()}:"
+        f"{slot.end_at.isoformat()}"
+    )
+    digest = sha256(f"{slot_identity}\n{message_text}".encode("utf-8")).hexdigest()
+    return f"court-number-line-delivery:{digest}"
+
+
+def _acquire_delivery_lock(cache_key):
+    try:
+        return cache.add(cache_key, "sending", timeout=120)
+    except Exception:
+        # LINE連絡自体は止めず、キャッシュ障害時だけ従来動作へ戻します。
+        return True
+
+
+def _finish_delivery_lock(cache_key, sent):
+    try:
+        if sent:
+            cache.set(cache_key, "sent", timeout=120)
+        else:
+            cache.delete(cache_key)
+    except Exception:
+        pass
+
+
 @login_required
 @require_http_methods(["GET", "POST"])
 def court_number_line_notice(request):
@@ -217,6 +248,16 @@ def court_number_line_notice(request):
             sent = 0
             failed = 0
             message_text = _message_text(selected_slot, court_number, note)
+            delivery_cache_key = _delivery_cache_key(selected_slot, message_text)
+            if not _acquire_delivery_lock(delivery_cache_key):
+                messages.warning(
+                    request,
+                    "同じ内容はすでに送信処理済みです。連続送信を防止しました。",
+                )
+                return redirect(
+                    f"{reverse('club:court_number_line_notice')}?slot_id={selected_slot.pk}"
+                )
+
             for reservation in _slot_participants(selected_slot):
                 result = notify_user_line_only(
                     reservation.user,
@@ -227,6 +268,8 @@ def court_number_line_notice(request):
                     sent += 1
                 else:
                     failed += 1
+
+            _finish_delivery_lock(delivery_cache_key, sent)
 
             if sent:
                 messages.success(request, f"コート番号を {sent} 名へLINE送信しました。")

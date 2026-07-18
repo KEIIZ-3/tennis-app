@@ -14,7 +14,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
 from django.core import signing
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -1410,22 +1410,72 @@ def lesson_calendar_view(request):
                     messages.info(request, "このレッスンはすでにキャンセル待ち登録済みです。")
                     return redirect(redirect_url)
 
-                waitlist = LessonWaitlist(
-                    user=request.user,
-                    coach=availability.coach,
-                    substitute_coach=availability.substitute_coach,
-                    court=availability.court,
-                    availability=availability,
-                    fixed_lesson=fixed_lesson,
-                    lesson_type=availability.lesson_type,
-                    target_level=availability.target_level,
-                    target_level_2=getattr(availability, "target_level_2", "") or "",
-                    start_at=availability.start_at,
-                    end_at=availability.end_at,
-                    status=LessonWaitlist.STATUS_WAITING,
-                    note="レッスンカレンダーから登録",
-                )
-                waitlist.save()
+                try:
+                    with transaction.atomic():
+                        get_user_model().objects.select_for_update().get(
+                            pk=request.user.pk
+                        )
+                        availability = (
+                            CoachAvailability.objects.select_for_update()
+                            .select_related("coach", "substitute_coach", "court")
+                            .get(pk=availability.pk)
+                        )
+                        locked_active_count = Reservation.objects.filter(
+                            coach=availability.coach,
+                            court=availability.court,
+                            lesson_type=availability.lesson_type,
+                            start_at=availability.start_at,
+                            end_at=availability.end_at,
+                            status=Reservation.STATUS_ACTIVE,
+                        ).count()
+                        if fixed_lesson is not None:
+                            locked_active_count = max(
+                                locked_active_count,
+                                fixed_lesson.members.count(),
+                            )
+                        if locked_active_count < _capacity_for_availability(availability):
+                            raise ValidationError(
+                                "このレッスンに空きが出ました。予約画面から予約してください。"
+                            )
+
+                        existing_waitlist = LessonWaitlist.objects.filter(
+                            user=request.user,
+                            coach=availability.coach,
+                            court=availability.court,
+                            lesson_type=availability.lesson_type,
+                            start_at=availability.start_at,
+                            end_at=availability.end_at,
+                            status=LessonWaitlist.STATUS_WAITING,
+                        ).first()
+                        if existing_waitlist:
+                            messages.info(
+                                request,
+                                "このレッスンはすでにキャンセル待ち登録済みです。",
+                            )
+                            return redirect(redirect_url)
+
+                        waitlist = LessonWaitlist(
+                            user=request.user,
+                            coach=availability.coach,
+                            substitute_coach=availability.substitute_coach,
+                            court=availability.court,
+                            availability=availability,
+                            fixed_lesson=fixed_lesson,
+                            lesson_type=availability.lesson_type,
+                            target_level=availability.target_level,
+                            target_level_2=getattr(availability, "target_level_2", "") or "",
+                            start_at=availability.start_at,
+                            end_at=availability.end_at,
+                            status=LessonWaitlist.STATUS_WAITING,
+                            note="レッスンカレンダーから登録",
+                        )
+                        waitlist.save()
+                except IntegrityError:
+                    messages.info(
+                        request,
+                        "このレッスンはすでにキャンセル待ち登録済みです。",
+                    )
+                    return redirect(redirect_url)
                 _send_email_notification_safely(
                     waitlist.user,
                     "【Play Design Tennis】キャンセル待ち登録完了",
@@ -1447,6 +1497,9 @@ def lesson_calendar_view(request):
                 return redirect(redirect_url)
 
             with transaction.atomic():
+                get_user_model().objects.select_for_update().get(
+                    pk=request.user.pk
+                )
                 availability = (
                     CoachAvailability.objects.select_for_update()
                     .select_related("coach", "substitute_coach", "court")
