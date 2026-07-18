@@ -382,6 +382,12 @@ class CoachAvailability(models.Model, LessonTypeMixin):
             raise ValidationError("同じコーチで重複する空き時間があります。")
 
     def save(self, *args, **kwargs):
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None and self.lesson_type == self.LESSON_GENERAL:
+            update_field_set = set(update_fields)
+            update_field_set.update({"capacity", "coach_count", "court_count"})
+            kwargs["update_fields"] = list(update_field_set)
+
         previous_substitute_id = None
         if self.pk:
             previous_substitute_id = (

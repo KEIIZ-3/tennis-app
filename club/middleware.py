@@ -7,7 +7,6 @@ from django.utils import timezone
 from django.utils.deprecation import MiddlewareMixin
 
 
-_AVAILABILITY_SAVE_POLICY_PATCHED = False
 _FIXED_LESSON_SYNC_POLICY_PATCHED = False
 
 _preopen_level_free_request = ContextVar(
@@ -53,39 +52,6 @@ class PreopenLevelFreeMiddleware:
             return self.get_response(request)
         finally:
             _preopen_level_free_request.reset(token)
-
-
-def _patch_availability_save_policy():
-    """
-    管理画面や同期処理で一般レッスンのコーチ人数を変更した際、
-    update_fields 指定があっても capacity / court_count まで確実に保存します。
-    """
-    global _AVAILABILITY_SAVE_POLICY_PATCHED
-
-    if _AVAILABILITY_SAVE_POLICY_PATCHED:
-        return
-
-    try:
-        from .models import CoachAvailability
-    except Exception:
-        return
-
-    original_save = getattr(CoachAvailability, "_original_save_for_capacity_policy", None)
-    if original_save is None:
-        original_save = CoachAvailability.save
-        CoachAvailability._original_save_for_capacity_policy = original_save
-
-    def save_with_capacity_policy(self, *args, **kwargs):
-        update_fields = kwargs.get("update_fields")
-        if update_fields is not None and getattr(self, "lesson_type", "") == getattr(self, "LESSON_GENERAL", "general"):
-            update_field_set = set(update_fields)
-            update_field_set.update({"capacity", "coach_count", "court_count"})
-            kwargs["update_fields"] = list(update_field_set)
-
-        return original_save(self, *args, **kwargs)
-
-    CoachAvailability.save = save_with_capacity_policy
-    _AVAILABILITY_SAVE_POLICY_PATCHED = True
 
 
 def _patch_fixed_lesson_sync_policy():
@@ -1561,7 +1527,6 @@ class AdminDashboardMenuMiddleware(MiddlewareMixin):
     daily_group_marker = '<h2 class="coach-menu-group-title">日常業務</h2>\n                <div class="coach-tabs">'
 
     def process_request(self, request):
-        _patch_availability_save_policy()
         _patch_fixed_lesson_sync_policy()
         _repair_fixed_lesson_slots_for_request(request)
         return None
