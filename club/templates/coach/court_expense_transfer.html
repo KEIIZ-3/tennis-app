@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}コート代登録{% endblock %}
+
+{% block content %}
+<style>
+  .court-page{display:grid;gap:14px;max-width:720px;margin:0 auto;padding-bottom:96px}
+  .panel{padding:17px;border:1px solid #e2e8f0;border-radius:19px;background:#fff;box-shadow:0 8px 20px rgba(15,23,42,.06)}
+  .hero{border-color:#fdba74;background:linear-gradient(180deg,#fff7ed 0%,#fff 100%)}
+  .title{margin:0;color:#0f172a;font-size:27px;line-height:1.25;font-weight:1000}
+  .lead{margin:8px 0 0;color:#64748b;font-size:13px;line-height:1.7;font-weight:750}
+  .lesson-box{margin-top:13px;padding:12px;border:1px solid #fed7aa;border-radius:14px;background:#fff}
+  .lesson-label{color:#9a3412;font-size:13px;line-height:1.65;font-weight:900}
+  .coach-list{display:grid;gap:8px;margin-top:10px}
+  .coach-item{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc;color:#0f172a;font-size:14px;font-weight:900}
+  .coach-item span:last-child{color:#b91c1c}
+  .form-grid{display:grid;gap:13px}
+  label{display:block;margin-bottom:6px;color:#334155;font-size:13px;font-weight:1000}
+  input,select{box-sizing:border-box;width:100%;min-height:48px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#0f172a;font-size:16px;font-weight:800}
+  .help{margin:6px 0 0;color:#64748b;font-size:12px;line-height:1.6;font-weight:750}
+  .calculation{padding:13px;border:1px solid #bfdbfe;border-radius:14px;background:#eff6ff;color:#1e3a8a;font-size:13px;line-height:1.75;font-weight:850}
+  .actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .actions .btn{width:100%;min-height:48px;border-radius:12px;font-weight:1000}
+  @media(max-width:700px){.court-page{gap:11px}.panel{padding:14px;border-radius:16px}.title{font-size:23px}.actions{grid-template-columns:1fr}}
+</style>
+
+<div class="court-page">
+  <section class="panel hero">
+    <h1 class="title">コート代登録</h1>
+    <p class="lead">コートを利用したコーチの給与から負担額を差し引き、実際に支払ったメインコーチへ同額を加算します。</p>
+    <div class="lesson-box">
+      <div class="lesson-label">{{ lesson_label }}</div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2 class="title" style="font-size:19px;">利用コーチ</h2>
+    <p class="help">複数コーチの場合、コート代を人数で均等に分けて控除します。</p>
+    <div class="coach-list">
+      {% for coach in using_coaches %}
+        <div class="coach-item"><span>{{ coach.display_name }}</span><span>給与から控除</span></div>
+      {% empty %}
+        <div class="calculation">利用コーチを特定できませんでした。レッスン設定をご確認ください。</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel">
+    <form method="post" class="form-grid">{% csrf_token %}
+      <input type="hidden" name="action" value="create_court_transfer">
+      <input type="hidden" name="availability_id" value="{{ availability.id }}">
+
+      <div>
+        <label for="expense_date">利用日</label>
+        <input id="expense_date" type="date" value="{{ expense_date }}" disabled>
+      </div>
+
+      <div>
+        <label for="amount">コート代</label>
+        <input id="amount" name="amount" type="number" min="1" step="1" inputmode="numeric" placeholder="例：2400" required>
+      </div>
+
+      <div>
+        <label for="payer_coach_id">コート代を支払ったメインコーチ</label>
+        <select id="payer_coach_id" name="payer_coach_id" required>
+          <option value="">選択してください</option>
+          {% for coach in payer_options %}
+            <option value="{{ coach.id }}">{{ coach.display_name }}</option>
+          {% endfor %}
+        </select>
+        <p class="help">ここで選択したコーチの給与へ、立替回収額として全額加算します。</p>
+      </div>
+
+      <div>
+        <label for="note">メモ（任意）</label>
+        <input id="note" name="note" type="text" maxlength="120" placeholder="例：7月分を清水コーチが一括支払い">
+      </div>
+
+      <div class="calculation">
+        給与計算では「利用コーチ：マイナス」「支払コーチ：プラス」として処理します。支払者自身も利用コーチの場合、その利用分は相殺されます。
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn btn-primary" onclick="return confirm('この内容でコート代を登録しますか？');">登録する</button>
+        <a href="{% url 'club:coach_today_lessons' %}?days=1" class="btn">本日の受付へ戻る</a>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}
