@@ -21,6 +21,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -6990,45 +6991,53 @@ def lesson_waitlist_promote(request, pk):
         return HttpResponse("Forbidden", status=403)
 
     redirect_to = (request.POST.get("next") or "").strip()
-    if not redirect_to.startswith("/"):
+    if not url_has_allowed_host_and_scheme(
+        url=redirect_to,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
         redirect_to = reverse("club:reservation_list")
-
-    if waitlist.status != LessonWaitlist.STATUS_WAITING:
-        messages.info(request, "このキャンセル待ちはすでに処理済みです。")
-        return redirect(redirect_to)
-
-    if waitlist.start_at < timezone.now():
-        messages.error(request, "開始済み・終了済みのキャンセル待ちは繰り上げできません。")
-        return redirect(redirect_to)
-
-    active_count = _active_reservation_count_for_slot(
-        coach=waitlist.coach,
-        court=waitlist.court,
-        lesson_type=waitlist.lesson_type,
-        start_at=waitlist.start_at,
-        end_at=waitlist.end_at,
-    )
-    capacity = _capacity_for_waitlist_slot(waitlist)
-    if active_count >= capacity:
-        messages.error(request, "このレッスンはまだ満員のため、繰り上げできません。")
-        return redirect(redirect_to)
-
-    existing_reservation = Reservation.objects.filter(
-        user=waitlist.user,
-        coach=waitlist.coach,
-        court=waitlist.court,
-        lesson_type=waitlist.lesson_type,
-        start_at=waitlist.start_at,
-        end_at=waitlist.end_at,
-        status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
-    ).first()
-    if existing_reservation:
-        waitlist.mark_converted()
-        messages.info(request, "対象会員はすでに予約済みです。キャンセル待ちを処理済みにしました。")
-        return redirect("club:reservation_detail", pk=existing_reservation.pk)
 
     try:
         with transaction.atomic():
+            waitlist = (
+                LessonWaitlist.objects.select_for_update()
+                .select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
+                .get(pk=waitlist.pk)
+            )
+            if waitlist.status != LessonWaitlist.STATUS_WAITING:
+                messages.info(request, "このキャンセル待ちはすでに処理済みです。")
+                return redirect(redirect_to)
+
+            if waitlist.start_at < timezone.now():
+                messages.error(request, "開始済み・終了済みのキャンセル待ちは繰り上げできません。")
+                return redirect(redirect_to)
+
+            active_count = _active_reservation_count_for_slot(
+                coach=waitlist.coach,
+                court=waitlist.court,
+                lesson_type=waitlist.lesson_type,
+                start_at=waitlist.start_at,
+                end_at=waitlist.end_at,
+            )
+            if active_count >= _capacity_for_waitlist_slot(waitlist):
+                messages.error(request, "このレッスンはまだ満員のため、繰り上げできません。")
+                return redirect(redirect_to)
+
+            existing_reservation = Reservation.objects.filter(
+                user=waitlist.user,
+                coach=waitlist.coach,
+                court=waitlist.court,
+                lesson_type=waitlist.lesson_type,
+                start_at=waitlist.start_at,
+                end_at=waitlist.end_at,
+                status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+            ).first()
+            if existing_reservation:
+                waitlist.mark_converted()
+                messages.info(request, "対象会員はすでに予約済みです。キャンセル待ちを処理済みにしました。")
+                return redirect("club:reservation_detail", pk=existing_reservation.pk)
+
             availability = waitlist.availability or CoachAvailability.objects.filter(
                 coach=waitlist.coach,
                 court=waitlist.court,

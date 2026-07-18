@@ -331,6 +331,68 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertEqual(response.status_code, 200)
         sync_mock.assert_not_called()
 
+    def test_waitlist_promote_rejects_protocol_relative_next_url(self):
+        fixed_lesson = self._create_fixed_lesson(title="安全な戻り先テスト")
+        start_at, end_at = fixed_lesson._build_datetimes_for_date(self.lesson_date)
+        waitlist = LessonWaitlist.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            fixed_lesson=fixed_lesson,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            status=LessonWaitlist.STATUS_CANCELED,
+        )
+        self.client.force_login(self.coach)
+
+        response = self.client.post(
+            reverse("club:lesson_waitlist_promote", args=[waitlist.pk]),
+            data={"next": "//attacker.example/redirect"},
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("club:reservation_list"),
+            fetch_redirect_response=False,
+        )
+
+    def test_waitlist_promote_is_idempotent(self):
+        self.member.ticket_balance = 10
+        self.member.save(update_fields=["ticket_balance"])
+        fixed_lesson = self._create_fixed_lesson(title="二重繰り上げ防止テスト")
+        fixed_lesson.sync_future_reservations(created_by=self.coach)
+        start_at, end_at = fixed_lesson._build_datetimes_for_date(self.lesson_date)
+        waitlist = LessonWaitlist.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            fixed_lesson=fixed_lesson,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+        )
+        self.client.force_login(self.coach)
+        url = reverse("club:lesson_waitlist_promote", args=[waitlist.pk])
+
+        first_response = self.client.post(url)
+        second_response = self.client.post(url)
+
+        self.assertEqual(first_response.status_code, 302)
+        self.assertEqual(second_response.status_code, 302)
+        self.assertEqual(
+            Reservation.objects.filter(
+                user=self.member,
+                fixed_lesson=fixed_lesson,
+                status=Reservation.STATUS_ACTIVE,
+            ).count(),
+            1,
+        )
+        waitlist.refresh_from_db()
+        self.assertEqual(waitlist.status, LessonWaitlist.STATUS_CONVERTED)
+
     def test_direct_reservation_rejects_fixed_lesson_at_capacity(self):
         fixed_lesson = self._create_fixed_lesson(title="直接保存満員テスト")
         members = [
