@@ -39,6 +39,7 @@ class User(AbstractUser):
     LESSON_PARTICIPANT_ROLE_VALUES = (ROLE_MEMBER, ROLE_CONTRACTOR_COACH)
 
     LEVEL_FAMILY = "family"
+    LEVEL_ALL = "all"
     LEVEL_BEGINNER = "beginner"
     LEVEL_BEGINNER_PLUS = "beginner_plus"
     LEVEL_INTERMEDIATE = "intermediate"
@@ -53,6 +54,10 @@ class User(AbstractUser):
         (LEVEL_INTERMEDIATE_PLUS, "中上級"),
         (LEVEL_ADVANCED, "上級"),
     )
+    TARGET_LEVEL_CHOICES = ((LEVEL_ALL, "全レベル"),) + LEVEL_CHOICES
+    OPTIONAL_TARGET_LEVEL_CHOICES = (
+        ("", "指定なし"),
+    ) + TARGET_LEVEL_CHOICES
 
     LEVEL_ORDER = {
         LEVEL_FAMILY: 1,
@@ -102,7 +107,7 @@ class User(AbstractUser):
         return self.LEVEL_ORDER.get(self.member_level, 0)
 
     def can_book_level(self, target_level: str) -> bool:
-        if not target_level:
+        if not target_level or target_level == self.LEVEL_ALL:
             return True
         return self.level_rank() >= self.LEVEL_ORDER.get(target_level, 999)
 
@@ -114,6 +119,8 @@ class User(AbstractUser):
 
     @classmethod
     def level_label(cls, level_value: str) -> str:
+        if level_value == cls.LEVEL_ALL:
+            return "全レベル"
         return dict(cls.LEVEL_CHOICES).get(level_value, level_value or "")
 
     def __str__(self):
@@ -219,12 +226,12 @@ class CoachAvailability(models.Model, LessonTypeMixin):
     )
     target_level = models.CharField(
         max_length=30,
-        choices=User.LEVEL_CHOICES,
+        choices=User.TARGET_LEVEL_CHOICES,
         default=User.LEVEL_BEGINNER,
     )
     target_level_2 = models.CharField(
         max_length=30,
-        choices=(("", "指定なし"),) + User.LEVEL_CHOICES,
+        choices=User.OPTIONAL_TARGET_LEVEL_CHOICES,
         blank=True,
         default="",
     )
@@ -440,12 +447,12 @@ class FixedLesson(models.Model, LessonTypeMixin):
     )
     target_level = models.CharField(
         max_length=30,
-        choices=User.LEVEL_CHOICES,
+        choices=User.TARGET_LEVEL_CHOICES,
         default=User.LEVEL_BEGINNER,
     )
     target_level_2 = models.CharField(
         max_length=30,
-        choices=(("", "指定なし"),) + User.LEVEL_CHOICES,
+        choices=User.OPTIONAL_TARGET_LEVEL_CHOICES,
         blank=True,
         default="",
     )
@@ -1321,12 +1328,12 @@ class Reservation(models.Model, LessonTypeMixin):
     )
     target_level = models.CharField(
         max_length=30,
-        choices=User.LEVEL_CHOICES,
+        choices=User.TARGET_LEVEL_CHOICES,
         default=User.LEVEL_BEGINNER,
     )
     target_level_2 = models.CharField(
         max_length=30,
-        choices=(("", "指定なし"),) + User.LEVEL_CHOICES,
+        choices=User.OPTIONAL_TARGET_LEVEL_CHOICES,
         blank=True,
         default="",
     )
@@ -2063,13 +2070,13 @@ class LessonWaitlist(models.Model):
     )
     target_level = models.CharField(
         max_length=30,
-        choices=User.LEVEL_CHOICES,
+        choices=User.TARGET_LEVEL_CHOICES,
         default=User.LEVEL_BEGINNER,
         verbose_name="対象レベル",
     )
     target_level_2 = models.CharField(
         max_length=30,
-        choices=(("", "指定なし"),) + User.LEVEL_CHOICES,
+        choices=User.OPTIONAL_TARGET_LEVEL_CHOICES,
         blank=True,
         default="",
         verbose_name="対象レベル2",
