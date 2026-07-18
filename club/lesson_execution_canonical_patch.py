@@ -1,5 +1,9 @@
 from . import lesson_execution
-from .models import CoachAvailability
+from .models import CoachAvailability, Court
+
+
+def _first_active_court():
+    return Court.objects.filter(is_active=True).order_by("id").first()
 
 
 def _canonical_availability_for_fixed(fixed_lesson, start_at, end_at):
@@ -8,15 +12,18 @@ def _canonical_availability_for_fixed(fixed_lesson, start_at, end_at):
 
     FixedLesson を正規データとして扱い、対応する CoachAvailability が
     存在しない場合は、その場で1件だけ自動補完する。
-    担当変更前の古い枠は検索対象に含めない。
+
+    FixedLesson にコートが未設定の場合は、レッスンカレンダーと同じく
+    最初の有効コートを使用する。
     """
     primary_coach = (
         fixed_lesson.primary_coach()
         if hasattr(fixed_lesson, "primary_coach")
         else fixed_lesson.coach
     )
+    court = fixed_lesson.court or _first_active_court()
 
-    if primary_coach is None or fixed_lesson.court_id is None:
+    if primary_coach is None or court is None:
         return None
 
     defaults = {
@@ -26,12 +33,15 @@ def _canonical_availability_for_fixed(fixed_lesson, start_at, end_at):
         "target_level": fixed_lesson.target_level,
         "target_level_2": getattr(fixed_lesson, "target_level_2", "") or "",
         "status": CoachAvailability.STATUS_OPEN,
-        "note": f"固定レッスン: {fixed_lesson.title or fixed_lesson.get_weekday_display()}",
+        "note": (
+            f"固定レッスン: "
+            f"{fixed_lesson.title or fixed_lesson.get_weekday_display()}"
+        ),
     }
 
     availability, _created = CoachAvailability.objects.get_or_create(
         coach=primary_coach,
-        court=fixed_lesson.court,
+        court=court,
         lesson_type=fixed_lesson.lesson_type,
         start_at=start_at,
         end_at=end_at,
