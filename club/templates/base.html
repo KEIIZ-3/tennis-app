@@ -920,13 +920,14 @@
 
             <nav class="nav" id="member-nav">
               <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
-              <a href="{% url 'club:lesson_calendar' %}">予約</a>
+              <a href="{% url 'club:lesson_calendar' %}">レッスンカレンダー</a>
               <a href="{% url 'club:reservation_list' %}">
                 予約確認
                 {% if nav_member_upcoming_count %}
                   <span class="nav-count-badge soft">{{ nav_member_upcoming_count }}</span>
                 {% endif %}
               </a>
+              <a href="{% url 'club:family_member_manage' %}">家族</a>
               <a href="{% url 'club:tickets' %}">
                 チケット
                 {% if nav_low_ticket_warning %}
@@ -935,8 +936,6 @@
               </a>
               <a href="{% url 'club:shop_estimate' %}">Shop・ガット</a>
               <a href="{% url 'club:stringing_order_create' %}">ガット張りだけ依頼</a>
-              <a href="{% url 'club:line_connect' %}">LINE連携</a>
-              <a href="{% url 'club:help' %}">メニュー</a>
               <a href="{% url 'club:terms' %}">利用規約</a>
 
               <form method="post" action="{% url 'club:logout' %}" class="logout-form">
@@ -951,9 +950,7 @@
               <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
               <a href="{% url 'club:lesson_calendar' %}">レッスンカレンダー</a>
               <a href="{% url 'club:reservation_list' %}">予約確認</a>
-              <a href="{% url 'club:help' %}">使い方</a>
               <a href="{% url 'club:terms' %}">利用規約</a>
-              <a href="{% url 'club:line_connect' %}">LINE連携</a>
               <form method="post" action="{% url 'club:logout' %}" class="logout-form">
                 {% csrf_token %}
                 <button type="submit" class="logout-button">ログアウト</button>
@@ -989,6 +986,7 @@
               <section class="coach-menu-group primary">
                 <h2 class="coach-menu-group-title">日常業務</h2>
                 <div class="coach-tabs">
+                  <a href="{% url 'club:admin_dashboard' %}" class="coach-tab {% if request.resolver_match.url_name == 'admin_dashboard' %}active{% endif %}">かんたん管理</a>
                   <a href="{% url 'club:coach_today_lessons' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_today_lessons' %}active{% endif %}">本日の受付・精算</a>
                   <a href="{% url 'club:reservation_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_list' %}active{% endif %}">
                     予約・承認
@@ -1010,6 +1008,7 @@
                 <h2 class="coach-menu-group-title">レッスン・予約管理</h2>
                 <div class="coach-tabs">
                   <a href="{% url 'club:lesson_calendar' %}" class="coach-tab {% if request.resolver_match.url_name == 'lesson_calendar' %}active{% endif %}">レッスンカレンダー</a>
+                  <a href="{% url 'club:family_member_manage' %}" class="coach-tab {% if request.resolver_match.url_name == 'family_member_manage' %}active{% endif %}">家族</a>
                   <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}active{% endif %}">固定レッスン</a>
                   <a href="{% url 'club:coach_availability_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_availability_list' or request.resolver_match.url_name == 'coach_availability_create' or request.resolver_match.url_name == 'coach_availability_edit' %}active{% endif %}">スケジュール枠</a>
                   {% if user.role == "contractor_coach" %}
