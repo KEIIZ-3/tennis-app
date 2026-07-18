@@ -7,6 +7,7 @@ from django.utils import timezone
 from club.settlement_balance_policy import (
     _automatic_court_cost,
     _court_transfer_allocation,
+    _held_execution_reservations,
     _lighting_start_hour,
 )
 
@@ -101,3 +102,34 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         self.assertEqual(allocation["reimbursement_by_coach"], {})
         self.assertEqual(allocation["expense_ids"], set())
         self.assertEqual(allocation["total"], 0)
+
+    def test_only_held_execution_slots_are_eligible_once(self):
+        start_at = timezone.make_aware(datetime(2026, 7, 4, 19, 0))
+        held_first = SimpleNamespace(
+            pk=1,
+            start_at=start_at,
+            fixed_lesson=SimpleNamespace(pk=10),
+            availability=None,
+        )
+        held_duplicate = SimpleNamespace(
+            pk=2,
+            start_at=start_at,
+            fixed_lesson=SimpleNamespace(pk=10),
+            availability=None,
+        )
+        scheduled = SimpleNamespace(
+            pk=3,
+            start_at=start_at,
+            fixed_lesson=None,
+            availability=SimpleNamespace(pk=20),
+        )
+
+        eligible = _held_execution_reservations(
+            [held_first, held_duplicate, scheduled],
+            {
+                "fixed:10:2026-07-04": {"status": "held"},
+                "availability:20": {"status": "scheduled"},
+            },
+        )
+
+        self.assertEqual(eligible, [held_first])

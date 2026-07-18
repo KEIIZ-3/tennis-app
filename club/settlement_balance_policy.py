@@ -325,11 +325,13 @@ def _approved_monthly_expenses(month_start, next_month):
 
 def _eligible_reservations(year, month):
     from .models import Reservation
+    from .lesson_execution_storage import read_status_map
+    from .settlement_models import MonthlySettlement
 
     month_start, next_month = _month_range(year, month)
     now = timezone.now()
 
-    return list(
+    reservations = list(
         Reservation.objects.filter(
             start_at__date__gte=month_start,
             start_at__date__lt=next_month,
@@ -340,6 +342,7 @@ def _eligible_reservations(year, month):
             "coach",
             "substitute_coach",
             "court",
+            "availability",
             "fixed_lesson",
             "fixed_lesson__coach",
             "fixed_lesson__coach_2",
@@ -347,6 +350,41 @@ def _eligible_reservations(year, month):
         )
         .order_by("start_at", "id")
     )
+    settlement = MonthlySettlement.objects.filter(
+        year=int(year),
+        month=int(month),
+    ).first()
+    if settlement is None:
+        return []
+    return _held_execution_reservations(
+        reservations,
+        read_status_map(settlement),
+    )
+
+
+def _execution_slot_key(reservation):
+    fixed_lesson = getattr(reservation, "fixed_lesson", None)
+    if fixed_lesson is not None:
+        start_local = _local_datetime(reservation.start_at)
+        return f"fixed:{fixed_lesson.pk}:{start_local.date().isoformat()}"
+
+    availability = getattr(reservation, "availability", None)
+    if availability is None:
+        return ""
+    return f"availability:{availability.pk}"
+
+
+def _held_execution_reservations(reservations, status_map):
+    eligible_by_slot = {}
+    for reservation in reservations:
+        slot_key = _execution_slot_key(reservation)
+        if not slot_key:
+            continue
+        entry = status_map.get(slot_key) or {}
+        if entry.get("status") != "held":
+            continue
+        eligible_by_slot.setdefault(slot_key, reservation)
+    return list(eligible_by_slot.values())
 
 
 def _court_transfer_allocation(expense_rows, eligible_coach_ids):
