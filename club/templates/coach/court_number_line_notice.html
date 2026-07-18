@@ -15,8 +15,8 @@
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 .row{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid #e5e7eb;font-weight:850;}
 .row:last-child{border-bottom:0;}
-.ok,.ng{padding:3px 8px;border-radius:999px;font-size:12px;white-space:nowrap;}
-.ok{background:#dcfce7;color:#166534;}.ng{background:#fee2e2;color:#991b1b;}
+.ok,.mail,.ng{padding:3px 8px;border-radius:999px;font-size:12px;white-space:nowrap;}
+.ok{background:#dcfce7;color:#166534;}.mail{background:#dbeafe;color:#1d4ed8;}.ng{background:#fee2e2;color:#991b1b;}
 .preview{margin:0;padding:13px;border-radius:14px;background:#0f172a;color:#fff;white-space:pre-wrap;font-size:13px;line-height:1.7;}
 .confirm{display:flex;gap:8px;align-items:flex-start;margin-top:14px;padding:12px;border:1px solid #bfdbfe;border-radius:14px;background:#eff6ff;font-size:13px;line-height:1.6;font-weight:850;}
 .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
@@ -71,7 +71,7 @@
     <section class="notice-card">
       <h2 style="margin:0;font-size:19px;">送信対象の参加者</h2>
       {% for row in participant_rows %}
-        <div class="row"><span>{{ row.name }}</span>{% if row.line_ready %}<span class="ok">LINE送信可</span>{% else %}<span class="ng">LINE未連携</span>{% endif %}</div>
+        <div class="row"><span>{{ row.name }}</span>{% if row.line_ready %}<span class="ok">LINE送信可</span>{% elif row.email_ready %}<span class="mail">メール補完可</span>{% else %}<span class="ng">連絡先なし</span>{% endif %}</div>
       {% empty %}<p class="empty">有効な参加者はいません。</p>{% endfor %}
     </section>
     {% if message_preview %}
