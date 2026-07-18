@@ -3,13 +3,15 @@ from datetime import date
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.db.models import Q
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
-from .models import CoachAvailability, CoachExpense, Reservation
+from .lesson_execution_storage import read_status_map, save_status
+from .models import CoachAvailability, CoachExpense, FixedLesson, Reservation
 from .settlement_models import MonthlySettlement
 from .settlement_service import calculate_monthly_settlement, get_or_create_monthly_settlement
 
@@ -38,8 +40,6 @@ STATUS_CLASSES = {
     STATUS_REFUND_PENDING: "refund-pending",
     STATUS_REFUNDED: "refunded",
 }
-
-SNAPSHOT_KEY = "lesson_execution_statuses"
 
 
 def _is_allowed(user):
@@ -72,39 +72,17 @@ def _next_month(year, month):
 
 
 def _month_url(year, month):
-    return f"{reverse('club:lesson_execution_manage')}?year={int(year)}&month={int(month)}"
-
-
-def _availability_key(availability):
-    return f"availability:{availability.pk}"
-
-
-def _read_status_map(settlement):
-    snapshot = dict(settlement.calculation_snapshot or {})
-    raw = snapshot.get(SNAPSHOT_KEY) or {}
-    return dict(raw) if isinstance(raw, dict) else {}
-
-
-def _save_status(settlement, availability, status, user):
-    snapshot = dict(settlement.calculation_snapshot or {})
-    status_map = _read_status_map(settlement)
-    status_map[_availability_key(availability)] = {
-        "status": status,
-        "updated_at": timezone.now().isoformat(),
-        "updated_by_id": getattr(user, "pk", None),
-        "updated_by_name": _display_name(user),
-    }
-    snapshot[SNAPSHOT_KEY] = status_map
-    settlement.calculation_snapshot = snapshot
-    settlement.updated_at = timezone.now()
-    settlement.save(update_fields=["calculation_snapshot", "updated_at"])
+    return (
+        f"{reverse('club:lesson_execution_manage')}"
+        f"?year={int(year)}&month={int(month)}"
+    )
 
 
 def _display_name(user):
     if not user:
         return "-"
     try:
-        return user.display_name()
+        return str(user.display_name() or "-")
     except Exception:
         return str(user)
 
@@ -115,38 +93,203 @@ def _local(value):
     return value
 
 
-def _reservation_queryset(availability):
-    return Reservation.objects.filter(
-        availability=availability,
-        start_at=availability.start_at,
-        end_at=availability.end_at,
-    ).select_related("user", "coach", "substitute_coach", "fixed_lesson")
+def _availability_key(availability):
+    return f"availability:{availability.pk}"
 
 
-def _coach_names(availability, reservations):
+def _fixed_slot_key(fixed_lesson, target_date):
+    return f"fixed:{fixed_lesson.pk}:{target_date.isoformat()}"
+
+
+def _slot_key(slot):
+    if slot.get("fixed_lesson") is not None:
+        return _fixed_slot_key(slot["fixed_lesson"], slot["target_date"])
+    return _availability_key(slot["availability"])
+
+
+def _legacy_keys(slot):
+    availability = slot.get("availability")
+    return [_availability_key(availability)] if availability else []
+
+
+def _fixed_coach_names(fixed_lesson):
     names = []
+    try:
+        coaches = fixed_lesson.all_coaches()
+    except Exception:
+        coaches = [
+            getattr(fixed_lesson, "coach", None),
+            getattr(fixed_lesson, "coach_2", None),
+            getattr(fixed_lesson, "coach_3", None),
+        ]
 
-    for reservation in reservations:
-        fixed_lesson = getattr(reservation, "fixed_lesson", None)
-        if fixed_lesson:
-            try:
-                for coach in fixed_lesson.all_coaches():
-                    coach_name = _display_name(coach)
-                    if coach_name and coach_name not in names:
-                        names.append(coach_name)
-            except Exception:
-                pass
+    for coach in coaches:
+        coach_name = _display_name(coach)
+        if coach_name and coach_name != "-" and coach_name not in names:
+            names.append(coach_name)
 
-        assigned = getattr(reservation, "substitute_coach", None) or getattr(reservation, "coach", None)
-        assigned_name = _display_name(assigned)
-        if assigned_name and assigned_name not in names:
-            names.append(assigned_name)
+    return "・".join(names) or "-"
 
-    if not names:
-        assigned = availability.substitute_coach or availability.coach
-        names.append(_display_name(assigned))
 
-    return "・".join(name for name in names if name and name != "-") or "-"
+def _availability_coach_names(availability):
+    assigned = availability.substitute_coach or availability.coach
+    return _display_name(assigned)
+
+
+def _reservation_queryset(slot):
+    availability = slot["availability"]
+    fixed_lesson = slot.get("fixed_lesson")
+    start_at = slot["start_at"]
+    end_at = slot["end_at"]
+
+    condition = Q(
+        availability=availability,
+        start_at=start_at,
+        end_at=end_at,
+    )
+
+    if fixed_lesson is not None:
+        condition |= Q(
+            fixed_lesson=fixed_lesson,
+            start_at=start_at,
+            end_at=end_at,
+        )
+
+    return (
+        Reservation.objects.filter(condition)
+        .select_related(
+            "user",
+            "coach",
+            "substitute_coach",
+            "fixed_lesson",
+            "availability",
+        )
+        .distinct()
+        .order_by("id")
+    )
+
+
+def _canonical_availability_for_fixed(fixed_lesson, start_at, end_at):
+    primary_coach = (
+        fixed_lesson.primary_coach()
+        if hasattr(fixed_lesson, "primary_coach")
+        else fixed_lesson.coach
+    )
+
+    queryset = CoachAvailability.objects.filter(
+        coach=primary_coach,
+        lesson_type=fixed_lesson.lesson_type,
+        start_at=start_at,
+        end_at=end_at,
+    )
+
+    if fixed_lesson.court_id:
+        queryset = queryset.filter(court_id=fixed_lesson.court_id)
+
+    availability = (
+        queryset.select_related("coach", "substitute_coach", "court")
+        .order_by("-id")
+        .first()
+    )
+    if availability:
+        return availability
+
+    reservation = (
+        Reservation.objects.filter(
+            fixed_lesson=fixed_lesson,
+            start_at=start_at,
+            end_at=end_at,
+        )
+        .exclude(availability=None)
+        .select_related(
+            "availability",
+            "availability__coach",
+            "availability__substitute_coach",
+            "availability__court",
+        )
+        .order_by("-id")
+        .first()
+    )
+    return reservation.availability if reservation else None
+
+
+def _canonical_slots(year, month):
+    month_start, next_month = _month_range(year, month)
+    slots = []
+    represented_availability_ids = set()
+
+    fixed_lessons = (
+        FixedLesson.objects.filter(is_active=True)
+        .select_related("coach", "coach_2", "coach_3", "court")
+        .order_by("id")
+    )
+
+    for fixed_lesson in fixed_lessons:
+        for target_date in fixed_lesson.scheduled_occurrence_dates():
+            if not (month_start <= target_date < next_month):
+                continue
+
+            start_at, end_at = fixed_lesson._build_datetimes_for_date(target_date)
+            availability = _canonical_availability_for_fixed(
+                fixed_lesson,
+                start_at,
+                end_at,
+            )
+            if availability is None:
+                continue
+
+            represented_availability_ids.add(availability.pk)
+            slots.append(
+                {
+                    "availability": availability,
+                    "fixed_lesson": fixed_lesson,
+                    "target_date": target_date,
+                    "start_at": start_at,
+                    "end_at": end_at,
+                    "coach_names": _fixed_coach_names(fixed_lesson),
+                    "source_kind": "fixed_lesson",
+                }
+            )
+
+    extra_availabilities = (
+        CoachAvailability.objects.filter(
+            start_at__date__gte=month_start,
+            start_at__date__lt=next_month,
+        )
+        .exclude(lesson_type=Reservation.LESSON_GENERAL)
+        .exclude(pk__in=represented_availability_ids)
+        .select_related("coach", "substitute_coach", "court")
+        .order_by("start_at", "id")
+    )
+
+    for availability in extra_availabilities:
+        slots.append(
+            {
+                "availability": availability,
+                "fixed_lesson": None,
+                "target_date": _local(availability.start_at).date(),
+                "start_at": availability.start_at,
+                "end_at": availability.end_at,
+                "coach_names": _availability_coach_names(availability),
+                "source_kind": "availability",
+            }
+        )
+
+    slots.sort(key=lambda row: (row["start_at"], row["availability"].pk))
+    return slots
+
+
+def _status_entry(status_map, slot):
+    entry = status_map.get(_slot_key(slot))
+    if entry:
+        return entry
+
+    for legacy_key in _legacy_keys(slot):
+        entry = status_map.get(legacy_key)
+        if entry:
+            return entry
+
+    return {}
 
 
 def _mark_refunded(availability, changed_by):
@@ -172,7 +315,8 @@ def _mark_refunded(availability, changed_by):
         extra_meta = {
             key: value
             for key, value in meta.items()
-            if key not in {
+            if key
+            not in {
                 "expense_type",
                 "receipt_status",
                 "receipt_check_status",
@@ -206,31 +350,54 @@ def _patch_settlement_court_eligibility():
     from . import settlement_balance_policy
 
     current = settlement_balance_policy._eligible_reservations
-    if getattr(current, "_execution_status_filter_applied", False):
+    if getattr(current, "_canonical_execution_filter_applied", False):
         return
 
-    original = current
+    original = getattr(current, "_original", current)
 
     def eligible_with_execution_status(year, month):
         reservations = original(year, month)
-        settlement = MonthlySettlement.objects.filter(year=int(year), month=int(month)).first()
+        settlement = MonthlySettlement.objects.filter(
+            year=int(year),
+            month=int(month),
+        ).first()
         if settlement is None:
             return []
 
-        status_map = _read_status_map(settlement)
-        eligible = []
-        for reservation in reservations:
-            availability_id = getattr(reservation, "availability_id", None)
-            if not availability_id:
-                continue
-            entry = status_map.get(f"availability:{availability_id}") or {}
-            if entry.get("status") == STATUS_HELD:
-                eligible.append(reservation)
-        return eligible
+        status_map = read_status_map(settlement)
+        eligible_by_slot = {}
 
-    eligible_with_execution_status._execution_status_filter_applied = True
+        for reservation in reservations:
+            fixed_lesson = getattr(reservation, "fixed_lesson", None)
+            if fixed_lesson is not None:
+                key = _fixed_slot_key(
+                    fixed_lesson,
+                    _local(reservation.start_at).date(),
+                )
+            else:
+                availability = getattr(reservation, "availability", None)
+                if availability is None:
+                    continue
+                key = _availability_key(availability)
+
+            entry = status_map.get(key) or {}
+            if not entry and getattr(reservation, "availability_id", None):
+                entry = status_map.get(
+                    f"availability:{reservation.availability_id}"
+                ) or {}
+
+            if entry.get("status") != STATUS_HELD:
+                continue
+
+            eligible_by_slot.setdefault(key, reservation)
+
+        return list(eligible_by_slot.values())
+
+    eligible_with_execution_status._canonical_execution_filter_applied = True
     eligible_with_execution_status._original = original
-    settlement_balance_policy._eligible_reservations = eligible_with_execution_status
+    settlement_balance_policy._eligible_reservations = (
+        eligible_with_execution_status
+    )
 
 
 _patch_settlement_court_eligibility()
@@ -244,11 +411,20 @@ def lesson_execution_manage(request):
 
     today = timezone.localdate()
     try:
-        selected_year = int(request.GET.get("year") or request.POST.get("year") or today.year)
+        selected_year = int(
+            request.GET.get("year")
+            or request.POST.get("year")
+            or today.year
+        )
     except Exception:
         selected_year = today.year
+
     try:
-        selected_month = int(request.GET.get("month") or request.POST.get("month") or today.month)
+        selected_month = int(
+            request.GET.get("month")
+            or request.POST.get("month")
+            or today.month
+        )
     except Exception:
         selected_month = today.month
 
@@ -257,35 +433,69 @@ def lesson_execution_manage(request):
     if selected_month < 1 or selected_month > 12:
         selected_month = today.month
 
-    month_start, next_month = _month_range(selected_year, selected_month)
     redirect_url = _month_url(selected_year, selected_month)
-    settlement = get_or_create_monthly_settlement(selected_year, selected_month)
+    settlement = get_or_create_monthly_settlement(
+        selected_year,
+        selected_month,
+    )
+    slots = _canonical_slots(selected_year, selected_month)
+    slots_by_availability_id = {
+        str(slot["availability"].pk): slot for slot in slots
+    }
 
     if request.method == "POST":
         if settlement.is_closed:
-            messages.error(request, "締め済みの月は開催状態を変更できません。")
+            messages.error(
+                request,
+                "締め済みの月は開催状態を変更できません。",
+            )
             return redirect(redirect_url)
 
-        availability_id = (request.POST.get("availability_id") or "").strip()
+        availability_id = (
+            request.POST.get("availability_id") or ""
+        ).strip()
         action = (request.POST.get("action") or "").strip()
-        availability = get_object_or_404(
-            CoachAvailability.objects.select_related("coach", "substitute_coach", "court"),
-            pk=availability_id,
-            start_at__date__gte=month_start,
-            start_at__date__lt=next_month,
-        )
+        slot = slots_by_availability_id.get(availability_id)
 
-        reservations = list(_reservation_queryset(availability))
+        if slot is None:
+            messages.error(
+                request,
+                "対象レッスンは現在のレッスンカレンダーに存在しません。",
+            )
+            return redirect(redirect_url)
+
+        availability = slot["availability"]
+        reservations = list(_reservation_queryset(slot))
 
         if action == STATUS_HELD:
-            if availability.end_at > timezone.now():
-                messages.error(request, "終了前のレッスンは実施済みにできません。")
+            if slot["end_at"] > timezone.now():
+                messages.error(
+                    request,
+                    "終了前のレッスンは実施済みにできません。",
+                )
                 return redirect(redirect_url)
-            if not any(reservation.status == Reservation.STATUS_ACTIVE for reservation in reservations):
-                messages.error(request, "有効な予約がないため実施済みにできません。")
+
+            if not any(
+                reservation.status == Reservation.STATUS_ACTIVE
+                for reservation in reservations
+            ):
+                messages.error(
+                    request,
+                    "有効な予約がないため実施済みにできません。",
+                )
                 return redirect(redirect_url)
-            _save_status(settlement, availability, STATUS_HELD, request.user)
-            messages.success(request, "レッスンを実施済みにしました。売上とコート代の精算対象になります。")
+
+            save_status(
+                settlement,
+                _slot_key(slot),
+                STATUS_HELD,
+                request.user,
+                legacy_keys=_legacy_keys(slot),
+            )
+            messages.success(
+                request,
+                "レッスンを実施済みにしました。売上とコート代の精算対象になります。",
+            )
 
         elif action == STATUS_RAIN_CANCELED:
             canceled_count = 0
@@ -299,14 +509,28 @@ def lesson_execution_manage(request):
                     )
                     canceled_count += 1
 
-                from .views import _mark_court_expenses_refund_pending_for_rain_cancel
-
-                pending_count = _mark_court_expenses_refund_pending_for_rain_cancel(
-                    availability,
-                    changed_by=request.user,
+                from .views import (
+                    _mark_court_expenses_refund_pending_for_rain_cancel,
                 )
-                next_status = STATUS_REFUND_PENDING if pending_count > 0 else STATUS_RAIN_CANCELED
-                _save_status(settlement, availability, next_status, request.user)
+
+                pending_count = (
+                    _mark_court_expenses_refund_pending_for_rain_cancel(
+                        availability,
+                        changed_by=request.user,
+                    )
+                )
+                next_status = (
+                    STATUS_REFUND_PENDING
+                    if pending_count > 0
+                    else STATUS_RAIN_CANCELED
+                )
+                save_status(
+                    settlement,
+                    _slot_key(slot),
+                    next_status,
+                    request.user,
+                    legacy_keys=_legacy_keys(slot),
+                )
 
             messages.success(
                 request,
@@ -315,7 +539,13 @@ def lesson_execution_manage(request):
 
         elif action == STATUS_REFUNDED:
             refunded_count = _mark_refunded(availability, request.user)
-            _save_status(settlement, availability, STATUS_REFUNDED, request.user)
+            save_status(
+                settlement,
+                _slot_key(slot),
+                STATUS_REFUNDED,
+                request.user,
+                legacy_keys=_legacy_keys(slot),
+            )
             messages.success(
                 request,
                 f"コート代の返金済みを登録しました。対象経費{refunded_count}件を精算対象外にしました。",
@@ -325,19 +555,14 @@ def lesson_execution_manage(request):
             messages.error(request, "変更内容が正しくありません。")
             return redirect(redirect_url)
 
-        calculate_monthly_settlement(selected_year, selected_month, force=True)
+        calculate_monthly_settlement(
+            selected_year,
+            selected_month,
+            force=True,
+        )
         return redirect(redirect_url)
 
-    status_map = _read_status_map(settlement)
-    availabilities = list(
-        CoachAvailability.objects.filter(
-            start_at__date__gte=month_start,
-            start_at__date__lt=next_month,
-        )
-        .select_related("coach", "substitute_coach", "court")
-        .order_by("start_at", "id")
-    )
-
+    status_map = read_status_map(settlement)
     rows = []
     counts = {
         STATUS_UNCONFIRMED: 0,
@@ -348,46 +573,72 @@ def lesson_execution_manage(request):
         STATUS_REFUNDED: 0,
     }
 
-    for availability in availabilities:
-        reservations = list(_reservation_queryset(availability))
-        entry = status_map.get(_availability_key(availability)) or {}
+    for slot in slots:
+        availability = slot["availability"]
+        reservations = list(_reservation_queryset(slot))
+        entry = _status_entry(status_map, slot)
         saved_status = entry.get("status")
 
         if saved_status in STATUS_LABELS:
             status = saved_status
-        elif availability.end_at > timezone.now():
+        elif slot["end_at"] > timezone.now():
             status = STATUS_SCHEDULED
         else:
             status = STATUS_UNCONFIRMED
 
         counts[status] = counts.get(status, 0) + 1
         active_count = sum(
-            1 for reservation in reservations if reservation.status == Reservation.STATUS_ACTIVE
+            1
+            for reservation in reservations
+            if reservation.status == Reservation.STATUS_ACTIVE
         )
         canceled_count = sum(
-            1 for reservation in reservations if reservation.status == Reservation.STATUS_CANCELED
+            1
+            for reservation in reservations
+            if reservation.status == Reservation.STATUS_CANCELED
         )
 
         rows.append(
             {
                 "availability": availability,
-                "start_local": _local(availability.start_at),
-                "end_local": _local(availability.end_at),
-                "coach_names": _coach_names(availability, reservations),
+                "start_local": _local(slot["start_at"]),
+                "end_local": _local(slot["end_at"]),
+                "coach_names": slot["coach_names"],
                 "status": status,
                 "status_label": STATUS_LABELS[status],
                 "status_class": STATUS_CLASSES[status],
                 "active_count": active_count,
                 "canceled_count": canceled_count,
-                "can_mark_held": availability.end_at <= timezone.now() and active_count > 0,
-                "can_mark_rain": status not in (STATUS_REFUNDED, STATUS_HELD),
-                "can_mark_refunded": status in (STATUS_RAIN_CANCELED, STATUS_REFUND_PENDING),
+                "can_mark_held": (
+                    slot["end_at"] <= timezone.now()
+                    and active_count > 0
+                    and status not in (
+                        STATUS_RAIN_CANCELED,
+                        STATUS_REFUND_PENDING,
+                        STATUS_REFUNDED,
+                    )
+                ),
+                "can_mark_rain": status
+                not in (
+                    STATUS_HELD,
+                    STATUS_REFUNDED,
+                    STATUS_REFUND_PENDING,
+                ),
+                "can_mark_refunded": status
+                in (STATUS_RAIN_CANCELED, STATUS_REFUND_PENDING),
                 "updated_by_name": entry.get("updated_by_name", ""),
+                "source_kind": slot["source_kind"],
             }
         )
 
-    prev_year, prev_month = _previous_month(selected_year, selected_month)
-    next_year, next_month_value = _next_month(selected_year, selected_month)
+    prev_year, prev_month = _previous_month(
+        selected_year,
+        selected_month,
+    )
+    next_year, next_month_value = _next_month(
+        selected_year,
+        selected_month,
+    )
 
     return render(
         request,
