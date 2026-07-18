@@ -430,18 +430,6 @@ def _upsert_user_by_line_identity(request, line_user_id, email="", picture_url="
     return user, "created"
 
 
-def _sync_fixed_lessons():
-    try:
-        queryset = FixedLesson.objects.filter(is_active=True).prefetch_related("members")
-        for fixed_lesson in queryset:
-            try:
-                fixed_lesson.sync_future_reservations()
-            except Exception:
-                continue
-    except Exception:
-        pass
-
-
 def _user_can_access_reservation(user, reservation):
     if not user or not user.is_authenticated:
         return False
@@ -1204,8 +1192,6 @@ def _lesson_calendar_holiday_name(target_date):
 
 @require_http_methods(["GET", "POST"])
 def lesson_calendar_view(request):
-    _sync_fixed_lessons()
-
     today = timezone.localdate()
 
     def _parse_target_month(raw_year, raw_month):
@@ -2209,8 +2195,6 @@ def lesson_calendar_view(request):
 @login_required
 @require_GET
 def lesson_reservation_confirm(request):
-    _sync_fixed_lessons()
-
     today = timezone.localdate()
 
     def _parse_target_month(raw_year, raw_month):
@@ -2530,8 +2514,6 @@ def home(request):
         survey_redirect = _require_schedule_survey(request)
         if survey_redirect:
             return survey_redirect
-
-        _sync_fixed_lessons()
 
     User = get_user_model()
     coaches = User.objects.filter(role__in=("coach", "contractor_coach")).order_by("username")
@@ -6274,8 +6256,6 @@ def terms_view(request):
 @login_required
 @require_GET
 def calendar_events(request):
-    _sync_fixed_lessons()
-
     events = []
     coach_filter = (request.GET.get("coach") or request.GET.get("coach_id") or "").strip()
     start_filter = _parse_query_datetime(request.GET.get("start"))
@@ -6477,8 +6457,6 @@ def reservation_create(request):
     survey_redirect = _require_schedule_survey(request)
     if survey_redirect:
         return survey_redirect
-
-    _sync_fixed_lessons()
 
     regular_availability_id = (request.GET.get("availability_id") or "").strip()
     regular_fixed_lesson_id = (request.GET.get("fixed_lesson_id") or "").strip()
@@ -6786,8 +6764,6 @@ def reservation_create(request):
 @login_required
 @require_GET
 def reservation_list(request):
-    _sync_fixed_lessons()
-
     now = timezone.now()
 
     qs = (
@@ -7085,8 +7061,6 @@ def lesson_waitlist_promote(request, pk):
 
 @require_http_methods(["GET", "POST"])
 def coach_availability_list(request):
-    _sync_fixed_lessons()
-
     if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
         return HttpResponse("Forbidden", status=403)
 

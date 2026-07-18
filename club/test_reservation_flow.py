@@ -283,6 +283,14 @@ class ReservationFlowSmokeTests(TestCase):
             1,
         )
 
+    def test_lesson_calendar_get_does_not_resync_or_mutate_fixed_lessons(self):
+        self._create_fixed_lesson(title="閲覧時同期禁止テスト")
+        with patch.object(FixedLesson, "sync_future_reservations") as sync_mock:
+            response = self.client.get(reverse("club:lesson_calendar"))
+
+        self.assertEqual(response.status_code, 200)
+        sync_mock.assert_not_called()
+
     def test_direct_reservation_rejects_fixed_lesson_at_capacity(self):
         fixed_lesson = self._create_fixed_lesson(title="直接保存満員テスト")
         members = [
