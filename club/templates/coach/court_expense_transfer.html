@@ -61,13 +61,13 @@
       <div>
         <label for="amount">コート代</label>
         <input id="amount" name="amount" type="number" min="1" step="1" inputmode="numeric" placeholder="例：2400" required>
-        <p class="help">尼崎記念公園は公式料金から自動計算します。実際の支払額が異なる場合は上書きできます。</p>
+        <p class="help">西猪名公園・尼崎記念公園は公式料金から自動計算します。実際の支払額が異なる場合は上書きできます。</p>
       </div>
 
       <div id="rate_box" class="rate-box" hidden>
         <strong id="rate_total"></strong><br>
         <span id="rate_detail"></span><br>
-        <a href="https://www.aspf.or.jp/park/tennis.html#gsc.tab=0" target="_blank" rel="noopener noreferrer">尼崎市スポーツ振興事業団の料金表を確認</a>
+        <a id="rate_link" href="#" target="_blank" rel="noopener noreferrer"></a>
       </div>
 
       <div>
@@ -111,6 +111,7 @@
   const rateBox = document.getElementById("rate_box");
   const rateTotal = document.getElementById("rate_total");
   const rateDetail = document.getElementById("rate_detail");
+  const rateLink = document.getElementById("rate_link");
 
   const readJson = (id) => {
     const element = document.getElementById(id);
@@ -124,8 +125,9 @@
   const courtName = String(readJson("court-name") || "");
   const courtCount = Math.max(parseInt(readJson("court-count") || 1, 10), 1);
   const isAmagasaki = courtType === "amagasaki" || (courtName.includes("尼崎") && courtName.includes("記念"));
+  const isSono = courtType === "sono" || courtName.includes("西猪名");
 
-  if (!isAmagasaki || !startRaw || !endRaw) {
+  if ((!isAmagasaki && !isSono) || !startRaw || !endRaw) {
     return;
   }
 
@@ -138,10 +140,34 @@
   const durationMinutes = Math.round((endAt.getTime() - startAt.getTime()) / 60000);
   const durationHours = durationMinutes / 60;
   const isSunday = startAt.getDay() === 0;
-  const premiumRate = isSunday || isHoliday;
-  const hourlyRate = premiumRate ? 1080 : 900;
-  const baseAmount = Math.round(hourlyRate * durationHours * courtCount);
+  const isSaturday = startAt.getDay() === 6;
 
+  let hourlyRate = 0;
+  let lightingHourlyRate = 0;
+  let facilityLabel = "";
+  let rateLabel = "";
+  let linkHref = "";
+  let linkLabel = "";
+
+  if (isAmagasaki) {
+    const premiumRate = isSunday || isHoliday;
+    hourlyRate = premiumRate ? 1080 : 900;
+    lightingHourlyRate = 200;
+    facilityLabel = "尼崎記念公園";
+    rateLabel = premiumRate ? "日曜・祝日" : "平日・土曜";
+    linkHref = "https://www.aspf.or.jp/park/tennis.html#gsc.tab=0";
+    linkLabel = "尼崎市スポーツ振興事業団の料金表を確認";
+  } else {
+    const premiumRate = isSaturday || isSunday || isHoliday;
+    hourlyRate = premiumRate ? 1200 : 900;
+    lightingHourlyRate = 400;
+    facilityLabel = "西猪名公園";
+    rateLabel = premiumRate ? "土曜・日曜・祝日" : "平日";
+    linkHref = "https://www.hyogo-park.or.jp/nishiina/contents/sisetsu/area_sports.html";
+    linkLabel = "西猪名公園の公式料金表を確認";
+  }
+
+  const baseAmount = Math.round(hourlyRate * durationHours * courtCount);
   const lightingStart = new Date(startAt);
   lightingStart.setHours(19, 0, 0, 0);
   const lightingEnd = new Date(startAt);
@@ -149,14 +175,14 @@
   const overlapStart = Math.max(startAt.getTime(), lightingStart.getTime());
   const overlapEnd = Math.min(endAt.getTime(), lightingEnd.getTime());
   const lightingMinutes = Math.max(0, Math.round((overlapEnd - overlapStart) / 60000));
-  const lightingUnits = Math.ceil(lightingMinutes / 30);
-  const lightingAmount = lightingUnits * 100 * courtCount;
+  const lightingAmount = Math.round(lightingHourlyRate * (lightingMinutes / 60) * courtCount);
   const total = baseAmount + lightingAmount;
-  const rateLabel = premiumRate ? "日曜・祝日" : "平日・土曜";
 
   amountInput.value = String(total);
   rateTotal.textContent = `自動計算：${total.toLocaleString("ja-JP")}円`;
-  rateDetail.textContent = `${rateLabel}基本料 ${hourlyRate.toLocaleString("ja-JP")}円 × ${durationHours}時間 × ${courtCount}面 ＋ 照明料 ${lightingAmount.toLocaleString("ja-JP")}円`;
+  rateDetail.textContent = `${facilityLabel} / ${rateLabel}基本料 ${hourlyRate.toLocaleString("ja-JP")}円 × ${durationHours}時間 × ${courtCount}面 ＋ 照明料 ${lightingAmount.toLocaleString("ja-JP")}円`;
+  rateLink.href = linkHref;
+  rateLink.textContent = linkLabel;
   rateBox.hidden = false;
 })();
 </script>
