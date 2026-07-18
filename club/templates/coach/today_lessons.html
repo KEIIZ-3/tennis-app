@@ -3,1091 +3,175 @@
 
 {% block content %}
 <style>
-  .ops-page{
-    display:grid;
-    gap:14px;
-  }
-
-  .ops-hero{
-    padding:18px;
-    border-radius:22px;
-    border:1px solid #bfdbfe;
-    background:linear-gradient(180deg,#eff6ff 0%,#ffffff 100%);
-    box-shadow:0 10px 24px rgba(15,23,42,.08);
-  }
-
-  .ops-title{
-    margin:0;
-    font-size:28px;
-    line-height:1.25;
-    font-weight:1000;
-    letter-spacing:-.02em;
-    color:#0f172a;
-  }
-
-  .ops-lead{
-    margin:8px 0 0;
-    color:#475569;
-    font-size:14px;
-    line-height:1.7;
-    font-weight:750;
-  }
-
-  .ops-toolbar{
-    margin-top:14px;
-    display:flex;
-    gap:8px;
-    flex-wrap:wrap;
-    align-items:center;
-  }
-
-  .ops-toolbar .btn{
-    border-radius:999px;
-  }
-
-  .coach-select-form{
-    display:flex;
-    gap:8px;
-    flex-wrap:wrap;
-    align-items:center;
-    margin-top:12px;
-  }
-
-  .coach-select-form select{
-    min-height:40px;
-    padding:8px 12px;
-    border:1px solid #cbd5e1;
-    border-radius:999px;
-    background:#fff;
-    font-size:14px;
-    font-weight:800;
-  }
-
-  .today-action-panel{
-    display:grid;
-    grid-template-columns:1.2fr .8fr;
-    gap:10px;
-    align-items:stretch;
-  }
-
-  .action-card{
-    border:1px solid #e2e8f0;
-    background:#fff;
-    border-radius:18px;
-    padding:14px;
-    box-shadow:0 8px 18px rgba(15,23,42,.06);
-  }
-
-  .action-card.urgent{
-    border-color:#fed7aa;
-    background:#fff7ed;
-  }
-
-  .action-card.good{
-    border-color:#bbf7d0;
-    background:#f0fdf4;
-  }
-
-  .action-title{
-    margin:0;
-    color:#0f172a;
-    font-size:16px;
-    line-height:1.35;
-    font-weight:1000;
-  }
-
-  .action-text{
-    margin:6px 0 0;
-    color:#475569;
-    font-size:13px;
-    line-height:1.65;
-    font-weight:750;
-  }
-
-  .action-link-row{
-    display:flex;
-    gap:8px;
-    flex-wrap:wrap;
-    margin-top:10px;
-  }
-
-  .action-link-row .btn{
-    min-height:38px;
-    border-radius:12px;
-    padding:8px 11px;
-  }
-
-  .summary-grid{
-    display:grid;
-    grid-template-columns:repeat(6,minmax(0,1fr));
-    gap:10px;
-  }
-
-  .summary-card{
-    padding:14px;
-    border-radius:18px;
-    border:1px solid #e2e8f0;
-    background:#fff;
-    box-shadow:0 8px 18px rgba(15,23,42,.06);
-  }
-
-  .summary-card.primary{
-    border-color:#bfdbfe;
-    background:#eff6ff;
-  }
-
-  .summary-card.warn{
-    border-color:#fed7aa;
-    background:#fff7ed;
-  }
-
-  .summary-card.paid{
-    border-color:#bbf7d0;
-    background:#f0fdf4;
-  }
-
-  .summary-label{
-    color:#64748b;
-    font-size:12px;
-    font-weight:900;
-  }
-
-  .summary-value{
-    margin-top:4px;
-    color:#0f172a;
-    font-size:26px;
-    line-height:1;
-    font-weight:1000;
-  }
-
-  .summary-unit{
-    margin-top:3px;
-    color:#64748b;
-    font-size:12px;
-    font-weight:900;
-  }
-
-  .section-title{
-    display:flex;
-    align-items:center;
-    gap:8px;
-    margin:4px 0 10px;
-    color:#0f172a;
-    font-size:20px;
-    line-height:1.3;
-    font-weight:1000;
-  }
-
-  .section-title .badge{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    min-width:28px;
-    height:24px;
-    padding:0 8px;
-    border-radius:999px;
-    background:#0f172a;
-    color:#fff;
-    font-size:12px;
-    font-weight:1000;
-  }
-
-  .section-note{
-    margin:-2px 0 10px;
-    color:#64748b;
-    font-size:13px;
-    line-height:1.7;
-    font-weight:750;
-  }
-
-  .lesson-list{
-    display:grid;
-    gap:12px;
-  }
-
-  .lesson-card{
-    border:1px solid #e2e8f0;
-    border-radius:20px;
-    background:#fff;
-    overflow:hidden;
-    box-shadow:0 8px 20px rgba(15,23,42,.06);
-  }
-
-  .lesson-card.is-today{
-    border-color:#2563eb;
-    box-shadow:0 10px 24px rgba(37,99,235,.14);
-  }
-
-  .lesson-card.has-attention{
-    border-color:#f59e0b;
-  }
-
-  .lesson-head{
-    padding:14px;
-    display:grid;
-    grid-template-columns:1fr auto;
-    gap:10px;
-    align-items:start;
-    background:#f8fafc;
-    border-bottom:1px solid #e2e8f0;
-  }
-
-  .lesson-date{
-    color:#2563eb;
-    font-size:14px;
-    font-weight:1000;
-  }
-
-  .lesson-name{
-    margin-top:3px;
-    color:#0f172a;
-    font-size:19px;
-    line-height:1.3;
-    font-weight:1000;
-  }
-
-  .lesson-meta{
-    margin-top:6px;
-    display:flex;
-    gap:6px;
-    flex-wrap:wrap;
-  }
-
-  .meta-pill{
-    display:inline-flex;
-    align-items:center;
-    min-height:26px;
-    padding:4px 8px;
-    border-radius:999px;
-    background:#eff6ff;
-    color:#1d4ed8;
-    font-size:12px;
-    font-weight:900;
-  }
-
-  .meta-pill.dark{
-    background:#0f172a;
-    color:#fff;
-  }
-
-  .meta-pill.orange{
-    background:#fff7ed;
-    color:#c2410c;
-  }
-
-  .lesson-counts{
-    display:flex;
-    flex-direction:column;
-    gap:6px;
-    align-items:flex-end;
-  }
-
-  .count-pill{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    min-width:82px;
-    min-height:30px;
-    padding:5px 9px;
-    border-radius:999px;
-    background:#ecfdf5;
-    color:#047857;
-    font-size:12px;
-    font-weight:1000;
-    white-space:nowrap;
-  }
-
-  .count-pill.wait{
-    background:#fff7ed;
-    color:#c2410c;
-  }
-
-  .count-pill.full{
-    background:#fee2e2;
-    color:#b91c1c;
-  }
-
-  .lesson-body{
-    display:grid;
-    gap:12px;
-    padding:14px;
-  }
-
-  .quick-action-strip{
-    display:grid;
-    grid-template-columns:repeat(3,minmax(0,1fr));
-    gap:8px;
-  }
-
-  .quick-action-item{
-    border:1px solid #e2e8f0;
-    border-radius:14px;
-    background:#f8fafc;
-    padding:10px;
-  }
-
-  .quick-action-label{
-    color:#64748b;
-    font-size:11px;
-    font-weight:900;
-  }
-
-  .quick-action-value{
-    margin-top:3px;
-    color:#0f172a;
-    font-size:16px;
-    font-weight:1000;
-    line-height:1.2;
-  }
-
-  .people-section{
-    border:1px solid #e2e8f0;
-    border-radius:16px;
-    overflow:hidden;
-    background:#fff;
-  }
-
-  .people-section.needs-payment{
-    border-color:#fed7aa;
-  }
-
-  .people-section.waitlist{
-    border-color:#bfdbfe;
-  }
-
-  .people-heading{
-    display:flex;
-    justify-content:space-between;
-    gap:8px;
-    align-items:center;
-    padding:10px 12px;
-    background:#f8fafc;
-    border-bottom:1px solid #e2e8f0;
-    color:#0f172a;
-    font-size:14px;
-    font-weight:1000;
-  }
-
-  .people-section.needs-payment .people-heading{
-    background:#fff7ed;
-    border-bottom-color:#fed7aa;
-  }
-
-  .people-section.waitlist .people-heading{
-    background:#eff6ff;
-    border-bottom-color:#bfdbfe;
-  }
-
-  .people-heading small{
-    color:#64748b;
-    font-size:11px;
-    font-weight:900;
-  }
-
-  .person-list{
-    display:grid;
-  }
-
-  .person-row{
-    display:grid;
-    grid-template-columns:1fr auto;
-    gap:8px;
-    align-items:center;
-    padding:11px 12px;
-    border-bottom:1px solid #f1f5f9;
-  }
-
-  .person-row:last-child{
-    border-bottom:0;
-  }
-
-  .person-row.payment-unpaid{
-    background:#fffbeb;
-  }
-
-  .person-row.payment-paid{
-    background:#f0fdf4;
-  }
-
-  .person-row.payment-waived{
-    background:#f5f3ff;
-  }
-
-  .person-name{
-    color:#0f172a;
-    font-size:15px;
-    font-weight:1000;
-  }
-
-  .person-sub{
-    margin-top:3px;
-    display:flex;
-    gap:6px;
-    flex-wrap:wrap;
-    color:#64748b;
-    font-size:12px;
-    font-weight:800;
-  }
-
-  .person-actions{
-    display:flex;
-    gap:6px;
-    flex-wrap:wrap;
-    justify-content:flex-end;
-    align-items:center;
-  }
-
-  .mini-btn{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    min-height:32px;
-    padding:6px 9px;
-    border-radius:999px;
-    border:1px solid #cbd5e1;
-    background:#fff;
-    color:#0f172a;
-    font-size:12px;
-    font-weight:900;
-    text-decoration:none;
-    cursor:pointer;
-  }
-
-  .mini-btn.primary{
-    background:#2563eb;
-    border-color:#2563eb;
-    color:#fff;
-  }
-
-  .mini-btn.warn{
-    background:#f59e0b;
-    border-color:#f59e0b;
-    color:#fff;
-  }
-
-  .empty-box{
-    padding:14px;
-    border:1px dashed #cbd5e1;
-    border-radius:16px;
-    background:#f8fafc;
-    color:#64748b;
-    font-size:14px;
-    font-weight:850;
-    text-align:center;
-  }
-
-  .day-group{
-    display:grid;
-    gap:10px;
-    margin-top:6px;
-  }
-
-  .day-heading{
-    position:sticky;
-    top:0;
-    z-index:2;
-    padding:10px 12px;
-    border-radius:14px;
-    background:#0f172a;
-    color:#fff;
-    font-size:15px;
-    font-weight:1000;
-    box-shadow:0 8px 16px rgba(15,23,42,.12);
-  }
-
-  .quick-links{
-    display:flex;
-    gap:8px;
-    flex-wrap:wrap;
-  }
-
-  .payment-box{
-    margin-top:8px;
-    padding:10px;
-    border-radius:14px;
-    border:1px solid #fed7aa;
-    background:#fff7ed;
-  }
-
-  .payment-box.is-paid{
-    border-color:#bbf7d0;
-    background:#f0fdf4;
-  }
-
-  .payment-box.is-waived{
-    border-color:#ddd6fe;
-    background:#f5f3ff;
-  }
-
-  .payment-label{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:8px;
-    color:#0f172a;
-    font-size:12px;
-    line-height:1.4;
-    font-weight:900;
-  }
-
-  .payment-actions{
-    display:grid;
-    grid-template-columns:repeat(3,minmax(0,1fr));
-    gap:6px;
-    margin-top:8px;
-  }
-
-  .payment-actions form{
-    margin:0;
-  }
-
-  .payment-actions button{
-    width:100%;
-    min-height:34px;
-    border-radius:999px;
-    border:1px solid #cbd5e1;
-    background:#fff;
-    color:#0f172a;
-    padding:5px 9px;
-    font-size:12px;
-    font-weight:900;
-    cursor:pointer;
-  }
-
-  .payment-actions button.is-active{
-    background:#0f172a;
-    border-color:#0f172a;
-    color:#fff;
-  }
-
-  .payment-help{
-    margin-top:7px;
-    color:#92400e;
-    font-size:11px;
-    line-height:1.45;
-    font-weight:850;
-  }
-
-  @media (max-width:900px){
-    .summary-grid{
-      grid-template-columns:repeat(3,minmax(0,1fr));
-    }
-
-    .today-action-panel{
-      grid-template-columns:1fr;
-    }
-  }
-
-  @media (max-width:768px){
-    .ops-hero{
-      padding:15px;
-      border-radius:18px;
-    }
-
-    .ops-title{
-      font-size:24px;
-    }
-
-    .summary-grid{
-      grid-template-columns:repeat(2,minmax(0,1fr));
-    }
-
-    .summary-card{
-      padding:12px;
-    }
-
-    .summary-value{
-      font-size:23px;
-    }
-
-    .ops-toolbar{
-      display:grid;
-      grid-template-columns:repeat(2,minmax(0,1fr));
-    }
-
-    .ops-toolbar .btn{
-      width:100%;
-      padding-left:8px;
-      padding-right:8px;
-    }
-
-    .coach-select-form{
-      display:grid;
-      grid-template-columns:1fr;
-    }
-
-    .coach-select-form select,
-    .coach-select-form .btn{
-      width:100%;
-    }
-
-    .lesson-head{
-      grid-template-columns:1fr;
-    }
-
-    .lesson-counts{
-      flex-direction:row;
-      align-items:center;
-      justify-content:flex-start;
-      flex-wrap:wrap;
-    }
-
-    .lesson-body{
-      padding:11px;
-    }
-
-    .quick-action-strip{
-      grid-template-columns:1fr;
-    }
-
-    .person-row{
-      grid-template-columns:1fr;
-    }
-
-    .person-actions{
-      justify-content:flex-start;
-      display:grid;
-      grid-template-columns:repeat(2,minmax(0,1fr));
-    }
-
-    .mini-btn,
-    .person-actions form{
-      width:100%;
-    }
-
-    .mini-btn{
-      min-width:0;
-    }
-
-    .quick-links{
-      display:grid;
-      grid-template-columns:1fr;
-    }
-
-    .quick-links .btn{
-      width:100%;
-    }
+  .ops-page{display:grid;gap:14px;max-width:1180px;margin:0 auto;padding-bottom:30px}
+  .panel{padding:16px;border:1px solid #e5e7eb;border-radius:18px;background:#fff;box-shadow:0 8px 20px rgba(15,23,42,.05)}
+  .hero{border-color:#bfdbfe;background:linear-gradient(180deg,#eff6ff 0%,#fff 100%)}
+  .title{margin:0;color:#0f172a;font-size:28px;line-height:1.25;font-weight:1000}
+  .lead,.note{margin:7px 0 0;color:#64748b;font-size:13px;line-height:1.7;font-weight:750}
+  .toolbar,.coach-filter,.nav-links{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
+  .toolbar .btn,.nav-links .btn{border-radius:999px}
+  .coach-filter select{min-height:42px;padding:8px 12px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;font-weight:800}
+  .summary-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px}
+  .summary-card{padding:13px;border:1px solid #e5e7eb;border-radius:15px;background:#fff}
+  .summary-card.primary{border-color:#bfdbfe;background:#eff6ff}
+  .summary-card.warn{border-color:#fed7aa;background:#fff7ed}
+  .summary-card.good{border-color:#bbf7d0;background:#f0fdf4}
+  .summary-label{color:#64748b;font-size:11px;font-weight:900}
+  .summary-value{margin-top:4px;color:#0f172a;font-size:23px;font-weight:1000}
+  .section-title{display:flex;align-items:center;gap:8px;margin:0 0 9px;color:#0f172a;font-size:20px;font-weight:1000}
+  .badge{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:24px;padding:0 8px;border-radius:999px;background:#0f172a;color:#fff;font-size:12px;font-weight:1000}
+  .lesson-list{display:grid;gap:12px}
+  .lesson-card{border:1px solid #dbe3ee;border-radius:18px;background:#fff;overflow:hidden;box-shadow:0 8px 20px rgba(15,23,42,.05)}
+  .lesson-card.today{border-color:#2563eb;box-shadow:0 9px 22px rgba(37,99,235,.12)}
+  .lesson-card.attention{border-color:#f59e0b}
+  .lesson-head{display:grid;grid-template-columns:1fr auto;gap:10px;padding:14px;background:#f8fafc;border-bottom:1px solid #e5e7eb}
+  .lesson-date{color:#2563eb;font-size:14px;font-weight:1000}
+  .lesson-name{margin-top:3px;color:#0f172a;font-size:19px;font-weight:1000}
+  .lesson-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+  .pill{display:inline-flex;align-items:center;min-height:25px;padding:4px 8px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:900}
+  .pill.dark{background:#0f172a;color:#fff}
+  .counts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-content:flex-start}
+  .count{display:inline-flex;align-items:center;justify-content:center;min-height:29px;padding:5px 9px;border-radius:999px;background:#ecfdf5;color:#047857;font-size:11px;font-weight:1000;white-space:nowrap}
+  .count.warn{background:#fff7ed;color:#c2410c}
+  .lesson-body{display:grid;gap:11px;padding:13px}
+  .facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .fact{padding:10px;border-radius:12px;background:#f8fafc}
+  .fact-label{color:#64748b;font-size:11px;font-weight:900}
+  .fact-value{margin-top:3px;color:#0f172a;font-size:16px;font-weight:1000}
+  .operation-box{padding:12px;border:1px solid #86efac;border-radius:15px;background:#f0fdf4}
+  .operation-title{margin:0;color:#166534;font-size:15px;font-weight:1000}
+  .operation-help{margin:4px 0 0;color:#475569;font-size:11px;line-height:1.6;font-weight:800}
+  .operation-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-top:9px}
+  .operation-actions form{margin:0}
+  .operation-actions .btn{width:100%;min-height:42px;border-radius:11px;font-size:12px;font-weight:1000}
+  .btn-held{border-color:#16a34a!important;background:#16a34a!important;color:#fff!important}
+  .btn-rain{border-color:#dc2626!important;background:#fff!important;color:#b91c1c!important}
+  .btn-expense{border-color:#f59e0b!important;background:#fffbeb!important;color:#92400e!important}
+  .people-box{border:1px solid #e5e7eb;border-radius:15px;overflow:hidden}
+  .people-head{display:flex;justify-content:space-between;gap:8px;padding:10px 12px;background:#f8fafc;border-bottom:1px solid #e5e7eb;color:#0f172a;font-size:13px;font-weight:1000}
+  .person{display:grid;grid-template-columns:1fr auto;gap:9px;align-items:center;padding:11px 12px;border-bottom:1px solid #f1f5f9}
+  .person:last-child{border-bottom:0}
+  .person.unpaid{background:#fffbeb}.person.paid{background:#f0fdf4}.person.waived{background:#f5f3ff}
+  .person-name{color:#0f172a;font-size:15px;font-weight:1000}
+  .person-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:3px;color:#64748b;font-size:11px;font-weight:800}
+  .person-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .mini-btn{display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:6px 9px;border:1px solid #cbd5e1;border-radius:999px;background:#fff;color:#0f172a;font-size:11px;font-weight:900;text-decoration:none}
+  .mini-btn.primary{border-color:#2563eb;background:#2563eb;color:#fff}.mini-btn.warn{border-color:#f59e0b;background:#f59e0b;color:#fff}
+  .payment-box{margin-top:7px;padding:8px;border:1px solid #fed7aa;border-radius:11px;background:#fff7ed}
+  .payment-label{display:flex;justify-content:space-between;gap:8px;color:#92400e;font-size:11px;font-weight:1000}
+  .payment-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-top:6px}
+  .payment-actions form{margin:0}.payment-actions button{width:100%;min-height:31px;border:1px solid #d6d3d1;border-radius:8px;background:#fff;font-size:10px;font-weight:900}.payment-actions button.active{border-color:#2563eb;background:#2563eb;color:#fff}
+  .empty{padding:14px;border:1px dashed #cbd5e1;border-radius:14px;background:#f8fafc;color:#64748b;text-align:center;font-size:13px;font-weight:800}
+  .day-heading{margin:14px 0 7px;color:#334155;font-size:16px;font-weight:1000}
+  @media(max-width:900px){.summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.operation-actions{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:700px){
+    .panel{padding:13px}.title{font-size:23px}.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .toolbar,.nav-links,.coach-filter{display:grid;grid-template-columns:1fr 1fr}.coach-filter select,.coach-filter .btn{width:100%}
+    .lesson-head,.person{grid-template-columns:1fr}.counts,.person-actions{justify-content:flex-start}.facts{grid-template-columns:1fr}.operation-actions{grid-template-columns:1fr}
+    .person-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.mini-btn,.person-actions form{width:100%}
   }
 </style>
 
 <div class="ops-page">
-  <section class="ops-hero">
-    <h1 class="ops-title">本日の受付・精算</h1>
-    <p class="ops-lead">
-      当日受付で使う情報を最上部に集約しました。
-      参加者確認、電話連絡、7月プレオープン参加費の回収状況変更、キャンセル待ち繰り上げをこの画面で完結できます。
-    </p>
-
-    <div class="ops-toolbar">
-      <a href="{% url 'club:coach_today_lessons' %}?days=1{% if selected_coach_id %}&coach_id={{ selected_coach_id }}{% endif %}" class="btn {% if display_days == 1 %}btn-primary{% endif %}">今日</a>
-      <a href="{% url 'club:coach_today_lessons' %}?days=7{% if selected_coach_id %}&coach_id={{ selected_coach_id }}{% endif %}" class="btn {% if display_days == 7 %}btn-primary{% endif %}">7日間</a>
-      <a href="{% url 'club:coach_today_lessons' %}?days=14{% if selected_coach_id %}&coach_id={{ selected_coach_id }}{% endif %}" class="btn {% if display_days == 14 %}btn-primary{% endif %}">14日間</a>
-      <a href="{% url 'club:coach_today_lessons' %}?days=28{% if selected_coach_id %}&coach_id={{ selected_coach_id }}{% endif %}" class="btn {% if display_days == 28 %}btn-primary{% endif %}">過去1か月</a>
+  <section class="panel hero">
+    <h1 class="title">本日の受付・精算</h1>
+    <p class="lead">参加者確認、電話、参加費回収、キャンセル待ち、レッスン終了処理、コート代登録を一画面で行います。</p>
+    <div class="toolbar">
+      <a href="{% url 'club:coach_today_lessons' %}?days=1&coach_id={{ selected_coach_id }}" class="btn {% if display_days == 1 %}btn-primary{% endif %}">今日</a>
+      <a href="{% url 'club:coach_today_lessons' %}?days=7&coach_id={{ selected_coach_id }}" class="btn {% if display_days == 7 %}btn-primary{% endif %}">7日間</a>
+      <a href="{% url 'club:coach_today_lessons' %}?days=14&coach_id={{ selected_coach_id }}" class="btn {% if display_days == 14 %}btn-primary{% endif %}">14日間</a>
+      <a href="{% url 'club:coach_today_lessons' %}?days=28&coach_id={{ selected_coach_id }}" class="btn {% if display_days == 28 %}btn-primary{% endif %}">過去1か月</a>
     </div>
-
     {% if is_staff_mode %}
-      <form method="get" class="coach-select-form">
+      <form method="get" class="coach-filter">
         <input type="hidden" name="days" value="{{ display_days }}">
-        <select name="coach_id" aria-label="表示するコーチ">
-          {% for coach in coach_options %}
-            <option value="{{ coach.pk }}" {% if selected_coach_id == coach.pk|stringformat:"s" %}selected{% endif %}>{{ coach.display_name }}</option>
-          {% endfor %}
+        <select name="coach_id">
+          <option value="all" {% if selected_coach_id == 'all' %}selected{% endif %}>全コーチ</option>
+          {% for coach in coach_options %}<option value="{{ coach.pk }}" {% if selected_coach_id == coach.pk|stringformat:'s' %}selected{% endif %}>{{ coach.display_name }}</option>{% endfor %}
         </select>
         <button type="submit" class="btn btn-primary">表示</button>
       </form>
     {% endif %}
-  </section>
-
-  <section class="today-action-panel" aria-label="今日の運用メモ">
-    {% if summary.payment_unpaid_total %}
-      <div class="action-card urgent">
-        <h2 class="action-title">未回収があります</h2>
-        <p class="action-text">
-          7月プレオープン参加費の未回収合計は {{ summary.payment_unpaid_total }}円です。
-          参加者欄の「未回収 / 回収済み / 免除」ボタンで当日受付時に更新してください。
-        </p>
-        <div class="action-link-row">
-          <a href="#today-lessons" class="btn btn-primary">今日の受付へ</a>
-        </div>
-      </div>
-    {% else %}
-      <div class="action-card good">
-        <h2 class="action-title">未回収はありません</h2>
-        <p class="action-text">
-          表示範囲内の回収状況は問題ありません。受付時に変更があれば参加者欄から更新してください。
-        </p>
-      </div>
-    {% endif %}
-
-    <div class="action-card">
-      <h2 class="action-title">確認の流れ</h2>
-      <p class="action-text">
-        1. 参加者を確認 → 2. 電話が必要な方へ連絡 → 3. 参加費の回収状況を更新 → 4. 空きがあればキャンセル待ちを確認。
-      </p>
-      <div class="action-link-row">
-        <a href="{% url 'club:reservation_list' %}" class="btn">予約管理へ</a>
-        <a href="{% url 'club:coach_revenue_summary' %}" class="btn">収支管理へ</a>
-      </div>
+    <div class="nav-links">
+      <a href="{% url 'club:lesson_calendar' %}" class="btn">レッスンカレンダー</a>
+      <a href="{% url 'club:lesson_execution_manage' %}" class="btn">実施管理一覧</a>
+      <a href="{% url 'club:coach_expense_manage' %}" class="btn">経費・コート代</a>
+      <a href="{% url 'club:coach_revenue_summary' %}" class="btn">収支管理</a>
     </div>
   </section>
 
-  <section class="summary-grid" aria-label="集計">
-    <div class="summary-card primary">
-      <div class="summary-label">今日のレッスン</div>
-      <div class="summary-value">{{ summary.today_lesson_count }}</div>
-      <div class="summary-unit">件</div>
-    </div>
-    <div class="summary-card primary">
-      <div class="summary-label">今日の参加者</div>
-      <div class="summary-value">{{ summary.today_participant_count }}</div>
-      <div class="summary-unit">名</div>
-    </div>
-    <div class="summary-card {% if summary.waitlist_count %}warn{% endif %}">
-      <div class="summary-label">キャンセル待ち</div>
-      <div class="summary-value">{{ summary.waitlist_count }}</div>
-      <div class="summary-unit">名</div>
-    </div>
-    <div class="summary-card {% if summary.attention_count %}warn{% endif %}">
-      <div class="summary-label">要確認</div>
-      <div class="summary-value">{{ summary.attention_count }}</div>
-      <div class="summary-unit">件</div>
-    </div>
-    <div class="summary-card {% if summary.payment_unpaid_total %}warn{% endif %}">
-      <div class="summary-label">未回収</div>
-      <div class="summary-value">{{ summary.payment_unpaid_total }}</div>
-      <div class="summary-unit">円</div>
-    </div>
-    <div class="summary-card paid">
-      <div class="summary-label">回収済み</div>
-      <div class="summary-value">{{ summary.payment_paid_total }}</div>
-      <div class="summary-unit">円</div>
-    </div>
+  <section class="summary-grid">
+    <div class="summary-card primary"><div class="summary-label">今日のレッスン</div><div class="summary-value">{{ summary.today_lesson_count }}件</div></div>
+    <div class="summary-card primary"><div class="summary-label">今日の参加者</div><div class="summary-value">{{ summary.today_participant_count }}名</div></div>
+    <div class="summary-card {% if summary.waitlist_count %}warn{% endif %}"><div class="summary-label">キャンセル待ち</div><div class="summary-value">{{ summary.waitlist_count }}名</div></div>
+    <div class="summary-card {% if summary.attention_count %}warn{% endif %}"><div class="summary-label">要確認</div><div class="summary-value">{{ summary.attention_count }}件</div></div>
+    <div class="summary-card {% if summary.payment_unpaid_total %}warn{% endif %}"><div class="summary-label">未回収</div><div class="summary-value">{{ summary.payment_unpaid_total }}円</div></div>
+    <div class="summary-card good"><div class="summary-label">回収済み</div><div class="summary-value">{{ summary.payment_paid_total }}円</div></div>
   </section>
 
-  {% if attention_rows %}
-    <section>
-      <h2 class="section-title">要確認 <span class="badge">{{ summary.attention_count }}</span></h2>
-      <p class="section-note">キャンセル待ち、承認待ち、満員など、先に見ておきたい枠です。</p>
-      <div class="lesson-list">
-        {% for row in attention_rows %}
-          <article class="lesson-card has-attention {% if row.is_today %}is-today{% endif %}">
-            <div class="lesson-head">
-              <div>
-                <div class="lesson-date">{{ row.date_label }}（{{ row.weekday_label }}） {{ row.time_label }}</div>
-                <div class="lesson-name">{{ row.title }}</div>
-                <div class="lesson-meta">
-                  <span class="meta-pill dark">{{ row.target_level_label }}</span>
-                  <span class="meta-pill">{{ row.lesson_type_label }}</span>
-                  <span class="meta-pill">{{ row.coach_name }}</span>
-                  <span class="meta-pill">{{ row.court_name }}</span>
-                </div>
-              </div>
-              <div class="lesson-counts">
-                <span class="count-pill {% if row.is_full %}full{% endif %}">参加 {{ row.participant_count }}/{{ row.capacity }}</span>
-                {% if row.waitlist_count %}<span class="count-pill wait">待ち {{ row.waitlist_count }}</span>{% endif %}
-                {% if row.pending_count %}<span class="count-pill wait">承認待ち {{ row.pending_count }}</span>{% endif %}
-              </div>
-            </div>
-          </article>
-        {% endfor %}
-      </div>
-    </section>
-  {% endif %}
-
-  <section id="today-lessons">
+  <section class="panel" id="today-lessons">
     <h2 class="section-title">今日のレッスン <span class="badge">{{ summary.today_lesson_count }}</span></h2>
-    <p class="section-note">当日の受付・精算はここで処理します。参加費が必要な場合は、参加者ごとに状態を切り替えてください。</p>
-
+    <p class="note">受付から終了処理まで、各カード内で完結します。</p>
     {% if today_rows %}
       <div class="lesson-list">
         {% for row in today_rows %}
-          <article class="lesson-card is-today {% if row.needs_attention %}has-attention{% endif %}">
+          <article class="lesson-card today {% if row.needs_attention %}attention{% endif %}" id="lesson-{{ row.availability.id|default:row.key }}">
             <div class="lesson-head">
               <div>
                 <div class="lesson-date">{{ row.date_label }}（{{ row.weekday_label }}） {{ row.time_label }}</div>
                 <div class="lesson-name">{{ row.title }}</div>
-                <div class="lesson-meta">
-                  <span class="meta-pill dark">{{ row.target_level_label }}</span>
-                  <span class="meta-pill">{{ row.lesson_type_label }}</span>
-                  <span class="meta-pill">{{ row.coach_name }}</span>
-                  <span class="meta-pill">{{ row.court_name }}</span>
-                </div>
+                <div class="lesson-meta"><span class="pill dark">{{ row.target_level_label }}</span><span class="pill">{{ row.lesson_type_label }}</span><span class="pill">{{ row.coach_name }}</span><span class="pill">{{ row.court_name }}</span></div>
               </div>
-              <div class="lesson-counts">
-                <span class="count-pill {% if row.is_full %}full{% endif %}">参加 {{ row.participant_count }}/{{ row.capacity }}</span>
-                {% if row.waitlist_count %}
-                  <span class="count-pill wait">待ち {{ row.waitlist_count }}</span>
-                {% endif %}
-                {% if row.pending_count %}
-                  <span class="count-pill wait">承認待ち {{ row.pending_count }}</span>
-                {% endif %}
-              </div>
+              <div class="counts"><span class="count">参加 {{ row.participant_count }}/{{ row.capacity }}</span>{% if row.waitlist_count %}<span class="count warn">待ち {{ row.waitlist_count }}</span>{% endif %}{% if row.pending_count %}<span class="count warn">承認待ち {{ row.pending_count }}</span>{% endif %}</div>
             </div>
-
             <div class="lesson-body">
-              <div class="quick-action-strip">
-                <div class="quick-action-item">
-                  <div class="quick-action-label">受付対象</div>
-                  <div class="quick-action-value">{{ row.participant_count }}名</div>
-                </div>
-                <div class="quick-action-item">
-                  <div class="quick-action-label">空き枠</div>
-                  <div class="quick-action-value">{{ row.remaining_count }}名</div>
-                </div>
-                <div class="quick-action-item">
-                  <div class="quick-action-label">キャンセル待ち</div>
-                  <div class="quick-action-value">{{ row.waitlist_count }}名</div>
+              <div class="facts"><div class="fact"><div class="fact-label">受付対象</div><div class="fact-value">{{ row.participant_count }}名</div></div><div class="fact"><div class="fact-label">空き枠</div><div class="fact-value">{{ row.remaining_count }}名</div></div><div class="fact"><div class="fact-label">キャンセル待ち</div><div class="fact-value">{{ row.waitlist_count }}名</div></div></div>
+
+              <div class="operation-box">
+                <h3 class="operation-title">レッスン終了処理</h3>
+                <p class="operation-help">終了後は実施済み、開催できなかった場合は雨天中止を登録してください。</p>
+                <div class="operation-actions">
+                  {% if row.availability %}
+                    <form method="post" action="{% url 'club:lesson_quick_action' %}">{% csrf_token %}<input type="hidden" name="year" value="{{ row.start_at|date:'Y' }}"><input type="hidden" name="month" value="{{ row.start_at|date:'n' }}"><input type="hidden" name="availability_id" value="{{ row.availability.id }}"><input type="hidden" name="action" value="held"><input type="hidden" name="next" value="{{ request.get_full_path }}#lesson-{{ row.availability.id }}"><button type="submit" class="btn btn-held" onclick="return confirm('このレッスンを実施済みにしますか？');">実施済み</button></form>
+                    <form method="post" action="{% url 'club:lesson_quick_action' %}">{% csrf_token %}<input type="hidden" name="year" value="{{ row.start_at|date:'Y' }}"><input type="hidden" name="month" value="{{ row.start_at|date:'n' }}"><input type="hidden" name="availability_id" value="{{ row.availability.id }}"><input type="hidden" name="action" value="rain_canceled"><input type="hidden" name="next" value="{{ request.get_full_path }}#lesson-{{ row.availability.id }}"><button type="submit" class="btn btn-rain" onclick="return confirm('雨天中止として予約をキャンセルし、チケットを返却しますか？');">雨天中止</button></form>
+                    <a href="{% url 'club:coach_expense_manage' %}?availability_id={{ row.availability.id }}&date={{ row.start_at|date:'Y-m-d' }}" class="btn btn-expense">コート代登録</a>
+                    <a href="{% url 'club:lesson_execution_manage' %}?year={{ row.start_at|date:'Y' }}&month={{ row.start_at|date:'n' }}#lesson-{{ row.availability.id }}" class="btn">実施管理詳細</a>
+                  {% else %}
+                    <a href="{% url 'club:lesson_execution_manage' %}?year={{ row.start_at|date:'Y' }}&month={{ row.start_at|date:'n' }}" class="btn">実施管理一覧で確認</a>
+                    <a href="{% url 'club:coach_expense_manage' %}?date={{ row.start_at|date:'Y-m-d' }}" class="btn btn-expense">コート代登録</a>
+                  {% endif %}
                 </div>
               </div>
 
-              <div class="people-section {% if row.payment_unpaid_count %}needs-payment{% endif %}">
-                <div class="people-heading">
-                  <span>参加者・受付精算</span>
-                  <small>{{ row.participant_count }}名</small>
-                </div>
+              <div class="people-box">
+                <div class="people-head"><span>参加者・受付精算</span><span>{{ row.participant_count }}名</span></div>
                 {% if row.participant_rows %}
-                  <div class="person-list">
-                    {% for person in row.participant_rows %}
-                      <div class="person-row {% if person.payment_required and person.payment_status == 'paid' %}payment-paid{% elif person.payment_required and person.payment_status == 'waived' %}payment-waived{% elif person.payment_required %}payment-unpaid{% endif %}">
-                        <div>
-                          <div class="person-name">{{ person.name }}</div>
-                          <div class="person-sub">
-                            <span>レベル：{{ person.level }}</span>
-                            {% if person.phone %}
-                              <span>電話：{{ person.phone }}</span>
-                            {% else %}
-                              <span>電話：未登録</span>
-                            {% endif %}
-                          </div>
-                          {% if person.payment_required %}
-                            <div class="payment-box {% if person.payment_status == 'paid' %}is-paid{% elif person.payment_status == 'waived' %}is-waived{% endif %}">
-                              <div class="payment-label">
-                                <span>参加費 {{ person.payment_amount }}円</span>
-                                <span>{{ person.payment_status_label }}</span>
-                              </div>
-                              <div class="payment-actions">
-                                {% for status_value, status_label in person.payment_status_options %}
-                                  <form method="post">
-                                    {% csrf_token %}
-                                    <input type="hidden" name="action" value="update_payment">
-                                    <input type="hidden" name="reservation_id" value="{{ person.reservation.id }}">
-                                    <input type="hidden" name="payment_status" value="{{ status_value }}">
-                                    <button type="submit" class="{% if person.payment_status == status_value %}is-active{% endif %}">{{ status_label }}</button>
-                                  </form>
-                                {% endfor %}
-                              </div>
-                              <div class="payment-help">7月プレオープン：受付時に参加費を確認してください。</div>
-                            </div>
-                          {% endif %}
-                        </div>
-                        <div class="person-actions">
-                          {% if person.phone %}
-                            <a href="tel:{{ person.phone }}" class="mini-btn primary">電話</a>
-                          {% endif %}
-                          <a href="{{ person.detail_url }}" class="mini-btn">詳細</a>
-                        </div>
+                  {% for person in row.participant_rows %}
+                    <div class="person {% if person.payment_required and person.payment_status == 'paid' %}paid{% elif person.payment_required and person.payment_status == 'waived' %}waived{% elif person.payment_required %}unpaid{% endif %}">
+                      <div><div class="person-name">{{ person.name }}</div><div class="person-meta"><span>レベル：{{ person.level }}</span><span>電話：{{ person.phone|default:'未登録' }}</span></div>
+                        {% if person.payment_required %}<div class="payment-box"><div class="payment-label"><span>参加費 {{ person.payment_amount }}円</span><span>{{ person.payment_status_label }}</span></div><div class="payment-actions">{% for status_value,status_label in person.payment_status_options %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="update_payment"><input type="hidden" name="reservation_id" value="{{ person.reservation.id }}"><input type="hidden" name="payment_status" value="{{ status_value }}"><button type="submit" class="{% if person.payment_status == status_value %}active{% endif %}">{{ status_label }}</button></form>{% endfor %}</div></div>{% endif %}
                       </div>
-                    {% endfor %}
-                  </div>
-                {% else %}
-                  <div class="empty-box">参加者はまだいません。</div>
-                {% endif %}
+                      <div class="person-actions">{% if person.phone %}<a href="tel:{{ person.phone }}" class="mini-btn primary">電話</a>{% endif %}{% if person.detail_url %}<a href="{{ person.detail_url }}" class="mini-btn">詳細</a>{% endif %}</div>
+                    </div>
+                  {% endfor %}
+                {% else %}<div class="empty">参加者はまだいません。</div>{% endif %}
               </div>
 
-              {% if row.registered_member_rows %}
-                <div class="people-section">
-                  <div class="people-heading">
-                    <span>固定登録メンバー（予約未作成）</span>
-                    <small>{{ row.registered_member_rows|length }}名</small>
-                  </div>
-                  <div class="person-list">
-                    {% for person in row.registered_member_rows %}
-                      <div class="person-row">
-                        <div>
-                          <div class="person-name">{{ person.name }}</div>
-                          <div class="person-sub">
-                            <span>レベル：{{ person.level }}</span>
-                            {% if person.phone %}
-                              <span>電話：{{ person.phone }}</span>
-                            {% else %}
-                              <span>電話：未登録</span>
-                            {% endif %}
-                          </div>
-                        </div>
-                        <div class="person-actions">
-                          {% if person.phone %}
-                            <a href="tel:{{ person.phone }}" class="mini-btn primary">電話</a>
-                          {% endif %}
-                        </div>
-                      </div>
-                    {% endfor %}
-                  </div>
-                </div>
-              {% endif %}
+              {% if row.pending_rows %}<div class="people-box"><div class="people-head"><span>承認待ち</span><span>{{ row.pending_count }}名</span></div>{% for person in row.pending_rows %}<div class="person"><div><div class="person-name">{{ person.name }}</div><div class="person-meta"><span>{{ person.level }}</span><span>{{ person.phone|default:'電話未登録' }}</span></div></div><div class="person-actions">{% if person.phone %}<a href="tel:{{ person.phone }}" class="mini-btn primary">電話</a>{% endif %}<a href="{{ person.detail_url }}" class="mini-btn">詳細</a></div></div>{% endfor %}</div>{% endif %}
 
-              {% if row.pending_rows %}
-                <div class="people-section">
-                  <div class="people-heading">
-                    <span>承認待ち</span>
-                    <small>{{ row.pending_count }}名</small>
-                  </div>
-                  <div class="person-list">
-                    {% for person in row.pending_rows %}
-                      <div class="person-row">
-                        <div>
-                          <div class="person-name">{{ person.name }}</div>
-                          <div class="person-sub">
-                            <span>レベル：{{ person.level }}</span>
-                            {% if person.phone %}<span>電話：{{ person.phone }}</span>{% endif %}
-                          </div>
-                        </div>
-                        <div class="person-actions">
-                          {% if person.phone %}<a href="tel:{{ person.phone }}" class="mini-btn primary">電話</a>{% endif %}
-                          <a href="{{ person.detail_url }}" class="mini-btn">詳細</a>
-                        </div>
-                      </div>
-                    {% endfor %}
-                  </div>
-                </div>
-              {% endif %}
-
-              {% if row.waitlist_rows %}
-                <div class="people-section waitlist">
-                  <div class="people-heading">
-                    <span>キャンセル待ち</span>
-                    <small>{{ row.waitlist_count }}名</small>
-                  </div>
-                  <div class="person-list">
-                    {% for person in row.waitlist_rows %}
-                      <div class="person-row">
-                        <div>
-                          <div class="person-name">{{ forloop.counter }}. {{ person.name }}</div>
-                          <div class="person-sub">
-                            <span>レベル：{{ person.level }}</span>
-                            {% if person.phone %}<span>電話：{{ person.phone }}</span>{% endif %}
-                          </div>
-                        </div>
-                        <div class="person-actions">
-                          {% if person.phone %}<a href="tel:{{ person.phone }}" class="mini-btn primary">電話</a>{% endif %}
-                          {% if person.can_promote and row.remaining_count > 0 %}
-                            <form method="post" action="{% url 'club:lesson_waitlist_promote' person.waitlist.pk %}">
-                              {% csrf_token %}
-                              <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                              <button type="submit" class="mini-btn warn" onclick="return confirm('この会員を正式予約へ繰り上げますか？');">繰り上げ</button>
-                            </form>
-                          {% endif %}
-                        </div>
-                      </div>
-                    {% endfor %}
-                  </div>
-                </div>
-              {% endif %}
+              {% if row.waitlist_rows %}<div class="people-box"><div class="people-head"><span>キャンセル待ち</span><span>{{ row.waitlist_count }}名</span></div>{% for person in row.waitlist_rows %}<div class="person"><div><div class="person-name">{{ forloop.counter }}. {{ person.name }}</div><div class="person-meta"><span>{{ person.level }}</span><span>{{ person.phone|default:'電話未登録' }}</span></div></div><div class="person-actions">{% if person.phone %}<a href="tel:{{ person.phone }}" class="mini-btn primary">電話</a>{% endif %}{% if person.can_promote and row.remaining_count > 0 %}<form method="post" action="{% url 'club:lesson_waitlist_promote' person.waitlist.pk %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button type="submit" class="mini-btn warn" onclick="return confirm('この会員を正式予約へ繰り上げますか？');">繰り上げ</button></form>{% endif %}</div></div>{% endfor %}</div>{% endif %}
             </div>
           </article>
         {% endfor %}
       </div>
-    {% else %}
-      <div class="empty-box">今日の担当レッスンはありません。</div>
-    {% endif %}
+    {% else %}<div class="empty">今日の担当レッスンはありません。</div>{% endif %}
   </section>
 
-  <section>
-    <h2 class="section-title">{% if display_days == 28 %}過去1か月のレッスン・回収状況{% else %}期間内のレッスン{% endif %} <span class="badge">{{ summary.lesson_count }}</span></h2>
-    <p class="section-note">
-      {% if display_days == 28 %}
-        過去1か月分の7月プレオープン参加費について、参加者ごとに「未回収 / 回収済み / 免除」を編集できます。
-      {% else %}
-        今日以外のレッスンも含めた確認用です。詳細な受付操作は当日枠で行う想定です。
-      {% endif %}
-    </p>
-    {% if grouped_days %}
-      <div class="day-group">
-        {% for group in grouped_days %}
-          {% if group.rows %}
-            <div class="day-heading">{{ group.date_label }}（{{ group.weekday_label }}）{% if group.is_today %} 本日{% endif %}</div>
-            <div class="lesson-list">
-              {% for row in group.rows %}
-                <article class="lesson-card {% if row.is_today %}is-today{% endif %} {% if row.needs_attention %}has-attention{% endif %}">
-                  <div class="lesson-head">
-                    <div>
-                      <div class="lesson-date">{{ row.time_label }}</div>
-                      <div class="lesson-name">{{ row.title }}</div>
-                      <div class="lesson-meta">
-                        <span class="meta-pill dark">{{ row.target_level_label }}</span>
-                        <span class="meta-pill">{{ row.lesson_type_label }}</span>
-                        <span class="meta-pill">{{ row.coach_name }}</span>
-                        <span class="meta-pill">{{ row.court_name }}</span>
-                      </div>
-                    </div>
-                    <div class="lesson-counts">
-                      <span class="count-pill {% if row.is_full %}full{% endif %}">参加 {{ row.participant_count }}/{{ row.capacity }}</span>
-                      {% if row.waitlist_count %}
-                        <span class="count-pill wait">待ち {{ row.waitlist_count }}</span>
-                      {% endif %}
-                    </div>
-                  </div>
-                  <div class="lesson-body">
-                    <div class="quick-links">
-                      <a href="{% url 'club:reservation_list' %}" class="btn">予約管理へ</a>
-                      {% if row.waitlist_count %}
-                        <a href="{% url 'club:reservation_list' %}" class="btn btn-primary">キャンセル待ち確認</a>
-                      {% endif %}
-                    </div>
-                    {% if row.participant_rows %}
-                      <div class="people-section {% if row.payment_unpaid_count %}needs-payment{% endif %}">
-                        <div class="people-heading">
-                          <span>{% if display_days == 28 %}参加者・回収状況{% else %}参加者{% endif %}</span>
-                          <small>{{ row.participant_count }}名{% if row.payment_target_count %} / 未回収 {{ row.payment_unpaid_count }}名{% endif %}</small>
-                        </div>
-                        <div class="person-list">
-                          {% for person in row.participant_rows %}
-                            <div class="person-row {% if person.payment_required and person.payment_status == 'paid' %}payment-paid{% elif person.payment_required and person.payment_status == 'waived' %}payment-waived{% elif person.payment_required %}payment-unpaid{% endif %}">
-                              <div>
-                                <div class="person-name">{{ person.name }}</div>
-                                <div class="person-sub">
-                                  <span>レベル：{{ person.level }}</span>
-                                  {% if person.phone %}<span>電話：{{ person.phone }}</span>{% else %}<span>電話未登録</span>{% endif %}
-                                </div>
-                                {% if person.payment_required %}
-                                  <div class="payment-box {% if person.payment_status == 'paid' %}is-paid{% elif person.payment_status == 'waived' %}is-waived{% endif %}">
-                                    <div class="payment-label">
-                                      <span>参加費 {{ person.payment_amount }}円</span>
-                                      <span>{{ person.payment_status_label }}</span>
-                                    </div>
-                                    <div class="payment-actions">
-                                      {% for status_value, status_label in person.payment_status_options %}
-                                        <form method="post">
-                                          {% csrf_token %}
-                                          <input type="hidden" name="action" value="update_payment">
-                                          <input type="hidden" name="reservation_id" value="{{ person.reservation.id }}">
-                                          <input type="hidden" name="payment_status" value="{{ status_value }}">
-                                          <button type="submit" class="{% if person.payment_status == status_value %}is-active{% endif %}">{{ status_label }}</button>
-                                        </form>
-                                      {% endfor %}
-                                    </div>
-                                    <div class="payment-help">7月プレオープン：回収状況を更新できます。</div>
-                                  </div>
-                                {% endif %}
-                              </div>
-                              <div class="person-actions">
-                                {% if person.phone %}<a href="tel:{{ person.phone }}" class="mini-btn primary">電話</a>{% endif %}
-                                <a href="{{ person.detail_url }}" class="mini-btn">詳細</a>
-                              </div>
-                            </div>
-                          {% endfor %}
-                        </div>
-                      </div>
-                    {% endif %}
-                  </div>
-                </article>
-              {% endfor %}
-            </div>
-          {% endif %}
-        {% endfor %}
-      </div>
-    {% else %}
-      <div class="empty-box">表示期間内の担当レッスンはありません。</div>
-    {% endif %}
-  </section>
+  {% if grouped_days %}
+    <section class="panel">
+      <h2 class="section-title">{% if display_days == 28 %}過去1か月のレッスン{% else %}表示期間のレッスン{% endif %} <span class="badge">{{ summary.lesson_count }}</span></h2>
+      {% for group in grouped_days %}{% if group.rows %}<div class="day-heading">{{ group.date_label }}（{{ group.weekday_label }}）{% if group.is_today %} 本日{% endif %}</div><div class="lesson-list">{% for row in group.rows %}<article class="lesson-card {% if row.is_today %}today{% endif %} {% if row.needs_attention %}attention{% endif %}"><div class="lesson-head"><div><div class="lesson-date">{{ row.time_label }}</div><div class="lesson-name">{{ row.title }}</div><div class="lesson-meta"><span class="pill dark">{{ row.target_level_label }}</span><span class="pill">{{ row.coach_name }}</span><span class="pill">{{ row.court_name }}</span></div></div><div class="counts"><span class="count">参加 {{ row.participant_count }}/{{ row.capacity }}</span>{% if row.waitlist_count %}<span class="count warn">待ち {{ row.waitlist_count }}</span>{% endif %}</div></div><div class="lesson-body"><div class="operation-actions">{% if row.availability %}<a href="{% url 'club:lesson_execution_manage' %}?year={{ row.start_at|date:'Y' }}&month={{ row.start_at|date:'n' }}#lesson-{{ row.availability.id }}" class="btn">実施管理</a><a href="{% url 'club:coach_expense_manage' %}?availability_id={{ row.availability.id }}&date={{ row.start_at|date:'Y-m-d' }}" class="btn btn-expense">コート代登録</a>{% else %}<a href="{% url 'club:lesson_execution_manage' %}?year={{ row.start_at|date:'Y' }}&month={{ row.start_at|date:'n' }}" class="btn">実施管理</a>{% endif %}</div></div></article>{% endfor %}</div>{% endif %}{% endfor %}
+    </section>
+  {% endif %}
 </div>
 {% endblock %}
