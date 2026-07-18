@@ -11,7 +11,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from .lesson_execution_storage import read_status_map, save_status
-from .models import CoachAvailability, CoachExpense, FixedLesson, Reservation
+from .models import CoachAvailability, CoachExpense, Court, FixedLesson, Reservation
 from .settlement_models import MonthlySettlement
 from .settlement_service import calculate_monthly_settlement, get_or_create_monthly_settlement
 
@@ -175,42 +175,43 @@ def _canonical_availability_for_fixed(fixed_lesson, start_at, end_at):
         if hasattr(fixed_lesson, "primary_coach")
         else fixed_lesson.coach
     )
+    court = fixed_lesson.court or Court.objects.filter(
+        is_active=True,
+    ).order_by("id").first()
+    if primary_coach is None or court is None:
+        return None
 
-    queryset = CoachAvailability.objects.filter(
+    defaults = {
+        "capacity": max(int(fixed_lesson.effective_capacity() or 1), 1),
+        "coach_count": max(int(fixed_lesson.coach_count or 1), 1),
+        "court_count": max(int(fixed_lesson.court_count or 1), 1),
+        "target_level": fixed_lesson.target_level,
+        "target_level_2": fixed_lesson.target_level_2 or "",
+        "status": CoachAvailability.STATUS_OPEN,
+        "note": (
+            f"固定レッスン: "
+            f"{fixed_lesson.title or fixed_lesson.get_weekday_display()}"
+        ),
+    }
+    availability, _created = CoachAvailability.objects.get_or_create(
         coach=primary_coach,
+        court=court,
         lesson_type=fixed_lesson.lesson_type,
         start_at=start_at,
         end_at=end_at,
+        defaults=defaults,
     )
 
-    if fixed_lesson.court_id:
-        queryset = queryset.filter(court_id=fixed_lesson.court_id)
+    update_fields = []
+    for field_name, expected_value in defaults.items():
+        if getattr(availability, field_name) != expected_value:
+            setattr(availability, field_name, expected_value)
+            update_fields.append(field_name)
 
-    availability = (
-        queryset.select_related("coach", "substitute_coach", "court")
-        .order_by("-id")
-        .first()
-    )
-    if availability:
-        return availability
+    if update_fields:
+        availability.save(update_fields=update_fields)
 
-    reservation = (
-        Reservation.objects.filter(
-            fixed_lesson=fixed_lesson,
-            start_at=start_at,
-            end_at=end_at,
-        )
-        .exclude(availability=None)
-        .select_related(
-            "availability",
-            "availability__coach",
-            "availability__substitute_coach",
-            "availability__court",
-        )
-        .order_by("-id")
-        .first()
-    )
-    return reservation.availability if reservation else None
+    return availability
 
 
 def _canonical_slots(year, month):

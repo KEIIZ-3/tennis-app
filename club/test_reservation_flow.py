@@ -7,6 +7,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from . import lesson_execution
 from .models import CoachAvailability, Court, FixedLesson, LessonWaitlist, Reservation
 
 
@@ -132,6 +133,40 @@ class ReservationFlowSmokeTests(TestCase):
         )
 
         self.assertNotEqual(response.status_code, 500)
+
+    def test_lesson_execution_creates_one_canonical_availability(self):
+        fixed_lesson = self._create_fixed_lesson()
+        fixed_lesson.court = None
+        fixed_lesson.save(update_fields=["court"])
+        start_at, end_at = fixed_lesson._build_datetimes_for_date(
+            self.lesson_date,
+        )
+
+        first = lesson_execution._canonical_availability_for_fixed(
+            fixed_lesson,
+            start_at,
+            end_at,
+        )
+        second = lesson_execution._canonical_availability_for_fixed(
+            fixed_lesson,
+            start_at,
+            end_at,
+        )
+
+        self.assertIsNotNone(first)
+        self.assertEqual(first.pk, second.pk)
+        self.assertEqual(first.court_id, self.court.pk)
+        self.assertEqual(first.capacity, fixed_lesson.effective_capacity())
+        self.assertEqual(
+            CoachAvailability.objects.filter(
+                coach=self.coach,
+                court=self.court,
+                lesson_type=fixed_lesson.lesson_type,
+                start_at=start_at,
+                end_at=end_at,
+            ).count(),
+            1,
+        )
 
     def test_member_can_reserve_regular_preopen_lesson_without_ticket_consumption(self):
         preopen_date = date(2026, 7, 3)
