@@ -3,6 +3,7 @@
 {% block title %}コート代登録{% endblock %}
 
 {% block content %}
+{% court_fee_quote availability as fee_quote %}
 <style>
   .court-page{display:grid;gap:14px;max-width:720px;margin:0 auto;padding-bottom:96px}
   .panel{padding:17px;border:1px solid #e2e8f0;border-radius:19px;background:#fff;box-shadow:0 8px 20px rgba(15,23,42,.06)}
@@ -60,15 +61,17 @@
 
       <div>
         <label for="amount">コート代</label>
-        <input id="amount" name="amount" type="number" min="1" step="1" inputmode="numeric" placeholder="例：2400" required>
-        <p class="help">西猪名公園・尼崎記念公園は公式料金から自動計算します。実際の支払額が異なる場合は上書きできます。</p>
+        <input id="amount" name="amount" type="number" min="1" step="1" inputmode="numeric" placeholder="例：2400"{% if fee_quote %} value="{{ fee_quote.total }}"{% endif %} required>
+        <p class="help">西猪名公園・尼崎記念公園はDjango側で公式料金から自動計算します。実際の支払額が異なる場合は上書きできます。</p>
       </div>
 
-      <div id="rate_box" class="rate-box" hidden>
-        <strong id="rate_total"></strong><br>
-        <span id="rate_detail"></span><br>
-        <a id="rate_link" href="#" target="_blank" rel="noopener noreferrer"></a>
-      </div>
+      {% if fee_quote %}
+        <div class="rate-box">
+          <strong>自動計算：{{ fee_quote.total|floatformat:0 }}円</strong><br>
+          <span>{{ fee_quote.facility_label }} / {{ fee_quote.rate_label }}基本料 {{ fee_quote.hourly_rate }}円 × {{ fee_quote.duration_hours }}時間 × {{ fee_quote.court_count }}面 ＋ 照明料 {{ fee_quote.lighting_amount }}円</span><br>
+          <a href="{{ fee_quote.rate_url }}" target="_blank" rel="noopener noreferrer">{{ fee_quote.rate_link_label }}</a>
+        </div>
+      {% endif %}
 
       <div>
         <label for="payer_coach_id">コート代を支払ったメインコーチ</label>
@@ -97,93 +100,4 @@
     </form>
   </section>
 </div>
-
-{{ availability.start_at|date:"c"|json_script:"court-start-at" }}
-{{ availability.end_at|date:"c"|json_script:"court-end-at" }}
-{{ availability.start_at|is_japanese_holiday|json_script:"court-is-holiday" }}
-{{ availability.court.court_type|default:""|json_script:"court-type" }}
-{{ availability.court.name|default:""|json_script:"court-name" }}
-{{ availability.court_count|default:1|json_script:"court-count" }}
-
-<script>
-(function () {
-  const amountInput = document.getElementById("amount");
-  const rateBox = document.getElementById("rate_box");
-  const rateTotal = document.getElementById("rate_total");
-  const rateDetail = document.getElementById("rate_detail");
-  const rateLink = document.getElementById("rate_link");
-
-  const readJson = (id) => {
-    const element = document.getElementById(id);
-    return element ? JSON.parse(element.textContent) : null;
-  };
-
-  const startRaw = readJson("court-start-at");
-  const endRaw = readJson("court-end-at");
-  const isHoliday = Boolean(readJson("court-is-holiday"));
-  const courtType = String(readJson("court-type") || "").toLowerCase();
-  const courtName = String(readJson("court-name") || "");
-  const courtCount = Math.max(parseInt(readJson("court-count") || 1, 10), 1);
-  const isAmagasaki = courtType === "amagasaki" || (courtName.includes("尼崎") && courtName.includes("記念"));
-  const isSono = courtType === "sono" || courtName.includes("西猪名");
-
-  if ((!isAmagasaki && !isSono) || !startRaw || !endRaw) {
-    return;
-  }
-
-  const startAt = new Date(startRaw);
-  const endAt = new Date(endRaw);
-  if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime()) || endAt <= startAt) {
-    return;
-  }
-
-  const durationMinutes = Math.round((endAt.getTime() - startAt.getTime()) / 60000);
-  const durationHours = durationMinutes / 60;
-  const isSunday = startAt.getDay() === 0;
-  const isSaturday = startAt.getDay() === 6;
-
-  let hourlyRate = 0;
-  let lightingHourlyRate = 0;
-  let facilityLabel = "";
-  let rateLabel = "";
-  let linkHref = "";
-  let linkLabel = "";
-
-  if (isAmagasaki) {
-    const premiumRate = isSunday || isHoliday;
-    hourlyRate = premiumRate ? 1080 : 900;
-    lightingHourlyRate = 200;
-    facilityLabel = "尼崎記念公園";
-    rateLabel = premiumRate ? "日曜・祝日" : "平日・土曜";
-    linkHref = "https://www.aspf.or.jp/park/tennis.html#gsc.tab=0";
-    linkLabel = "尼崎市スポーツ振興事業団の料金表を確認";
-  } else {
-    const premiumRate = isSaturday || isSunday || isHoliday;
-    hourlyRate = premiumRate ? 1200 : 900;
-    lightingHourlyRate = 400;
-    facilityLabel = "西猪名公園";
-    rateLabel = premiumRate ? "土曜・日曜・祝日" : "平日";
-    linkHref = "https://www.hyogo-park.or.jp/nishiina/contents/sisetsu/area_sports.html";
-    linkLabel = "西猪名公園の公式料金表を確認";
-  }
-
-  const baseAmount = Math.round(hourlyRate * durationHours * courtCount);
-  const lightingStart = new Date(startAt);
-  lightingStart.setHours(19, 0, 0, 0);
-  const lightingEnd = new Date(startAt);
-  lightingEnd.setHours(21, 0, 0, 0);
-  const overlapStart = Math.max(startAt.getTime(), lightingStart.getTime());
-  const overlapEnd = Math.min(endAt.getTime(), lightingEnd.getTime());
-  const lightingMinutes = Math.max(0, Math.round((overlapEnd - overlapStart) / 60000));
-  const lightingAmount = Math.round(lightingHourlyRate * (lightingMinutes / 60) * courtCount);
-  const total = baseAmount + lightingAmount;
-
-  amountInput.value = String(total);
-  rateTotal.textContent = `自動計算：${total.toLocaleString("ja-JP")}円`;
-  rateDetail.textContent = `${facilityLabel} / ${rateLabel}基本料 ${hourlyRate.toLocaleString("ja-JP")}円 × ${durationHours}時間 × ${courtCount}面 ＋ 照明料 ${lightingAmount.toLocaleString("ja-JP")}円`;
-  rateLink.href = linkHref;
-  rateLink.textContent = linkLabel;
-  rateBox.hidden = false;
-})();
-</script>
 {% endblock %}
