@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}レッスン実施管理{% endblock %}
+
+{% block content %}
+<style>
+  .page{display:grid;gap:14px;max-width:1180px;margin:0 auto;padding-bottom:30px}
+  .panel{padding:16px;border:1px solid #e5e7eb;border-radius:18px;background:#fff;box-shadow:0 8px 20px rgba(15,23,42,.05)}
+  .hero{background:linear-gradient(135deg,#eff6ff 0%,#fff 60%,#f0fdf4 100%);border-color:#bfdbfe}
+  .head,.section-head,.actions{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
+  .title{margin:0;color:#0f172a;font-size:27px;line-height:1.25;font-weight:1000}
+  .lead,.help{margin:7px 0 0;color:#64748b;font-size:13px;line-height:1.7;font-weight:750}
+  .actions{justify-content:flex-start;margin-top:13px}
+  .filter{display:grid;grid-template-columns:1fr 1fr auto auto auto;gap:9px;align-items:end}
+  label{display:block;margin-bottom:5px;color:#475569;font-size:12px;font-weight:900}
+  input{width:100%;min-height:42px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:11px;background:#fff;box-sizing:border-box}
+  .summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+  .summary{padding:13px;border:1px solid #e5e7eb;border-radius:15px;background:#fff}
+  .summary-label{color:#64748b;font-size:12px;font-weight:900}.summary-value{margin-top:5px;font-size:22px;font-weight:1000}
+  .notice{padding:12px 14px;border-radius:14px;border:1px solid #bfdbfe;background:#eff6ff;color:#1e3a8a;font-size:13px;line-height:1.7;font-weight:800}
+  .notice.closed{border-color:#86efac;background:#f0fdf4;color:#166534}
+  .lesson-list{display:grid;gap:10px}
+  .lesson-card{padding:14px;border:1px solid #dbe3ee;border-radius:16px;background:#fff}
+  .lesson-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+  .lesson-date{font-size:16px;font-weight:1000;color:#0f172a}
+  .lesson-meta{margin-top:4px;color:#64748b;font-size:12px;line-height:1.6;font-weight:750}
+  .status{display:inline-flex;align-items:center;justify-content:center;padding:7px 11px;border-radius:999px;font-size:12px;font-weight:1000;white-space:nowrap}
+  .status.pending{background:#fff7ed;border:1px solid #fdba74;color:#9a3412}
+  .status.scheduled{background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8}
+  .status.held{background:#f0fdf4;border:1px solid #86efac;color:#166534}
+  .status.canceled{background:#fef2f2;border:1px solid #fecaca;color:#991b1b}
+  .status.refund-pending{background:#fffbeb;border:1px solid #fde68a;color:#92400e}
+  .status.refunded{background:#f8fafc;border:1px solid #cbd5e1;color:#334155}
+  .facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
+  .fact{padding:9px 10px;border-radius:12px;background:#f8fafc}.fact-label{color:#64748b;font-size:11px;font-weight:800}.fact-value{margin-top:3px;color:#0f172a;font-size:13px;font-weight:1000}
+  .card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .card-actions form{margin:0}.btn-held{background:#f0fdf4;border:1px solid #86efac;color:#166534}.btn-rain{background:#fef2f2;border:1px solid #fecaca;color:#991b1b}.btn-refund{background:#fffbeb;border:1px solid #fde68a;color:#92400e}
+  .muted{color:#94a3b8;font-size:11px;font-weight:700}
+  @media(max-width:900px){.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.facts{grid-template-columns:1fr 1fr}}
+  @media(max-width:700px){.page{gap:11px}.panel{padding:13px;border-radius:15px}.title{font-size:23px}.filter,.summary-grid,.facts{grid-template-columns:1fr}.filter .btn,.actions .btn,.card-actions form,.card-actions button{width:100%}.lesson-top{display:block}.status{margin-top:9px}.card-actions{display:grid;grid-template-columns:1fr}}
+</style>
+
+<div class="page">
+  <section class="panel hero">
+    <div class="head">
+      <div>
+        <h1 class="title">レッスン実施管理</h1>
+        <p class="lead">{{ month_label }} の各レッスンについて、実施・雨天中止・コート代返金を登録します。</p>
+      </div>
+      {% if is_month_closed %}<span class="status refunded">締め済み</span>{% endif %}
+    </div>
+    <div class="actions">
+      <a href="{{ settlement_url }}" class="btn btn-primary">会社財布・月次精算</a>
+      <a href="{% url 'club:coach_expense_manage' %}" class="btn">経費・コート代登録</a>
+      <a href="{% url 'club:home' %}" class="btn">ホーム</a>
+    </div>
+  </section>
+
+  <section class="panel">
+    <form method="get" class="filter">
+      <div><label for="year">年</label><input id="year" name="year" type="number" min="2024" max="2100" value="{{ selected_year }}"></div>
+      <div><label for="month">月</label><input id="month" name="month" type="number" min="1" max="12" value="{{ selected_month }}"></div>
+      <button type="submit" class="btn btn-primary">表示</button>
+      <a href="{{ prev_url }}" class="btn">前月</a>
+      <a href="{{ next_url }}" class="btn">翌月</a>
+    </form>
+  </section>
+
+  {% if is_month_closed %}
+    <div class="notice closed">この月は締め済みです。開催状態を変更する場合は、先に月次精算画面で締めを解除してください。</div>
+  {% else %}
+    <div class="notice">実施済みにしたレッスンだけがコート代の精算対象になります。雨天中止を登録すると予約をキャンセルし、消費済みチケットを返却して売上から除外します。</div>
+  {% endif %}
+
+  <section class="summary-grid">
+    <div class="summary"><div class="summary-label">開催予定</div><div class="summary-value">{{ counts.scheduled }}件</div></div>
+    <div class="summary"><div class="summary-label">実施確認待ち</div><div class="summary-value">{{ counts.unconfirmed }}件</div></div>
+    <div class="summary"><div class="summary-label">実施済み</div><div class="summary-value">{{ counts.held }}件</div></div>
+    <div class="summary"><div class="summary-label">雨天・返金関連</div><div class="summary-value">{{ counts.rain_canceled|add:counts.refund_pending|add:counts.refunded }}件</div></div>
+  </section>
+
+  <section class="panel">
+    <div class="section-head">
+      <div><h2 class="title" style="font-size:20px">レッスン一覧</h2><p class="help">終了後のレッスンは、月締め前に必ず「実施済み」または「雨天中止」を登録してください。</p></div>
+    </div>
+    <div class="lesson-list">
+      {% for row in rows %}
+        <article class="lesson-card">
+          <div class="lesson-top">
+            <div>
+              <div class="lesson-date">{{ row.start_local|date:"Y/m/d" }} {{ row.start_local|date:"H:i" }}〜{{ row.end_local|date:"H:i" }}</div>
+              <div class="lesson-meta">{{ row.availability.get_lesson_type_display }} / {{ row.availability.court }}<br>担当：{{ row.coach_names }}</div>
+            </div>
+            <span class="status {{ row.status_class }}">{{ row.status_label }}</span>
+          </div>
+
+          <div class="facts">
+            <div class="fact"><div class="fact-label">有効予約</div><div class="fact-value">{{ row.active_count }}件</div></div>
+            <div class="fact"><div class="fact-label">キャンセル済み</div><div class="fact-value">{{ row.canceled_count }}件</div></div>
+            <div class="fact"><div class="fact-label">コート数</div><div class="fact-value">{{ row.availability.court_count }}面</div></div>
+            <div class="fact"><div class="fact-label">最終更新者</div><div class="fact-value">{{ row.updated_by_name|default:"-" }}</div></div>
+          </div>
+
+          {% if not is_month_closed %}
+            <div class="card-actions">
+              {% if row.can_mark_held %}
+                <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}"><input type="hidden" name="availability_id" value="{{ row.availability.id }}"><input type="hidden" name="action" value="held"><button type="submit" class="btn btn-held" onclick="return confirm('このレッスンを実施済みにしますか？');">実施済みにする</button></form>
+              {% endif %}
+              {% if row.can_mark_rain %}
+                <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}"><input type="hidden" name="availability_id" value="{{ row.availability.id }}"><input type="hidden" name="action" value="rain_canceled"><button type="submit" class="btn btn-rain" onclick="return confirm('雨天中止として、対象予約のチケットを返却しますか？');">雨天中止</button></form>
+              {% endif %}
+              {% if row.can_mark_refunded %}
+                <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}"><input type="hidden" name="availability_id" value="{{ row.availability.id }}"><input type="hidden" name="action" value="refunded"><button type="submit" class="btn btn-refund" onclick="return confirm('コート代の返金受領を登録しますか？');">返金済みにする</button></form>
+              {% endif %}
+            </div>
+          {% endif %}
+        </article>
+      {% empty %}
+        <div class="notice">対象月のレッスン枠はありません。</div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}
