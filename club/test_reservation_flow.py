@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -272,6 +273,45 @@ class ReservationFlowSmokeTests(TestCase):
             ).count(),
             1,
         )
+
+    def test_direct_reservation_rejects_fixed_lesson_at_capacity(self):
+        fixed_lesson = self._create_fixed_lesson(title="直接保存満員テスト")
+        members = [
+            self._create_user(
+                username=f"capacity_member_{index}",
+                role=self.User.ROLE_MEMBER,
+                full_name=f"定員 会員{index}",
+            )
+            for index in range(6)
+        ]
+        fixed_lesson.members.set(members)
+        start_at, end_at = fixed_lesson._build_datetimes_for_date(
+            self.lesson_date,
+        )
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=6,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+
+        with self.assertRaisesMessage(ValidationError, "このレッスンは満員です"):
+            Reservation.objects.create(
+                user=self.member,
+                coach=self.coach,
+                court=self.court,
+                availability=availability,
+                fixed_lesson=fixed_lesson,
+                lesson_type=Reservation.LESSON_GENERAL,
+                target_level=self.User.LEVEL_BEGINNER,
+                start_at=start_at,
+                end_at=end_at,
+                status=Reservation.STATUS_ACTIVE,
+            )
 
     def test_court_number_notice_uses_selected_calendar_lesson_without_dropdown(self):
         lesson_date = timezone.localdate() + timedelta(days=1)
