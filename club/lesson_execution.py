@@ -12,7 +12,6 @@ from django.views.decorators.http import require_http_methods
 
 from .lesson_execution_storage import read_status_map, save_status
 from .models import CoachAvailability, CoachExpense, Court, FixedLesson, Reservation
-from .settlement_models import MonthlySettlement
 from .settlement_service import calculate_monthly_settlement, get_or_create_monthly_settlement
 
 
@@ -345,63 +344,6 @@ def _mark_refunded(availability, changed_by):
             changed_count += 1
 
     return changed_count
-
-
-def _patch_settlement_court_eligibility():
-    from . import settlement_balance_policy
-
-    current = settlement_balance_policy._eligible_reservations
-    if getattr(current, "_canonical_execution_filter_applied", False):
-        return
-
-    original = getattr(current, "_original", current)
-
-    def eligible_with_execution_status(year, month):
-        reservations = original(year, month)
-        settlement = MonthlySettlement.objects.filter(
-            year=int(year),
-            month=int(month),
-        ).first()
-        if settlement is None:
-            return []
-
-        status_map = read_status_map(settlement)
-        eligible_by_slot = {}
-
-        for reservation in reservations:
-            fixed_lesson = getattr(reservation, "fixed_lesson", None)
-            if fixed_lesson is not None:
-                key = _fixed_slot_key(
-                    fixed_lesson,
-                    _local(reservation.start_at).date(),
-                )
-            else:
-                availability = getattr(reservation, "availability", None)
-                if availability is None:
-                    continue
-                key = _availability_key(availability)
-
-            entry = status_map.get(key) or {}
-            if not entry and getattr(reservation, "availability_id", None):
-                entry = status_map.get(
-                    f"availability:{reservation.availability_id}"
-                ) or {}
-
-            if entry.get("status") != STATUS_HELD:
-                continue
-
-            eligible_by_slot.setdefault(key, reservation)
-
-        return list(eligible_by_slot.values())
-
-    eligible_with_execution_status._canonical_execution_filter_applied = True
-    eligible_with_execution_status._original = original
-    settlement_balance_policy._eligible_reservations = (
-        eligible_with_execution_status
-    )
-
-
-_patch_settlement_court_eligibility()
 
 
 @login_required
