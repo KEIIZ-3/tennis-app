@@ -1,341 +1,159 @@
 {% extends "base.html" %}
 
-{% block title %}かんたん管理 | Play Design Tennis{% endblock %}
+{% block title %}管理ダッシュボード | Play Design Tennis{% endblock %}
 
 {% block content %}
 <style>
-  .admin-dashboard-hero{
-    border:1px solid #dbeafe;
-    background:linear-gradient(135deg,#eff6ff 0%,#ffffff 55%,#f8fafc 100%);
-    border-radius:22px;
-    padding:22px;
-    box-shadow:0 10px 28px rgba(15,23,42,.07);
-    margin-bottom:18px;
-  }
-  .admin-dashboard-hero h1{
-    margin:0 0 8px;
-    font-size:28px;
-    line-height:1.2;
-    font-weight:900;
-    letter-spacing:-.02em;
-  }
-  .admin-dashboard-hero p{
-    margin:0;
-    color:#475569;
-    font-size:14px;
-  }
-  .admin-dashboard-date{
-    display:inline-flex;
-    align-items:center;
-    gap:6px;
-    margin-bottom:12px;
-    padding:7px 11px;
-    border-radius:999px;
-    background:#fff;
-    border:1px solid #bfdbfe;
-    color:#1e3a8a;
-    font-size:13px;
-    font-weight:800;
-  }
-  .admin-dashboard-section{
-    margin:18px 0 10px;
-  }
-  .admin-dashboard-section h2{
-    margin:0 0 10px;
-    font-size:18px;
-    line-height:1.3;
-    font-weight:900;
-  }
-  .admin-dashboard-section-note{
-    margin:-4px 0 12px;
-    color:#64748b;
-    font-size:13px;
-  }
-  .admin-stat-grid{
-    display:grid;
-    grid-template-columns:repeat(4,minmax(0,1fr));
-    gap:12px;
-    margin-bottom:16px;
-  }
-  .admin-stat-card{
-    display:block;
-    min-height:112px;
-    padding:16px;
-    border:1px solid #e2e8f0;
-    border-radius:18px;
-    background:#fff;
-    box-shadow:0 7px 20px rgba(15,23,42,.05);
-  }
-  .admin-stat-card.urgent{
-    border-color:#fecaca;
-    background:#fff7f7;
-  }
-  .admin-stat-card.warning{
-    border-color:#fed7aa;
-    background:#fff7ed;
-  }
-  .admin-stat-label{
-    display:block;
-    color:#64748b;
-    font-size:12px;
-    font-weight:900;
-    line-height:1.35;
-  }
-  .admin-stat-value{
-    display:block;
-    margin-top:6px;
-    color:#0f172a;
-    font-size:28px;
-    line-height:1;
-    font-weight:1000;
-  }
-  .admin-stat-unit{
-    margin-left:3px;
-    font-size:13px;
-    font-weight:800;
-    color:#64748b;
-  }
-  .admin-action-grid{
-    display:grid;
-    grid-template-columns:repeat(3,minmax(0,1fr));
-    gap:12px;
-  }
-  .admin-action-card{
-    display:flex;
-    flex-direction:column;
-    gap:8px;
-    min-height:150px;
-    padding:18px;
-    border:1px solid #e2e8f0;
-    border-radius:20px;
-    background:#fff;
-    box-shadow:0 7px 20px rgba(15,23,42,.05);
-    transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
-  }
-  .admin-action-card:hover{
-    transform:translateY(-2px);
-    border-color:#bfdbfe;
-    box-shadow:0 12px 28px rgba(15,23,42,.08);
-  }
-  .admin-action-card.primary{
-    border-color:#bfdbfe;
-    background:#eff6ff;
-  }
-  .admin-action-icon{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    width:42px;
-    height:42px;
-    border-radius:14px;
-    background:#0f172a;
-    color:#fff;
-    font-size:20px;
-    font-weight:900;
-  }
-  .admin-action-title{
-    margin:0;
-    color:#0f172a;
-    font-size:17px;
-    line-height:1.3;
-    font-weight:900;
-  }
-  .admin-action-text{
-    margin:0;
-    color:#64748b;
-    font-size:13px;
-    line-height:1.45;
-  }
-  .admin-action-cta{
-    margin-top:auto;
-    color:#1d4ed8;
-    font-size:13px;
-    font-weight:900;
-  }
-  .upcoming-list{
-    display:grid;
-    gap:10px;
-  }
-  .upcoming-item{
-    display:flex;
-    justify-content:space-between;
-    gap:12px;
-    align-items:flex-start;
-    padding:14px;
-    border:1px solid #e2e8f0;
-    border-radius:16px;
-    background:#fff;
-  }
-  .upcoming-title{
-    margin:0 0 3px;
-    font-size:14px;
-    font-weight:900;
-  }
-  .upcoming-meta{
-    margin:0;
-    color:#64748b;
-    font-size:13px;
-  }
-  .upcoming-pill{
-    flex:0 0 auto;
-    padding:5px 9px;
-    border-radius:999px;
-    border:1px solid #dbeafe;
-    background:#eff6ff;
-    color:#1e40af;
-    font-size:12px;
-    font-weight:900;
-    white-space:nowrap;
-  }
-  .admin-dashboard-notice{
-    padding:15px;
-    border:1px solid #fed7aa;
-    background:#fff7ed;
-    border-radius:16px;
-    color:#7c2d12;
-    font-size:13px;
-    line-height:1.55;
-  }
-  @media (max-width: 900px){
-    .admin-stat-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
-    .admin-action-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
-  }
-  @media (max-width: 640px){
-    .admin-dashboard-hero{ padding:17px; border-radius:18px; }
-    .admin-dashboard-hero h1{ font-size:23px; }
-    .admin-stat-grid,
-    .admin-action-grid{ grid-template-columns:1fr; }
-    .admin-action-card{ min-height:0; padding:16px; }
-    .upcoming-item{ flex-direction:column; }
-    .upcoming-pill{ align-self:flex-start; }
-  }
+  .dashboard-page{display:grid;gap:14px;max-width:1180px;margin:0 auto;padding-bottom:28px;}
+  .dashboard-hero{padding:20px;border:1px solid #bfdbfe;border-radius:22px;background:linear-gradient(135deg,#eff6ff 0%,#fff 58%,#f0fdf4 100%);box-shadow:0 10px 26px rgba(15,23,42,.08);}
+  .dashboard-date{display:inline-flex;align-items:center;min-height:30px;padding:5px 10px;border:1px solid #bfdbfe;border-radius:999px;background:#fff;color:#1e40af;font-size:12px;font-weight:1000;}
+  .dashboard-title{margin:10px 0 0;color:#0f172a;font-size:30px;line-height:1.2;font-weight:1000;letter-spacing:-.03em;}
+  .dashboard-lead{margin:8px 0 0;color:#475569;font-size:14px;line-height:1.7;font-weight:750;}
+  .dashboard-primary-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;}
+  .dashboard-primary-actions .btn{border-radius:12px;}
+  .metric-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;}
+  .metric-card{display:block;padding:15px;border:1px solid #e2e8f0;border-radius:18px;background:#fff;text-decoration:none;box-shadow:0 8px 20px rgba(15,23,42,.05);}
+  .metric-card.primary{border-color:#93c5fd;background:#eff6ff;}
+  .metric-card.good{border-color:#86efac;background:#f0fdf4;}
+  .metric-card.warn{border-color:#fdba74;background:#fff7ed;}
+  .metric-card.urgent{border-color:#fca5a5;background:#fef2f2;}
+  .metric-label{color:#64748b;font-size:12px;line-height:1.4;font-weight:900;}
+  .metric-value{margin-top:6px;color:#0f172a;font-size:28px;line-height:1;font-weight:1000;letter-spacing:-.03em;}
+  .metric-unit{margin-left:3px;color:#64748b;font-size:12px;font-weight:900;}
+  .metric-note{margin-top:7px;color:#64748b;font-size:11px;line-height:1.45;font-weight:750;}
+  .dashboard-section{padding:16px;border:1px solid #e2e8f0;border-radius:20px;background:#fff;box-shadow:0 8px 20px rgba(15,23,42,.05);}
+  .section-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px;}
+  .section-title{margin:0;color:#0f172a;font-size:20px;line-height:1.35;font-weight:1000;}
+  .section-note{margin:5px 0 0;color:#64748b;font-size:13px;line-height:1.6;font-weight:750;}
+  .action-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+  .action-card{display:flex;flex-direction:column;gap:7px;min-height:132px;padding:15px;border:1px solid #e2e8f0;border-radius:17px;background:#f8fafc;text-decoration:none;}
+  .action-card.primary{border-color:#93c5fd;background:#eff6ff;}
+  .action-icon{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:12px;background:#0f172a;color:#fff;font-size:18px;font-weight:1000;}
+  .action-title{margin:0;color:#0f172a;font-size:16px;font-weight:1000;}
+  .action-text{margin:0;color:#64748b;font-size:12px;line-height:1.55;font-weight:750;}
+  .action-cta{margin-top:auto;color:#1d4ed8;font-size:12px;font-weight:1000;}
+  .upcoming-list{display:grid;gap:8px;}
+  .upcoming-item{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start;padding:12px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;}
+  .upcoming-title{margin:0;color:#0f172a;font-size:14px;font-weight:1000;}
+  .upcoming-meta{margin:4px 0 0;color:#64748b;font-size:12px;line-height:1.55;font-weight:750;}
+  .upcoming-pill{display:inline-flex;padding:5px 8px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:1000;white-space:nowrap;}
+  .notice{padding:13px;border:1px solid #fed7aa;border-radius:14px;background:#fff7ed;color:#9a3412;font-size:13px;line-height:1.65;font-weight:800;}
+  @media(max-width:980px){.metric-grid{grid-template-columns:repeat(3,minmax(0,1fr));}.action-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  @media(max-width:700px){.dashboard-page{gap:11px;}.dashboard-hero,.dashboard-section{padding:14px;border-radius:17px;}.dashboard-title{font-size:24px;}.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.metric-card{padding:13px;}.metric-value{font-size:24px;}.action-grid{grid-template-columns:1fr;}.action-card{min-height:0;}.dashboard-primary-actions{display:grid;grid-template-columns:1fr;}.dashboard-primary-actions .btn{width:100%;}.upcoming-item{grid-template-columns:1fr;}.upcoming-pill{justify-self:start;}}
+  @media(max-width:390px){.metric-grid{grid-template-columns:1fr;}}
 </style>
 
-<section class="admin-dashboard-hero">
-  <div class="admin-dashboard-date">📌 {{ today|date:"Y年n月j日" }} の管理トップ</div>
-  <h1>かんたん管理</h1>
-  <p>よく使う確認・受付・精算・管理機能を、大きなボタンから選べる画面です。迷ったらまずこの画面から操作してください。</p>
-</section>
-
-<section class="admin-dashboard-section">
-  <h2>いま確認したいこと</h2>
-  <p class="admin-dashboard-section-note">赤・オレンジの数字は、早めに確認したい項目です。</p>
-  <div class="admin-stat-grid">
-    <a class="admin-stat-card" href="{% url 'club:coach_today_lessons' %}">
-      <span class="admin-stat-label">今日の参加予定</span>
-      <span class="admin-stat-value">{{ stats.today_reservations }}<span class="admin-stat-unit">件</span></span>
-    </a>
-    <a class="admin-stat-card urgent" href="{% url 'club:reservation_list' %}">
-      <span class="admin-stat-label">承認待ち</span>
-      <span class="admin-stat-value">{{ stats.pending_reservations }}<span class="admin-stat-unit">件</span></span>
-    </a>
-    <a class="admin-stat-card warning" href="{% url 'club:stringing_order_list' %}">
-      <span class="admin-stat-label">未完了のガット張り</span>
-      <span class="admin-stat-value">{{ stats.unhandled_stringing_orders }}<span class="admin-stat-unit">件</span></span>
-    </a>
-    <a class="admin-stat-card warning" href="{% url 'club:coach_today_lessons' %}">
-      <span class="admin-stat-label">今日の未回収</span>
-      <span class="admin-stat-value">{{ stats.unpaid_preopen_reservations }}<span class="admin-stat-unit">件</span></span>
-    </a>
-  </div>
-</section>
-
-<section class="admin-dashboard-section">
-  <h2>やりたいことを選ぶ</h2>
-  <div class="admin-action-grid">
-    <a class="admin-action-card primary" href="{% url 'club:coach_today_lessons' %}">
-      <span class="admin-action-icon">👥</span>
-      <h3 class="admin-action-title">今日の受付・精算</h3>
-      <p class="admin-action-text">参加者確認、電話連絡、7月プレオープン参加費の回収状況を確認します。</p>
-      <span class="admin-action-cta">開く →</span>
-    </a>
-
-    <a class="admin-action-card" href="{% url 'club:lesson_calendar' %}">
-      <span class="admin-action-icon">📅</span>
-      <h3 class="admin-action-title">レッスンカレンダー</h3>
-      <p class="admin-action-text">レッスン予定、参加者、空き状況をカレンダー形式で確認します。</p>
-      <span class="admin-action-cta">開く →</span>
-    </a>
-
-    <a class="admin-action-card" href="{% url 'club:reservation_list' %}">
-      <span class="admin-action-icon">✅</span>
-      <h3 class="admin-action-title">予約・承認</h3>
-      <p class="admin-action-text">予約一覧、承認待ち、キャンセル待ち、過去予約を確認します。</p>
-      <span class="admin-action-cta">開く →</span>
-    </a>
-
-    <a class="admin-action-card" href="{% url 'club:stringing_order_list' %}">
-      <span class="admin-action-icon">🎾</span>
-      <h3 class="admin-action-title">ガット張り管理</h3>
-      <p class="admin-action-text">未対応の依頼、担当コーチ、ステータス、配送希望を確認します。</p>
-      <span class="admin-action-cta">開く →</span>
-    </a>
-
-    <a class="admin-action-card" href="{% url 'club:coach_expense_manage' %}">
-      <span class="admin-action-icon">🧾</span>
-      <h3 class="admin-action-title">経費登録</h3>
-      <p class="admin-action-text">コート代、ボール代、備品代などの立替経費を登録します。</p>
-      <span class="admin-action-cta">開く →</span>
-    </a>
-
-    <a class="admin-action-card" href="{% url 'club:coach_revenue_summary' %}">
-      <span class="admin-action-icon">¥</span>
-      <h3 class="admin-action-title">収支管理</h3>
-      <p class="admin-action-text">売上、チケット、支払い予定、精算関係の画面へ進みます。</p>
-      <span class="admin-action-cta">開く →</span>
-    </a>
-
-    <a class="admin-action-card" href="{% url 'club:coach_fixed_lesson_weekly' %}">
-      <span class="admin-action-icon">🔁</span>
-      <h3 class="admin-action-title">固定レッスン</h3>
-      <p class="admin-action-text">毎週の固定レッスン、固定登録メンバー、開催枠を確認します。</p>
-      <span class="admin-action-cta">開く →</span>
-    </a>
-
-    <a class="admin-action-card" href="{% url 'club:coach_availability_list' %}">
-      <span class="admin-action-icon">＋</span>
-      <h3 class="admin-action-title">スケジュール枠</h3>
-      <p class="admin-action-text">新しいレッスン枠の登録、既存枠の変更、削除を行います。</p>
-      <span class="admin-action-cta">開く →</span>
-    </a>
-
-    {% if is_full_admin %}
-      <a class="admin-action-card" href="/admin/">
-        <span class="admin-action-icon">⚙</span>
-        <h3 class="admin-action-title">Django管理サイト</h3>
-        <p class="admin-action-text">ユーザー、商品マスタ、細かいデータ修正など上級者向けの管理画面です。</p>
-        <span class="admin-action-cta">開く →</span>
-      </a>
-    {% endif %}
-  </div>
-</section>
-
-<section class="admin-dashboard-section">
-  <h2>今後1週間のレッスン枠</h2>
-  {% if upcoming_lessons %}
-    <div class="upcoming-list">
-      {% for lesson in upcoming_lessons %}
-        <div class="upcoming-item">
-          <div>
-            <p class="upcoming-title">{{ lesson.start_at|date:"n/j(D) H:i" }}〜{{ lesson.end_at|date:"H:i" }}　{{ lesson.get_lesson_type_display }}</p>
-            <p class="upcoming-meta">
-              {{ lesson.target_level_display_label }} / {{ lesson.assigned_coach.display_name }} / {{ lesson.court }} / 定員{{ lesson.capacity }}名
-            </p>
-          </div>
-          <span class="upcoming-pill">{{ lesson.get_status_display }}</span>
-        </div>
-      {% endfor %}
+<div class="dashboard-page">
+  <section class="dashboard-hero">
+    <span class="dashboard-date">{{ today|date:"Y年n月j日" }} の運営状況</span>
+    <h1 class="dashboard-title">管理ダッシュボード</h1>
+    <p class="dashboard-lead">今日の受付、終了処理、承認待ち、回収状況を最初に確認できます。数字を押すと対象画面へ移動します。</p>
+    <div class="dashboard-primary-actions">
+      <a href="{% url 'club:coach_today_lessons' %}?days=1" class="btn btn-primary">本日の受付・精算</a>
+      <a href="{% url 'club:lesson_calendar' %}" class="btn">レッスンカレンダー</a>
+      <a href="{% url 'club:lesson_execution_manage' %}?year={{ today|date:'Y' }}&month={{ today|date:'n' }}" class="btn">実施管理</a>
     </div>
-  {% else %}
-    <div class="admin-dashboard-notice">今後1週間のレッスン枠は見つかりませんでした。必要に応じて「スケジュール枠」から登録してください。</div>
-  {% endif %}
-</section>
+  </section>
 
-<section class="admin-dashboard-section">
-  <h2>管理メモ</h2>
-  <div class="admin-dashboard-notice">
-    現在の会員数は {{ stats.member_count }} 名です。チケット残数が0枚以下の会員は {{ stats.low_ticket_member_count }} 名です。固定レッスンは {{ stats.active_fixed_lessons }} 件が有効です。<br>
-    第1弾では「迷わず開ける管理トップ」を追加しています。次の段階で、会員検索・チケット付与をさらに簡単にできます。
-  </div>
-</section>
+  <section class="metric-grid" aria-label="本日の主要指標">
+    <a class="metric-card primary" href="{% url 'club:coach_today_lessons' %}?days=1">
+      <div class="metric-label">今日のレッスン</div>
+      <div class="metric-value">{{ stats.today_lesson_count }}<span class="metric-unit">件</span></div>
+      <div class="metric-note">本日の開催枠</div>
+    </a>
+    <a class="metric-card primary" href="{% url 'club:coach_today_lessons' %}?days=1">
+      <div class="metric-label">今日の参加者</div>
+      <div class="metric-value">{{ stats.today_participant_count }}<span class="metric-unit">名</span></div>
+      <div class="metric-note">有効予約の人数</div>
+    </a>
+    <a class="metric-card good" href="{% url 'club:coach_today_lessons' %}?days=1">
+      <div class="metric-label">本日回収済み</div>
+      <div class="metric-value">¥{{ stats.today_paid_total }}</div>
+      <div class="metric-note">現金参加費の回収済み額</div>
+    </a>
+    <a class="metric-card {% if stats.execution_pending_count %}urgent{% endif %}" href="{% url 'club:lesson_execution_manage' %}?year={{ today|date:'Y' }}&month={{ today|date:'n' }}">
+      <div class="metric-label">終了後未処理</div>
+      <div class="metric-value">{{ stats.execution_pending_count }}<span class="metric-unit">件</span></div>
+      <div class="metric-note">実施済み・雨天中止の未登録</div>
+    </a>
+    <a class="metric-card {% if stats.pending_reservations %}warn{% endif %}" href="{% url 'club:reservation_list' %}">
+      <div class="metric-label">承認待ち</div>
+      <div class="metric-value">{{ stats.pending_reservations }}<span class="metric-unit">件</span></div>
+      <div class="metric-note">確認が必要な予約申請</div>
+    </a>
+  </section>
+
+  <section class="dashboard-section">
+    <div class="section-head">
+      <div>
+        <h2 class="section-title">要確認</h2>
+        <p class="section-note">運営上、早めに確認したい項目です。</p>
+      </div>
+    </div>
+    <div class="metric-grid">
+      <a class="metric-card {% if stats.unpaid_preopen_reservations %}warn{% endif %}" href="{% url 'club:coach_today_lessons' %}?days=1">
+        <div class="metric-label">今日の未回収</div>
+        <div class="metric-value">{{ stats.unpaid_preopen_reservations }}<span class="metric-unit">件</span></div>
+      </a>
+      <a class="metric-card {% if stats.waiting_waitlists %}warn{% endif %}" href="{% url 'club:reservation_list' %}">
+        <div class="metric-label">キャンセル待ち</div>
+        <div class="metric-value">{{ stats.waiting_waitlists }}<span class="metric-unit">件</span></div>
+      </a>
+      <a class="metric-card {% if stats.unhandled_stringing_orders %}warn{% endif %}" href="{% url 'club:stringing_order_list' %}">
+        <div class="metric-label">未完了のガット張り</div>
+        <div class="metric-value">{{ stats.unhandled_stringing_orders }}<span class="metric-unit">件</span></div>
+      </a>
+      <a class="metric-card" href="{% url 'club:coach_ticket_summary' %}">
+        <div class="metric-label">チケット0枚以下</div>
+        <div class="metric-value">{{ stats.low_ticket_member_count }}<span class="metric-unit">名</span></div>
+      </a>
+      <a class="metric-card" href="{% url 'club:coach_fixed_lesson_weekly' %}">
+        <div class="metric-label">有効な固定レッスン</div>
+        <div class="metric-value">{{ stats.active_fixed_lessons }}<span class="metric-unit">件</span></div>
+      </a>
+    </div>
+  </section>
+
+  <section class="dashboard-section">
+    <div class="section-head">
+      <div>
+        <h2 class="section-title">運営メニュー</h2>
+        <p class="section-note">日常業務と月次管理の入口です。</p>
+      </div>
+    </div>
+    <div class="action-grid">
+      <a class="action-card primary" href="{% url 'club:coach_today_lessons' %}?days=1"><span class="action-icon">👥</span><h3 class="action-title">本日の受付・精算</h3><p class="action-text">参加者、電話、回収状況、終了処理を確認します。</p><span class="action-cta">開く →</span></a>
+      <a class="action-card" href="{% url 'club:lesson_calendar' %}"><span class="action-icon">📅</span><h3 class="action-title">レッスンカレンダー</h3><p class="action-text">開催予定、参加人数、空き状況を確認します。</p><span class="action-cta">開く →</span></a>
+      <a class="action-card" href="{% url 'club:reservation_list' %}"><span class="action-icon">✓</span><h3 class="action-title">予約・承認</h3><p class="action-text">予約申請、承認、キャンセル待ちを管理します。</p><span class="action-cta">開く →</span></a>
+      <a class="action-card" href="{% url 'club:coach_expense_manage' %}"><span class="action-icon">🧾</span><h3 class="action-title">経費・コート代</h3><p class="action-text">コート代や立替経費、領収書状況を登録します。</p><span class="action-cta">開く →</span></a>
+      <a class="action-card" href="{% url 'club:coach_revenue_summary' %}"><span class="action-icon">¥</span><h3 class="action-title">収支管理</h3><p class="action-text">売上、支出、コーチ別収支を確認します。</p><span class="action-cta">開く →</span></a>
+      <a class="action-card" href="{% url 'club:coach_admin_settlement' %}"><span class="action-icon">締</span><h3 class="action-title">月次精算</h3><p class="action-text">会社財布、給与、月締め状況を確認します。</p><span class="action-cta">開く →</span></a>
+      <a class="action-card" href="{% url 'club:stringing_order_list' %}"><span class="action-icon">🎾</span><h3 class="action-title">ガット張り管理</h3><p class="action-text">依頼、担当、進捗、配送希望を管理します。</p><span class="action-cta">開く →</span></a>
+      <a class="action-card" href="{% url 'club:coach_fixed_lesson_weekly' %}"><span class="action-icon">↻</span><h3 class="action-title">固定レッスン</h3><p class="action-text">毎週のレッスンと固定メンバーを管理します。</p><span class="action-cta">開く →</span></a>
+      <a class="action-card" href="{% url 'club:coach_availability_list' %}"><span class="action-icon">＋</span><h3 class="action-title">スケジュール枠</h3><p class="action-text">個別レッスン枠の登録、変更、削除を行います。</p><span class="action-cta">開く →</span></a>
+      {% if is_full_admin %}<a class="action-card" href="/admin/"><span class="action-icon">⚙</span><h3 class="action-title">Django管理</h3><p class="action-text">ユーザーやマスタデータを詳細に管理します。</p><span class="action-cta">開く →</span></a>{% endif %}
+    </div>
+  </section>
+
+  <section class="dashboard-section">
+    <div class="section-head"><div><h2 class="section-title">今後1週間のレッスン枠</h2><p class="section-note">直近8件を表示しています。</p></div></div>
+    {% if upcoming_lessons %}
+      <div class="upcoming-list">
+        {% for lesson in upcoming_lessons %}
+          <div class="upcoming-item">
+            <div>
+              <p class="upcoming-title">{{ lesson.start_at|date:"n/j(D) H:i" }}〜{{ lesson.end_at|date:"H:i" }}　{{ lesson.get_lesson_type_display }}</p>
+              <p class="upcoming-meta">{{ lesson.target_level_display_label }} / {{ lesson.assigned_coach.display_name }} / {{ lesson.court }} / 定員{{ lesson.capacity }}名</p>
+            </div>
+            <span class="upcoming-pill">{{ lesson.get_status_display }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="notice">今後1週間のレッスン枠はありません。必要に応じてスケジュール枠を登録してください。</div>
+    {% endif %}
+  </section>
+
+  <div class="notice">現在の有効会員は {{ stats.member_count }} 名です。「本日回収済み」は現金参加費の回収済み額であり、チケット購入売上とは分けて表示しています。</div>
+</div>
 {% endblock %}
