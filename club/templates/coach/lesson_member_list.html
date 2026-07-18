@@ -9,6 +9,8 @@
   .member-list-lead{margin:8px 0 0;color:#475569;font-size:14px;line-height:1.7;font-weight:750;}
   .public-note{margin:10px 0 0;padding:10px 12px;border:1px solid #fed7aa;border-radius:14px;background:#fff7ed;color:#9a3412;font-size:13px;line-height:1.7;font-weight:900;}
   .member-list-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;}
+  .execution-btn{border-color:#16a34a!important;background:#16a34a!important;color:#fff!important;box-shadow:0 6px 14px rgba(22,163,74,.22);}
+  .execution-btn:hover{border-color:#15803d!important;background:#15803d!important;color:#fff!important;}
   .summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;}
   .summary-grid.public{grid-template-columns:repeat(2,minmax(0,1fr));}
   .summary-card{padding:14px;border:1px solid #e5e7eb;background:#fff;border-radius:18px;box-shadow:0 8px 20px rgba(15,23,42,.05);}
@@ -66,6 +68,9 @@
     <div class="member-list-actions">
       {% if is_public_member_view and reservation_url %}
         <a href="{{ reservation_url }}" class="btn btn-primary">このレッスンを予約する</a>
+      {% endif %}
+      {% if is_coach_view %}
+        <a href="{% url 'club:lesson_execution_manage' %}?year={{ start_at|date:'Y' }}&month={{ start_at|date:'n' }}#lesson-{{ request.GET.availability_id }}" class="btn execution-btn">このレッスンを実施管理</a>
       {% endif %}
       {% if is_coach_view and active_rows.0.reservation %}
         <a href="{% url 'club:court_number_line_notice' %}?slot_id={{ active_rows.0.reservation.pk }}" class="btn line-notice-btn">この参加者へコート番号をLINE連絡</a>
