@@ -278,6 +278,53 @@ class SettlementPayment(models.Model):
         if int(self.amount or 0) <= 0:
             raise ValidationError("支払金額は1円以上にしてください。")
 
+    def _validate_wallet_payment(self):
+        if not self._state.adding or self.is_reversed:
+            return
+
+        payment_amount = int(self.amount or 0)
+        if payment_amount <= 0:
+            raise ValidationError("支払金額は1円以上にしてください。")
+
+        from .settlement_service import calculate_monthly_settlement
+
+        result = calculate_monthly_settlement(
+            self.monthly_settlement.year,
+            self.monthly_settlement.month,
+        )
+        company_available = int(
+            result.get("wallet_remaining_payable") or 0
+        )
+        target_row = next(
+            (
+                row
+                for row in result.get("coach_rows", [])
+                if getattr(row.get("coach"), "pk", None) == self.coach_id
+            ),
+            None,
+        )
+        coach_available = int((target_row or {}).get("unpaid_salary") or 0)
+
+        if self.payment_type == self.PAYMENT_TYPE_REIMBURSEMENT:
+            raise ValidationError(
+                "会社＝財布方式では、立替返金は月末一括精算額に"
+                "含まれます。支払種別は「給与支払い」を選択してください。"
+            )
+        if payment_amount > coach_available:
+            raise ValidationError(
+                "支払額がこのコーチの支払可能額を超えています。"
+                f"支払可能上限は{coach_available:,}円です。"
+            )
+        if payment_amount > company_available:
+            raise ValidationError(
+                "支払額が会社の当月売上残高を超えています。"
+                f"会社財布の支払可能残高は{company_available:,}円です。"
+            )
+
+    def save(self, *args, **kwargs):
+        self._validate_wallet_payment()
+        return super().save(*args, **kwargs)
+
     @property
     def active_amount(self):
         if self.is_reversed:
