@@ -368,6 +368,17 @@ class CoachAvailability(models.Model, LessonTypeMixin):
             if self.capacity < 1:
                 raise ValidationError("イベントの定員は1以上にしてください。")
 
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            update_field_set = set(update_fields)
+            update_field_set.update(
+                {"coach_count", "court_count", "capacity", "target_level_2"}
+            )
+            kwargs["update_fields"] = list(update_field_set)
+        return super().save(*args, **kwargs)
+
         if self.target_level_2 == self.target_level:
             self.target_level_2 = ""
 
@@ -700,9 +711,41 @@ class FixedLesson(models.Model, LessonTypeMixin):
             if updated_fields:
                 availability.save(update_fields=updated_fields)
 
-            # 管理サイトで固定メンバーを外した場合、未来の固定レッスン予約も連動してキャンセルする。
+            Reservation.objects.filter(
+                fixed_lesson=self,
+                start_at=start_at,
+                end_at=end_at,
+                status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+            ).update(
+                coach=primary_coach,
+                court=self.court,
+                availability=availability,
+                lesson_type=self.lesson_type,
+                target_level=self.target_level,
+                target_level_2=self.target_level_2,
+                substitute_coach=availability.substitute_coach,
+                custom_ticket_price=availability.custom_ticket_price,
+                custom_duration_hours=availability.custom_duration_hours,
+            )
+            LessonWaitlist.objects.filter(
+                fixed_lesson=self,
+                start_at=start_at,
+                end_at=end_at,
+                status=LessonWaitlist.STATUS_WAITING,
+            ).update(
+                coach=primary_coach,
+                court=self.court,
+                availability=availability,
+                lesson_type=self.lesson_type,
+                target_level=self.target_level,
+                target_level_2=self.target_level_2,
+                substitute_coach=availability.substitute_coach,
+            )
+
+            # 固定参加メンバーから外した会員の自動予約だけをキャンセルする。
             obsolete_reservations = Reservation.objects.filter(
                 fixed_lesson=self,
+                is_fixed_entry=True,
                 start_at=start_at,
                 end_at=end_at,
                 status=Reservation.STATUS_ACTIVE,
