@@ -3,83 +3,401 @@
 
 {% block content %}
 <style>
-  .analytics-page{display:grid;gap:14px;max-width:1180px;margin:0 auto;padding-bottom:28px;}
-  .analytics-hero{padding:20px;border:1px solid #c4b5fd;border-radius:22px;background:linear-gradient(135deg,#f5f3ff 0%,#fff 55%,#eff6ff 100%);box-shadow:0 10px 26px rgba(15,23,42,.08);}
-  .analytics-title{margin:0;color:#0f172a;font-size:30px;line-height:1.2;font-weight:1000;letter-spacing:-.03em;}
-  .analytics-lead{margin:8px 0 0;color:#475569;font-size:14px;line-height:1.7;font-weight:750;}
-  .period-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;}
-  .period-tabs .btn{border-radius:999px;}
-  .custom-form{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-top:10px;}
-  .custom-form input{min-height:42px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;font-weight:800;}
-  .metric-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;}
-  .metric-card{padding:15px;border:1px solid #e2e8f0;border-radius:18px;background:#fff;box-shadow:0 8px 20px rgba(15,23,42,.05);}
+  .analytics-page{
+    display:grid;
+    gap:14px;
+    width:100%;
+    max-width:1180px;
+    margin:0 auto;
+    padding-bottom:28px;
+    overflow-x:hidden;
+  }
+
+  .analytics-hero,
+  .analytics-section{
+    min-width:0;
+    padding:18px;
+    border:1px solid #e2e8f0;
+    border-radius:20px;
+    background:#fff;
+    box-shadow:0 8px 20px rgba(15,23,42,.05);
+  }
+
+  .analytics-hero{
+    border-color:#c4b5fd;
+    background:linear-gradient(135deg,#f5f3ff 0%,#fff 55%,#eff6ff 100%);
+  }
+
+  .analytics-title{
+    margin:0;
+    color:#0f172a;
+    font-size:30px;
+    line-height:1.2;
+    font-weight:1000;
+    letter-spacing:-.03em;
+  }
+
+  .analytics-lead{
+    margin:8px 0 0;
+    color:#475569;
+    font-size:14px;
+    line-height:1.7;
+    font-weight:750;
+  }
+
+  .period-tabs{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:14px;
+  }
+
+  .period-tabs .btn{
+    min-height:42px;
+    border-radius:999px;
+    white-space:nowrap;
+  }
+
+  .custom-form{
+    display:grid;
+    grid-template-columns:1fr 1fr auto;
+    gap:8px;
+    margin-top:12px;
+  }
+
+  .date-field{
+    display:grid;
+    gap:5px;
+    min-width:0;
+  }
+
+  .date-field label{
+    color:#64748b;
+    font-size:12px;
+    font-weight:900;
+  }
+
+  .custom-form input{
+    box-sizing:border-box;
+    width:100%;
+    min-width:0;
+    min-height:44px;
+    padding:8px 10px;
+    border:1px solid #cbd5e1;
+    border-radius:12px;
+    background:#fff;
+    color:#0f172a;
+    font-size:16px;
+    font-weight:800;
+  }
+
+  .metric-grid{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:10px;
+  }
+
+  .metric-card{
+    min-width:0;
+    padding:15px;
+    border:1px solid #e2e8f0;
+    border-radius:18px;
+    background:#fff;
+    box-shadow:0 8px 20px rgba(15,23,42,.05);
+  }
+
   .metric-card.primary{border-color:#93c5fd;background:#eff6ff;}
   .metric-card.good{border-color:#86efac;background:#f0fdf4;}
   .metric-card.warn{border-color:#fdba74;background:#fff7ed;}
-  .metric-label{color:#64748b;font-size:12px;font-weight:900;}
-  .metric-value{margin-top:6px;color:#0f172a;font-size:27px;line-height:1;font-weight:1000;letter-spacing:-.03em;}
-  .metric-unit{margin-left:3px;color:#64748b;font-size:12px;font-weight:900;}
-  .metric-note{margin-top:7px;color:#64748b;font-size:11px;line-height:1.45;font-weight:750;}
-  .analytics-section{padding:16px;border:1px solid #e2e8f0;border-radius:20px;background:#fff;box-shadow:0 8px 20px rgba(15,23,42,.05);}
-  .section-title{margin:0;color:#0f172a;font-size:20px;line-height:1.35;font-weight:1000;}
-  .section-note{margin:5px 0 12px;color:#64748b;font-size:13px;line-height:1.6;font-weight:750;}
-  .analysis-table{width:100%;border-collapse:collapse;}
-  .analysis-table th,.analysis-table td{padding:11px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-size:13px;}
-  .analysis-table th{background:#f8fafc;color:#64748b;font-weight:1000;}
-  .analysis-table th:first-child,.analysis-table td:first-child{text-align:left;}
-  .analysis-table tr:last-child td{border-bottom:0;}
-  .analysis-table td{color:#0f172a;font-weight:800;}
-  .two-column{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-  .empty-box{padding:14px;border:1px dashed #cbd5e1;border-radius:14px;background:#f8fafc;color:#64748b;text-align:center;font-size:13px;font-weight:800;}
-  .foot-note{padding:13px;border:1px solid #bfdbfe;border-radius:14px;background:#eff6ff;color:#1e3a8a;font-size:12px;line-height:1.65;font-weight:800;}
-  @media(max-width:980px){.metric-grid{grid-template-columns:repeat(3,minmax(0,1fr));}.two-column{grid-template-columns:1fr;}}
-  @media(max-width:700px){.analytics-page{gap:11px;}.analytics-hero,.analytics-section{padding:14px;border-radius:17px;}.analytics-title{font-size:24px;}.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.metric-card{padding:13px;}.metric-value{font-size:23px;}.custom-form{grid-template-columns:1fr 1fr;}.custom-form .btn{grid-column:1/-1;width:100%;}.table-wrap{overflow-x:auto;}.analysis-table{min-width:560px;}}
-  @media(max-width:390px){.metric-grid{grid-template-columns:1fr;}.custom-form{grid-template-columns:1fr;}.custom-form .btn{grid-column:auto;}}
+
+  .metric-label{
+    color:#64748b;
+    font-size:13px;
+    line-height:1.4;
+    font-weight:900;
+  }
+
+  .metric-value{
+    margin-top:7px;
+    color:#0f172a;
+    font-size:28px;
+    line-height:1.05;
+    font-weight:1000;
+    letter-spacing:-.03em;
+    overflow-wrap:anywhere;
+  }
+
+  .metric-unit{
+    margin-left:3px;
+    color:#64748b;
+    font-size:12px;
+    font-weight:900;
+  }
+
+  .metric-note{
+    margin-top:8px;
+    color:#64748b;
+    font-size:12px;
+    line-height:1.5;
+    font-weight:750;
+  }
+
+  .section-title{
+    margin:0;
+    color:#0f172a;
+    font-size:20px;
+    line-height:1.35;
+    font-weight:1000;
+  }
+
+  .section-note{
+    margin:5px 0 12px;
+    color:#64748b;
+    font-size:13px;
+    line-height:1.6;
+    font-weight:750;
+  }
+
+  .coach-grid,
+  .summary-card-grid{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:10px;
+  }
+
+  .coach-card,
+  .summary-card{
+    min-width:0;
+    padding:14px;
+    border:1px solid #e2e8f0;
+    border-radius:16px;
+    background:#f8fafc;
+  }
+
+  .coach-name,
+  .summary-card-title{
+    margin:0;
+    color:#0f172a;
+    font-size:16px;
+    line-height:1.35;
+    font-weight:1000;
+  }
+
+  .coach-stats,
+  .summary-card-stats{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+    margin-top:10px;
+  }
+
+  .stat-box{
+    min-width:0;
+    padding:9px;
+    border:1px solid #e2e8f0;
+    border-radius:12px;
+    background:#fff;
+  }
+
+  .stat-label{
+    color:#64748b;
+    font-size:11px;
+    font-weight:900;
+  }
+
+  .stat-value{
+    margin-top:3px;
+    color:#0f172a;
+    font-size:17px;
+    line-height:1.25;
+    font-weight:1000;
+    overflow-wrap:anywhere;
+  }
+
+  .two-column{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:14px;
+  }
+
+  .empty-box{
+    padding:14px;
+    border:1px dashed #cbd5e1;
+    border-radius:14px;
+    background:#f8fafc;
+    color:#64748b;
+    text-align:center;
+    font-size:13px;
+    font-weight:800;
+  }
+
+  .foot-note{
+    padding:13px;
+    border:1px solid #bfdbfe;
+    border-radius:14px;
+    background:#eff6ff;
+    color:#1e3a8a;
+    font-size:12px;
+    line-height:1.65;
+    font-weight:800;
+  }
+
+  @media(max-width:800px){
+    .analytics-page{gap:11px;padding-bottom:96px;}
+
+    .analytics-hero,
+    .analytics-section{
+      padding:14px;
+      border-radius:17px;
+    }
+
+    .analytics-title{font-size:24px;}
+
+    .period-tabs{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+    }
+
+    .period-tabs .btn{
+      width:100%;
+      padding-left:8px;
+      padding-right:8px;
+    }
+
+    .period-tabs .back-button{
+      grid-column:1/-1;
+    }
+
+    .custom-form{
+      grid-template-columns:1fr;
+      gap:10px;
+    }
+
+    .custom-form .btn{
+      width:100%;
+      min-height:46px;
+    }
+
+    .metric-grid{
+      grid-template-columns:1fr;
+      gap:10px;
+    }
+
+    .metric-card{
+      padding:15px;
+      border-radius:17px;
+    }
+
+    .metric-value{font-size:29px;}
+
+    .coach-grid,
+    .summary-card-grid,
+    .two-column{
+      grid-template-columns:1fr;
+    }
+
+    .coach-card,
+    .summary-card{
+      padding:13px;
+    }
+  }
+
+  @media(max-width:390px){
+    .coach-stats,
+    .summary-card-stats{
+      grid-template-columns:1fr;
+    }
+  }
 </style>
 
 <div class="analytics-page">
   <section class="analytics-hero">
     <h1 class="analytics-title">分析ダッシュボード</h1>
     <p class="analytics-lead">{{ period_label }}のレッスン実績、記録済み売上、コーチ別実績、会員状況をまとめて確認できます。</p>
+
     <div class="period-tabs">
       <a href="?period=today" class="btn {% if period == 'today' %}btn-primary{% endif %}">今日</a>
       <a href="?period=month" class="btn {% if period == 'month' %}btn-primary{% endif %}">今月</a>
       <a href="?period=year" class="btn {% if period == 'year' %}btn-primary{% endif %}">今年</a>
-      <a href="{% url 'club:admin_dashboard' %}" class="btn">管理トップへ戻る</a>
+      <a href="{% url 'club:admin_dashboard' %}" class="btn back-button">管理トップへ戻る</a>
     </div>
+
     <form method="get" class="custom-form">
       <input type="hidden" name="period" value="custom">
-      <input type="date" name="start" value="{{ start_date|date:'Y-m-d' }}" aria-label="開始日">
-      <input type="date" name="end" value="{{ end_date|date:'Y-m-d' }}" aria-label="終了日">
+      <div class="date-field">
+        <label for="analytics-start">開始日</label>
+        <input id="analytics-start" type="date" name="start" value="{{ start_date|date:'Y-m-d' }}">
+      </div>
+      <div class="date-field">
+        <label for="analytics-end">終了日</label>
+        <input id="analytics-end" type="date" name="end" value="{{ end_date|date:'Y-m-d' }}">
+      </div>
       <button type="submit" class="btn btn-primary">指定期間を表示</button>
     </form>
   </section>
 
   <section class="metric-grid" aria-label="実績概要">
-    <div class="metric-card primary"><div class="metric-label">レッスン</div><div class="metric-value">{{ summary.lesson_count }}<span class="metric-unit">件</span></div><div class="metric-note">日時・担当・コート単位の開催枠</div></div>
-    <div class="metric-card primary"><div class="metric-label">参加者</div><div class="metric-value">{{ summary.participant_count }}<span class="metric-unit">名</span></div><div class="metric-note">有効予約の延べ人数</div></div>
-    <div class="metric-card"><div class="metric-label">稼働時間</div><div class="metric-value">{{ summary.lesson_hours }}<span class="metric-unit">時間</span></div><div class="metric-note">開催枠の合計時間</div></div>
-    <div class="metric-card good"><div class="metric-label">記録済み売上</div><div class="metric-value">¥{{ summary.recorded_sales }}</div><div class="metric-note">現金回収＋チケット販売</div></div>
-    <div class="metric-card"><div class="metric-label">チケット販売</div><div class="metric-value">¥{{ summary.ticket_sales }}</div><div class="metric-note">{{ summary.ticket_purchase_count }}件の購入記録</div></div>
-    <div class="metric-card"><div class="metric-label">現金参加費</div><div class="metric-value">¥{{ summary.cash_sales }}</div><div class="metric-note">回収済み予約のみ</div></div>
-    <div class="metric-card"><div class="metric-label">有効会員</div><div class="metric-value">{{ summary.member_count }}<span class="metric-unit">名</span></div></div>
-    <div class="metric-card {% if summary.inactive_member_count %}warn{% endif %}"><div class="metric-label">30日以上予約なし</div><div class="metric-value">{{ summary.inactive_member_count }}<span class="metric-unit">名</span></div><div class="metric-note">予約履歴なしを含む</div></div>
-    <div class="metric-card {% if summary.low_ticket_count %}warn{% endif %}"><div class="metric-label">チケット1枚以下</div><div class="metric-value">{{ summary.low_ticket_count }}<span class="metric-unit">名</span></div></div>
+    <div class="metric-card primary">
+      <div class="metric-label">レッスン</div>
+      <div class="metric-value">{{ summary.lesson_count }}<span class="metric-unit">件</span></div>
+      <div class="metric-note">日時・担当・コート単位の開催枠</div>
+    </div>
+    <div class="metric-card primary">
+      <div class="metric-label">参加者</div>
+      <div class="metric-value">{{ summary.participant_count }}<span class="metric-unit">名</span></div>
+      <div class="metric-note">有効予約の延べ人数</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">稼働時間</div>
+      <div class="metric-value">{{ summary.lesson_hours }}<span class="metric-unit">時間</span></div>
+      <div class="metric-note">開催枠の合計時間</div>
+    </div>
+    <div class="metric-card good">
+      <div class="metric-label">記録済み売上</div>
+      <div class="metric-value">¥{{ summary.recorded_sales }}</div>
+      <div class="metric-note">現金回収＋チケット販売</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">チケット販売</div>
+      <div class="metric-value">¥{{ summary.ticket_sales }}</div>
+      <div class="metric-note">{{ summary.ticket_purchase_count }}件の購入記録</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">現金参加費</div>
+      <div class="metric-value">¥{{ summary.cash_sales }}</div>
+      <div class="metric-note">回収済み予約のみ</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">有効会員</div>
+      <div class="metric-value">{{ summary.member_count }}<span class="metric-unit">名</span></div>
+    </div>
+    <div class="metric-card {% if summary.inactive_member_count %}warn{% endif %}">
+      <div class="metric-label">30日以上予約なし</div>
+      <div class="metric-value">{{ summary.inactive_member_count }}<span class="metric-unit">名</span></div>
+      <div class="metric-note">予約履歴なしを含む</div>
+    </div>
+    <div class="metric-card {% if summary.low_ticket_count %}warn{% endif %}">
+      <div class="metric-label">チケット1枚以下</div>
+      <div class="metric-value">{{ summary.low_ticket_count }}<span class="metric-unit">名</span></div>
+    </div>
   </section>
 
   <section class="analytics-section">
     <h2 class="section-title">コーチ別実績</h2>
     <p class="section-note">代行が設定されている予約は、代行コーチへ集計しています。</p>
     {% if coach_rows %}
-      <div class="table-wrap">
-        <table class="analysis-table">
-          <thead><tr><th>コーチ</th><th>レッスン</th><th>参加者</th><th>使用チケット</th><th>現金回収</th></tr></thead>
-          <tbody>
-            {% for row in coach_rows %}
-              <tr><td>{{ row.name }}</td><td>{{ row.lesson_count }}件</td><td>{{ row.participants }}名</td><td>{{ row.tickets_used }}枚</td><td>¥{{ row.cash_sales }}</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
+      <div class="coach-grid">
+        {% for row in coach_rows %}
+          <article class="coach-card">
+            <h3 class="coach-name">{{ row.name }}</h3>
+            <div class="coach-stats">
+              <div class="stat-box"><div class="stat-label">レッスン</div><div class="stat-value">{{ row.lesson_count }}件</div></div>
+              <div class="stat-box"><div class="stat-label">参加者</div><div class="stat-value">{{ row.participants }}名</div></div>
+              <div class="stat-box"><div class="stat-label">使用チケット</div><div class="stat-value">{{ row.tickets_used }}枚</div></div>
+              <div class="stat-box"><div class="stat-label">現金回収</div><div class="stat-value">¥{{ row.cash_sales }}</div></div>
+            </div>
+          </article>
+        {% endfor %}
       </div>
     {% else %}
       <div class="empty-box">指定期間の有効予約はありません。</div>
@@ -91,26 +409,39 @@
       <h2 class="section-title">レッスン種別</h2>
       <p class="section-note">種別ごとの開催枠と延べ参加人数です。</p>
       {% if lesson_type_rows %}
-        <div class="table-wrap">
-          <table class="analysis-table">
-            <thead><tr><th>種別</th><th>レッスン</th><th>参加者</th></tr></thead>
-            <tbody>{% for row in lesson_type_rows %}<tr><td>{{ row.label }}</td><td>{{ row.lesson_count }}件</td><td>{{ row.participants }}名</td></tr>{% endfor %}</tbody>
-          </table>
+        <div class="summary-card-grid">
+          {% for row in lesson_type_rows %}
+            <article class="summary-card">
+              <h3 class="summary-card-title">{{ row.label }}</h3>
+              <div class="summary-card-stats">
+                <div class="stat-box"><div class="stat-label">レッスン</div><div class="stat-value">{{ row.lesson_count }}件</div></div>
+                <div class="stat-box"><div class="stat-label">参加者</div><div class="stat-value">{{ row.participants }}名</div></div>
+              </div>
+            </article>
+          {% endfor %}
         </div>
-      {% else %}<div class="empty-box">集計対象がありません。</div>{% endif %}
+      {% else %}
+        <div class="empty-box">集計対象がありません。</div>
+      {% endif %}
     </section>
 
     <section class="analytics-section">
       <h2 class="section-title">会員レベル構成</h2>
       <p class="section-note">現在有効な会員のレベル別人数です。</p>
       {% if level_rows %}
-        <div class="table-wrap">
-          <table class="analysis-table">
-            <thead><tr><th>レベル</th><th>人数</th></tr></thead>
-            <tbody>{% for row in level_rows %}<tr><td>{{ row.label }}</td><td>{{ row.count }}名</td></tr>{% endfor %}</tbody>
-          </table>
+        <div class="summary-card-grid">
+          {% for row in level_rows %}
+            <article class="summary-card">
+              <h3 class="summary-card-title">{{ row.label }}</h3>
+              <div class="summary-card-stats">
+                <div class="stat-box"><div class="stat-label">人数</div><div class="stat-value">{{ row.count }}名</div></div>
+              </div>
+            </article>
+          {% endfor %}
         </div>
-      {% else %}<div class="empty-box">有効会員はいません。</div>{% endif %}
+      {% else %}
+        <div class="empty-box">有効会員はいません。</div>
+      {% endif %}
     </section>
   </div>
 
