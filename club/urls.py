@@ -8,11 +8,12 @@ from . import settlement_views
 from . import lesson_execution
 from . import lesson_execution_storage  # noqa: F401
 from . import lesson_execution_canonical_patch  # noqa: F401
+from . import coach_portal
 
 app_name = "club"
 
 urlpatterns = [
-    path("", views.home, name="home"),
+    path("", coach_portal.home_dispatch, name="home"),
     path("login/", views.login_view, name="login"),
     path("register/", views.register_view, name="register"),
     path("profile/complete/", views.profile_complete_view, name="profile_complete"),
