@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from club.settlement_balance_policy import (
     _automatic_court_cost,
+    _court_transfer_allocation,
     _lighting_start_hour,
 )
 
@@ -57,3 +58,46 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         )
 
         self.assertEqual(_automatic_court_cost(reservation), 6400)
+
+    def test_court_transfer_is_applied_in_wallet_policy(self):
+        expense = SimpleNamespace(pk=10)
+        allocation = _court_transfer_allocation(
+            [
+                {
+                    "expense": expense,
+                    "amount": 1001,
+                    "meta": {
+                        "record_kind": "court_transfer",
+                        "payer_coach_id": "3",
+                        "using_coach_ids": [1, "2", 2, 999],
+                    },
+                }
+            ],
+            eligible_coach_ids=[1, 2, 3],
+        )
+
+        self.assertEqual(allocation["burden_by_coach"], {1: 501, 2: 500})
+        self.assertEqual(allocation["reimbursement_by_coach"], {3: 1001})
+        self.assertEqual(allocation["expense_ids"], {10})
+        self.assertEqual(allocation["total"], 1001)
+
+    def test_non_transfer_court_expense_is_not_allocated_twice(self):
+        allocation = _court_transfer_allocation(
+            [
+                {
+                    "expense": SimpleNamespace(pk=11),
+                    "amount": 2400,
+                    "meta": {
+                        "expense_type": "common",
+                        "payer_coach_id": 3,
+                        "using_coach_ids": [1, 2],
+                    },
+                }
+            ],
+            eligible_coach_ids=[1, 2, 3],
+        )
+
+        self.assertEqual(allocation["burden_by_coach"], {})
+        self.assertEqual(allocation["reimbursement_by_coach"], {})
+        self.assertEqual(allocation["expense_ids"], set())
+        self.assertEqual(allocation["total"], 0)
