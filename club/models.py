@@ -122,11 +122,13 @@ class User(AbstractUser):
 
 class Court(models.Model):
     COURT_SONO = "sono"
+    COURT_AMAGASAKI = "amagasaki"
     COURT_OTHER = "other"
 
     COURT_TYPE_CHOICES = (
-        (COURT_SONO, "西猪名公園テニスコート"),
-        (COURT_OTHER, "それ以外のコート"),
+        (COURT_SONO, "西猪名公園"),
+        (COURT_AMAGASAKI, "尼崎記念公園"),
+        (COURT_OTHER, "その他"),
     )
 
     name = models.CharField(max_length=100, unique=True)
