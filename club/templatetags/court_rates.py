@@ -2,6 +2,8 @@ import jpholiday
 from django import template
 from django.utils import timezone
 
+from club.court_fee_service import calculate_availability_court_fee
+
 register = template.Library()
 
 
@@ -16,3 +18,11 @@ def is_japanese_holiday(value):
         return bool(jpholiday.is_holiday(target_date))
     except Exception:
         return False
+
+
+@register.simple_tag
+def court_fee_quote(availability):
+    try:
+        return calculate_availability_court_fee(availability)
+    except Exception:
+        return None
