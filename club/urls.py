@@ -11,6 +11,7 @@ from . import lesson_execution_canonical_patch  # noqa: F401
 from . import coach_portal
 from . import today_lesson_actions
 from . import analytics_dashboard
+from . import court_expense_transfer
 
 app_name = "club"
 
@@ -60,7 +61,7 @@ urlpatterns = [
     path("coach/revenue-summary/", views.coach_revenue_summary, name="coach_revenue_summary"),
     path("coach/admin-settlement/", settlement_views.coach_admin_settlement, name="coach_admin_settlement"),
     path("coach/lesson-execution/", lesson_execution.lesson_execution_manage, name="lesson_execution_manage"),
-    path("coach/expenses/", views.coach_expense_manage, name="coach_expense_manage"),
+    path("coach/expenses/", court_expense_transfer.coach_expense_manage, name="coach_expense_manage"),
     path("coach/survey-summary/", views.coach_schedule_survey_summary, name="schedule_survey_summary"),
     path("coach/activity-log/", views.coach_activity_log, name="coach_activity_log"),
     path("line/", views.line_connect, name="line_connect"),
