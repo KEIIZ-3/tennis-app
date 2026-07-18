@@ -107,6 +107,10 @@ class User(AbstractUser):
         return self.LEVEL_ORDER.get(self.member_level, 0)
 
     def can_book_level(self, target_level: str) -> bool:
+        from .middleware import preopen_level_free_enabled
+
+        if preopen_level_free_enabled():
+            return True
         if not target_level or target_level == self.LEVEL_ALL:
             return True
         return self.level_rank() >= self.LEVEL_ORDER.get(target_level, 999)
@@ -1676,7 +1680,11 @@ class Reservation(models.Model, LessonTypeMixin):
         if self.target_level_2 == self.target_level:
             self.target_level_2 = ""
 
-        if self.user and getattr(self.user, "role", "") in User.LESSON_PARTICIPANT_ROLE_VALUES:
+        if (
+            self.user
+            and getattr(self.user, "role", "") in User.LESSON_PARTICIPANT_ROLE_VALUES
+            and not self.is_preopen_cash_lesson()
+        ):
             if not self.user.can_book_any_level(self.target_level, self.target_level_2):
                 raise ValidationError("ご自身のレベルでは、このレベルのレッスンは予約できません。")
 
@@ -2150,7 +2158,16 @@ class LessonWaitlist(models.Model):
         if self.target_level_2 == self.target_level:
             self.target_level_2 = ""
 
-        if self.user_id and self.target_level and hasattr(self.user, "can_book_any_level"):
+        is_preopen_general = (
+            self.lesson_type == LessonTypeMixin.LESSON_GENERAL
+            and is_preopen_cash_lesson_date(self.start_at)
+        )
+        if (
+            self.user_id
+            and self.target_level
+            and hasattr(self.user, "can_book_any_level")
+            and not is_preopen_general
+        ):
             if not self.user.can_book_any_level(self.target_level, self.target_level_2):
                 raise ValidationError("ご自身のレベルでは、このレッスンのキャンセル待ちは登録できません。")
 

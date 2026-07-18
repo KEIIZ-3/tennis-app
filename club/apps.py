@@ -8,6 +8,3 @@ class ClubConfig(AppConfig):
 
     def ready(self):
         from . import signals  # noqa
-        from .preopen_level_policy import apply_preopen_level_policy
-
-        apply_preopen_level_policy()
