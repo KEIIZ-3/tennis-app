@@ -1136,8 +1136,12 @@ def _availability_can_manage(user, availability):
         return False
     if _is_staff_like(user):
         return True
-    if _is_coach_user(user) and getattr(availability, "coach_id", None) == getattr(user, "pk", None):
-        return True
+    if _is_coach_user(user):
+        user_id = getattr(user, "pk", None)
+        return (
+            getattr(availability, "coach_id", None) == user_id
+            or getattr(availability, "substitute_coach_id", None) == user_id
+        )
     return False
 
 
@@ -7167,7 +7171,9 @@ def coach_availability_list(request):
     qs = CoachAvailability.objects.select_related("coach", "substitute_coach", "court").all()
 
     if _is_coach_user(request.user):
-        qs = qs.filter(coach=request.user)
+        qs = qs.filter(
+            Q(coach=request.user) | Q(substitute_coach=request.user)
+        )
 
     availabilities = list(qs.order_by("start_at"))
 
