@@ -51,7 +51,7 @@
     <p class="dashboard-lead">今日の受付、終了処理、承認待ち、回収状況を最初に確認できます。数字を押すと対象画面へ移動します。</p>
     <div class="dashboard-primary-actions">
       <a href="{% url 'club:coach_today_lessons' %}?days=1" class="btn btn-primary">本日の受付・精算</a>
-      <a href="{% url 'club:analytics_dashboard' %}" class="btn">分析ダッシュボード</a>
+      {% if can_view_global_operations %}<a href="{% url 'club:analytics_dashboard' %}" class="btn">分析ダッシュボード</a>{% endif %}
       <a href="{% url 'club:lesson_calendar' %}" class="btn">レッスンカレンダー</a>
       <a href="{% url 'club:lesson_execution_manage' %}?year={{ today|date:'Y' }}&month={{ today|date:'n' }}" class="btn">実施管理</a>
     </div>
@@ -101,14 +101,16 @@
         <div class="metric-label">キャンセル待ち</div>
         <div class="metric-value">{{ stats.waiting_waitlists }}<span class="metric-unit">件</span></div>
       </a>
-      <a class="metric-card {% if stats.unhandled_stringing_orders %}warn{% endif %}" href="{% url 'club:stringing_order_list' %}">
+      {% if can_view_global_operations %}<a class="metric-card {% if stats.unhandled_stringing_orders %}warn{% endif %}" href="{% url 'club:stringing_order_list' %}">
         <div class="metric-label">未完了のガット張り</div>
         <div class="metric-value">{{ stats.unhandled_stringing_orders }}<span class="metric-unit">件</span></div>
-      </a>
+      </a>{% endif %}
+      {% if can_view_global_operations %}
       <a class="metric-card" href="{% url 'club:coach_ticket_summary' %}">
         <div class="metric-label">チケット0枚以下</div>
         <div class="metric-value">{{ stats.low_ticket_member_count }}<span class="metric-unit">名</span></div>
       </a>
+      {% endif %}
       <a class="metric-card" href="{% url 'club:coach_fixed_lesson_weekly' %}">
         <div class="metric-label">有効な固定レッスン</div>
         <div class="metric-value">{{ stats.active_fixed_lessons }}<span class="metric-unit">件</span></div>
@@ -124,14 +126,16 @@
       </div>
     </div>
     <div class="action-grid">
-      <a class="action-card analytics" href="{% url 'club:analytics_dashboard' %}"><span class="action-icon">析</span><h3 class="action-title">分析ダッシュボード</h3><p class="action-text">売上、レッスン実績、コーチ別実績、会員状況を期間別に確認します。</p><span class="action-cta">開く →</span></a>
+      {% if can_view_global_operations %}<a class="action-card analytics" href="{% url 'club:analytics_dashboard' %}"><span class="action-icon">析</span><h3 class="action-title">分析ダッシュボード</h3><p class="action-text">売上、レッスン実績、コーチ別実績、会員状況を期間別に確認します。</p><span class="action-cta">開く →</span></a>{% endif %}
       <a class="action-card primary" href="{% url 'club:coach_today_lessons' %}?days=1"><span class="action-icon">👥</span><h3 class="action-title">本日の受付・精算</h3><p class="action-text">参加者、電話、回収状況、終了処理を確認します。</p><span class="action-cta">開く →</span></a>
       <a class="action-card" href="{% url 'club:lesson_calendar' %}"><span class="action-icon">📅</span><h3 class="action-title">レッスンカレンダー</h3><p class="action-text">開催予定、参加人数、空き状況を確認します。</p><span class="action-cta">開く →</span></a>
       <a class="action-card" href="{% url 'club:reservation_list' %}"><span class="action-icon">✓</span><h3 class="action-title">予約・承認</h3><p class="action-text">予約申請、承認、キャンセル待ちを管理します。</p><span class="action-cta">開く →</span></a>
+      {% if can_view_global_operations %}
       <a class="action-card" href="{% url 'club:coach_expense_manage' %}"><span class="action-icon">🧾</span><h3 class="action-title">経費・コート代</h3><p class="action-text">コート代や立替経費、領収書状況を登録します。</p><span class="action-cta">開く →</span></a>
       <a class="action-card" href="{% url 'club:coach_revenue_summary' %}"><span class="action-icon">¥</span><h3 class="action-title">収支管理</h3><p class="action-text">売上、支出、コーチ別収支を確認します。</p><span class="action-cta">開く →</span></a>
       <a class="action-card" href="{% url 'club:coach_admin_settlement' %}"><span class="action-icon">締</span><h3 class="action-title">月次精算</h3><p class="action-text">会社財布、給与、月締め状況を確認します。</p><span class="action-cta">開く →</span></a>
       <a class="action-card" href="{% url 'club:stringing_order_list' %}"><span class="action-icon">🎾</span><h3 class="action-title">ガット張り管理</h3><p class="action-text">依頼、担当、進捗、配送希望を管理します。</p><span class="action-cta">開く →</span></a>
+      {% endif %}
       <a class="action-card" href="{% url 'club:coach_fixed_lesson_weekly' %}"><span class="action-icon">↻</span><h3 class="action-title">固定レッスン</h3><p class="action-text">毎週のレッスンと固定メンバーを管理します。</p><span class="action-cta">開く →</span></a>
       <a class="action-card" href="{% url 'club:coach_availability_list' %}"><span class="action-icon">＋</span><h3 class="action-title">スケジュール枠</h3><p class="action-text">個別レッスン枠の登録、変更、削除を行います。</p><span class="action-cta">開く →</span></a>
       {% if is_full_admin %}<a class="action-card" href="/admin/"><span class="action-icon">⚙</span><h3 class="action-title">Django管理</h3><p class="action-text">ユーザーやマスタデータを詳細に管理します。</p><span class="action-cta">開く →</span></a>{% endif %}
@@ -157,6 +161,6 @@
     {% endif %}
   </section>
 
-  <div class="notice">現在の有効会員は {{ stats.member_count }} 名です。「本日回収済み」は現金参加費の回収済み額であり、チケット購入売上とは分けて表示しています。</div>
+  <div class="notice">{% if can_view_global_operations %}現在の有効会員は {{ stats.member_count }} 名です。{% endif %}「本日回収済み」は現金参加費の回収済み額であり、チケット購入売上とは分けて表示しています。</div>
 </div>
 {% endblock %}
