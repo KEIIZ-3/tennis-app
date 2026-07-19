@@ -90,7 +90,7 @@
         <div class="row"><span>業務委託時給報酬</span><strong class="plus">{{ row.contractor_hourly_pay_amount }}円</strong></div>
         <div class="row"><span>共通経費</span><strong>0円（対象外）</strong></div>
       {% else %}
-        <div class="row"><span>共通経費負担</span><strong class="minus">-{{ row.common_expense_share }}円</strong></div>
+        <div class="row"><span>共通経費負担（ボール代はレッスン数比例）</span><strong class="minus">-{{ row.common_expense_share }}円</strong></div>
       {% endif %}
       {% if row.wallet_reimbursement %}<div class="row"><span>会社経費支払分</span><strong class="plus">+{{ row.wallet_reimbursement }}円</strong></div>{% endif %}
       <div class="row"><span>最終受取額</span><strong>{{ row.salary_due }}円</strong></div>

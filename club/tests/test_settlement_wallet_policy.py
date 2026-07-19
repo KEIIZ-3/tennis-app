@@ -132,6 +132,32 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         self.assertEqual(policy["reimbursement_by_coach"], {})
         self.assertEqual([row["expense_id"] for row in policy["detail_rows"]], [21])
 
+    @patch("club.settlement_balance_policy._approved_monthly_expenses")
+    def test_ball_expense_is_split_by_monthly_lesson_count(self, expenses_mock):
+        expenses_mock.return_value = [
+            {
+                "expense": SimpleNamespace(pk=22, category="ball"),
+                "amount": 7801,
+                "payer_id": None,
+                "expense_type": "common",
+                "is_court": False,
+            },
+        ]
+
+        policy = _build_other_expense_policy(
+            2026,
+            7,
+            [1, 2, 3],
+            {1: 3, 2: 2, 3: 1},
+        )
+
+        self.assertEqual(policy["burden_by_coach"], {1: 3901, 2: 2600, 3: 1300})
+        self.assertEqual(sum(policy["burden_by_coach"].values()), 7801)
+        self.assertEqual(
+            policy["detail_rows"][0]["burden_rule"],
+            "当月担当レッスン数に比例",
+        )
+
     def test_contractor_lesson_court_cost_is_shared_by_main_coaches_once(self):
         allocation = _court_transfer_allocation(
             [

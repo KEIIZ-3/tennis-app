@@ -241,6 +241,33 @@ def _split_amount(amount, coach_ids):
     }
 
 
+def _split_amount_by_lesson_count(amount, coach_ids, lesson_count_by_coach):
+    """合計額を担当レッスン数に比例配分し、1円単位の端数も保存する。"""
+    unique_ids = list(dict.fromkeys(coach_id for coach_id in coach_ids if coach_id))
+    weights = {
+        coach_id: max(_money((lesson_count_by_coach or {}).get(coach_id)), 0)
+        for coach_id in unique_ids
+    }
+    total_weight = sum(weights.values())
+    if total_weight <= 0:
+        return _split_amount(amount, unique_ids)
+
+    allocations = {}
+    remainders = []
+    allocated_total = 0
+    for index, coach_id in enumerate(unique_ids):
+        numerator = _money(amount) * weights[coach_id]
+        allocated, remainder = divmod(numerator, total_weight)
+        allocations[coach_id] = allocated
+        allocated_total += allocated
+        remainders.append((remainder, -index, coach_id))
+
+    remaining = _money(amount) - allocated_total
+    for _remainder, _negative_index, coach_id in sorted(remainders, reverse=True)[:remaining]:
+        allocations[coach_id] += 1
+    return allocations
+
+
 def _slot_key_for_reservation(reservation):
     start_local = _local_datetime(reservation.start_at)
     end_local = _local_datetime(reservation.end_at)
@@ -602,7 +629,12 @@ def _build_court_cost_policy(
     }
 
 
-def _build_other_expense_policy(year, month, main_coach_ids):
+def _build_other_expense_policy(
+    year,
+    month,
+    main_coach_ids,
+    lesson_count_by_coach=None,
+):
     month_start, next_month = _month_range(year, month)
     expenses = _approved_monthly_expenses(month_start, next_month)
 
@@ -624,9 +656,18 @@ def _build_other_expense_policy(year, month, main_coach_ids):
             reimbursement_by_coach[payer_id] += amount
 
         target_ids = list(main_coach_ids)
-        rule = "メインコーチ3人均等負担"
+        if getattr(row["expense"], "category", "") == "ball":
+            allocations = _split_amount_by_lesson_count(
+                amount,
+                target_ids,
+                lesson_count_by_coach,
+            )
+            rule = "当月担当レッスン数に比例"
+        else:
+            allocations = _split_amount(amount, target_ids)
+            rule = "メインコーチ3人均等負担"
 
-        for coach_id, allocated in _split_amount(amount, target_ids).items():
+        for coach_id, allocated in allocations.items():
             burden_by_coach[coach_id] += allocated
 
         detail_rows.append(
@@ -709,6 +750,13 @@ def _apply_wallet_policy(result, year, month):
         year,
         month,
         main_coach_ids,
+        {
+            getattr(row.get("coach"), "pk", None): _money(
+                row.get("reservation_count")
+            )
+            for row in coach_rows
+            if getattr(row.get("coach"), "pk", None) in main_coach_id_set
+        },
     )
 
     contractor_pay_total = sum(
