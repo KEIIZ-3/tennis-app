@@ -180,8 +180,17 @@ def coach_expense_manage(request):
         pk=availability_id,
     )
     using_coaches = _using_coaches(availability)
+    using_coach_ids = {coach.pk for coach in using_coaches}
+    is_full_admin = bool(request.user.is_staff or request.user.is_superuser)
+    if not is_full_admin and request.user.pk not in using_coach_ids:
+        return HttpResponse("Forbidden", status=403)
+
     User = get_user_model()
-    payer_options = User.objects.filter(role="coach", is_active=True).order_by(
+    payer_options = User.objects.filter(
+        pk__in=using_coach_ids,
+        role__in=User.COACH_ROLE_VALUES,
+        is_active=True,
+    ).order_by(
         "full_name", "username", "id"
     )
 
