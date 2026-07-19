@@ -404,6 +404,7 @@ class ReservationFlowSmokeTests(TestCase):
             start_at=start_at,
             end_at=start_at + timedelta(hours=2),
             capacity=6,
+            status=CoachAvailability.STATUS_OPEN,
         )
         self.client.force_login(self.contractor)
 
@@ -414,7 +415,7 @@ class ReservationFlowSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
 
-    def test_court_expense_payer_must_be_a_lesson_coach(self):
+    def test_court_expense_payer_must_be_one_of_the_main_coaches(self):
         unrelated_coach = self._create_user(
             username="unrelated_coach",
             role=self.User.ROLE_COACH,
@@ -444,6 +445,57 @@ class ReservationFlowSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(CoachExpense.objects.exists())
+
+    def test_court_expense_can_credit_a_different_main_coach(self):
+        payer = self._create_user(
+            username="main_payer",
+            role=self.User.ROLE_COACH,
+            full_name="清水峻平",
+        )
+        lesson_date = timezone.localdate() + timedelta(days=2)
+        fixed_lesson = self._create_fixed_lesson(lesson_date=lesson_date, title="支払者振替テスト")
+        fixed_lesson.sync_future_reservations(created_by=self.coach)
+        start_at, _end_at = fixed_lesson._build_datetimes_for_date(lesson_date)
+        availability = CoachAvailability.objects.get(
+            coach=self.coach,
+            court=self.court,
+            start_at=start_at,
+        )
+        self.client.force_login(self.coach)
+
+        calendar_response = self.client.get(
+            reverse("club:lesson_calendar"),
+            data={"year": start_at.year, "month": start_at.month},
+        )
+        expense_url = (
+            f"{reverse('club:coach_expense_manage')}?"
+            f"availability_id={availability.pk}&amp;date={start_at.date().isoformat()}"
+        )
+        self.assertContains(calendar_response, expense_url)
+
+        response = self.client.post(
+            reverse("club:coach_expense_manage"),
+            data={
+                "action": "create_court_transfer",
+                "availability_id": availability.pk,
+                "payer_coach_id": payer.pk,
+                "amount": "3000",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        expense = CoachExpense.objects.get()
+        self.assertEqual(expense.created_by, payer)
+
+        from .court_expense_transfer import _parse_note
+        from .settlement_balance_policy import _court_transfer_allocation
+
+        allocation = _court_transfer_allocation(
+            [{"expense": expense, "amount": expense.amount, "meta": _parse_note(expense.note)}],
+            [self.coach.pk, payer.pk],
+        )
+        self.assertEqual(allocation["burden_by_coach"], {self.coach.pk: 3000})
+        self.assertEqual(allocation["reimbursement_by_coach"], {payer.pk: 3000})
 
     def test_direct_reservation_rejects_fixed_lesson_at_capacity(self):
         fixed_lesson = self._create_fixed_lesson(title="直接保存満員テスト")

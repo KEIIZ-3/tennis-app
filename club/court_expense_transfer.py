@@ -1,6 +1,5 @@
 import json
 from django.contrib import messages
-from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.http import HttpResponse
@@ -9,6 +8,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from .models import CoachAvailability, CoachExpense, Reservation
+from .settlement_balance_policy import main_coaches
 
 EXPENSE_NOTE_META_PREFIX = "__EXPENSE_META__"
 RECORD_KIND = "court_transfer"
@@ -185,20 +185,14 @@ def coach_expense_manage(request):
     if not is_full_admin and request.user.pk not in using_coach_ids:
         return HttpResponse("Forbidden", status=403)
 
-    User = get_user_model()
-    payer_options = User.objects.filter(
-        pk__in=using_coach_ids,
-        role__in=User.COACH_ROLE_VALUES,
-        is_active=True,
-    ).order_by(
-        "full_name", "username", "id"
-    )
+    payer_options = [coach for coach in main_coaches() if coach.is_active]
+    payer_by_id = {str(coach.pk): coach for coach in payer_options}
 
     if request.method == "POST":
         payer_id = (request.POST.get("payer_coach_id") or "").strip()
         raw_amount = (request.POST.get("amount") or "").strip()
         plain_note = (request.POST.get("note") or "").strip()
-        payer = payer_options.filter(pk=payer_id).first()
+        payer = payer_by_id.get(payer_id)
 
         try:
             amount = int(raw_amount or "0")

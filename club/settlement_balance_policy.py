@@ -49,7 +49,7 @@ def _display_name(user):
         ).strip()
 
 
-def _main_coaches():
+def main_coaches():
     User = get_user_model()
     users_by_name = {
         _display_name(user): user
@@ -643,7 +643,7 @@ def _apply_wallet_policy(result, year, month):
     if not coach_rows:
         return result
 
-    main_coach_list = _main_coaches()
+    main_coach_list = main_coaches()
     main_coach_ids = [coach.pk for coach in main_coach_list]
     main_coach_id_set = set(main_coach_ids)
     eligible_coach_ids = [

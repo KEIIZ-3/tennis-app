@@ -1909,6 +1909,11 @@ def lesson_calendar_view(request):
             f"{reverse('club:lesson_calendar_member_list')}?"
             f"{urlencode({'availability_id': availability_id, 'fixed_lesson_id': fixed_lesson_id, 'lesson_date': lesson_date, 'year': target_year, 'month': target_month})}"
         )
+        court_expense_url = (
+            f"{reverse('club:coach_expense_manage')}?{urlencode({'availability_id': availability_id, 'date': target_date.isoformat()})}"
+            if availability_id
+            else ""
+        )
         calendar_url = (
             member_list_url
             if target_year == 2026 and target_month == 7
@@ -1922,6 +1927,7 @@ def lesson_calendar_view(request):
             "lesson_date": lesson_date,
             "reserve_url": reserve_url,
             "member_list_url": member_list_url,
+            "court_expense_url": court_expense_url,
             "calendar_url": calendar_url,
             "calendar_login_url": (
                 member_list_url
