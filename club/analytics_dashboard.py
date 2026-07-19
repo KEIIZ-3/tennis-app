@@ -14,7 +14,7 @@ def _can_view_analytics(user):
     return bool(
         getattr(user, "is_staff", False)
         or getattr(user, "is_superuser", False)
-        or getattr(user, "role", "") in User.COACH_ROLE_VALUES
+        or getattr(user, "role", "") == User.ROLE_COACH
     )
 
 
