@@ -1400,7 +1400,11 @@
             </div>
 
             {% if user.is_authenticated %}
-              {% if item.can_book %}
+              {% if item.court_expense_url and user.role == "coach" or item.court_expense_url and user.role == "contractor_coach" or item.court_expense_url and user.is_staff or item.court_expense_url and user.is_superuser %}
+                <div class="reserve-form">
+                  <a href="{{ item.court_expense_url }}" class="btn reserve-button">コート代・支払者登録</a>
+                </div>
+              {% elif item.can_book %}
                 <div class="reserve-form">
                   <a href="{{ item.reserve_url }}" class="btn btn-primary reserve-button">詳細・予約確認へ</a>
                 </div>
