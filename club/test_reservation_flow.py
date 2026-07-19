@@ -234,6 +234,47 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertEqual(response.context["selected_coach_id"], str(self.contractor.pk))
         self.assertFalse(response.context["is_staff_mode"])
 
+    def test_deleting_fixed_lesson_cancels_reservations_and_generated_slot(self):
+        lesson = self._create_fixed_lesson()
+        lesson.members.add(self.member)
+        lesson.sync_future_reservations(created_by=self.coach)
+        reservation = Reservation.objects.get(fixed_lesson=lesson, user=self.member)
+        availability_id = reservation.availability_id
+
+        lesson.delete(created_by=self.coach)
+
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.status, Reservation.STATUS_CANCELED)
+        self.assertEqual(reservation.cancellation_reason, "固定レッスン削除による取消")
+        self.assertFalse(CoachAvailability.objects.filter(pk=availability_id).exists())
+
+    def test_today_lessons_hides_legacy_orphaned_fixed_lesson_slot(self):
+        lesson_date = date(2026, 7, 19)
+        lesson = self._create_fixed_lesson(
+            lesson_date=lesson_date,
+            title="削除済み固定レッスン",
+        )
+        lesson.members.add(self.member)
+        lesson.sync_future_reservations(created_by=self.coach)
+        availability = CoachAvailability.objects.get(
+            reservations__fixed_lesson=lesson,
+        )
+
+        # 旧実装の削除後状態（FixedLessonだけ消え、生成枠と予約が残存）を再現する。
+        FixedLesson.objects.filter(pk=lesson.pk).delete()
+        self.assertTrue(CoachAvailability.objects.filter(pk=availability.pk).exists())
+
+        self.client.force_login(self.coach)
+        with patch("club.views.timezone.localdate", return_value=lesson_date):
+            response = self.client.get(
+                reverse("club:coach_today_lessons"),
+                data={"days": "1"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["summary"]["today_lesson_count"], 0)
+        self.assertNotContains(response, "削除済み固定レッスン")
+
     def test_contractor_cannot_execute_other_coach_lesson(self):
         own_lesson = self._create_fixed_lesson(
             coach=self.contractor,

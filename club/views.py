@@ -3805,6 +3805,14 @@ def coach_today_lessons(request):
             availability
         )
 
+        # 旧データでは固定レッスンだけが削除され、生成枠が残る場合がある。
+        # カレンダーから消えた開催を当日精算だけに復活させない。
+        if (
+            authoritative_fixed_lesson is None
+            and (availability.note or "").startswith("固定レッスン:")
+        ):
+            continue
+
         # 過去の担当変更後も、予約が紐づく現在のFixedLessonを表示の正本にします。
         # 選択中のコーチ条件も、旧Availabilityのコーチではなく現在の固定レッスン担当で判定します。
         if authoritative_fixed_lesson is not None:

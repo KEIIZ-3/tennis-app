@@ -1004,6 +1004,14 @@ class FixedLessonAdmin(admin.ModelAdmin):
         updated = queryset.update(is_active=False)
         self.message_user(request, f"{updated}件の固定レッスンを無効にしました。", level=messages.SUCCESS)
 
+    def delete_model(self, request, obj):
+        obj.delete(created_by=request.user)
+
+    def delete_queryset(self, request, queryset):
+        # QuerySet.delete() はモデルの delete() を呼ばないため、一括削除も逐次処理する。
+        for fixed_lesson in queryset.order_by("pk"):
+            fixed_lesson.delete(created_by=request.user)
+
 
 @admin.register(Reservation)
 class ReservationAdmin(admin.ModelAdmin):
