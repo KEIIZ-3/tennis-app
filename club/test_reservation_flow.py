@@ -751,6 +751,110 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertContains(response, "楊和枝")
         self.assertContains(response, "矢野充則")
 
+    def test_revenue_excludes_reservation_from_deleted_fixed_lesson(self):
+        lesson_date = date(2026, 7, 19)
+        fixed_lesson = self._create_fixed_lesson(
+            lesson_date=lesson_date,
+            title="削除済み7月19日レッスン",
+        )
+        start_at, end_at = fixed_lesson._build_datetimes_for_date(lesson_date)
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=6,
+            status=CoachAvailability.STATUS_OPEN,
+            note="固定レッスン: 削除済み7月19日レッスン",
+        )
+        reservation = Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            availability=availability,
+            fixed_lesson=fixed_lesson,
+            is_fixed_entry=True,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            status=Reservation.STATUS_ACTIVE,
+            payment_status=Reservation.PAYMENT_STATUS_UNPAID,
+            payment_amount=2000,
+        )
+
+        # 修正前に発生した、固定レッスンだけ削除され予約と生成枠が残る状態。
+        FixedLesson.objects.filter(pk=fixed_lesson.pk).delete()
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.status, Reservation.STATUS_ACTIVE)
+        self.assertIsNone(reservation.fixed_lesson_id)
+
+        self.client.force_login(self.coach)
+        response = self.client.get(
+            reverse("club:coach_revenue_summary"),
+            data={"year": 2026, "month": 7},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["lesson_sales_total"], 0)
+        self.assertEqual(response.context["preopen_unpaid_total"], 0)
+        self.assertNotContains(response, "削除済み7月19日レッスン")
+
+    def test_revenue_reconciles_paid_unpaid_and_waived_preopen_fees(self):
+        lesson_date = date(2026, 7, 16)
+        fixed_lesson = self._create_fixed_lesson(lesson_date=lesson_date)
+        start_at, end_at = fixed_lesson._build_datetimes_for_date(lesson_date)
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=6,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        statuses = (
+            Reservation.PAYMENT_STATUS_PAID,
+            Reservation.PAYMENT_STATUS_UNPAID,
+            Reservation.PAYMENT_STATUS_WAIVED,
+        )
+        for index, payment_status in enumerate(statuses):
+            member = self._create_user(
+                username=f"revenue_status_{index}",
+                role=self.User.ROLE_MEMBER,
+                full_name=f"集計会員{index}",
+            )
+            Reservation.objects.create(
+                user=member,
+                coach=self.coach,
+                court=self.court,
+                availability=availability,
+                fixed_lesson=fixed_lesson,
+                lesson_type=Reservation.LESSON_GENERAL,
+                target_level=self.User.LEVEL_BEGINNER,
+                start_at=start_at,
+                end_at=end_at,
+                status=Reservation.STATUS_ACTIVE,
+                payment_status=payment_status,
+                payment_amount=2000,
+            )
+
+        self.client.force_login(self.coach)
+        response = self.client.get(
+            reverse("club:coach_revenue_summary"),
+            data={"year": 2026, "month": 7},
+        )
+
+        self.assertEqual(response.context["preopen_paid_total"], 2000)
+        self.assertEqual(response.context["preopen_unpaid_total"], 2000)
+        self.assertEqual(response.context["preopen_waived_total"], 2000)
+        self.assertEqual(response.context["preopen_sales_total"], 4000)
+        self.assertEqual(response.context["lesson_sales_total"], 4000)
+        self.assertEqual(response.context["cash_basis_total"], 2000)
+
     def test_contractor_cannot_be_assigned_to_stringing_order(self):
         main_coach = self._create_user(
             username="main_stringing_coach",

@@ -6,6 +6,21 @@
   .revenue-page{
     display:grid;
     gap:14px;
+    width:100%;
+    max-width:100%;
+    min-width:0;
+  }
+
+  .revenue-page,
+  .revenue-page *{
+    box-sizing:border-box;
+  }
+
+  .revenue-page > *,
+  .revenue-hero > *,
+  .filter-card > *,
+  .two-column > *{
+    min-width:0;
   }
 
   .revenue-hero{
@@ -36,6 +51,7 @@
     font-size:14px;
     line-height:1.7;
     font-weight:700;
+    overflow-wrap:anywhere;
   }
 
   .month-actions{
@@ -66,6 +82,8 @@
 
   .filter-card select,
   .filter-card input{
+    width:100%;
+    max-width:100%;
     min-height:40px;
     border:1px solid #d1d5db;
     border-radius:12px;
@@ -206,9 +224,17 @@
   }
 
   @media (max-width:768px){
+    .revenue-page{
+      gap:12px;
+    }
+
     .revenue-hero{
       padding:14px;
       border-radius:18px;
+    }
+
+    .revenue-hero > div:first-child{
+      width:100%;
     }
 
     .revenue-title{
@@ -228,6 +254,11 @@
     .filter-card{
       display:grid;
       grid-template-columns:1fr;
+      width:100%;
+    }
+
+    .filter-card > div{
+      width:100%;
     }
 
     .filter-card .btn{
@@ -253,6 +284,20 @@
 
     .revenue-table{
       min-width:640px;
+    }
+  }
+
+  @media (max-width:420px){
+    .month-actions{
+      grid-template-columns:1fr;
+    }
+
+    .revenue-title{
+      font-size:22px;
+    }
+
+    .revenue-table{
+      min-width:580px;
     }
   }
 </style>
@@ -320,7 +365,7 @@
           <tr>
             <th>レッスン売上</th>
             <td class="amount">{{ lesson_sales_total }}円</td>
-            <td>プレオープン参加費 {{ preopen_sales_total }}円 + チケット消化ベース {{ ticket_consumption_total }}円</td>
+            <td>参加費発生額 {{ preopen_sales_total }}円（回収済み + 未回収、免除除外）+ チケット消化 {{ ticket_consumption_total }}円</td>
           </tr>
           <tr>
             <th>ガット張り売上</th>
@@ -350,7 +395,7 @@
           <tr>
             <th>現金ベース参考</th>
             <td class="amount">{{ cash_basis_total }}円</td>
-            <td>7月参加費 + チケット販売額 + ガット張り売上</td>
+            <td>回収済み参加費 + チケット販売額 + ガット張り売上</td>
           </tr>
           <tr>
             <th>7月参加費 回収状況</th>

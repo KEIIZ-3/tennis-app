@@ -8515,6 +8515,10 @@ def coach_revenue_summary(request):
             start_at__date__lt=month_next,
             status=Reservation.STATUS_ACTIVE,
         )
+        .exclude(
+            fixed_lesson__isnull=True,
+            availability__note__startswith="固定レッスン:",
+        )
         .select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
         .prefetch_related("ticket_consumptions__purchase")
         .order_by("start_at", "id")
@@ -8543,7 +8547,6 @@ def coach_revenue_summary(request):
         ):
             amount = int(reservation.payment_amount or PREOPEN_CASH_PRICE)
             preopen_reservation_count += 1
-            preopen_sales_total += amount
 
             if reservation.payment_status == Reservation.PAYMENT_STATUS_PAID:
                 preopen_paid_total += amount
@@ -8551,6 +8554,10 @@ def coach_revenue_summary(request):
                 preopen_waived_total += amount
             else:
                 preopen_unpaid_total += amount
+
+            # 免除は回収予定の債権ではないため、売上発生額へ含めない。
+            if reservation.payment_status != Reservation.PAYMENT_STATUS_WAIVED:
+                preopen_sales_total += amount
 
             row = {
                 "reservation": reservation,
@@ -8574,7 +8581,8 @@ def coach_revenue_summary(request):
                     "reservation_count": 0,
                 },
             )
-            coach_sales_map[coach_key]["preopen_amount"] += amount
+            if reservation.payment_status != Reservation.PAYMENT_STATUS_WAIVED:
+                coach_sales_map[coach_key]["preopen_amount"] += amount
             coach_sales_map[coach_key]["reservation_count"] += 1
             continue
 
@@ -8727,7 +8735,7 @@ def coach_revenue_summary(request):
     lesson_sales_total = preopen_sales_total + ticket_consumption_total
     operating_sales_total = lesson_sales_total + stringing_total
     reference_sales_total = operating_sales_total + shop_reference_total
-    cash_basis_total = preopen_sales_total + ticket_purchase_total + stringing_total
+    cash_basis_total = preopen_paid_total + ticket_purchase_total + stringing_total
     gross_profit_estimate = operating_sales_total - approved_expense_total
     reference_profit_estimate = reference_sales_total - approved_expense_total
     uncollected_preopen_estimate = preopen_unpaid_total
@@ -8747,7 +8755,7 @@ def coach_revenue_summary(request):
         {
             "label": "レッスン売上",
             "value": lesson_sales_total,
-            "note": "7月プレオープン参加費 + チケット消化ベース",
+            "note": "回収済み・未回収参加費（免除除外）+ チケット消化",
         },
         {
             "label": "7月参加費 回収済み",
