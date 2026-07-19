@@ -525,7 +525,10 @@ def _week_range_for_display(base_date=None):
 
 
 def _assigned_coach_for_reservation(reservation):
-    return reservation.substitute_coach or reservation.coach
+    try:
+        return reservation.assigned_coach()
+    except Exception:
+        return reservation.substitute_coach or reservation.coach
 
 
 def _assigned_coach_id_for_reservation(reservation):
