@@ -35,6 +35,7 @@ from .forms import (
     StringingOrderForm,
 )
 from .models import (
+    MAIN_COACH_NAMES,
     CoachAvailability,
     CoachExpense,
     Court,
@@ -4345,7 +4346,15 @@ def coach_ticket_summary(request):
         selected_month = today.month
 
     coach_queryset = User.objects.filter(role__in=("coach", "contractor_coach")).order_by("full_name", "username", "id")
-    if _is_staff_like(request.user) and not _is_coach_user(request.user):
+    can_select_coach = bool(
+        request.user.is_staff
+        or request.user.is_superuser
+        or (
+            request.user.role == User.ROLE_COACH
+            and request.user.full_name in MAIN_COACH_NAMES
+        )
+    )
+    if can_select_coach:
         selected_coach_id = (request.GET.get("coach_id") or "").strip()
         selected_coach = (
             coach_queryset.filter(pk=selected_coach_id).first() if selected_coach_id else coach_queryset.first()
@@ -4489,7 +4498,7 @@ def coach_ticket_summary(request):
             "reservation_rows": reservations,
             "total_tickets": total_tickets,
             "total_amount": total_amount,
-            "is_staff_mode": _is_staff_like(request.user) and not _is_coach_user(request.user),
+            "can_select_coach": can_select_coach,
         },
     )
 

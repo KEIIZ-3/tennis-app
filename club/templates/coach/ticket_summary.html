@@ -239,7 +239,7 @@
       <input type="number" id="month" name="month" min="1" max="12" value="{{ selected_month }}">
     </div>
 
-    {% if is_staff_mode %}
+    {% if can_select_coach %}
       <div style="min-width:220px;">
         <label for="coach_id">コーチ</label>
         <select id="coach_id" name="coach_id">
