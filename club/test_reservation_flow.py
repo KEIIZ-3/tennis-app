@@ -20,6 +20,8 @@ from .models import (
     Reservation,
     StringingOrder,
     TicketLedger,
+    TicketConsumption,
+    TicketPurchase,
 )
 
 
@@ -429,6 +431,119 @@ class ReservationFlowSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["stats"]["pending_reservations"], 2)
+
+    def test_contractor_ticket_summary_ignores_coach_id_and_refunded_tickets(self):
+        other_member = self._create_user(
+            username="other_ticket_member",
+            role=self.User.ROLE_MEMBER,
+            full_name="担当外 チケット会員",
+        )
+        target_date = timezone.localdate().replace(day=1)
+        start_at = timezone.make_aware(
+            datetime.combine(target_date, datetime.min.time().replace(hour=10))
+        )
+        own_reservation = Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            substitute_coach=self.contractor,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+            status=Reservation.STATUS_ACTIVE,
+        )
+        other_reservation = Reservation.objects.create(
+            user=other_member,
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at + timedelta(hours=1),
+            end_at=start_at + timedelta(hours=2),
+            status=Reservation.STATUS_ACTIVE,
+        )
+        own_purchase = TicketPurchase.objects.create(
+            user=self.member,
+            purchase_type=TicketPurchase.PURCHASE_TYPE_SINGLE,
+            total_tickets=3,
+            remaining_tickets=0,
+            unit_price=4000,
+        )
+        other_purchase = TicketPurchase.objects.create(
+            user=other_member,
+            purchase_type=TicketPurchase.PURCHASE_TYPE_SINGLE,
+            total_tickets=3,
+            remaining_tickets=0,
+            unit_price=4000,
+        )
+        TicketConsumption.objects.create(
+            user=self.member,
+            purchase=own_purchase,
+            reservation=own_reservation,
+            tickets_used=1,
+            unit_price_snapshot=4000,
+        )
+        TicketConsumption.objects.create(
+            user=self.member,
+            purchase=own_purchase,
+            reservation=own_reservation,
+            tickets_used=2,
+            unit_price_snapshot=4000,
+            refunded_at=timezone.now(),
+        )
+        TicketConsumption.objects.create(
+            user=other_member,
+            purchase=other_purchase,
+            reservation=other_reservation,
+            tickets_used=3,
+            unit_price_snapshot=4000,
+        )
+        self.client.force_login(self.contractor)
+
+        response = self.client.get(
+            reverse("club:coach_ticket_summary"),
+            data={
+                "year": target_date.year,
+                "month": target_date.month,
+                "coach_id": self.coach.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["selected_coach_id"], str(self.contractor.pk))
+        self.assertFalse(response.context["can_select_coach"])
+        self.assertEqual(response.context["total_tickets"], 1)
+        self.assertEqual(response.context["total_amount"], 4000)
+        self.assertContains(response, self.member.display_name())
+        self.assertNotContains(response, other_member.display_name())
+
+        self.client.force_login(self.coach)
+        normal_coach_response = self.client.get(
+            reverse("club:coach_ticket_summary"),
+            data={"year": target_date.year, "month": target_date.month},
+        )
+        self.assertEqual(normal_coach_response.context["total_tickets"], 3)
+        self.assertNotContains(normal_coach_response, self.member.display_name())
+        self.assertContains(normal_coach_response, other_member.display_name())
+
+    def test_main_coach_can_select_another_coach_in_ticket_summary(self):
+        main_coach = self._create_user(
+            username="main_ticket_coach",
+            role=self.User.ROLE_COACH,
+            full_name="飯塚研太朗",
+        )
+        self.client.force_login(main_coach)
+
+        response = self.client.get(
+            reverse("club:coach_ticket_summary"),
+            data={"coach_id": self.contractor.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["can_select_coach"])
+        self.assertEqual(response.context["selected_coach_id"], str(self.contractor.pk))
+        self.assertEqual(response.context["selected_coach"], self.contractor)
 
     def test_contractor_cannot_be_assigned_to_stringing_order(self):
         main_coach = self._create_user(
