@@ -17,6 +17,7 @@ from .models import (
     LessonWaitlist,
     LessonWaitlistParticipant,
     Reservation,
+    StringingOrder,
     TicketLedger,
 )
 
@@ -127,6 +128,50 @@ class ReservationFlowSmokeTests(TestCase):
                 response = getattr(self.client, method)(url)
                 self.assertEqual(response.status_code, 302)
                 self.assertTrue(response.url.startswith(reverse("club:login")))
+
+    def test_contractor_only_sees_assigned_stringing_orders(self):
+        other_contractor = self._create_user(
+            username="other_contractor",
+            role=self.User.ROLE_CONTRACTOR_COACH,
+            full_name="別担当 コーチ",
+        )
+        own_customer = self._create_user(
+            username="own_stringing_customer",
+            role=self.User.ROLE_MEMBER,
+            full_name="担当 顧客",
+        )
+        other_customer = self._create_user(
+            username="other_stringing_customer",
+            role=self.User.ROLE_MEMBER,
+            full_name="担当外 顧客",
+        )
+        StringingOrder.objects.create(
+            user=own_customer,
+            assigned_coach=self.contractor,
+            racket_name="担当ラケット",
+            preferred_delivery_time="担当納期",
+        )
+        StringingOrder.objects.create(
+            user=other_customer,
+            assigned_coach=other_contractor,
+            racket_name="担当外ラケット",
+            preferred_delivery_time="担当外納期",
+        )
+
+        self.client.force_login(self.contractor)
+        response = self.client.get(reverse("club:stringing_order_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "担当ラケット")
+        self.assertNotContains(response, "担当外ラケット")
+        self.assertNotContains(response, "担当外 顧客")
+
+    def test_contractor_cannot_view_business_revenue_summary(self):
+        self.client.force_login(self.contractor)
+
+        response = self.client.get(reverse("club:coach_revenue_summary"))
+
+        self.assertEqual(response.status_code, 403)
 
     def test_lesson_calendar_page_does_not_return_500_for_member(self):
         self._create_fixed_lesson()
