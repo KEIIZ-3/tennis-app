@@ -306,6 +306,35 @@ class ReservationFlowSmokeTests(TestCase):
         reservation.refresh_from_db()
         self.assertEqual(reservation.status, Reservation.STATUS_RAIN_CANCELED)
 
+    def test_substitute_contractor_sees_fixed_lesson_weekly(self):
+        fixed_lesson = self._create_fixed_lesson(
+            coach=self.coach,
+            title="代行担当固定レッスン",
+        )
+        fixed_lesson.members.add(self.member)
+        start_at, end_at = fixed_lesson._build_datetimes_for_date(self.lesson_date)
+        CoachAvailability.objects.create(
+            coach=self.coach,
+            substitute_coach=self.contractor,
+            court=self.court,
+            lesson_type=fixed_lesson.lesson_type,
+            target_level=fixed_lesson.target_level,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=fixed_lesson.capacity,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        self.client.force_login(self.contractor)
+
+        response = self.client.get(reverse("club:coach_fixed_lesson_weekly"))
+
+        self.assertEqual(response.status_code, 200)
+        visible_fixed_lesson_ids = {
+            row["fixed_lesson"].pk for row in response.context["fixed_lessons"]
+        }
+        self.assertIn(fixed_lesson.pk, visible_fixed_lesson_ids)
+        self.assertContains(response, self.member.display_name())
+
     def test_contractor_cannot_be_assigned_to_stringing_order(self):
         main_coach = self._create_user(
             username="main_stringing_coach",
