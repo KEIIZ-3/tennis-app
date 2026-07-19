@@ -711,11 +711,6 @@ def _apply_wallet_policy(result, year, month):
         for row in coach_rows
     )
 
-    row_by_coach_id = {
-        getattr(row.get("coach"), "pk", None): row
-        for row in coach_rows
-    }
-
     final_total_before_adjustment = 0
 
     for row in coach_rows:
@@ -793,46 +788,10 @@ def _apply_wallet_policy(result, year, month):
 
     wallet_difference = total_company_revenue - final_total_before_adjustment
 
+    # 経費の支払者がメインコーチとして特定できない場合、ここで生じる差額は
+    # 会社・外部支払分として給与原資から残す必要がある。売上比率で再配分すると、
+    # 直前に控除した共通経費を給与へ戻してしまうため調整は行わない。
     adjustment_by_coach = {}
-    if wallet_difference != 0 and main_coach_ids:
-        positive_contributions = {
-            coach_id: max(
-                _money(
-                    row_by_coach_id.get(coach_id, {}).get(
-                        "company_revenue_contribution"
-                    )
-                ),
-                0,
-            )
-            for coach_id in main_coach_ids
-        }
-        contribution_total = sum(positive_contributions.values())
-
-        if contribution_total > 0:
-            allocated = 0
-            for index, coach_id in enumerate(main_coach_ids):
-                if index == len(main_coach_ids) - 1:
-                    adjustment = wallet_difference - allocated
-                else:
-                    adjustment = int(
-                        wallet_difference
-                        * positive_contributions[coach_id]
-                        / contribution_total
-                    )
-                    allocated += adjustment
-                adjustment_by_coach[coach_id] = adjustment
-        else:
-            adjustment_by_coach = _split_amount(
-                wallet_difference,
-                main_coach_ids,
-            )
-
-        for coach_id, adjustment in adjustment_by_coach.items():
-            row = row_by_coach_id.get(coach_id)
-            if row is None:
-                continue
-            row["wallet_balance_adjustment"] = adjustment
-            row["wallet_final_entitlement"] += adjustment
 
     salary_due_total = 0
     salary_paid_total = 0

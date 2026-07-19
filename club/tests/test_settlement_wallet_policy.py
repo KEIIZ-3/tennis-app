@@ -1,10 +1,12 @@
 from datetime import datetime
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 from django.utils import timezone
 
 from club.settlement_balance_policy import (
+    _apply_wallet_policy,
     _automatic_court_cost,
     _court_transfer_allocation,
     _held_execution_reservations,
@@ -157,3 +159,64 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         )
 
         self.assertEqual(eligible, [held_first])
+
+    @patch("club.settlement_balance_policy._active_salary_payment_total", return_value=0)
+    @patch("club.settlement_balance_policy._build_other_expense_policy")
+    @patch("club.settlement_balance_policy._build_court_cost_policy")
+    @patch("club.settlement_balance_policy.main_coaches")
+    @patch("club.settlement_models.CoachMonthlySettlement.objects.filter")
+    def test_unassigned_common_expense_is_not_added_back_to_salary(
+        self,
+        saved_row_filter,
+        main_coaches_mock,
+        court_policy_mock,
+        other_expense_policy_mock,
+        _salary_payment_mock,
+    ):
+        coach = SimpleNamespace(pk=1, role="coach")
+        main_coaches_mock.return_value = [coach]
+        saved_row_filter.return_value.first.return_value = None
+        court_policy_mock.return_value = {
+            "burden_by_coach": {},
+            "reimbursement_by_coach": {},
+            "finalized_court_cost_total": 0,
+            "court_reimbursement_total": 0,
+            "unmatched_expected_total": 0,
+            "unused_registered_total": 0,
+        }
+        other_expense_policy_mock.return_value = {
+            "burden_by_coach": {coach.pk: 7800},
+            "reimbursement_by_coach": {},
+            "expense_total": 7800,
+        }
+        settlement = SimpleNamespace(
+            is_closed=False,
+            closing_balance=0,
+            calculation_snapshot={},
+            save=MagicMock(),
+        )
+        result = {
+            "settlement": settlement,
+            "coach_rows": [
+                {
+                    "coach": coach,
+                    "coach_name": "井上春佳",
+                    "is_contractor_coach": False,
+                    "ticket_amount": 0,
+                    "preopen_paid_amount": 26000,
+                    "stringing_amount": 0,
+                    "contractor_hourly_pay_amount": 0,
+                }
+            ],
+            "ticket_amount_total": 0,
+            "preopen_paid_total": 26000,
+            "stringing_total": 0,
+        }
+
+        updated = _apply_wallet_policy(result, 2026, 7)
+        row = updated["coach_rows"][0]
+
+        self.assertEqual(row["wallet_earned_amount"], 26000)
+        self.assertEqual(row["common_expense_share"], 7800)
+        self.assertEqual(row["wallet_balance_adjustment"], 0)
+        self.assertEqual(row["salary_due"], 18200)
