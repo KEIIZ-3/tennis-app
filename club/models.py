@@ -1491,7 +1491,21 @@ class Reservation(models.Model, LessonTypeMixin):
         return bool(self.substitute_coach_id)
 
     def assigned_coach(self):
-        return self.substitute_coach or self.coach
+        if self.substitute_coach:
+            return self.substitute_coach
+
+        if self.availability and self.availability.substitute_coach:
+            return self.availability.substitute_coach
+
+        if self.fixed_lesson:
+            primary_coach = self.fixed_lesson.primary_coach()
+            if primary_coach:
+                return primary_coach
+
+        if self.availability and self.availability.coach:
+            return self.availability.coach
+
+        return self.coach
 
     def assigned_coach_display(self):
         coach = self.assigned_coach()

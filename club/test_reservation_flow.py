@@ -636,6 +636,80 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertFalse(CoachExpense.objects.exists())
 
+    def test_revenue_uses_current_fixed_lesson_coach_for_stale_reservations(self):
+        inoue = self._create_user(
+            username="inoue_revenue",
+            role=self.User.ROLE_COACH,
+            full_name="井上春佳",
+        )
+        kazue = self._create_user(
+            username="kazue_revenue",
+            role=self.User.ROLE_MEMBER,
+            full_name="楊和枝",
+        )
+        mitsunori = self._create_user(
+            username="mitsunori_revenue",
+            role=self.User.ROLE_MEMBER,
+            full_name="矢野充則",
+        )
+        lesson_date = date(2026, 7, 16)
+        fixed_lesson = self._create_fixed_lesson(
+            coach=inoue,
+            lesson_date=lesson_date,
+            title="7月16日井上コーチレッスン",
+        )
+        start_at, end_at = fixed_lesson._build_datetimes_for_date(lesson_date)
+        availability = CoachAvailability.objects.create(
+            coach=inoue,
+            court=self.court,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=6,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+
+        reservations = []
+        for member in (kazue, mitsunori):
+            reservations.append(
+                Reservation.objects.create(
+                    user=member,
+                    coach=inoue,
+                    court=self.court,
+                    availability=availability,
+                    fixed_lesson=fixed_lesson,
+                    lesson_type=Reservation.LESSON_GENERAL,
+                    target_level=self.User.LEVEL_BEGINNER,
+                    start_at=start_at,
+                    end_at=end_at,
+                    status=Reservation.STATUS_ACTIVE,
+                    payment_status=Reservation.PAYMENT_STATUS_PAID,
+                    payment_amount=2000,
+                )
+            )
+
+        Reservation.objects.filter(pk=reservations[0].pk).update(
+            coach=self.coach,
+        )
+        self.client.force_login(self.coach)
+
+        response = self.client.get(
+            reverse("club:coach_revenue_summary"),
+            data={"year": 2026, "month": 7},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        rows_by_coach = {
+            row["coach_name"]: row
+            for row in response.context["coach_sales_rows"]
+        }
+        self.assertEqual(rows_by_coach["井上春佳"]["reservation_count"], 2)
+        self.assertEqual(rows_by_coach["井上春佳"]["total_amount"], 4000)
+        self.assertNotIn(self.coach.display_name(), rows_by_coach)
+        self.assertContains(response, "楊和枝")
+        self.assertContains(response, "矢野充則")
+
     def test_contractor_cannot_be_assigned_to_stringing_order(self):
         main_coach = self._create_user(
             username="main_stringing_coach",
