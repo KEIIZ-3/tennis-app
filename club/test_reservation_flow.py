@@ -174,6 +174,14 @@ class ReservationFlowSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
 
+    def test_contractor_cannot_view_business_analytics(self):
+        self.client.force_login(self.contractor)
+
+        response = self.client.get(reverse("club:analytics_dashboard"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith(reverse("club:login")))
+
     def test_contractor_navigation_links_to_own_payroll(self):
         self.client.force_login(self.contractor)
 
