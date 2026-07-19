@@ -257,6 +257,55 @@ class ReservationFlowSmokeTests(TestCase):
         )
         self.assertEqual(action_response.status_code, 403)
 
+    def test_substitute_contractor_can_rain_cancel_assigned_availability(self):
+        start_at = timezone.make_aware(
+            datetime.combine(self.lesson_date, datetime.min.time()).replace(hour=10)
+        )
+        end_at = start_at + timedelta(hours=1)
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            substitute_coach=self.contractor,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=1,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        reservation = Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            substitute_coach=self.contractor,
+            court=self.court,
+            availability=availability,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            status=Reservation.STATUS_ACTIVE,
+        )
+        self.client.force_login(self.contractor)
+
+        list_response = self.client.get(reverse("club:coach_availability_list"))
+        self.assertEqual(list_response.status_code, 200)
+        visible_ids = {
+            row["availability"].pk
+            for row in list_response.context["availability_rows"]
+        }
+        self.assertIn(availability.pk, visible_ids)
+
+        action_response = self.client.post(
+            reverse("club:coach_availability_list"),
+            data={
+                "action": "rain_cancel_slot",
+                "availability_id": availability.pk,
+            },
+        )
+        self.assertEqual(action_response.status_code, 302)
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.status, Reservation.STATUS_RAIN_CANCELED)
+
     def test_contractor_cannot_be_assigned_to_stringing_order(self):
         main_coach = self._create_user(
             username="main_stringing_coach",
