@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 89316)
-Total output lines: 8815
-
 import json
 import secrets
 import urllib.error
@@ -2545,7 +2542,3935 @@ def home(request):
             return survey_redirect
 
     User = get_user_model()
-    coaches = User.objects.filter(role__in=("coach", "contractor_coach")).order_by("username…39316 tokens truncated…r_name": _display_name(obj.user),
+    coaches = User.objects.filter(role__in=("coach", "contractor_coach")).order_by("username")
+    selected_coach = request.GET.get("coach", "")
+
+    survey_home_context = _build_schedule_survey_home_context(request.user if request.user.is_authenticated else None)
+
+    return render(
+        request,
+        "home.html",
+        {
+            "coaches": coaches,
+            "selected_coach": selected_coach,
+            "liff_enabled": _liff_enabled(),
+            **survey_home_context,
+        },
+    )
+
+
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def stringing_order_create(request):
+    profile_redirect = _require_profile_completed_for_booking(request)
+    if profile_redirect:
+        return profile_redirect
+
+    survey_redirect = _require_schedule_survey(request)
+    if survey_redirect:
+        return survey_redirect
+
+    form = StringingOrderForm(request.POST or None)
+
+    if request.method == "POST":
+        if form.is_valid():
+            order = form.save(commit=False)
+            order.user = request.user
+            order.status = StringingOrder.STATUS_REQUESTED
+            order.save()
+
+            messages.success(
+                request,
+                f"ガット張り依頼を受け付けました。料金は {order.total_price()}円 です。"
+            )
+            return redirect("club:stringing_order_create")
+
+        messages.error(request, "ガット張り依頼を保存できませんでした。入力内容をご確認ください。")
+
+    return render(
+        request,
+        "stringing/create.html",
+        {
+            "form": form,
+            "stringing_base_price": 1200,
+            "stringing_delivery_fee": 500,
+            "stringing_total_with_delivery": 1700,
+        },
+    )
+
+
+@login_required
+@require_GET
+def stringing_order_list(request):
+    survey_redirect = _require_schedule_survey(request)
+    if survey_redirect:
+        return survey_redirect
+
+    if not _is_staff_like(request.user) and not _is_coach_user(request.user):
+        return redirect("club:stringing_order_create")
+
+    queryset = StringingOrder.objects.select_related("user", "assigned_coach")
+    if not _is_staff_like(request.user):
+        queryset = queryset.filter(assigned_coach=request.user)
+    queryset = queryset.order_by("-created_at", "-id")
+
+    status_filter = (request.GET.get("status_filter") or "all").strip()
+    valid_status_filters = {
+        "all",
+        "pending",
+        StringingOrder.STATUS_REQUESTED,
+        StringingOrder.STATUS_IN_PROGRESS,
+        StringingOrder.STATUS_COMPLETED,
+        StringingOrder.STATUS_CANCELED,
+    }
+    if status_filter not in valid_status_filters:
+        status_filter = "all"
+
+    all_orders = list(queryset)
+
+    def _filter_orders(order_list, current_filter):
+        if current_filter == "all":
+            return order_list
+        if current_filter == "pending":
+            return [
+                order for order in order_list
+                if getattr(order, "status", "") in (
+                    StringingOrder.STATUS_REQUESTED,
+                    StringingOrder.STATUS_IN_PROGRESS,
+                )
+            ]
+        return [order for order in order_list if getattr(order, "status", "") == current_filter]
+
+    filtered_orders = _filter_orders(all_orders, status_filter)
+
+    status_counts = {
+        "all": len(all_orders),
+        "pending": len(_filter_orders(all_orders, "pending")),
+        "requested": len(_filter_orders(all_orders, StringingOrder.STATUS_REQUESTED)),
+        "in_progress": len(_filter_orders(all_orders, StringingOrder.STATUS_IN_PROGRESS)),
+        "completed": len(_filter_orders(all_orders, StringingOrder.STATUS_COMPLETED)),
+        "canceled": len(_filter_orders(all_orders, StringingOrder.STATUS_CANCELED)),
+    }
+
+    order_rows = []
+    for order in filtered_orders:
+        preferred_finish_date = getattr(order, "preferred_finish_date", None)
+        if preferred_finish_date:
+            try:
+                preferred_finish_date_label = preferred_finish_date.strftime("%Y-%m-%d")
+            except Exception:
+                preferred_finish_date_label = str(preferred_finish_date)
+        else:
+            preferred_finish_date_label = "-"
+
+        order_rows.append(
+            {
+                "order": order,
+                "status_label": _stringing_status_label(order),
+                "preferred_finish_date": preferred_finish_date_label,
+                "total_price": order.total_price(),
+                "can_manage": _is_staff_like(request.user) or getattr(order, "assigned_coach_id", None) == request.user.pk,
+            }
+        )
+
+    return render(
+        request,
+        "stringing/list.html",
+        {
+            "stringing_orders": queryset,
+            "order_rows": order_rows,
+            "status_filter": status_filter,
+            "status_counts": status_counts,
+            "stringing_status_choices": StringingOrder.STATUS_CHOICES,
+            "is_stringing_manage_mode": True,
+            "stringing_base_price": 1200,
+            "stringing_delivery_fee": 500,
+            "stringing_total_with_delivery": 1700,
+        },
+    )
+
+
+@login_required
+@require_GET
+def tickets_view(request):
+
+    survey_redirect = _require_schedule_survey(request)
+    if survey_redirect:
+        return survey_redirect
+
+    ledgers = TicketLedger.objects.filter(user=request.user).select_related("reservation", "fixed_lesson")[:30]
+    purchases = TicketPurchase.objects.filter(user=request.user).order_by("-purchased_at", "-id")[:30]
+    consumptions = (
+        TicketConsumption.objects.filter(user=request.user)
+        .select_related("reservation", "purchase")
+        .order_by("-created_at", "-id")[:30]
+    )
+
+    return render(
+        request,
+        "tickets.html",
+        {
+            "ticket_ledgers": ledgers,
+            "ticket_purchases": purchases,
+            "ticket_consumptions": consumptions,
+            "single_ticket_price": 4000,
+            "set4_ticket_price": 14000,
+        },
+    )
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def schedule_survey_view(request):
+    if getattr(request.user, "role", None) != "member":
+        return redirect("club:home")
+
+    if _needs_profile_completion(request.user):
+        return redirect("club:profile_complete")
+
+    existing_response = ScheduleSurveyResponse.objects.filter(user=request.user).first()
+    if existing_response:
+        messages.info(request, "アンケートは回答済みです。")
+        return redirect("club:home")
+
+    context = _schedule_survey_choice_context()
+    form_data = {
+        "selected_days": [],
+        "selected_weekday_time_slots": [],
+        "selected_weekend_time_slots": [],
+        "selected_lesson_types": [],
+        "preferred_frequency": "",
+        "free_comment": "",
+    }
+
+    if request.method == "POST":
+        form_data = {
+            "selected_days": request.POST.getlist("selected_days"),
+            "selected_weekday_time_slots": request.POST.getlist("selected_weekday_time_slots"),
+            "selected_weekend_time_slots": request.POST.getlist("selected_weekend_time_slots"),
+            "selected_lesson_types": request.POST.getlist("selected_lesson_types"),
+            "preferred_frequency": (request.POST.get("preferred_frequency") or "").strip(),
+            "free_comment": (request.POST.get("free_comment") or "").strip(),
+        }
+
+        response = ScheduleSurveyResponse(
+            user=request.user,
+            selected_days=form_data["selected_days"],
+            selected_weekday_time_slots=form_data["selected_weekday_time_slots"],
+            selected_weekend_time_slots=form_data["selected_weekend_time_slots"],
+            selected_lesson_types=form_data["selected_lesson_types"],
+            preferred_frequency=form_data["preferred_frequency"],
+            free_comment=form_data["free_comment"],
+            answered_at=timezone.now(),
+        )
+
+        try:
+            response.full_clean()
+            response.save()
+            messages.success(request, "アンケートの回答を保存しました。ご協力ありがとうございます。今後の開催時間帯の参考にします。")
+            return redirect("club:home")
+        except ValidationError as e:
+            if hasattr(e, "messages"):
+                for message_text in e.messages:
+                    messages.error(request, message_text)
+            else:
+                messages.error(request, "アンケートを保存できませんでした。入力内容をご確認ください。")
+
+    return render(
+        request,
+        "survey/schedule_survey.html",
+        {
+            **context,
+            "form_data": form_data,
+        },
+    )
+
+
+
+
+def _activity_item(
+    *,
+    created_at,
+    action_label,
+    result_label,
+    title,
+    message="",
+    actor_name="-",
+    target_name="-",
+    detail_url="",
+    related_label="-",
+):
+    return {
+        "created_at": created_at,
+        "action_label": action_label,
+        "result_label": result_label,
+        "title": title,
+        "message": message,
+        "actor_name": actor_name,
+        "target_name": target_name,
+        "detail_url": detail_url,
+        "related_label": related_label,
+    }
+
+
+@login_required
+@require_GET
+def coach_activity_log(request):
+    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
+        return HttpResponse("Forbidden", status=403)
+
+    type_filter = (request.GET.get("type") or "all").strip()
+    valid_type_filters = {"all", "reservation", "stringing", "ticket"}
+    if type_filter not in valid_type_filters:
+        type_filter = "all"
+
+    rows = []
+
+    include_reservation = type_filter in ("all", "reservation")
+    include_stringing = type_filter in ("all", "stringing")
+    include_ticket = type_filter in ("all", "ticket")
+
+    if include_reservation:
+        reservation_qs = (
+            Reservation.objects.select_related("user", "coach", "substitute_coach", "court")
+            .order_by("-created_at", "-id")[:80]
+        )
+
+        if _is_coach_user(request.user) and not _is_staff_like(request.user):
+            reservation_qs = [
+                reservation for reservation in reservation_qs
+                if reservation.coach_id == request.user.pk
+                or getattr(reservation, "substitute_coach_id", None) == request.user.pk
+            ]
+
+        for reservation in reservation_qs:
+            if reservation.status == Reservation.STATUS_PENDING:
+                action_label = "予約申請"
+                result_label = "承認待ち"
+                title = "予約申請が作成されました"
+            elif reservation.status == Reservation.STATUS_ACTIVE:
+                action_label = "予約"
+                result_label = "予約中"
+                title = "予約が成立しています"
+            elif reservation.status == Reservation.STATUS_RAIN_CANCELED:
+                action_label = "雨天中止"
+                result_label = "中止"
+                title = "予約が雨天中止になりました"
+            elif reservation.status == Reservation.STATUS_CANCELED:
+                action_label = "キャンセル"
+                result_label = "キャンセル"
+                title = "予約がキャンセルされました"
+            else:
+                action_label = "予約"
+                result_label = reservation.get_status_display()
+                title = "予約状態が更新されました"
+
+            rows.append(
+                _activity_item(
+                    created_at=reservation.canceled_at or reservation.created_at,
+                    action_label=action_label,
+                    result_label=result_label,
+                    title=title,
+                    message=(
+                        f"{reservation.start_at:%Y-%m-%d %H:%M}〜{reservation.end_at:%H:%M} / "
+                        f"{reservation.get_lesson_type_display()} / "
+                        f"会員: {_display_name(reservation.user)}"
+                    ),
+                    actor_name=_display_name(reservation.coach),
+                    target_name=_display_name(reservation.user),
+                    detail_url=reverse("club:reservation_detail", kwargs={"pk": reservation.pk}),
+                    related_label=f"予約ID {reservation.pk}",
+                )
+            )
+
+    if include_stringing:
+        stringing_qs = (
+            StringingOrder.objects.select_related("user", "assigned_coach")
+            .order_by("-updated_at", "-created_at", "-id")[:80]
+        )
+
+        if _is_coach_user(request.user) and not _is_staff_like(request.user):
+            stringing_qs = stringing_qs.filter(assigned_coach=request.user)
+
+        for order in stringing_qs:
+            rows.append(
+                _activity_item(
+                    created_at=order.updated_at or order.created_at,
+                    action_label="ガット張り",
+                    result_label=order.get_status_display(),
+                    title="ガット張り依頼の状態",
+                    message=(
+                        f"会員: {_display_name(order.user)} / "
+                        f"ラケット: {order.racket_name or '-'} / "
+                        f"ガット: {order.string_name or '-'} / "
+                        f"料金: {order.total_price()}円"
+                    ),
+                    actor_name=_display_name(order.assigned_coach),
+                    target_name=_display_name(order.user),
+                    detail_url=reverse("club:stringing_order_detail", kwargs={"pk": order.pk}),
+                    related_label=f"ガットID {order.pk}",
+                )
+            )
+
+    if include_ticket:
+        ticket_qs = (
+            TicketLedger.objects.select_related("user", "created_by", "reservation", "fixed_lesson")
+            .order_by("-created_at", "-id")[:80]
+        )
+
+        if _is_coach_user(request.user) and not _is_staff_like(request.user):
+            # コーチは全チケット履歴ではなく、関連予約に紐づくものを中心に確認
+            ticket_qs = ticket_qs.filter(
+                reservation__coach=request.user
+            ) | ticket_qs.filter(
+                reservation__substitute_coach=request.user
+            )
+
+        for ledger in ticket_qs[:80]:
+            detail_url = ""
+            related_label = "-"
+            if ledger.reservation_id:
+                detail_url = reverse("club:reservation_detail", kwargs={"pk": ledger.reservation_id})
+                related_label = f"予約ID {ledger.reservation_id}"
+            elif ledger.fixed_lesson_id:
+                related_label = f"固定レッスンID {ledger.fixed_lesson_id}"
+
+            sign = "+" if int(ledger.change_amount or 0) >= 0 else ""
+            rows.append(
+                _activity_item(
+                    created_at=ledger.created_at,
+                    action_label="チケット",
+                    result_label=ledger.get_reason_display(),
+                    title=f"チケット {sign}{ledger.change_amount}枚",
+                    message=f"残数: {ledger.balance_after}枚 / メモ: {ledger.note or '-'}",
+                    actor_name=_display_name(ledger.created_by),
+                    target_name=_display_name(ledger.user),
+                    detail_url=detail_url,
+                    related_label=related_label,
+                )
+            )
+
+    rows = sorted(
+        [row for row in rows if row.get("created_at")],
+        key=lambda row: row["created_at"],
+        reverse=True,
+    )[:100]
+
+    count_map = {
+        "all": len(rows),
+        "reservation": 0,
+        "stringing": 0,
+        "ticket": 0,
+    }
+    for row in rows:
+        if row["action_label"] in ("予約申請", "予約", "雨天中止", "キャンセル"):
+            count_map["reservation"] += 1
+        elif row["action_label"] == "ガット張り":
+            count_map["stringing"] += 1
+        elif row["action_label"] == "チケット":
+            count_map["ticket"] += 1
+
+    return render(
+        request,
+        "coach/activity_log.html",
+        {
+            "activity_rows": rows,
+            "type_filter": type_filter,
+            "count_map": count_map,
+        },
+    )
+
+@login_required
+@require_GET
+def coach_schedule_survey_summary(request):
+    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
+        return HttpResponse("Forbidden", status=403)
+
+    User = get_user_model()
+    member_users = User.objects.filter(role="member", is_active=True).order_by("full_name", "username", "id")
+    responses = list(
+        ScheduleSurveyResponse.objects.select_related("user").filter(user__role="member").order_by("-answered_at", "-id")
+    )
+
+    day_choices = list(ScheduleSurveyResponse.DAY_CHOICES)
+    weekday_slot_choices = list(ScheduleSurveyResponse.WEEKDAY_TIME_SLOT_CHOICES)
+    weekend_slot_choices = list(ScheduleSurveyResponse.WEEKEND_TIME_SLOT_CHOICES)
+    lesson_type_choices = list(ScheduleSurveyResponse.LESSON_TYPE_CHOICES)
+    frequency_choices = list(ScheduleSurveyResponse.FREQUENCY_CHOICES)
+
+    weekday_day_values = {
+        ScheduleSurveyResponse.DAY_MON,
+        ScheduleSurveyResponse.DAY_TUE,
+        ScheduleSurveyResponse.DAY_WED,
+        ScheduleSurveyResponse.DAY_THU,
+        ScheduleSurveyResponse.DAY_FRI,
+    }
+    weekend_day_values = {
+        ScheduleSurveyResponse.DAY_SAT,
+        ScheduleSurveyResponse.DAY_SUN,
+    }
+
+    day_counts = {value: 0 for value, _label in day_choices}
+    weekday_time_slot_counts = {value: 0 for value, _label in weekday_slot_choices}
+    weekend_time_slot_counts = {value: 0 for value, _label in weekend_slot_choices}
+    lesson_type_counts = {value: 0 for value, _label in lesson_type_choices}
+    frequency_counts = {value: 0 for value, _label in frequency_choices}
+
+    cross_matrix = {}
+    for day_value, _day_label in day_choices:
+        if day_value in weekday_day_values:
+            cross_matrix[day_value] = {slot_value: 0 for slot_value, _label in weekday_slot_choices}
+        else:
+            cross_matrix[day_value] = {slot_value: 0 for slot_value, _label in weekend_slot_choices}
+
+    for response in responses:
+        selected_days = list(response.selected_days or [])
+        selected_weekday_slots = list(response.selected_weekday_time_slots or [])
+        selected_weekend_slots = list(response.selected_weekend_time_slots or [])
+        selected_lesson_types = list(response.selected_lesson_types or [])
+
+        for day_value in selected_days:
+            if day_value in day_counts:
+                day_counts[day_value] += 1
+
+        for slot_value in selected_weekday_slots:
+            if slot_value in weekday_time_slot_counts:
+                weekday_time_slot_counts[slot_value] += 1
+
+        for slot_value in selected_weekend_slots:
+            if slot_value in weekend_time_slot_counts:
+                weekend_time_slot_counts[slot_value] += 1
+
+        for lesson_type in selected_lesson_types:
+            if lesson_type in lesson_type_counts:
+                lesson_type_counts[lesson_type] += 1
+
+        if response.preferred_frequency in frequency_counts:
+            frequency_counts[response.preferred_frequency] += 1
+
+        for day_value in selected_days:
+            if day_value in weekday_day_values:
+                for slot_value in selected_weekday_slots:
+                    if slot_value in cross_matrix.get(day_value, {}):
+                        cross_matrix[day_value][slot_value] += 1
+            elif day_value in weekend_day_values:
+                for slot_value in selected_weekend_slots:
+                    if slot_value in cross_matrix.get(day_value, {}):
+                        cross_matrix[day_value][slot_value] += 1
+
+    day_rows = [
+        {
+            "value": value,
+            "label": label,
+            "count": day_counts[value],
+        }
+        for value, label in day_choices
+    ]
+    weekday_time_slot_rows = [
+        {
+            "value": value,
+            "label": label,
+            "count": weekday_time_slot_counts[value],
+        }
+        for value, label in weekday_slot_choices
+    ]
+    weekend_time_slot_rows = [
+        {
+            "value": value,
+            "label": label,
+            "count": weekend_time_slot_counts[value],
+        }
+        for value, label in weekend_slot_choices
+    ]
+    lesson_type_rows = [
+        {
+            "value": value,
+            "label": label,
+            "count": lesson_type_counts[value],
+        }
+        for value, label in lesson_type_choices
+    ]
+    frequency_rows = [
+        {
+            "value": value,
+            "label": label,
+            "count": frequency_counts[value],
+        }
+        for value, label in frequency_choices
+    ]
+
+    cross_rows = []
+    recommended_slot_rows = []
+    for day_value, day_label in day_choices:
+        if day_value in weekday_day_values:
+            slot_choices = weekday_slot_choices
+            day_group_label = "平日"
+        else:
+            slot_choices = weekend_slot_choices
+            day_group_label = "土日"
+
+        cells = []
+        for slot_value, slot_label in slot_choices:
+            count = cross_matrix.get(day_value, {}).get(slot_value, 0)
+            cells.append(
+                {
+                    "slot_value": slot_value,
+                    "slot_label": slot_label,
+                    "count": count,
+                }
+            )
+            recommended_slot_rows.append(
+                {
+                    "day_value": day_value,
+                    "day_label": day_label,
+                    "day_group_label": day_group_label,
+                    "slot_value": slot_value,
+                    "slot_label": slot_label,
+                    "count": count,
+                }
+            )
+
+        cross_rows.append(
+            {
+                "day_value": day_value,
+                "day_label": day_label,
+                "cells": cells,
+            }
+        )
+
+    def _attach_ranks(rows):
+        ranked_rows = []
+        last_count = None
+        current_rank = 0
+
+        for index, row in enumerate(rows, start=1):
+            count = int(row.get("count", 0))
+            if last_count is None or count != last_count:
+                current_rank = index
+                last_count = count
+            ranked_row = dict(row)
+            ranked_row["rank"] = current_rank
+            ranked_rows.append(ranked_row)
+
+        return ranked_rows
+
+    top_day_rows = _attach_ranks(
+        sorted(day_rows, key=lambda row: (-row["count"], row["label"]))
+    )
+
+    top_weekday_time_slot_rows = _attach_ranks(
+        sorted(weekday_time_slot_rows, key=lambda row: (-row["count"], row["label"]))
+    )
+
+    top_weekend_time_slot_rows = _attach_ranks(
+        sorted(weekend_time_slot_rows, key=lambda row: (-row["count"], row["label"]))
+    )
+
+    top_lesson_type_rows = _attach_ranks(
+        sorted(lesson_type_rows, key=lambda row: (-row["count"], row["label"]))
+    )
+
+    top_frequency_rows = _attach_ranks(
+        sorted(frequency_rows, key=lambda row: (-row["count"], row["label"]))
+    )
+
+    top_recommended_slot_rows = _attach_ranks(
+        sorted(
+            recommended_slot_rows,
+            key=lambda row: (-row["count"], row["day_label"], row["slot_label"]),
+        )
+    )
+
+    unanswered_users = list(member_users.filter(schedule_survey_response__isnull=True))
+    total_members = member_users.count()
+    answered_count = len(responses)
+    unanswered_count = len(unanswered_users)
+    answered_rate = round((answered_count / total_members) * 100, 1) if total_members > 0 else 0
+
+    latest_responses = responses[:50]
+
+    return render(
+        request,
+        "coach/schedule_survey_summary.html",
+        {
+            "total_members": total_members,
+            "answered_count": answered_count,
+            "unanswered_count": unanswered_count,
+            "answered_rate": answered_rate,
+            "day_rows": day_rows,
+            "weekday_time_slot_rows": weekday_time_slot_rows,
+            "weekend_time_slot_rows": weekend_time_slot_rows,
+            "lesson_type_rows": lesson_type_rows,
+            "frequency_rows": frequency_rows,
+            "cross_rows": cross_rows,
+            "top_day_rows": top_day_rows[:7],
+            "top_weekday_time_slot_rows": top_weekday_time_slot_rows[:6],
+            "top_weekend_time_slot_rows": top_weekend_time_slot_rows[:6],
+            "top_lesson_type_rows": top_lesson_type_rows[:3],
+            "top_frequency_rows": top_frequency_rows[:4],
+            "top_recommended_slot_rows": top_recommended_slot_rows[:10],
+            "unanswered_users": unanswered_users,
+            "latest_responses": latest_responses,
+        },
+    )
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def coach_today_lessons(request):
+    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
+        return HttpResponse("Forbidden", status=403)
+
+    User = get_user_model()
+    today = timezone.localdate()
+
+    # コーチ・業務委託コーチ・adminの全アカウントで、
+    # 初期表示を「全コーチ・過去1か月」に統一します。
+    default_display_days = 28
+
+    try:
+        display_days = int(request.GET.get("days") or request.POST.get("days") or default_display_days)
+    except Exception:
+        display_days = default_display_days
+    if display_days not in (1, 7, 14, 28):
+        display_days = default_display_days
+
+    # 「過去1か月」は、今日を含む直近28日間を表示します。
+    # 今日・7日間・14日間はこれまでどおり未来の予定確認用です。
+    if display_days == 28:
+        range_start = today - timedelta(days=27)
+        range_end = today
+    else:
+        range_start = today
+        range_end = today + timedelta(days=display_days - 1)
+
+    coach_queryset = User.objects.filter(role__in=("coach", "contractor_coach")).order_by("full_name", "username", "id")
+
+    is_staff_mode = _is_staff_like(request.user)
+    if not is_staff_mode:
+        selected_coach = request.user
+        selected_coach_id = str(request.user.pk)
+        coach_queryset = coach_queryset.filter(pk=request.user.pk)
+    else:
+        selected_coach_id = (
+            request.GET.get("coach_id")
+            or request.POST.get("coach_id")
+            or "all"
+        ).strip()
+        if selected_coach_id in ("", "all"):
+            selected_coach = None
+            selected_coach_id = "all"
+        else:
+            selected_coach = coach_queryset.filter(pk=selected_coach_id).first()
+            if selected_coach is None:
+                selected_coach_id = "all"
+
+    def _today_lessons_redirect():
+        params = {"days": display_days}
+        if selected_coach_id:
+            params["coach_id"] = selected_coach_id
+        return f"{reverse('club:coach_today_lessons')}?{urlencode(params)}"
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "update_payment":
+            reservation_id = (request.POST.get("reservation_id") or "").strip()
+            payment_status = (request.POST.get("payment_status") or "").strip()
+
+            reservation = get_object_or_404(
+                Reservation.objects.select_related("user", "coach", "substitute_coach", "court"),
+                pk=reservation_id,
+            )
+
+            can_update = (
+                _is_staff_like(request.user)
+                or reservation.coach_id == request.user.pk
+                or getattr(reservation, "substitute_coach_id", None) == request.user.pk
+            )
+            if not can_update:
+                return HttpResponse("Forbidden", status=403)
+
+            allowed_statuses = {
+                Reservation.PAYMENT_STATUS_UNPAID,
+                Reservation.PAYMENT_STATUS_PAID,
+                Reservation.PAYMENT_STATUS_WAIVED,
+            }
+            if payment_status not in allowed_statuses:
+                messages.error(request, "支払状況が不正です。")
+                return redirect(_today_lessons_redirect())
+
+            try:
+                reservation.mark_payment_status(
+                    payment_status,
+                    received_by=request.user,
+                    note="本日の受付・精算画面から更新",
+                )
+                messages.success(
+                    request,
+                    f"{_display_name(reservation.user)}さんの参加費状況を「{reservation.get_payment_status_display()}」に更新しました。",
+                )
+            except ValidationError as e:
+                if hasattr(e, "messages"):
+                    for message_text in e.messages:
+                        messages.error(request, message_text)
+                else:
+                    messages.error(request, str(e))
+            except Exception as e:
+                messages.error(request, f"支払状況の更新に失敗しました: {e}")
+
+            return redirect(_today_lessons_redirect())
+
+    slot_map = {}
+
+    def _slot_key_for_row(*, lesson_type, coach_id, court_id, start_at, end_at):
+        return _slot_key(lesson_type, coach_id, court_id, start_at, end_at)
+
+    def _local(value):
+        if timezone.is_aware(value):
+            return timezone.localtime(value)
+        return value
+
+    def _safe_phone(user):
+        return (getattr(user, "phone_number", "") or "").strip()
+
+    def _safe_level(user):
+        try:
+            return user.get_member_level_display()
+        except Exception:
+            return getattr(user, "member_level", "") or "-"
+
+    def _reservation_person_row(reservation):
+        payment_status_options = [
+            (Reservation.PAYMENT_STATUS_UNPAID, "未回収"),
+            (Reservation.PAYMENT_STATUS_PAID, "回収済み"),
+            (Reservation.PAYMENT_STATUS_WAIVED, "免除"),
+        ]
+        return {
+            "reservation": reservation,
+            "name": _display_name(reservation.user),
+            "phone": _safe_phone(reservation.user),
+            "level": _safe_level(reservation.user),
+            "status_label": reservation.get_status_display(),
+            "detail_url": reverse("club:reservation_detail", kwargs={"pk": reservation.pk}),
+            "payment_required": reservation.is_payment_tracking_required(),
+            "payment_status": reservation.payment_status,
+            "payment_status_label": reservation.payment_status_badge_label(),
+            "payment_amount": int(reservation.payment_amount or 0),
+            "payment_received_at": reservation.payment_received_at,
+            "payment_status_options": payment_status_options,
+        }
+
+    def _member_person_row(member):
+        return {
+            "user": member,
+            "reservation": None,
+            "name": _display_name(member),
+            "phone": _safe_phone(member),
+            "level": _safe_level(member),
+            "status_label": "固定参加",
+            "detail_url": reverse("club:coach_fixed_lesson_weekly"),
+            "payment_required": False,
+            "payment_status": "",
+            "payment_status_label": "",
+            "payment_amount": 0,
+            "payment_received_at": None,
+            "payment_status_options": [],
+            "is_fixed_member": True,
+        }
+
+    def _waitlist_person_row(waitlist):
+        return {
+            "waitlist": waitlist,
+            "name": _display_name(waitlist.user),
+            "phone": _safe_phone(waitlist.user),
+            "level": _safe_level(waitlist.user),
+            "created_at": waitlist.created_at,
+            "can_promote": _coach_can_manage_waitlist(request.user, waitlist),
+        }
+
+    def _fixed_registered_member_rows(fixed_lesson, reservations):
+        if not fixed_lesson:
+            return []
+        reserved_user_ids = {reservation.user_id for reservation in reservations}
+        rows = []
+        for member in fixed_lesson.members.all().order_by("full_name", "username", "id"):
+            if member.pk in reserved_user_ids:
+                continue
+            rows.append(_member_person_row(member))
+        return rows
+
+    def _add_slot(
+        *,
+        key,
+        start_at,
+        end_at,
+        lesson_type_label,
+        target_level_label,
+        coach_name,
+        court_name,
+        capacity,
+        title,
+        fixed_lesson=None,
+        availability=None,
+    ):
+        if key in slot_map:
+            return slot_map[key]
+
+        base_slot_filter = Q(
+            lesson_type=key[0],
+            start_at=start_at,
+            end_at=end_at,
+        )
+        relation_filter = Q(
+            coach_id=key[1] or None,
+            court_id=key[2] or None,
+        )
+        if fixed_lesson is not None:
+            relation_filter |= Q(fixed_lesson=fixed_lesson)
+        if availability is not None:
+            relation_filter |= Q(availability=availability)
+        slot_filter = base_slot_filter & relation_filter
+
+        reservations = list(
+            Reservation.objects.select_related(
+                "user",
+                "coach",
+                "substitute_coach",
+                "court",
+                "availability",
+                "fixed_lesson",
+            )
+            .filter(slot_filter, status=Reservation.STATUS_ACTIVE)
+            .order_by("user__full_name", "user__username", "id")
+            .distinct()
+        )
+
+        pending_reservations = list(
+            Reservation.objects.select_related(
+                "user",
+                "coach",
+                "substitute_coach",
+                "court",
+                "availability",
+                "fixed_lesson",
+            )
+            .filter(slot_filter, status=Reservation.STATUS_PENDING)
+            .order_by("user__full_name", "user__username", "id")
+            .distinct()
+        )
+
+        waitlists = list(
+            LessonWaitlist.objects.select_related(
+                "user",
+                "coach",
+                "substitute_coach",
+                "court",
+                "availability",
+                "fixed_lesson",
+            )
+            .filter(slot_filter, status=LessonWaitlist.STATUS_WAITING)
+            .order_by("created_at", "id")
+            .distinct()
+        )
+
+        registered_member_rows = _fixed_registered_member_rows(fixed_lesson, reservations)
+        participant_rows = [
+            _reservation_person_row(reservation)
+            for reservation in reservations
+        ] + registered_member_rows
+
+        # 固定レッスンの担当変更後は、予約作成時の旧コーチではなく、
+        # レッスンカレンダーと同じ固定レッスン側の担当コーチを優先します。
+        if fixed_lesson is not None:
+            try:
+                fixed_coach_name = fixed_lesson.coach_display_names()
+            except Exception:
+                fixed_coach_name = ""
+
+            if fixed_coach_name and fixed_coach_name != "-":
+                coach_name = fixed_coach_name
+
+        elif availability is not None:
+            try:
+                availability_coach = availability.assigned_coach()
+            except Exception:
+                availability_coach = (
+                    getattr(availability, "substitute_coach", None)
+                    or getattr(availability, "coach", None)
+                )
+
+            availability_coach_name = _display_name(availability_coach)
+            if availability_coach_name and availability_coach_name != "-":
+                coach_name = availability_coach_name
+
+        else:
+            actual_coach_names = []
+            for reservation in reservations:
+                try:
+                    actual_coach = reservation.assigned_coach()
+                except Exception:
+                    actual_coach = (
+                        getattr(reservation, "substitute_coach", None)
+                        or getattr(reservation, "coach", None)
+                    )
+
+                actual_coach_name = _display_name(actual_coach)
+                if (
+                    actual_coach_name
+                    and actual_coach_name != "-"
+                    and actual_coach_name not in actual_coach_names
+                ):
+                    actual_coach_names.append(actual_coach_name)
+
+            if actual_coach_names:
+                coach_name = " / ".join(actual_coach_names)
+
+        start_local = _local(start_at)
+        end_local = _local(end_at)
+        lesson_date = start_local.date()
+        participant_count = len(participant_rows)
+        remaining_count = max(int(capacity or 0) - participant_count, 0)
+        is_today = lesson_date == today
+        is_past = end_at < timezone.now()
+        is_full = participant_count >= int(capacity or 0)
+        has_waitlist = bool(waitlists)
+        needs_attention = bool(pending_reservations or waitlists or (is_today and remaining_count > 0))
+
+        row = {
+            "key": "|".join([str(part) for part in key]),
+            "start_at": start_at,
+            "end_at": end_at,
+            "date": lesson_date,
+            "date_label": f"{lesson_date:%Y/%m/%d}",
+            "weekday_label": ["月", "火", "水", "木", "金", "土", "日"][lesson_date.weekday()],
+            "time_label": f"{start_local:%H:%M}〜{end_local:%H:%M}",
+            "title": title,
+            "lesson_type_label": lesson_type_label,
+            "target_level_label": target_level_label,
+            "coach_name": coach_name,
+            "court_name": court_name,
+            "capacity": int(capacity or 0),
+            "reservations": reservations,
+            "pending_reservations": pending_reservations,
+            "waitlists": waitlists,
+            "participant_rows": participant_rows,
+            "pending_rows": [_reservation_person_row(reservation) for reservation in pending_reservations],
+            "waitlist_rows": [_waitlist_person_row(waitlist) for waitlist in waitlists],
+            "registered_member_rows": [],
+            "participant_count": participant_count,
+            "pending_count": len(pending_reservations),
+            "waitlist_count": len(waitlists),
+            "remaining_count": remaining_count,
+            "is_today": is_today,
+            "is_past": is_past,
+            "is_full": is_full,
+            "has_waitlist": has_waitlist,
+            "needs_attention": needs_attention,
+            "status_label": "本日" if is_today else ("終了" if is_past else "予定"),
+            "fixed_lesson": fixed_lesson,
+            "availability": availability,
+        }
+        slot_map[key] = row
+        return row
+
+    def _availability_capacity(availability):
+        try:
+            return max(int(availability.effective_capacity()), int(availability.capacity or 0), 1)
+        except Exception:
+            return max(int(getattr(availability, "capacity", 1) or 1), 1)
+
+    def _authoritative_fixed_lesson_for_availability(availability):
+        """
+        過去に担当変更されたAvailabilityでも、同一枠の予約が保持するFixedLessonを正本として返します。
+
+        FixedLessonの開催回数、曜日設定、表示期間、コーチ絞り込みの影響で
+        fixed_queryset側から先に行が作られなかった場合でも、旧Availability単独行として
+        旧コーチ名を表示させないための最終防御です。
+        """
+        if not availability:
+            return None
+
+        linked_fixed_lesson = (
+            Reservation.objects.filter(
+                availability=availability,
+                fixed_lesson__isnull=False,
+                start_at=availability.start_at,
+                end_at=availability.end_at,
+            )
+            .select_related(
+                "fixed_lesson",
+                "fixed_lesson__coach",
+                "fixed_lesson__coach_2",
+                "fixed_lesson__coach_3",
+                "fixed_lesson__court",
+            )
+            .order_by("id")
+            .values_list("fixed_lesson_id", flat=True)
+            .first()
+        )
+
+        if not linked_fixed_lesson:
+            linked_fixed_lesson = (
+                Reservation.objects.filter(
+                    fixed_lesson__isnull=False,
+                    lesson_type=availability.lesson_type,
+                    start_at=availability.start_at,
+                    end_at=availability.end_at,
+                )
+                .filter(
+                    Q(court=availability.court)
+                    | Q(availability=availability)
+                )
+                .order_by("id")
+                .values_list("fixed_lesson_id", flat=True)
+                .first()
+            )
+
+        if linked_fixed_lesson:
+            return (
+                FixedLesson.objects.select_related(
+                    "coach",
+                    "coach_2",
+                    "coach_3",
+                    "court",
+                )
+                .prefetch_related("members")
+                .filter(pk=linked_fixed_lesson)
+                .first()
+            )
+
+        start_local = _local(availability.start_at)
+        target_date = start_local.date()
+
+        candidates = (
+            FixedLesson.objects.filter(
+                is_active=True,
+                lesson_type=availability.lesson_type,
+                start_hour=start_local.hour,
+            )
+            .select_related(
+                "coach",
+                "coach_2",
+                "coach_3",
+                "court",
+            )
+            .prefetch_related("members")
+            .order_by("id")
+        )
+
+        if availability.court_id:
+            candidates = candidates.filter(
+                Q(court=availability.court)
+                | Q(court__isnull=True)
+            )
+
+        for fixed_lesson in candidates:
+            try:
+                if target_date in set(fixed_lesson.scheduled_occurrence_dates()):
+                    return fixed_lesson
+            except Exception:
+                repeat_start = getattr(fixed_lesson, "start_date", None)
+                if repeat_start and target_date < repeat_start:
+                    continue
+                if int(getattr(fixed_lesson, "weekday", -1)) == target_date.weekday():
+                    return fixed_lesson
+
+        return None
+
+    fixed_queryset = (
+        FixedLesson.objects.filter(is_active=True)
+        .select_related("coach", "coach_2", "coach_3", "court")
+        .prefetch_related("members")
+        .order_by("weekday", "start_hour", "id")
+    )
+    if selected_coach is not None:
+        fixed_queryset = [fixed for fixed in fixed_queryset if _fixed_lesson_includes_coach(fixed, selected_coach)]
+
+    # レッスンカレンダーと同じ開催日生成ロジックを使用します。
+    # weekdayだけで判定すると、個別に設定された開催日や既存データの曜日差異により、
+    # FixedLessonが認識されず旧Availability単独行として表示されるためです。
+    for fixed in fixed_queryset:
+        try:
+            if hasattr(fixed, "scheduled_occurrence_dates"):
+                occurrence_dates = list(fixed.scheduled_occurrence_dates())
+            else:
+                repeat_start = getattr(fixed, "start_date", None) or range_start
+                first_offset = (int(fixed.weekday) - repeat_start.weekday()) % 7
+                first_date = repeat_start + timedelta(days=first_offset)
+                occurrence_count = max(
+                    int(getattr(fixed, "weeks_ahead", 1) or 1),
+                    1,
+                )
+                occurrence_dates = [
+                    first_date + timedelta(days=7 * index)
+                    for index in range(occurrence_count)
+                ]
+        except Exception:
+            occurrence_dates = []
+
+        for cursor in occurrence_dates:
+            if cursor < range_start or cursor > range_end:
+                continue
+
+            try:
+                start_at, end_at = fixed._build_datetimes_for_date(cursor)
+            except Exception:
+                continue
+
+            primary_coach = fixed.primary_coach() if hasattr(fixed, "primary_coach") else fixed.coach
+            court = fixed.court
+            if not court:
+                continue
+
+            # 固定レッスンの担当変更前に作成された旧Availabilityも、
+            # 参加者・回収状況を同じ枠へ統合するために取得します。
+            # 現在の担当コーチとの一致は条件にせず、日時・種別・コートを正とします。
+            availability = (
+                CoachAvailability.objects.filter(
+                    court=court,
+                    lesson_type=fixed.lesson_type,
+                    start_at=start_at,
+                    end_at=end_at,
+                )
+                .select_related("coach", "substitute_coach", "court")
+                .order_by("id")
+                .first()
+            )
+
+            capacity = fixed.effective_capacity() if hasattr(fixed, "effective_capacity") else fixed.capacity
+            if availability:
+                try:
+                    capacity = max(
+                        int(availability.effective_capacity()),
+                        int(availability.capacity or 0),
+                        int(capacity or 0),
+                        1,
+                    )
+                except Exception:
+                    capacity = max(int(availability.capacity or 0), int(capacity or 0), 1)
+
+            # 旧Availabilityがある場合は、そのコーチIDをスロットキーに使います。
+            # これにより後段のAvailability一覧で同じ枠が重複追加されません。
+            # 表示する担当名は _add_slot 内で現在のFixedLesson設定へ置き換えます。
+            slot_coach_id = (
+                availability.coach_id
+                if availability is not None
+                else getattr(primary_coach, "pk", None)
+            )
+
+            key = _slot_key_for_row(
+                lesson_type=fixed.lesson_type,
+                coach_id=slot_coach_id,
+                court_id=getattr(court, "pk", None),
+                start_at=start_at,
+                end_at=end_at,
+            )
+
+            _add_slot(
+                key=key,
+                start_at=start_at,
+                end_at=end_at,
+                lesson_type_label=fixed.get_lesson_type_display(),
+                target_level_label=_lesson_level_label(fixed) or fixed.get_target_level_display(),
+                coach_name=_fixed_lesson_coach_names(fixed),
+                court_name=str(court),
+                capacity=capacity,
+                title=_lesson_calendar_title(fixed),
+                fixed_lesson=fixed,
+                availability=availability,
+            )
+
+    availability_qs = (
+        CoachAvailability.objects.filter(
+            start_at__date__gte=range_start,
+            start_at__date__lte=range_end,
+        )
+        .select_related("coach", "substitute_coach", "court")
+        .order_by("start_at", "id")
+    )
+
+    if selected_coach is not None:
+        availability_qs = [
+            availability for availability in availability_qs
+            if availability.coach_id == selected_coach.pk
+            or getattr(availability, "substitute_coach_id", None) == selected_coach.pk
+        ]
+
+    for availability in availability_qs:
+        authoritative_fixed_lesson = _authoritative_fixed_lesson_for_availability(
+            availability
+        )
+
+        # 過去の担当変更後も、予約が紐づく現在のFixedLessonを表示の正本にします。
+        # 選択中のコーチ条件も、旧Availabilityのコーチではなく現在の固定レッスン担当で判定します。
+        if authoritative_fixed_lesson is not None:
+            if (
+                selected_coach is not None
+                and not _fixed_lesson_includes_coach(
+                    authoritative_fixed_lesson,
+                    selected_coach,
+                )
+            ):
+                continue
+
+            key = _slot_key_for_row(
+                lesson_type=availability.lesson_type,
+                coach_id=availability.coach_id,
+                court_id=availability.court_id,
+                start_at=availability.start_at,
+                end_at=availability.end_at,
+            )
+            if key in slot_map:
+                continue
+
+            fixed_capacity = (
+                authoritative_fixed_lesson.effective_capacity()
+                if hasattr(authoritative_fixed_lesson, "effective_capacity")
+                else authoritative_fixed_lesson.capacity
+            )
+            capacity = max(
+                _availability_capacity(availability),
+                int(fixed_capacity or 0),
+                1,
+            )
+
+            _add_slot(
+                key=key,
+                start_at=availability.start_at,
+                end_at=availability.end_at,
+                lesson_type_label=authoritative_fixed_lesson.get_lesson_type_display(),
+                target_level_label=(
+                    _lesson_level_label(authoritative_fixed_lesson)
+                    or authoritative_fixed_lesson.get_target_level_display()
+                ),
+                coach_name=_fixed_lesson_coach_names(
+                    authoritative_fixed_lesson
+                ),
+                court_name=str(
+                    authoritative_fixed_lesson.court
+                    or availability.court
+                ),
+                capacity=capacity,
+                title=_lesson_calendar_title(
+                    authoritative_fixed_lesson
+                ),
+                fixed_lesson=authoritative_fixed_lesson,
+                availability=availability,
+            )
+            continue
+
+        key = _slot_key_for_row(
+            lesson_type=availability.lesson_type,
+            coach_id=availability.coach_id,
+            court_id=availability.court_id,
+            start_at=availability.start_at,
+            end_at=availability.end_at,
+        )
+        if key in slot_map:
+            continue
+
+        capacity = _availability_capacity(availability)
+        assigned_coach = (
+            availability.assigned_coach()
+            if hasattr(availability, "assigned_coach")
+            else (availability.substitute_coach or availability.coach)
+        )
+
+        _add_slot(
+            key=key,
+            start_at=availability.start_at,
+            end_at=availability.end_at,
+            lesson_type_label=availability.get_lesson_type_display(),
+            target_level_label=_lesson_level_label(availability) or availability.get_target_level_display(),
+            coach_name=_display_name(assigned_coach),
+            court_name=str(availability.court),
+            capacity=capacity,
+            title=availability.get_lesson_type_display(),
+            availability=availability,
+        )
+
+    lesson_rows = sorted(slot_map.values(), key=lambda row: (row["start_at"], row["title"], row["key"]))
+    today_rows = [row for row in lesson_rows if row["date"] == today]
+    upcoming_rows = [row for row in lesson_rows if row["date"] != today]
+    attention_rows = [row for row in lesson_rows if row["needs_attention"] and not row["is_past"]]
+
+    # 過去1か月表示では、終了済みレッスンも含めて参加費の回収状況を編集できるようにします。
+    for row in lesson_rows:
+        payment_rows = [
+            person for person in row["participant_rows"]
+            if person.get("payment_required")
+        ]
+        row["payment_target_count"] = len(payment_rows)
+        row["payment_unpaid_count"] = sum(
+            1 for person in payment_rows
+            if person.get("payment_status") == Reservation.PAYMENT_STATUS_UNPAID
+        )
+
+    grouped_days = []
+    day_cursor = range_start
+    while day_cursor <= range_end:
+        day_rows = [row for row in lesson_rows if row["date"] == day_cursor]
+        grouped_days.append(
+            {
+                "date": day_cursor,
+                "date_label": f"{day_cursor:%Y/%m/%d}",
+                "weekday_label": ["月", "火", "水", "木", "金", "土", "日"][day_cursor.weekday()],
+                "is_today": day_cursor == today,
+                "rows": day_rows,
+            }
+        )
+        day_cursor += timedelta(days=1)
+
+    all_active_reservations = []
+    for row in lesson_rows:
+        all_active_reservations.extend(row["reservations"])
+
+    payment_target_reservations = [
+        reservation for reservation in all_active_reservations
+        if reservation.is_payment_tracking_required()
+    ]
+    payment_paid_total = sum(
+        int(reservation.payment_amount or 0)
+        for reservation in payment_target_reservations
+        if reservation.payment_status == Reservation.PAYMENT_STATUS_PAID
+    )
+    payment_unpaid_total = sum(
+        int(reservation.payment_amount or 0)
+        for reservation in payment_target_reservations
+        if reservation.payment_status == Reservation.PAYMENT_STATUS_UNPAID
+    )
+    payment_waived_total = sum(
+        int(reservation.payment_amount or 0)
+        for reservation in payment_target_reservations
+        if reservation.payment_status == Reservation.PAYMENT_STATUS_WAIVED
+    )
+
+    summary = {
+        "lesson_count": len(lesson_rows),
+        "today_lesson_count": len(today_rows),
+        "participant_count": sum(row["participant_count"] for row in lesson_rows),
+        "today_participant_count": sum(row["participant_count"] for row in today_rows),
+        "waitlist_count": sum(row["waitlist_count"] for row in lesson_rows),
+        "pending_count": sum(row["pending_count"] for row in lesson_rows),
+        "attention_count": len(attention_rows),
+        "payment_target_count": len(payment_target_reservations),
+        "payment_paid_total": payment_paid_total,
+        "payment_unpaid_total": payment_unpaid_total,
+        "payment_waived_total": payment_waived_total,
+    }
+
+    return render(
+        request,
+        "coach/today_lessons.html",
+        {
+            "coach_options": ([{"pk": "all", "display_name": "全コーチ"}] + list(coach_queryset)) if is_staff_mode else coach_queryset,
+            "selected_coach": selected_coach,
+            "selected_coach_id": selected_coach_id,
+            "is_staff_mode": is_staff_mode,
+            "display_days": display_days,
+            "range_start": range_start,
+            "range_end": range_end,
+            "grouped_days": grouped_days,
+            "lesson_rows": lesson_rows,
+            "today_rows": today_rows,
+            "upcoming_rows": upcoming_rows,
+            "attention_rows": attention_rows[:10],
+            "summary": summary,
+        },
+    )
+
+
+@login_required
+@require_GET
+def coach_fixed_lesson_weekly(request):
+    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
+        return HttpResponse("Forbidden", status=403)
+
+    User = get_user_model()
+    today = timezone.localdate()
+    coach_queryset = User.objects.filter(role__in=("coach", "contractor_coach")).order_by("full_name", "username", "id")
+
+    # コーチ本人は staff 権限の有無にかかわらず、必ず自分の担当スケジュールを表示する。
+    # 管理者だけが coach_id で表示対象コーチを切り替えられる。
+    if _is_coach_user(request.user):
+        selected_coach = request.user
+        selected_coach_id = str(request.user.pk)
+        is_staff_mode = False
+    else:
+        selected_coach_id = (request.GET.get("coach_id") or "").strip()
+        selected_coach = (
+            coach_queryset.filter(pk=selected_coach_id).first() if selected_coach_id else coach_queryset.first()
+        )
+        selected_coach_id = str(selected_coach.pk) if selected_coach else ""
+        is_staff_mode = True
+
+    display_weeks = 12
+    week_start, week_end = _week_range_for_display(today)
+    display_until = today + timedelta(days=display_weeks * 7)
+
+    fixed_lessons = []
+    fixed_queryset = (
+        FixedLesson.objects.filter(is_active=True)
+        .select_related("coach", "coach_2", "coach_3", "court")
+        .prefetch_related("members")
+        .order_by("weekday", "start_hour", "id")
+    )
+
+    weekday_labels = dict(FixedLesson.WEEKDAY_CHOICES)
+
+    for fixed in fixed_queryset:
+        repeat_start = getattr(fixed, "start_date", None) or today
+        if repeat_start < today:
+            repeat_start = today
+
+        initial_offset = (int(fixed.weekday) - repeat_start.weekday()) % 7
+
+        for week_index in range(max(int(getattr(fixed, "weeks_ahead", 8) or 8), 1)):
+            target_date = repeat_start + timedelta(days=initial_offset + (7 * week_index))
+            if target_date > display_until:
+                break
+
+            start_at, end_at = fixed._build_datetimes_for_date(target_date)
+
+            slot_availability = (
+                CoachAvailability.objects.filter(
+                    coach=fixed.primary_coach() if hasattr(fixed, "primary_coach") else fixed.coach,
+                    court=fixed.court,
+                    lesson_type=fixed.lesson_type,
+                    start_at=start_at,
+                    end_at=end_at,
+                )
+                .select_related("substitute_coach")
+                .first()
+            )
+
+            if selected_coach is not None and not (
+                _fixed_lesson_includes_coach(fixed, selected_coach)
+                or (
+                    slot_availability
+                    and slot_availability.substitute_coach_id == selected_coach.pk
+                )
+            ):
+                continue
+
+            members = list(
+                fixed.members.all().order_by("full_name", "username", "id")
+            )
+
+            week_reservations = list(
+                Reservation.objects.filter(
+                    fixed_lesson=fixed,
+                    start_at=start_at,
+                    end_at=end_at,
+                    status=Reservation.STATUS_ACTIVE,
+                )
+                .select_related("user", "coach", "substitute_coach", "court")
+                .order_by("user__full_name", "user__username", "id")
+            )
+
+            waitlist_count = 0
+            try:
+                waitlist_count = LessonWaitlist.objects.filter(
+                    fixed_lesson=fixed,
+                    start_at=start_at,
+                    end_at=end_at,
+                    status=LessonWaitlist.STATUS_WAITING,
+                ).count()
+            except Exception:
+                waitlist_count = 0
+
+            member_names = [member.display_name() for member in members]
+            reservation_names = [reservation.user.display_name() for reservation in week_reservations]
+            assigned_coach = (
+                slot_availability.substitute_coach
+                if slot_availability and slot_availability.substitute_coach
+                else (fixed.primary_coach() if hasattr(fixed, "primary_coach") else fixed.coach)
+            )
+
+            fixed_lessons.append(
+                {
+                    "fixed_lesson": fixed,
+                    "weekday_label": weekday_labels.get(fixed.weekday, str(fixed.weekday)),
+                    "target_date": target_date,
+                    "start_at": start_at,
+                    "end_at": end_at,
+                    "assigned_coach_name": _display_name(assigned_coach),
+                    "normal_coach_name": _fixed_lesson_coach_names(fixed),
+                    "substitute_coach_name": _display_name(slot_availability.substitute_coach)
+                    if slot_availability and slot_availability.substitute_coach
+                    else "",
+                    "has_substitute": bool(slot_availability and slot_availability.substitute_coach),
+                    "member_count": len(member_names),
+                    "member_names": member_names,
+                    "reservation_count": max(len(reservation_names), len(member_names)),
+                    "reservation_names": reservation_names,
+                    "waitlist_count": waitlist_count,
+                    "capacity": fixed.effective_capacity() if hasattr(fixed, "effective_capacity") else fixed.capacity,
+                    "slot_availability": slot_availability,
+                }
+            )
+
+    fixed_lessons = sorted(fixed_lessons, key=lambda row: (row["target_date"], row["start_at"], row["fixed_lesson"].id))
+
+    return render(
+        request,
+        "coach/fixed_lesson_weekly.html",
+        {
+            "coach_options": coach_queryset,
+            "selected_coach": selected_coach,
+            "selected_coach_id": selected_coach_id,
+            "fixed_lessons": fixed_lessons,
+            "week_start": today,
+            "week_end": display_until,
+            "week_label": f"{today:%Y-%m-%d} 〜 {display_until:%Y-%m-%d}",
+            "display_weeks": display_weeks,
+            "is_staff_mode": is_staff_mode,
+        },
+    )
+
+
+
+
+def _user_can_access_stringing_order(user, order):
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if _is_staff_like(user):
+        return True
+    if getattr(order, "user_id", None) == getattr(user, "pk", None):
+        return True
+    if getattr(order, "assigned_coach_id", None) == getattr(user, "pk", None):
+        return True
+    return False
+
+
+def _user_can_manage_stringing_order(user, order):
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if _is_staff_like(user):
+        return True
+    if _is_coach_user(user) and getattr(order, "assigned_coach_id", None) == getattr(user, "pk", None):
+        return True
+    return False
+
+
+@login_required
+@require_GET
+def reservation_detail(request, pk):
+    reservation = get_object_or_404(
+        Reservation.objects.select_related(
+            "user",
+            "coach",
+            "substitute_coach",
+            "court",
+            "availability",
+            "fixed_lesson",
+        ).prefetch_related("ticket_consumptions__purchase", "ticket_ledgers"),
+        pk=pk,
+    )
+
+    if not _user_can_access_reservation(request.user, reservation):
+        return HttpResponse("Forbidden", status=403)
+
+    can_cancel, cancel_reason = _can_user_cancel_reservation(request.user, reservation)
+    can_manage_request = _coach_can_manage_request(request.user, reservation) and reservation.status == Reservation.STATUS_PENDING
+
+    ticket_consumption_rows = []
+    for consumption in reservation.ticket_consumptions.select_related("purchase").order_by("created_at", "id"):
+        ticket_consumption_rows.append(
+            {
+                "consumption": consumption,
+                "unit_price_label": consumption.unit_price_label(),
+                "is_refunded": bool(consumption.refunded_at),
+            }
+        )
+
+    ticket_ledger_rows = list(
+        reservation.ticket_ledgers.select_related("created_by").order_by("-created_at", "-id")[:20]
+    )
+
+    same_slot_reservations = list(
+        Reservation.objects.select_related("user", "coach", "substitute_coach", "court")
+        .filter(
+            coach=reservation.coach,
+            court=reservation.court,
+            lesson_type=reservation.lesson_type,
+            start_at=reservation.start_at,
+            end_at=reservation.end_at,
+            status=Reservation.STATUS_ACTIVE,
+        )
+        .order_by("user__full_name", "user__username", "id")
+    )
+
+    same_slot_waitlists = list(
+        LessonWaitlist.objects.select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
+        .filter(
+            coach=reservation.coach,
+            court=reservation.court,
+            lesson_type=reservation.lesson_type,
+            start_at=reservation.start_at,
+            end_at=reservation.end_at,
+        )
+        .order_by("status", "created_at", "id")
+    )
+
+    capacity = _capacity_for_reservation_slot(reservation)
+    active_count = len(same_slot_reservations)
+    waitlist_rows = []
+    for waitlist in same_slot_waitlists:
+        can_promote = (
+            waitlist.status == LessonWaitlist.STATUS_WAITING
+            and reservation.start_at >= timezone.now()
+            and active_count < capacity
+            and _coach_can_manage_waitlist(request.user, waitlist)
+        )
+        waitlist_rows.append(
+            {
+                "waitlist": waitlist,
+                "can_promote": can_promote,
+                "can_cancel": (
+                    waitlist.status == LessonWaitlist.STATUS_WAITING
+                    and waitlist.start_at >= timezone.now()
+                    and _user_can_manage_waitlist(request.user, waitlist)
+                ),
+            }
+        )
+
+    return render(
+        request,
+        "reservations/detail.html",
+        {
+            "reservation": reservation,
+            "can_cancel": can_cancel,
+            "cancel_reason": cancel_reason,
+            "can_manage_request": can_manage_request,
+            "assigned_coach_name": reservation.assigned_coach_display(),
+            "normal_coach_name": reservation.normal_coach_display(),
+            "substitute_coach_name": _display_name(reservation.substitute_coach) if reservation.substitute_coach else "",
+            "has_substitute": reservation.has_substitute_coach(),
+            "ticket_consumption_rows": ticket_consumption_rows,
+            "ticket_ledger_rows": ticket_ledger_rows,
+            "same_slot_reservations": same_slot_reservations,
+            "same_slot_waitlist_rows": waitlist_rows,
+            "slot_capacity": capacity,
+            "slot_active_count": active_count,
+            "slot_remaining_count": max(capacity - active_count, 0),
+        },
+    )
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def stringing_order_detail(request, pk):
+    survey_redirect = _require_schedule_survey(request)
+    if survey_redirect:
+        return survey_redirect
+
+    order = get_object_or_404(
+        StringingOrder.objects.select_related("user", "assigned_coach"),
+        pk=pk,
+    )
+
+    if not _user_can_access_stringing_order(request.user, order):
+        return HttpResponse("Forbidden", status=403)
+
+    can_manage = _user_can_manage_stringing_order(request.user, order)
+
+    if request.method == "POST":
+        if not can_manage:
+            return HttpResponse("Forbidden", status=403)
+
+        new_status = (request.POST.get("new_status") or "").strip()
+        valid_statuses = {value for value, _label in StringingOrder.STATUS_CHOICES}
+
+        if new_status not in valid_statuses:
+            messages.error(request, "更新する状態が不正です。")
+            return redirect("club:stringing_order_detail", pk=order.pk)
+
+        if order.status == new_status:
+            messages.info(request, "状態に変更はありません。")
+            return redirect("club:stringing_order_detail", pk=order.pk)
+
+        try:
+            order.status = new_status
+            order.save(update_fields=["status", "updated_at"])
+            messages.success(request, f"ガット張り依頼の状態を「{order.get_status_display()}」に更新しました。")
+        except Exception as e:
+            messages.error(request, f"ガット張り依頼の状態更新に失敗しました: {e}")
+
+        return redirect("club:stringing_order_detail", pk=order.pk)
+
+    preferred_finish_date = getattr(order, "preferred_finish_date", None)
+    if preferred_finish_date:
+        try:
+            preferred_finish_date_label = preferred_finish_date.strftime("%Y-%m-%d")
+        except Exception:
+            preferred_finish_date_label = str(preferred_finish_date)
+    else:
+        preferred_finish_date_label = "-"
+
+    return render(
+        request,
+        "stringing/detail.html",
+        {
+            "order": order,
+            "can_manage": can_manage,
+            "status_choices": StringingOrder.STATUS_CHOICES,
+            "status_label": _stringing_status_label(order),
+            "delivery_label": _stringing_delivery_label(order),
+            "preferred_finish_date": preferred_finish_date_label,
+            "total_price": order.total_price(),
+        },
+    )
+
+@login_required
+@require_GET
+def coach_ticket_summary(request):
+    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
+        return HttpResponse("Forbidden", status=403)
+
+    User = get_user_model()
+    today = timezone.localdate()
+
+    try:
+        selected_year = int(request.GET.get("year") or today.year)
+    except Exception:
+        selected_year = today.year
+
+    try:
+        selected_month = int(request.GET.get("month") or today.month)
+    except Exception:
+        selected_month = today.month
+
+    if selected_month < 1 or selected_month > 12:
+        selected_month = today.month
+
+    coach_queryset = User.objects.filter(role__in=("coach", "contractor_coach")).order_by("full_name", "username", "id")
+    can_select_coach = bool(
+        request.user.is_staff
+        or request.user.is_superuser
+        or (
+            request.user.role == User.ROLE_COACH
+            and request.user.full_name in MAIN_COACH_NAMES
+        )
+    )
+    if can_select_coach:
+        selected_coach_id = (request.GET.get("coach_id") or "").strip()
+        selected_coach = (
+            coach_queryset.filter(pk=selected_coach_id).first() if selected_coach_id else coach_queryset.first()
+        )
+    else:
+        selected_coach = request.user
+        selected_coach_id = str(request.user.pk)
+
+    month_start, next_month = _month_start_end(selected_year, selected_month)
+
+    reservations = []
+    total_tickets = 0
+    total_amount = 0
+    breakdown_map = {}
+    lesson_type_map = {}
+
+    reservation_qs = (
+        Reservation.objects.filter(
+            start_at__date__gte=month_start,
+            start_at__date__lt=next_month,
+        )
+        .select_related("user", "coach", "substitute_coach", "court")
+        .prefetch_related("ticket_consumptions__purchase")
+        .order_by("start_at", "id")
+    )
+
+    if selected_coach:
+        filtered_reservations = []
+        for reservation in reservation_qs:
+            if _assigned_coach_id_for_reservation(reservation) == selected_coach.pk:
+                filtered_reservations.append(reservation)
+
+        for reservation in filtered_reservations:
+            active_consumptions = (
+                reservation.ticket_consumptions.filter(refunded_at__isnull=True)
+                .select_related("purchase")
+                .order_by("created_at", "id")
+            )
+
+            row_breakdown_map = {}
+            row_tickets = 0
+            row_amount = 0
+
+            for consumption in active_consumptions:
+                unit_price = int(consumption.unit_price_snapshot or 0)
+                tickets_used = int(consumption.tickets_used or 0)
+
+                row_breakdown_map.setdefault(unit_price, 0)
+                row_breakdown_map[unit_price] += tickets_used
+
+                breakdown_map.setdefault(unit_price, 0)
+                breakdown_map[unit_price] += tickets_used
+
+                row_tickets += tickets_used
+                row_amount += unit_price * tickets_used
+
+            if row_tickets <= 0:
+                continue
+
+            lesson_type_map.setdefault(reservation.get_lesson_type_display(), 0)
+            lesson_type_map[reservation.get_lesson_type_display()] += row_tickets
+
+            total_tickets += row_tickets
+            total_amount += row_amount
+
+            breakdown_items = []
+            for unit_price, ticket_count in sorted(row_breakdown_map.items(), key=lambda x: x[0]):
+                label = f"{unit_price}円券" if unit_price > 0 else "価格不明券"
+                breakdown_items.append(
+                    {
+                        "unit_price": unit_price,
+                        "label": label,
+                        "tickets": ticket_count,
+                        "amount": unit_price * ticket_count,
+                    }
+                )
+
+            reservations.append(
+                {
+                    "reservation": reservation,
+                    "tickets": row_tickets,
+                    "amount": row_amount,
+                    "breakdown_items": breakdown_items,
+                    "assigned_coach_name": reservation.assigned_coach_display(),
+                    "normal_coach_name": reservation.normal_coach_display(),
+                    "substitute_coach_name": _display_name(reservation.substitute_coach)
+                    if reservation.substitute_coach
+                    else "",
+                    "has_substitute": reservation.has_substitute_coach(),
+                }
+            )
+
+    breakdown_rows = []
+    for unit_price, ticket_count in sorted(breakdown_map.items(), key=lambda x: x[0]):
+        breakdown_rows.append(
+            {
+                "unit_price": unit_price,
+                "label": f"{unit_price}円券" if unit_price > 0 else "価格不明券",
+                "tickets": ticket_count,
+                "amount": unit_price * ticket_count,
+            }
+        )
+
+    lesson_type_rows = []
+    for lesson_label, ticket_count in sorted(lesson_type_map.items(), key=lambda x: x[0]):
+        lesson_type_rows.append(
+            {
+                "lesson_label": lesson_label,
+                "tickets": ticket_count,
+            }
+        )
+
+    prev_year = selected_year
+    prev_month = selected_month - 1
+    if prev_month == 0:
+        prev_month = 12
+        prev_year -= 1
+
+    next_year = selected_year
+    next_month = selected_month + 1
+    if next_month == 13:
+        next_month = 1
+        next_year += 1
+
+    return render(
+        request,
+        "coach/ticket_summary.html",
+        {
+            "coach_options": coach_queryset,
+            "selected_coach": selected_coach,
+            "selected_coach_id": selected_coach_id,
+            "selected_year": selected_year,
+            "selected_month": selected_month,
+            "month_label": f"{selected_year}年{selected_month}月",
+            "prev_year": prev_year,
+            "prev_month": prev_month,
+            "next_year": next_year,
+            "next_month": next_month,
+            "breakdown_rows": breakdown_rows,
+            "lesson_type_rows": lesson_type_rows,
+            "reservation_rows": reservations,
+            "total_tickets": total_tickets,
+            "total_amount": total_amount,
+            "can_select_coach": can_select_coach,
+        },
+    )
+
+
+
+EXPENSE_TYPE_PERSONAL = "personal"
+EXPENSE_TYPE_COMMON = "common"
+EXPENSE_TYPE_SALARY_PAYOUT = "salary_payout"
+EXPENSE_TYPE_REIMBURSEMENT_PAYOUT = "reimbursement_payout"
+
+EXPENSE_RECEIPT_NONE = "none"
+EXPENSE_RECEIPT_HAS = "has"
+
+EXPENSE_RECEIPT_CHECK_UNCHECKED = "unchecked"
+EXPENSE_RECEIPT_CHECK_CHECKED = "checked"
+
+EXPENSE_APPROVAL_DRAFT = "draft"
+EXPENSE_APPROVAL_SUBMITTED = "submitted"
+EXPENSE_APPROVAL_APPROVED = "approved"
+EXPENSE_APPROVAL_RETURNED = "returned"
+# 雨天中止でコート運営会社から返金されるまで、通常経費から除外する状態です。
+EXPENSE_APPROVAL_REFUND_PENDING = "refund_pending"
+EXPENSE_APPROVAL_REFUNDED = "refunded"
+
+EXPENSE_TYPE_CHOICES = (
+    (EXPENSE_TYPE_PERSONAL, "本人立替"),
+    (EXPENSE_TYPE_COMMON, "共通経費"),
+)
+
+EXPENSE_TYPE_LABELS = {
+    EXPENSE_TYPE_PERSONAL: "本人立替",
+    EXPENSE_TYPE_COMMON: "共通経費",
+    EXPENSE_TYPE_SALARY_PAYOUT: "給与支払い",
+    EXPENSE_TYPE_REIMBURSEMENT_PAYOUT: "本人立替精算支払い",
+}
+
+EXPENSE_PAYOUT_TYPES = {
+    EXPENSE_TYPE_SALARY_PAYOUT,
+    EXPENSE_TYPE_REIMBURSEMENT_PAYOUT,
+}
+
+EXPENSE_RECEIPT_CHOICES = (
+    (EXPENSE_RECEIPT_NONE, "なし"),
+    (EXPENSE_RECEIPT_HAS, "あり"),
+)
+
+EXPENSE_RECEIPT_CHECK_CHOICES = (
+    (EXPENSE_RECEIPT_CHECK_UNCHECKED, "未確認"),
+    (EXPENSE_RECEIPT_CHECK_CHECKED, "確認済み"),
+)
+
+EXPENSE_APPROVAL_CHOICES = (
+    (EXPENSE_APPROVAL_DRAFT, "下書き"),
+    (EXPENSE_APPROVAL_SUBMITTED, "提出済み"),
+    (EXPENSE_APPROVAL_APPROVED, "承認"),
+    (EXPENSE_APPROVAL_RETURNED, "差戻し"),
+    (EXPENSE_APPROVAL_REFUND_PENDING, "雨天返金待ち"),
+    (EXPENSE_APPROVAL_REFUNDED, "雨天返金済み"),
+)
+
+EXPENSE_NOTE_META_PREFIX = "__EXPENSE_META__"
+
+
+def _choice_label(choice_list, value):
+    return dict(choice_list).get(value, value)
+
+
+def _expense_default_meta():
+    return {
+        "expense_type": EXPENSE_TYPE_COMMON,
+        "receipt_status": EXPENSE_RECEIPT_NONE,
+        "receipt_check_status": EXPENSE_RECEIPT_CHECK_UNCHECKED,
+        "approval_status": EXPENSE_APPROVAL_APPROVED,
+    }
+
+
+def _expense_build_note(raw_note, *, expense_type, receipt_status, receipt_check_status, approval_status, extra_meta=None):
+    payload = {
+        "expense_type": expense_type,
+        "receipt_status": receipt_status,
+        "receipt_check_status": receipt_check_status,
+        "approval_status": approval_status,
+    }
+    if extra_meta:
+        payload.update(extra_meta)
+    clean_note = (raw_note or "").strip()
+    return f"{EXPENSE_NOTE_META_PREFIX}{json.dumps(payload, ensure_ascii=False)}\\n{clean_note}"
+
+
+def _expense_parse_note(stored_note):
+    default_meta = _expense_default_meta()
+    text = (stored_note or "")
+    if not text.startswith(EXPENSE_NOTE_META_PREFIX):
+        return {
+            **default_meta,
+            "plain_note": text.strip(),
+        }
+
+    try:
+        first_line, plain_note = text.split("\\n", 1)
+    except ValueError:
+        first_line = text
+        plain_note = ""
+
+    meta_json = first_line[len(EXPENSE_NOTE_META_PREFIX):].strip()
+    try:
+        parsed = json.loads(meta_json or "{}")
+    except Exception:
+        parsed = {}
+
+    merged = {
+        **default_meta,
+        **parsed,
+        "plain_note": (plain_note or "").strip(),
+    }
+    return merged
+
+
+def _expense_is_refund_status(status):
+    return status in (
+        EXPENSE_APPROVAL_REFUND_PENDING,
+        EXPENSE_APPROVAL_REFUNDED,
+    )
+
+
+def _court_facility_key_for_court(court):
+    """
+    コート番号ではなく、施設単位でコート費用を紐づけます。
+    例: 西猪名公園テニスコート / 尼崎記念公園テニスコート
+    """
+    if not court:
+        return "facility:unknown"
+
+    court_type = str(getattr(court, "court_type", "") or "").strip()
+    if court_type:
+        return f"facility:{court_type}"
+
+    court_name = str(getattr(court, "name", "") or court or "").strip()
+    if court_name:
+        return f"facility_name:{court_name}"
+
+    return "facility:unknown"
+
+
+def _court_facility_label_for_court(court):
+    if not court:
+        return "現地"
+
+    court_type = str(getattr(court, "court_type", "") or "").strip()
+    label_map = {
+        "sono": "西猪名公園テニスコート",
+        "amagasaki": "尼崎記念公園テニスコート",
+        "other": "その他テニスコート",
+    }
+    if court_type in label_map:
+        return label_map[court_type]
+
+    court_name = str(getattr(court, "name", "") or court or "").strip()
+    return court_name or "現地"
+
+
+def _court_refund_slot_key(*, lesson_date, start_at, end_at, court):
+    start_local = timezone.localtime(start_at) if timezone.is_aware(start_at) else start_at
+    end_local = timezone.localtime(end_at) if timezone.is_aware(end_at) else end_at
+    if hasattr(lesson_date, "isoformat"):
+        date_text = lesson_date.isoformat()
+    else:
+        date_text = str(lesson_date)
+    return (
+        f"{date_text}|"
+        f"{_court_facility_key_for_court(court)}|"
+        f"{start_local:%H:%M}|"
+        f"{end_local:%H:%M}"
+    )
+
+
+def _availability_court_refund_slot_key(availability):
+    start_local = timezone.localtime(availability.start_at) if timezone.is_aware(availability.start_at) else availability.start_at
+    lesson_date = start_local.date()
+    return _court_refund_slot_key(
+        lesson_date=lesson_date,
+        start_at=availability.start_at,
+        end_at=availability.end_at,
+        court=availability.court,
+    )
+
+
+def _availability_court_refund_lesson_label(availability):
+    start_local = timezone.localtime(availability.start_at) if timezone.is_aware(availability.start_at) else availability.start_at
+    end_local = timezone.localtime(availability.end_at) if timezone.is_aware(availability.end_at) else availability.end_at
+    coach = getattr(availability, "substitute_coach", None) or getattr(availability, "coach", None)
+    return (
+        f"{start_local:%Y/%m/%d} {start_local:%H:%M}〜{end_local:%H:%M} / "
+        f"{_court_facility_label_for_court(getattr(availability, 'court', None))} / "
+        f"{_display_name(coach)} / {availability.get_lesson_type_display()}"
+    )
+
+
+def _court_refund_lesson_choices_for_user(user, *, start_date=None, end_date=None):
+    qs = CoachAvailability.objects.select_related("coach", "substitute_coach", "court").all()
+
+    if start_date:
+        qs = qs.filter(start_at__date__gte=start_date)
+    if end_date:
+        qs = qs.filter(start_at__date__lte=end_date)
+
+    if _is_coach_user(user) and not (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)):
+        qs = qs.filter(Q(coach=user) | Q(substitute_coach=user))
+
+    choices = OrderedDict()
+    for availability in qs.order_by("-start_at", "court_id", "coach_id", "id"):
+        try:
+            key = _availability_court_refund_slot_key(availability)
+            if key in choices:
+                continue
+            choices[key] = {
+                "key": key,
+                "label": _availability_court_refund_lesson_label(availability),
+                "facility_label": _court_facility_label_for_court(availability.court),
+            }
+        except Exception:
+            continue
+
+    return list(choices.values())
+
+
+def _court_expense_matches_availability(expense, availability):
+    """
+    雨天中止の対象コート費用を安全に絞り込みます。
+
+    新運用では、経費登録時に選んだ「施設名＋日付＋時間帯」のキーで一致判定します。
+    コート番号は直前に決まるため、判定には使いません。
+    既存データ救済用として、メモ内の施設名・コート名・court:<ID> でも fallback 判定します。
+    """
+    if not expense or not availability or expense.category != CoachExpense.CATEGORY_COURT:
+        return False
+
+    try:
+        lesson_date = timezone.localtime(availability.start_at).date() if timezone.is_aware(availability.start_at) else availability.start_at.date()
+    except Exception:
+        return False
+
+    if expense.expense_date != lesson_date:
+        return False
+
+    meta = _expense_parse_note(expense.note)
+    slot_key = str(meta.get("court_refund_slot_key") or "").strip()
+    expected_slot_key = _availability_court_refund_slot_key(availability)
+    if slot_key and slot_key == expected_slot_key:
+        return True
+
+    plain_note = str(meta.get("plain_note") or "")
+    facility_label = _court_facility_label_for_court(getattr(availability, "court", None))
+    court_name = str(getattr(availability, "court", "") or "").strip()
+    court_token = f"court:{getattr(availability, 'court_id', '')}"
+    return bool(
+        (facility_label and facility_label in plain_note)
+        or (court_name and court_name in plain_note)
+        or (getattr(availability, "court_id", None) and court_token in plain_note)
+    )
+
+
+def _mark_court_expenses_refund_pending_for_rain_cancel(availability, *, changed_by=None):
+    """
+    承認済みの対象コート費用を、雨天返金待ちへ自動差戻しします。
+    返金待ち・返金済み・未承認の経費は変更しません。
+    """
+    if not availability:
+        return 0
+
+    try:
+        lesson_date = timezone.localtime(availability.start_at).date() if timezone.is_aware(availability.start_at) else availability.start_at.date()
+    except Exception:
+        return 0
+
+    changed_count = 0
+    court_expenses = CoachExpense.objects.filter(
+        expense_date=lesson_date,
+        category=CoachExpense.CATEGORY_COURT,
+    ).order_by("id")
+
+    for expense in court_expenses:
+        meta = _expense_parse_note(expense.note)
+        if meta.get("approval_status") != EXPENSE_APPROVAL_APPROVED:
+            continue
+        if not _court_expense_matches_availability(expense, availability):
+            continue
+
+        extra_meta = {
+            key: value
+            for key, value in meta.items()
+            if key not in {
+                "expense_type",
+                "receipt_status",
+                "receipt_check_status",
+                "approval_status",
+                "plain_note",
+            }
+        }
+        extra_meta.update(
+            {
+                "rain_canceled_at": timezone.now().isoformat(),
+                "rain_canceled_by_id": getattr(changed_by, "pk", None),
+                "rain_canceled_by_name": _display_name(changed_by),
+                "rain_canceled_lesson_label": _availability_court_refund_lesson_label(availability),
+            }
+        )
+        expense.note = _expense_build_note(
+            meta.get("plain_note", ""),
+            expense_type=meta.get("expense_type", EXPENSE_TYPE_COMMON),
+            receipt_status=meta.get("receipt_status", EXPENSE_RECEIPT_NONE),
+            receipt_check_status=meta.get("receipt_check_status", EXPENSE_RECEIPT_CHECK_UNCHECKED),
+            approval_status=EXPENSE_APPROVAL_REFUND_PENDING,
+            extra_meta=extra_meta,
+        )
+        expense.save(update_fields=["note"])
+        changed_count += 1
+
+    return changed_count
+
+
+def _expense_meta_row(expense):
+    meta = _expense_parse_note(getattr(expense, "note", ""))
+    return {
+        "expense": expense,
+        "plain_note": meta["plain_note"],
+        "expense_type": meta["expense_type"],
+        "expense_type_label": EXPENSE_TYPE_LABELS.get(meta["expense_type"], meta["expense_type"]),
+        "is_payout": meta["expense_type"] in EXPENSE_PAYOUT_TYPES,
+        "meta": meta,
+        "receipt_status": meta["receipt_status"],
+        "receipt_status_label": _choice_label(EXPENSE_RECEIPT_CHOICES, meta["receipt_status"]),
+        "receipt_check_status": meta["receipt_check_status"],
+        "receipt_check_status_label": _choice_label(EXPENSE_RECEIPT_CHECK_CHOICES, meta["receipt_check_status"]),
+        "approval_status": meta["approval_status"],
+        "approval_status_label": _choice_label(EXPENSE_APPROVAL_CHOICES, meta["approval_status"]),
+        "is_refund_pending": meta["approval_status"] == EXPENSE_APPROVAL_REFUND_PENDING,
+        "is_refunded": meta["approval_status"] == EXPENSE_APPROVAL_REFUNDED,
+        "court_refund_slot_key": meta.get("court_refund_slot_key", ""),
+        "court_refund_lesson_label": meta.get("court_refund_lesson_label", ""),
+        "court_refund_facility_label": meta.get("court_refund_facility_label", ""),
+        "rain_canceled_lesson_label": meta.get("rain_canceled_lesson_label", ""),
+    }
+
+
+def _stringing_status_label(order):
+    try:
+        return order.get_status_display()
+    except Exception:
+        return str(getattr(order, "status", "") or "-")
+
+
+def _stringing_delivery_label(order):
+    if bool(getattr(order, "delivery_requested", False)):
+        return "デリバリー"
+    return "デリバリー無し"
+
+
+def _stringing_status_key(order):
+    return str(getattr(order, "status", "") or "")
+
+
+def _safe_display_name_maybe(user):
+    if not user:
+        return "-"
+    try:
+        return user.display_name()
+    except Exception:
+        return str(user)
+
+
+@login_required
+@require_GET
+def coach_payroll_summary(request):
+    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
+        return HttpResponse("Forbidden", status=403)
+
+    User = get_user_model()
+    today = timezone.localdate()
+
+    try:
+        selected_year = int(request.GET.get("year") or today.year)
+    except Exception:
+        selected_year = today.year
+
+    try:
+        selected_month = int(request.GET.get("month") or today.month)
+    except Exception:
+        selected_month = today.month
+
+    if selected_month < 1 or selected_month > 12:
+        selected_month = today.month
+
+    coach_queryset = User.objects.filter(role__in=("coach", "contractor_coach")).order_by("full_name", "username", "id")
+    is_admin_mode = bool(getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False))
+    if is_admin_mode:
+        selected_coach_id = (request.GET.get("coach_id") or "").strip()
+        selected_coach = (
+            coach_queryset.filter(pk=selected_coach_id).first() if selected_coach_id else coach_queryset.first()
+        )
+    else:
+        selected_coach = request.user
+        selected_coach_id = str(request.user.pk)
+
+    month_start, next_month = _month_start_end(selected_year, selected_month)
+
+    def _money(value):
+        try:
+            return int(value or 0)
+        except Exception:
+            return 0
+
+    is_selected_contractor_coach = bool(
+        selected_coach and getattr(selected_coach, "role", "") == "contractor_coach"
+    )
+    contractor_hourly_wage = _money(getattr(selected_coach, "contractor_hourly_wage", 0)) if selected_coach else 0
+    contractor_work_minutes = 0
+    contractor_work_slot_count = 0
+    contractor_work_slot_keys = set()
+
+    def _reservation_duration_minutes(reservation):
+        try:
+            return max(int((reservation.end_at - reservation.start_at).total_seconds() // 60), 0)
+        except Exception:
+            return 0
+
+    def _add_contractor_work_slot(reservation):
+        nonlocal contractor_work_minutes, contractor_work_slot_count
+        if not is_selected_contractor_coach or not selected_coach:
+            return
+        if reservation.status != Reservation.STATUS_ACTIVE:
+            return
+        key = (
+            str(reservation.lesson_type or ""),
+            str(getattr(reservation, "court_id", "") or ""),
+            _to_event_datetime_str(reservation.start_at) or "",
+            _to_event_datetime_str(reservation.end_at) or "",
+            str(selected_coach.pk),
+        )
+        if key in contractor_work_slot_keys:
+            return
+        contractor_work_slot_keys.add(key)
+        contractor_work_slot_count += 1
+        contractor_work_minutes += _reservation_duration_minutes(reservation)
+
+    def _reservation_coaches_for_split(reservation):
+        """
+        方式A：売上金額ベース配分。
+        1人コーチは100%、複数コーチの固定レッスンは人数で均等按分。
+        代行コーチが入っている予約は、実施者である代行コーチへ100%帰属させます。
+        """
+        if not reservation:
+            return []
+
+        substitute = getattr(reservation, "substitute_coach", None)
+        if substitute and getattr(substitute, "role", "") in ("coach", "contractor_coach"):
+            return [substitute]
+
+        fixed_lesson = getattr(reservation, "fixed_lesson", None)
+        if fixed_lesson:
+            try:
+                coaches = [
+                    coach
+                    for coach in fixed_lesson.all_coaches()
+                    if coach and getattr(coach, "role", "") in ("coach", "contractor_coach")
+                ]
+                if coaches:
+                    return coaches
+            except Exception:
+                pass
+
+        assigned = _assigned_coach_for_reservation(reservation)
+        if assigned and getattr(assigned, "role", "") in ("coach", "contractor_coach"):
+            return [assigned]
+
+        return []
+
+    def _selected_coach_share(reservation):
+        coaches = _reservation_coaches_for_split(reservation)
+        if not selected_coach or not coaches:
+            return 0, 0
+        if selected_coach.pk not in {coach.pk for coach in coaches}:
+            return 0, len(coaches)
+        return 1, len(coaches)
+
+    def _split_amount_for_selected_coach(amount, reservation):
+        numerator, denominator = _selected_coach_share(reservation)
+        if numerator <= 0 or denominator <= 0:
+            return 0
+        return int(_money(amount) * numerator / denominator)
+
+    monthly_expenses = list(
+        CoachExpense.objects.filter(
+            expense_date__gte=month_start,
+            expense_date__lt=next_month,
+        ).select_related("created_by").order_by("expense_date", "id")
+    )
+    expense_meta_rows = [_expense_meta_row(expense) for expense in monthly_expenses]
+
+    reservation_qs = (
+        Reservation.objects.filter(
+            start_at__date__gte=month_start,
+            start_at__date__lt=next_month,
+        )
+        .select_related("user", "coach", "substitute_coach", "court", "fixed_lesson")
+        .prefetch_related("ticket_consumptions__purchase")
+        .order_by("start_at", "id")
+    )
+
+    active_coach_ids = set()
+    active_regular_coach_ids = set()
+    active_contractor_coach_ids = set()
+    for reservation in reservation_qs:
+        if reservation.status != Reservation.STATUS_ACTIVE:
+            continue
+        for coach in _reservation_coaches_for_split(reservation):
+            active_coach_ids.add(coach.pk)
+            if getattr(coach, "role", "") == "contractor_coach":
+                active_contractor_coach_ids.add(coach.pk)
+            else:
+                active_regular_coach_ids.add(coach.pk)
+
+    if not active_coach_ids:
+        active_coach_ids = set(coach_queryset.values_list("pk", flat=True))
+
+    if not active_regular_coach_ids:
+        active_regular_coach_ids = set(coach_queryset.filter(role="coach").values_list("pk", flat=True))
+
+    active_coach_count = len(active_coach_ids)
+    common_expense_participant_count = len(active_regular_coach_ids)
+
+    total_tickets = 0
+    ticket_lesson_amount = 0
+    preopen_paid_amount = 0
+    preopen_unpaid_amount = 0
+    preopen_waived_amount = 0
+    preopen_target_count = 0
+    preopen_paid_count = 0
+    preopen_unpaid_count = 0
+    preopen_waived_count = 0
+
+    breakdown_rows = []
+    reservation_rows = []
+    preopen_rows = []
+    breakdown_map = {}
+
+    if selected_coach:
+        for reservation in reservation_qs:
+            share_numerator, share_denominator = _selected_coach_share(reservation)
+            if share_numerator <= 0 or share_denominator <= 0:
+                continue
+
+            _add_contractor_work_slot(reservation)
+
+            active_consumptions = (
+                reservation.ticket_consumptions.filter(refunded_at__isnull=True)
+                .select_related("purchase")
+                .order_by("created_at", "id")
+            )
+
+            row_breakdown_items = []
+            row_breakdown_map = {}
+            row_tickets = 0
+            row_gross_amount = 0
+
+            for consumption in active_consumptions:
+                unit_price = _money(consumption.unit_price_snapshot)
+                tickets_used = _money(consumption.tickets_used)
+
+                row_breakdown_map.setdefault(unit_price, 0)
+                row_breakdown_map[unit_price] += tickets_used
+
+                row_tickets += tickets_used
+                row_gross_amount += unit_price * tickets_used
+
+            row_share_amount = _split_amount_for_selected_coach(row_gross_amount, reservation)
+            if row_tickets > 0 and row_share_amount > 0:
+                total_tickets += row_tickets
+                ticket_lesson_amount += row_share_amount
+
+                for unit_price, tickets in sorted(row_breakdown_map.items(), key=lambda x: x[0]):
+                    split_amount = int((unit_price * tickets) * share_numerator / share_denominator)
+                    breakdown_map.setdefault(unit_price, {"tickets": 0, "amount": 0})
+                    breakdown_map[unit_price]["tickets"] += tickets
+                    breakdown_map[unit_price]["amount"] += split_amount
+
+                    row_breakdown_items.append(
+                        {
+                            "label": f"{unit_price}円券" if unit_price > 0 else "価格不明券",
+                            "tickets": tickets,
+                            "amount": split_amount,
+                        }
+                    )
+
+                reservation_rows.append(
+                    {
+                        "reservation": reservation,
+                        "tickets": row_tickets,
+                        "gross_amount": row_gross_amount,
+                        "amount": row_share_amount,
+                        "split_denominator": share_denominator,
+                        "is_split": share_denominator > 1,
+                        "breakdown_items": row_breakdown_items,
+                        "assigned_coach_name": reservation.assigned_coach_display(),
+                        "normal_coach_name": reservation.normal_coach_display(),
+                        "substitute_coach_name": _display_name(reservation.substitute_coach)
+                        if reservation.substitute_coach
+                        else "",
+                        "has_substitute": reservation.has_substitute_coach(),
+                        "revenue_kind": "チケット消化",
+                    }
+                )
+
+            if (
+                reservation.status == Reservation.STATUS_ACTIVE
+                and _is_preopen_cash_regular_lesson(reservation.lesson_type, reservation.start_at)
+                and reservation.is_payment_tracking_required()
+            ):
+                payment_amount = _money(reservation.payment_amount or PREOPEN_CASH_PRICE)
+                split_payment_amount = _split_amount_for_selected_coach(payment_amount, reservation)
+                if split_payment_amount <= 0:
+                    continue
+
+                preopen_target_count += 1
+                if reservation.payment_status == Reservation.PAYMENT_STATUS_PAID:
+                    preopen_paid_count += 1
+                    preopen_paid_amount += split_payment_amount
+                elif reservation.payment_status == Reservation.PAYMENT_STATUS_WAIVED:
+                    preopen_waived_count += 1
+                    preopen_waived_amount += split_payment_amount
+                else:
+                    preopen_unpaid_count += 1
+                    preopen_unpaid_amount += split_payment_amount
+
+                preopen_rows.append(
+                    {
+                        "reservation": reservation,
+                        "amount": split_payment_amount,
+                        "gross_amount": payment_amount,
+                        "split_denominator": share_denominator,
+                        "is_split": share_denominator > 1,
+                        "payment_status": reservation.payment_status,
+                        "payment_status_label": reservation.payment_status_badge_label(),
+                        "is_paid": reservation.payment_status == Reservation.PAYMENT_STATUS_PAID,
+                        "is_unpaid": reservation.payment_status == Reservation.PAYMENT_STATUS_UNPAID,
+                        "is_waived": reservation.payment_status == Reservation.PAYMENT_STATUS_WAIVED,
+                        "assigned_coach_name": reservation.assigned_coach_display(),
+                        "normal_coach_name": reservation.normal_coach_display(),
+                        "substitute_coach_name": _display_name(reservation.substitute_coach)
+                        if reservation.substitute_coach
+                        else "",
+                        "has_substitute": reservation.has_substitute_coach(),
+                    }
+                )
+
+        for unit_price, values in sorted(breakdown_map.items(), key=lambda x: x[0]):
+            breakdown_rows.append(
+                {
+                    "label": f"{unit_price}円券" if unit_price > 0 else "価格不明券",
+                    "tickets": values["tickets"],
+                    "amount": values["amount"],
+                }
+            )
+
+    lesson_total_amount = ticket_lesson_amount + preopen_paid_amount
+
+    stringing_order_qs = StringingOrder.objects.filter(
+        created_at__date__gte=month_start,
+        created_at__date__lt=next_month,
+    ).select_related("user", "assigned_coach").order_by("-created_at", "-id")
+
+    assigned_stringing_rows = []
+    assigned_stringing_amount = 0
+    total_stringing_amount = 0
+    stringing_status_totals = {}
+    stringing_delivery_totals = {}
+    unassigned_stringing_count = 0
+
+    for order in stringing_order_qs:
+        order_total = _money(order.total_price())
+        status_key = _stringing_status_key(order).lower()
+
+        if "cancel" not in status_key:
+            total_stringing_amount += order_total
+
+        assigned_coach_id = getattr(order, "assigned_coach_id", None)
+        if not assigned_coach_id:
+            unassigned_stringing_count += 1
+
+        if not selected_coach or assigned_coach_id != selected_coach.pk:
+            continue
+
+        if "cancel" in status_key:
+            continue
+
+        assigned_stringing_amount += order_total
+
+        status_label = _stringing_status_label(order)
+        delivery_label = _stringing_delivery_label(order)
+
+        stringing_status_totals.setdefault(status_label, {"count": 0, "amount": 0})
+        stringing_status_totals[status_label]["count"] += 1
+        stringing_status_totals[status_label]["amount"] += order_total
+
+        stringing_delivery_totals.setdefault(delivery_label, {"count": 0, "amount": 0})
+        stringing_delivery_totals[delivery_label]["count"] += 1
+        stringing_delivery_totals[delivery_label]["amount"] += order_total
+
+        preferred_completion_date = getattr(order, "preferred_completion_date", None)
+        if preferred_completion_date:
+            try:
+                preferred_label = preferred_completion_date.strftime("%Y-%m-%d")
+            except Exception:
+                preferred_label = str(preferred_completion_date)
+        else:
+            preferred_label = "-"
+
+        assigned_stringing_rows.append(
+            {
+                "order": order,
+                "total_price": order_total,
+                "status_label": status_label,
+                "delivery_label": delivery_label,
+                "preferred_label": preferred_label,
+            }
+        )
+
+    stringing_status_rows = [
+        {
+            "label": label,
+            "count": values["count"],
+            "amount": values["amount"],
+        }
+        for label, values in sorted(stringing_status_totals.items(), key=lambda x: x[0])
+    ]
+    stringing_delivery_rows = [
+        {
+            "label": label,
+            "count": values["count"],
+            "amount": values["amount"],
+        }
+        for label, values in sorted(stringing_delivery_totals.items(), key=lambda x: x[0])
+    ]
+
+    approved_common_expense_rows = []
+    approved_personal_expense_rows = []
+    for row in expense_meta_rows:
+        if row["is_payout"]:
+            continue
+        if row["approval_status"] != EXPENSE_APPROVAL_APPROVED:
+            continue
+        if row["expense_type"] == EXPENSE_TYPE_COMMON:
+            approved_common_expense_rows.append(row)
+        else:
+            if selected_coach and getattr(row["expense"].created_by, "pk", None) == selected_coach.pk:
+                approved_personal_expense_rows.append(row)
+
+    approved_common_expense_total = sum(_money(row["expense"].amount) for row in approved_common_expense_rows)
+    personal_reimbursement_amount = sum(_money(row["expense"].amount) for row in approved_personal_expense_rows)
+
+    contractor_hourly_pay_amount = int(contractor_work_minutes * contractor_hourly_wage / 60) if is_selected_contractor_coach else 0
+    contractor_work_hours_text = f"{contractor_work_minutes // 60}時間{contractor_work_minutes % 60:02d}分"
+
+    monthly_contractor_expense_total = 0
+    contractor_month_slot_keys = set()
+    for reservation in reservation_qs:
+        if reservation.status != Reservation.STATUS_ACTIVE:
+            continue
+        coaches = _reservation_coaches_for_split(reservation)
+        for coach in coaches:
+            if getattr(coach, "role", "") != "contractor_coach":
+                continue
+            slot_key = (
+                str(reservation.lesson_type or ""),
+                str(getattr(reservation, "court_id", "") or ""),
+                _to_event_datetime_str(reservation.start_at) or "",
+                _to_event_datetime_str(reservation.end_at) or "",
+                str(coach.pk),
+            )
+            if slot_key in contractor_month_slot_keys:
+                continue
+            contractor_month_slot_keys.add(slot_key)
+            try:
+                minutes = max(int((reservation.end_at - reservation.start_at).total_seconds() // 60), 0)
+            except Exception:
+                minutes = 0
+            hourly_wage = _money(getattr(coach, "contractor_hourly_wage", 0))
+            monthly_contractor_expense_total += int(minutes * hourly_wage / 60)
+
+    common_expense_base_total = approved_common_expense_total + monthly_contractor_expense_total
+    if selected_coach and getattr(selected_coach, "role", "") == "contractor_coach":
+        per_coach_common_expense = 0
+    elif selected_coach and selected_coach.pk in active_regular_coach_ids and common_expense_participant_count > 0:
+        per_coach_common_expense = int(common_expense_base_total / common_expense_participant_count)
+    elif not selected_coach and common_expense_participant_count > 0:
+        per_coach_common_expense = int(common_expense_base_total / common_expense_participant_count)
+    else:
+        per_coach_common_expense = 0
+
+    if is_selected_contractor_coach:
+        lesson_compensation_amount = contractor_hourly_pay_amount
+    else:
+        lesson_compensation_amount = lesson_total_amount
+
+    settlement_before_common = lesson_compensation_amount + assigned_stringing_amount + personal_reimbursement_amount
+    estimated_salary = settlement_before_common - per_coach_common_expense
+    salary_before_common = settlement_before_common
+    total_amount = settlement_before_common
+    total_expense_amount = sum(_money(row["expense"].amount) for row in expense_meta_rows) + monthly_contractor_expense_total
+
+    common_category_totals = {}
+    for row in approved_common_expense_rows:
+        label = row["expense"].get_category_display()
+        common_category_totals.setdefault(label, 0)
+        common_category_totals[label] += _money(row["expense"].amount)
+
+    common_category_rows = [
+        {"label": label, "amount": amount}
+        for label, amount in sorted(common_category_totals.items(), key=lambda x: x[0])
+    ]
+
+    personal_category_totals = {}
+    for row in approved_personal_expense_rows:
+        label = row["expense"].get_category_display()
+        personal_category_totals.setdefault(label, 0)
+        personal_category_totals[label] += _money(row["expense"].amount)
+
+    personal_category_rows = [
+        {"label": label, "amount": amount}
+        for label, amount in sorted(personal_category_totals.items(), key=lambda x: x[0])
+    ]
+
+    prev_year = selected_year
+    prev_month = selected_month - 1
+    if prev_month == 0:
+        prev_month = 12
+        prev_year -= 1
+
+    next_year = selected_year
+    next_month = selected_month + 1
+    if next_month == 13:
+        next_month = 1
+        next_year += 1
+
+    return render(
+        request,
+        "coach/payroll_summary.html",
+        {
+            "coach_options": coach_queryset,
+            "selected_coach": selected_coach,
+            "selected_coach_id": selected_coach_id,
+            "selected_year": selected_year,
+            "selected_month": selected_month,
+            "month_label": f"{selected_year}年{selected_month}月",
+            "prev_year": prev_year,
+            "prev_month": prev_month,
+            "next_year": next_year,
+            "next_month": next_month,
+            "is_staff_mode": is_admin_mode,
+            "is_admin_mode": is_admin_mode,
+            "breakdown_rows": breakdown_rows,
+            "reservation_rows": reservation_rows,
+            "preopen_rows": preopen_rows,
+            "expense_rows": [row["expense"] for row in expense_meta_rows],
+            "expense_meta_rows": expense_meta_rows,
+            "approved_common_expense_rows": approved_common_expense_rows,
+            "approved_personal_expense_rows": approved_personal_expense_rows,
+            "common_category_rows": common_category_rows,
+            "personal_category_rows": personal_category_rows,
+            "stringing_rows": assigned_stringing_rows,
+            "stringing_status_rows": stringing_status_rows,
+            "stringing_delivery_rows": stringing_delivery_rows,
+            "unassigned_stringing_count": unassigned_stringing_count,
+            "total_tickets": total_tickets,
+            "ticket_lesson_amount": ticket_lesson_amount,
+            "preopen_paid_amount": preopen_paid_amount,
+            "preopen_unpaid_amount": preopen_unpaid_amount,
+            "preopen_waived_amount": preopen_waived_amount,
+            "preopen_target_count": preopen_target_count,
+            "preopen_paid_count": preopen_paid_count,
+            "preopen_unpaid_count": preopen_unpaid_count,
+            "preopen_waived_count": preopen_waived_count,
+            "lesson_total_amount": lesson_total_amount,
+            "lesson_compensation_amount": lesson_compensation_amount,
+            "is_selected_contractor_coach": is_selected_contractor_coach,
+            "contractor_hourly_wage": contractor_hourly_wage,
+            "contractor_work_minutes": contractor_work_minutes,
+            "contractor_work_hours_text": contractor_work_hours_text,
+            "contractor_work_slot_count": contractor_work_slot_count,
+            "contractor_hourly_pay_amount": contractor_hourly_pay_amount,
+            "assigned_stringing_amount": assigned_stringing_amount,
+            "total_stringing_amount": total_stringing_amount,
+            "personal_reimbursement_amount": personal_reimbursement_amount,
+            "salary_before_common": salary_before_common,
+            "settlement_before_common": settlement_before_common,
+            "total_amount": total_amount,
+            "total_expense_amount": total_expense_amount,
+            "approved_common_expense_total": approved_common_expense_total,
+            "monthly_contractor_expense_total": monthly_contractor_expense_total,
+            "common_expense_base_total": common_expense_base_total,
+            "common_expense_participant_count": common_expense_participant_count,
+            "per_coach_common_expense": per_coach_common_expense,
+            "active_coach_count": active_coach_count,
+            "estimated_salary": estimated_salary,
+        },
+    )
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def coach_admin_settlement(request):
+    """
+    admin専用の月次精算画面。
+    新しいDBテーブルを増やさず、既存の CoachExpense に給与支払い履歴をメタ情報付きで保存します。
+    created_by は「支払先コーチ」として扱います。
+    """
+    is_admin_mode = bool(getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False))
+    if not is_admin_mode:
+        return HttpResponse("Forbidden", status=403)
+
+    User = get_user_model()
+    today = timezone.localdate()
+
+    try:
+        selected_year = int(request.GET.get("year") or request.POST.get("year") or today.year)
+    except Exception:
+        selected_year = today.year
+
+    try:
+        selected_month = int(request.GET.get("month") or request.POST.get("month") or today.month)
+    except Exception:
+        selected_month = today.month
+
+    if selected_month < 1 or selected_month > 12:
+        selected_month = today.month
+
+    month_start, next_month = _month_start_end(selected_year, selected_month)
+    coach_queryset = User.objects.filter(role__in=("coach", "contractor_coach")).order_by("full_name", "username", "id")
+
+    def _money(value):
+        try:
+            return int(value or 0)
+        except Exception:
+            return 0
+
+    def _month_url(year_value, month_value):
+        return f"{reverse('club:coach_admin_settlement')}?{urlencode({'year': year_value, 'month': month_value})}"
+
+    def _payout_redirect():
+        return _month_url(selected_year, selected_month)
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "create_payout":
+            coach_id = (request.POST.get("coach_id") or "").strip()
+            payout_type = (request.POST.get("payout_type") or "").strip()
+            raw_amount = (request.POST.get("amount") or "").strip()
+            raw_paid_date = (request.POST.get("paid_date") or "").strip()
+            note = (request.POST.get("note") or "").strip()
+
+            target_coach = coach_queryset.filter(pk=coach_id).first()
+            if not target_coach:
+                messages.error(request, "支払先コーチを選択してください。")
+                return redirect(_payout_redirect())
+
+            if payout_type not in EXPENSE_PAYOUT_TYPES:
+                messages.error(request, "支払種別が不正です。")
+                return redirect(_payout_redirect())
+
+            try:
+                amount_value = int(raw_amount or "0")
+            except Exception:
+                messages.error(request, "金額は整数で入力してください。")
+                return redirect(_payout_redirect())
+
+            if amount_value <= 0:
+                messages.error(request, "金額は1円以上で入力してください。")
+                return redirect(_payout_redirect())
+
+            try:
+                paid_date = date.fromisoformat(raw_paid_date) if raw_paid_date else timezone.localdate()
+            except Exception:
+                messages.error(request, "支払日の形式が正しくありません。")
+                return redirect(_payout_redirect())
+
+            try:
+                CoachExpense.objects.create(
+                    expense_date=paid_date,
+                    category=CoachExpense.CATEGORY_OTHER,
+                    amount=amount_value,
+                    note=_expense_build_note(
+                        note,
+                        expense_type=payout_type,
+                        receipt_status=EXPENSE_RECEIPT_NONE,
+                        receipt_check_status=EXPENSE_RECEIPT_CHECK_CHECKED,
+                        approval_status=EXPENSE_APPROVAL_APPROVED,
+                        extra_meta={
+                            "record_kind": "coach_payout",
+                            "recorded_by_id": getattr(request.user, "pk", None),
+                            "recorded_by_name": _display_name(request.user),
+                        },
+                    ),
+                    created_by=target_coach,
+                )
+                messages.success(
+                    request,
+                    f"{_display_name(target_coach)}さんへの{EXPENSE_TYPE_LABELS.get(payout_type, payout_type)} {amount_value:,}円を記録しました。",
+                )
+            except Exception as e:
+                messages.error(request, f"支払い履歴を保存できませんでした: {e}")
+
+            return redirect(_payout_redirect())
+
+    reservations = list(
+        Reservation.objects.filter(
+            start_at__date__gte=month_start,
+            start_at__date__lt=next_month,
+            status=Reservation.STATUS_ACTIVE,
+        )
+        .select_related("user", "coach", "substitute_coach", "court", "fixed_lesson")
+        .prefetch_related("ticket_consumptions__purchase")
+        .order_by("start_at", "id")
+    )
+
+    def _reservation_coaches_for_split(reservation):
+        substitute = getattr(reservation, "substitute_coach", None)
+        if substitute and getattr(substitute, "role", "") in ("coach", "contractor_coach"):
+            return [substitute]
+
+        fixed_lesson = getattr(reservation, "fixed_lesson", None)
+        if fixed_lesson:
+            try:
+                coaches = [coach for coach in fixed_lesson.all_coaches() if coach and getattr(coach, "role", "") in ("coach", "contractor_coach")]
+                if coaches:
+                    return coaches
+            except Exception:
+                pass
+
+        assigned = _assigned_coach_for_reservation(reservation)
+        if assigned and getattr(assigned, "role", "") in ("coach", "contractor_coach"):
+            return [assigned]
+        return []
+
+    def _reservation_duration_minutes(reservation):
+        try:
+            return max(int((reservation.end_at - reservation.start_at).total_seconds() // 60), 0)
+        except Exception:
+            return 0
+
+    active_coach_ids = set()
+    active_regular_coach_ids = set()
+    active_contractor_coach_ids = set()
+    for reservation in reservations:
+        for coach in _reservation_coaches_for_split(reservation):
+            active_coach_ids.add(coach.pk)
+            if getattr(coach, "role", "") == "contractor_coach":
+                active_contractor_coach_ids.add(coach.pk)
+            else:
+                active_regular_coach_ids.add(coach.pk)
+    if not active_coach_ids:
+        active_coach_ids = set(coach_queryset.values_list("pk", flat=True))
+    if not active_regular_coach_ids:
+        active_regular_coach_ids = set(coach_queryset.filter(role="coach").values_list("pk", flat=True))
+    active_coach_count = len(active_coach_ids)
+    common_expense_participant_count = len(active_regular_coach_ids)
+
+    monthly_expenses = list(
+        CoachExpense.objects.filter(
+            expense_date__gte=month_start,
+            expense_date__lt=next_month,
+        ).select_related("created_by").order_by("expense_date", "id")
+    )
+    expense_meta_rows = [_expense_meta_row(expense) for expense in monthly_expenses]
+
+    approved_common_expense_rows = [
+        row for row in expense_meta_rows
+        if not row["is_payout"]
+        and row["approval_status"] == EXPENSE_APPROVAL_APPROVED
+        and row["expense_type"] == EXPENSE_TYPE_COMMON
+    ]
+    approved_personal_expense_rows = [
+        row for row in expense_meta_rows
+        if not row["is_payout"]
+        and row["approval_status"] == EXPENSE_APPROVAL_APPROVED
+        and row["expense_type"] == EXPENSE_TYPE_PERSONAL
+    ]
+    submitted_personal_expense_rows = [
+        row for row in expense_meta_rows
+        if not row["is_payout"]
+        and row["expense_type"] == EXPENSE_TYPE_PERSONAL
+        and row["approval_status"] in (EXPENSE_APPROVAL_SUBMITTED, EXPENSE_APPROVAL_APPROVED)
+    ]
+    payout_rows = [row for row in expense_meta_rows if row["is_payout"]]
+
+    approved_common_expense_total = sum(_money(row["expense"].amount) for row in approved_common_expense_rows)
+    per_coach_common_expense = 0
+
+    coach_map = {}
+    for coach in coach_queryset:
+        coach_map[coach.pk] = {
+            "coach": coach,
+            "coach_name": _display_name(coach),
+            "ticket_amount": 0,
+            "preopen_paid_amount": 0,
+            "preopen_unpaid_amount": 0,
+            "preopen_waived_amount": 0,
+            "stringing_amount": 0,
+            "is_contractor_coach": getattr(coach, "role", "") == "contractor_coach",
+            "contractor_hourly_wage": _money(getattr(coach, "contractor_hourly_wage", 0)),
+            "contractor_work_minutes": 0,
+            "contractor_work_slot_count": 0,
+            "_contractor_work_slot_keys": set(),
+            "contractor_hourly_pay_amount": 0,
+            "lesson_compensation_amount": 0,
+            "personal_reimbursement_due": 0,
+            "salary_paid": 0,
+            "reimbursement_paid": 0,
+            "common_expense_share": 0,
+            "reservation_count": 0,
+        }
+
+    for reservation in reservations:
+        coaches = _reservation_coaches_for_split(reservation)
+        if not coaches:
+            continue
+
+        ticket_total = 0
+        for consumption in reservation.ticket_consumptions.filter(refunded_at__isnull=True):
+            ticket_total += _money(consumption.unit_price_snapshot) * _money(consumption.tickets_used)
+
+        payment_amount = _money(getattr(reservation, "payment_amount", 0) or PREOPEN_CASH_PRICE)
+        is_preopen = (
+            reservation.lesson_type == Reservation.LESSON_GENERAL
+            and is_preopen_cash_lesson_date(reservation.start_at)
+            and reservation.is_payment_tracking_required()
+        )
+
+        denominator = max(len(coaches), 1)
+        for coach in coaches:
+            row = coach_map.get(coach.pk)
+            if not row:
+                continue
+            row["reservation_count"] += 1
+            if row.get("is_contractor_coach"):
+                work_key = (
+                    str(reservation.lesson_type or ""),
+                    str(getattr(reservation, "court_id", "") or ""),
+                    _to_event_datetime_str(reservation.start_at) or "",
+                    _to_event_datetime_str(reservation.end_at) or "",
+                    str(coach.pk),
+                )
+                if work_key not in row["_contractor_work_slot_keys"]:
+                    row["_contractor_work_slot_keys"].add(work_key)
+                    row["contractor_work_slot_count"] += 1
+                    row["contractor_work_minutes"] += _reservation_duration_minutes(reservation)
+            if ticket_total > 0:
+                row["ticket_amount"] += int(ticket_total / denominator)
+            if is_preopen:
+                split_payment = int(payment_amount / denominator)
+                if reservation.payment_status == Reservation.PAYMENT_STATUS_PAID:
+                    row["preopen_paid_amount"] += split_payment
+                elif reservation.payment_status == Reservation.PAYMENT_STATUS_WAIVED:
+                    row["preopen_waived_amount"] += split_payment
+                else:
+                    row["preopen_unpaid_amount"] += split_payment
+
+    stringing_orders = list(
+        StringingOrder.objects.filter(
+            created_at__date__gte=month_start,
+            created_at__date__lt=next_month,
+        ).select_related("assigned_coach", "user")
+    )
+    stringing_total = 0
+    for order in stringing_orders:
+        status_key = _stringing_status_key(order).lower()
+        if "cancel" in status_key:
+            continue
+        amount = _money(order.total_price())
+        stringing_total += amount
+        if getattr(order, "assigned_coach_id", None) in coach_map:
+            coach_map[order.assigned_coach_id]["stringing_amount"] += amount
+
+    for row in approved_personal_expense_rows:
+        coach_id = getattr(row["expense"].created_by, "pk", None)
+        if coach_id in coach_map:
+            coach_map[coach_id]["personal_reimbursement_due"] += _money(row["expense"].amount)
+
+    for row in payout_rows:
+        coach_id = getattr(row["expense"].created_by, "pk", None)
+        if coach_id not in coach_map:
+            continue
+        amount = _money(row["expense"].amount)
+        if row["expense_type"] == EXPENSE_TYPE_SALARY_PAYOUT:
+            coach_map[coach_id]["salary_paid"] += amount
+        elif row["expense_type"] == EXPENSE_TYPE_REIMBURSEMENT_PAYOUT:
+            coach_map[coach_id]["reimbursement_paid"] += amount
+
+    for row in coach_map.values():
+        row["contractor_hourly_pay_amount"] = int(
+            row["contractor_work_minutes"] * row["contractor_hourly_wage"] / 60
+        ) if row.get("is_contractor_coach") else 0
+        row["contractor_work_hours_text"] = f"{row['contractor_work_minutes'] // 60}時間{row['contractor_work_minutes'] % 60:02d}分"
+
+    contractor_hourly_pay_total = sum(row["contractor_hourly_pay_amount"] for row in coach_map.values())
+    common_expense_base_total = approved_common_expense_total + contractor_hourly_pay_total
+    per_coach_common_expense = int(common_expense_base_total / common_expense_participant_count) if common_expense_participant_count > 0 else 0
+
+    coach_rows = []
+    for row in coach_map.values():
+        if row.get("is_contractor_coach"):
+            row["common_expense_share"] = 0
+        elif getattr(row["coach"], "pk", None) in active_regular_coach_ids:
+            row["common_expense_share"] = per_coach_common_expense
+        else:
+            row["common_expense_share"] = 0
+
+        lesson_revenue_amount = row["ticket_amount"] + row["preopen_paid_amount"]
+        if row.get("is_contractor_coach"):
+            lesson_compensation_amount = row["contractor_hourly_pay_amount"]
+        else:
+            lesson_compensation_amount = lesson_revenue_amount
+        row["lesson_compensation_amount"] = lesson_compensation_amount
+        lesson_and_work_amount = lesson_compensation_amount + row["stringing_amount"]
+        salary_due = lesson_and_work_amount - row["common_expense_share"]
+        reimbursement_due = row["personal_reimbursement_due"]
+        unpaid_salary = salary_due - row["salary_paid"]
+        unpaid_reimbursement = reimbursement_due - row["reimbursement_paid"]
+        total_unpaid = unpaid_salary + unpaid_reimbursement
+        row.update(
+            {
+                "lesson_revenue_amount": lesson_revenue_amount,
+                "lesson_and_work_amount": lesson_and_work_amount,
+                "salary_due": salary_due,
+                "reimbursement_due": reimbursement_due,
+                "unpaid_salary": unpaid_salary,
+                "unpaid_reimbursement": unpaid_reimbursement,
+                "total_unpaid": total_unpaid,
+                "total_paid": row["salary_paid"] + row["reimbursement_paid"],
+            }
+        )
+        row.pop("_contractor_work_slot_keys", None)
+        coach_rows.append(row)
+
+    coach_rows = sorted(coach_rows, key=lambda row: row["coach_name"])
+
+    preopen_paid_total = sum(row["preopen_paid_amount"] for row in coach_rows)
+    preopen_unpaid_total = sum(row["preopen_unpaid_amount"] for row in coach_rows)
+    ticket_amount_total = sum(row["ticket_amount"] for row in coach_rows)
+    ticket_purchase_total = sum(
+        _money(purchase.total_tickets) * _money(purchase.unit_price)
+        for purchase in TicketPurchase.objects.filter(purchased_at__date__gte=month_start, purchased_at__date__lt=next_month)
+    )
+    salary_due_total = sum(row["salary_due"] for row in coach_rows)
+    reimbursement_due_total = sum(row["reimbursement_due"] for row in coach_rows)
+    salary_paid_total = sum(row["salary_paid"] for row in coach_rows)
+    reimbursement_paid_total = sum(row["reimbursement_paid"] for row in coach_rows)
+    unpaid_salary_total = sum(row["unpaid_salary"] for row in coach_rows)
+    unpaid_reimbursement_total = sum(row["unpaid_reimbursement"] for row in coach_rows)
+
+    cash_in_total = preopen_paid_total + ticket_purchase_total + stringing_total
+    cash_out_total = salary_paid_total + reimbursement_paid_total + approved_common_expense_total
+    company_balance = cash_in_total - cash_out_total
+
+    pending_personal_reimbursement_total = sum(_money(row["expense"].amount) for row in submitted_personal_expense_rows)
+
+    payout_history_rows = []
+    for row in sorted(payout_rows, key=lambda item: (item["expense"].expense_date, item["expense"].id), reverse=True):
+        payout_history_rows.append(
+            {
+                "expense": row["expense"],
+                "coach_name": _display_name(row["expense"].created_by),
+                "payout_type_label": row["expense_type_label"],
+                "amount": _money(row["expense"].amount),
+                "plain_note": row["plain_note"],
+                "recorded_by_name": row.get("meta", {}).get("recorded_by_name", "-"),
+            }
+        )
+
+    prev_year = selected_year
+    prev_month = selected_month - 1
+    if prev_month == 0:
+        prev_month = 12
+        prev_year -= 1
+
+    next_year_value = selected_year
+    next_month_value = selected_month + 1
+    if next_month_value == 13:
+        next_month_value = 1
+        next_year_value += 1
+
+    return render(
+        request,
+        "coach/admin_settlement.html",
+        {
+            "selected_year": selected_year,
+            "selected_month": selected_month,
+            "month_label": f"{selected_year}年{selected_month}月",
+            "prev_url": _month_url(prev_year, prev_month),
+            "next_url": _month_url(next_year_value, next_month_value),
+            "coach_options": coach_queryset,
+            "today_value": timezone.localdate().isoformat(),
+            "payout_type_choices": [
+                (EXPENSE_TYPE_SALARY_PAYOUT, "給与支払い"),
+                (EXPENSE_TYPE_REIMBURSEMENT_PAYOUT, "本人立替精算支払い"),
+            ],
+            "coach_rows": coach_rows,
+            "payout_history_rows": payout_history_rows,
+            "approved_common_expense_rows": approved_common_expense_rows,
+            "approved_personal_expense_rows": approved_personal_expense_rows,
+            "submitted_personal_expense_rows": submitted_personal_expense_rows,
+            "preopen_paid_total": preopen_paid_total,
+            "preopen_unpaid_total": preopen_unpaid_total,
+            "ticket_amount_total": ticket_amount_total,
+            "ticket_purchase_total": ticket_purchase_total,
+            "stringing_total": stringing_total,
+            "cash_in_total": cash_in_total,
+            "approved_common_expense_total": approved_common_expense_total,
+            "contractor_hourly_pay_total": contractor_hourly_pay_total,
+            "common_expense_base_total": common_expense_base_total,
+            "common_expense_participant_count": common_expense_participant_count,
+            "salary_due_total": salary_due_total,
+            "reimbursement_due_total": reimbursement_due_total,
+            "salary_paid_total": salary_paid_total,
+            "reimbursement_paid_total": reimbursement_paid_total,
+            "unpaid_salary_total": unpaid_salary_total,
+            "unpaid_reimbursement_total": unpaid_reimbursement_total,
+            "pending_personal_reimbursement_total": pending_personal_reimbursement_total,
+            "cash_out_total": cash_out_total,
+            "company_balance": company_balance,
+            "active_coach_count": active_coach_count,
+            "per_coach_common_expense": per_coach_common_expense,
+        },
+    )
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def coach_expense_manage(request):
+    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
+        return HttpResponse("Forbidden", status=403)
+
+    is_admin_mode = bool(getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False))
+    visible_queryset = CoachExpense.objects.select_related("created_by").all().order_by("-expense_date", "-id")
+    if not is_admin_mode:
+        visible_queryset = visible_queryset.filter(created_by=request.user)
+
+    today = timezone.localdate()
+    court_refund_lesson_choices = _court_refund_lesson_choices_for_user(
+        request.user,
+        start_date=today - timedelta(days=60),
+        end_date=today + timedelta(days=120),
+    )
+    court_refund_lesson_choice_map = {
+        row["key"]: row for row in court_refund_lesson_choices
+    }
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "create").strip()
+
+        if action == "update_meta":
+            if not is_admin_mode:
+                messages.error(request, "更新権限がありません。")
+                return redirect("club:coach_expense_manage")
+
+            expense_id = (request.POST.get("expense_id") or "").strip()
+            expense = CoachExpense.objects.filter(pk=expense_id).first()
+            if not expense:
+                messages.error(request, "対象の経費が見つかりません。")
+                return redirect("club:coach_expense_manage")
+
+            current_meta = _expense_parse_note(expense.note)
+            expense_type = (request.POST.get("expense_type") or current_meta["expense_type"]).strip()
+            receipt_status = (request.POST.get("receipt_status") or current_meta["receipt_status"]).strip()
+            receipt_check_status = (request.POST.get("receipt_check_status") or current_meta["receipt_check_status"]).strip()
+            approval_status = (request.POST.get("approval_status") or current_meta["approval_status"]).strip()
+            plain_note = current_meta["plain_note"]
+
+            valid_expense_types = {value for value, _label in EXPENSE_TYPE_CHOICES}
+            valid_receipt_status = {value for value, _label in EXPENSE_RECEIPT_CHOICES}
+            valid_receipt_check = {value for value, _label in EXPENSE_RECEIPT_CHECK_CHOICES}
+            valid_approval_status = {value for value, _label in EXPENSE_APPROVAL_CHOICES}
+
+            if expense_type not in valid_expense_types:
+                messages.error(request, "経費種別が不正です。")
+                return redirect("club:coach_expense_manage")
+            if receipt_status not in valid_receipt_status:
+                messages.error(request, "領収書有無が不正です。")
+                return redirect("club:coach_expense_manage")
+            if receipt_check_status not in valid_receipt_check:
+                messages.error(request, "領収書確認状況が不正です。")
+                return redirect("club:coach_expense_manage")
+            if approval_status not in valid_approval_status:
+                messages.error(request, "承認状態が不正です。")
+                return redirect("club:coach_expense_manage")
+
+            extra_meta = {
+                key: value
+                for key, value in current_meta.items()
+                if key not in {
+                    "expense_type",
+                    "receipt_status",
+                    "receipt_check_status",
+                    "approval_status",
+                    "plain_note",
+                }
+            }
+            if approval_status == EXPENSE_APPROVAL_REFUNDED:
+                extra_meta["refunded_at"] = timezone.now().isoformat()
+                extra_meta["refunded_by_id"] = getattr(request.user, "pk", None)
+                extra_meta["refunded_by_name"] = _display_name(request.user)
+
+            expense.note = _expense_build_note(
+                plain_note,
+                expense_type=expense_type,
+                receipt_status=receipt_status,
+                receipt_check_status=receipt_check_status,
+                approval_status=approval_status,
+                extra_meta=extra_meta,
+            )
+            expense.save(update_fields=["note"])
+            messages.success(request, "経費ステータスを更新しました。")
+            return redirect("club:coach_expense_manage")
+
+        raw_expense_date = (request.POST.get("expense_date") or "").strip()
+        raw_category = (request.POST.get("category") or "").strip()
+        raw_amount = (request.POST.get("amount") or "").strip()
+        raw_note = (request.POST.get("note") or "").strip()
+        raw_court_refund_slot_key = (request.POST.get("court_refund_slot_key") or "").strip()
+        raw_expense_type = (request.POST.get("expense_type") or EXPENSE_TYPE_PERSONAL).strip()
+        raw_receipt_status = (request.POST.get("receipt_status") or EXPENSE_RECEIPT_NONE).strip()
+
+        if is_admin_mode:
+            raw_receipt_check_status = (request.POST.get("receipt_check_status") or EXPENSE_RECEIPT_CHECK_UNCHECKED).strip()
+            raw_approval_status = (request.POST.get("approval_status") or EXPENSE_APPROVAL_APPROVED).strip()
+        else:
+            raw_receipt_check_status = EXPENSE_RECEIPT_CHECK_UNCHECKED
+            raw_approval_status = EXPENSE_APPROVAL_SUBMITTED
+
+        valid_categories = {value for value, _label in CoachExpense.CATEGORY_CHOICES}
+        valid_expense_types = {value for value, _label in EXPENSE_TYPE_CHOICES}
+        valid_receipt_status = {value for value, _label in EXPENSE_RECEIPT_CHOICES}
+        valid_receipt_check = {value for value, _label in EXPENSE_RECEIPT_CHECK_CHOICES}
+        valid_approval_status = {value for value, _label in EXPENSE_APPROVAL_CHOICES}
+
+        try:
+            expense_date_value = date.fromisoformat(raw_expense_date) if raw_expense_date else timezone.localdate()
+        except Exception:
+            messages.error(request, "経費日付の形式が正しくありません。")
+            return redirect("club:coach_expense_manage")
+
+        try:
+            amount_value = int(raw_amount or "0")
+        except Exception:
+            messages.error(request, "金額は整数で入力してください。")
+            return redirect("club:coach_expense_manage")
+
+        if raw_category not in valid_categories:
+            messages.error(request, "経費カテゴリが不正です。")
+            return redirect("club:coach_expense_manage")
+
+        if raw_expense_type not in valid_expense_types:
+            messages.error(request, "経費種別が不正です。")
+            return redirect("club:coach_expense_manage")
+
+        if raw_receipt_status not in valid_receipt_status:
+            messages.error(request, "領収書有無が不正です。")
+            return redirect("club:coach_expense_manage")
+
+        if raw_receipt_check_status not in valid_receipt_check:
+            messages.error(request, "領収書確認状況が不正です。")
+            return redirect("club:coach_expense_manage")
+
+        if raw_approval_status not in valid_approval_status:
+            messages.error(request, "承認状態が不正です。")
+            return redirect("club:coach_expense_manage")
+
+        if amount_value < 0:
+            messages.error(request, "金額は0円以上で入力してください。")
+            return redirect("club:coach_expense_manage")
+
+        extra_meta = {}
+        if raw_category == CoachExpense.CATEGORY_COURT:
+            selected_court_refund_lesson = court_refund_lesson_choice_map.get(raw_court_refund_slot_key)
+            if not selected_court_refund_lesson:
+                messages.error(request, "コート費用は対象レッスンを選択してください。")
+                return redirect("club:coach_expense_manage")
+            extra_meta.update(
+                {
+                    "court_refund_slot_key": selected_court_refund_lesson["key"],
+                    "court_refund_lesson_label": selected_court_refund_lesson["label"],
+                    "court_refund_facility_label": selected_court_refund_lesson["facility_label"],
+                }
+            )
+
+        try:
+            expense = CoachExpense(
+                expense_date=expense_date_value,
+                category=raw_category,
+                amount=amount_value,
+                note=_expense_build_note(
+                    raw_note,
+                    expense_type=raw_expense_type,
+                    receipt_status=raw_receipt_status,
+                    receipt_check_status=raw_receipt_check_status,
+                    approval_status=raw_approval_status,
+                    extra_meta=extra_meta,
+                ),
+                created_by=request.user,
+            )
+            expense.full_clean()
+            expense.save()
+            messages.success(request, "経費を登録しました。")
+        except ValidationError as e:
+            if hasattr(e, "messages"):
+                for message_text in e.messages:
+                    messages.error(request, message_text)
+            else:
+                messages.error(request, "経費を登録できませんでした。")
+        except Exception as e:
+            messages.error(request, f"経費を登録できませんでした: {e}")
+
+        return redirect("club:coach_expense_manage")
+
+    month_start = today.replace(day=1)
+    if today.month == 12:
+        next_month = date(today.year + 1, 1, 1)
+    else:
+        next_month = date(today.year, today.month + 1, 1)
+
+    current_month_queryset = list(
+        visible_queryset.filter(expense_date__gte=month_start, expense_date__lt=next_month)
+    )
+    current_month_meta_rows = [_expense_meta_row(expense) for expense in current_month_queryset]
+    current_month_accounting_rows = [
+        row for row in current_month_meta_rows
+        if not _expense_is_refund_status(row["approval_status"])
+    ]
+    refund_pending_rows = [
+        row for row in current_month_meta_rows
+        if row["approval_status"] == EXPENSE_APPROVAL_REFUND_PENDING
+    ]
+    refunded_rows = [
+        row for row in current_month_meta_rows
+        if row["approval_status"] == EXPENSE_APPROVAL_REFUNDED
+    ]
+    current_month_total = sum(int(row["expense"].amount or 0) for row in current_month_accounting_rows)
+    refund_pending_total = sum(int(row["expense"].amount or 0) for row in refund_pending_rows)
+    refunded_total = sum(int(row["expense"].amount or 0) for row in refunded_rows)
+
+    category_totals = {}
+    expense_type_totals = {}
+    approval_totals = {}
+    for row in current_month_accounting_rows:
+        category_label = row["expense"].get_category_display()
+        category_totals.setdefault(category_label, 0)
+        category_totals[category_label] += int(row["expense"].amount or 0)
+
+        expense_type_totals.setdefault(row["expense_type_label"], 0)
+        expense_type_totals[row["expense_type_label"]] += int(row["expense"].amount or 0)
+
+        approval_totals.setdefault(row["approval_status_label"], 0)
+        approval_totals[row["approval_status_label"]] += 1
+
+    category_rows = [
+        {"label": label, "amount": amount}
+        for label, amount in sorted(category_totals.items(), key=lambda x: x[0])
+    ]
+    expense_type_rows = [
+        {"label": label, "amount": amount}
+        for label, amount in sorted(expense_type_totals.items(), key=lambda x: x[0])
+    ]
+    approval_rows = [
+        {"label": label, "count": count}
+        for label, count in sorted(approval_totals.items(), key=lambda x: x[0])
+    ]
+
+    recent_expenses = [_expense_meta_row(expense) for expense in list(visible_queryset[:30])]
+
+    return render(
+        request,
+        "coach/expense_form.html",
+        {
+            "recent_expenses": recent_expenses,
+            "expense_category_choices": CoachExpense.CATEGORY_CHOICES,
+            "expense_type_choices": EXPENSE_TYPE_CHOICES,
+            "expense_receipt_choices": EXPENSE_RECEIPT_CHOICES,
+            "expense_receipt_check_choices": EXPENSE_RECEIPT_CHECK_CHOICES,
+            "expense_approval_choices": EXPENSE_APPROVAL_CHOICES,
+            "court_refund_lesson_choices": court_refund_lesson_choices,
+            "current_month_total": current_month_total,
+            "refund_pending_total": refund_pending_total,
+            "refund_pending_count": len(refund_pending_rows),
+            "refunded_total": refunded_total,
+            "refunded_count": len(refunded_rows),
+            "category_rows": category_rows,
+            "expense_type_rows": expense_type_rows,
+            "approval_rows": approval_rows,
+            "today_value": today.isoformat(),
+            "is_admin_mode": is_admin_mode,
+        },
+    )
+
+
+@never_cache
+@ensure_csrf_cookie
+@require_http_methods(["GET", "POST"])
+def login_view(request):
+    if request.user.is_authenticated:
+        if _needs_profile_completion(request.user):
+            return redirect("club:profile_complete")
+        if _needs_schedule_survey(request.user):
+            return redirect("club:schedule_survey")
+        return redirect(_lesson_calendar_landing_url())
+
+    form = AuthenticationForm(request, data=request.POST or None)
+
+    if request.method == "POST":
+        if form.is_valid():
+            login(request, form.get_user())
+            if _needs_profile_completion(request.user):
+                return redirect("club:profile_complete")
+            if _needs_schedule_survey(request.user):
+                messages.info(request, "ログインありがとうございます。最初にアンケートへご回答ください。")
+                return redirect("club:schedule_survey")
+            return redirect(_lesson_calendar_landing_url())
+        messages.error(request, "ユーザー名またはパスワードが正しくありません。")
+
+    return render(
+        request,
+        "login.html",
+        {
+            "form": form,
+            "liff_enabled": _liff_enabled(),
+        },
+    )
+
+
+@never_cache
+@ensure_csrf_cookie
+@require_http_methods(["GET", "POST"])
+def register_view(request):
+    if request.user.is_authenticated:
+        if _needs_profile_completion(request.user):
+            return redirect("club:profile_complete")
+        if _needs_schedule_survey(request.user):
+            return redirect("club:schedule_survey")
+        return redirect(_lesson_calendar_landing_url())
+
+    form = MemberRegistrationForm(request.POST or None)
+
+    if request.method == "POST":
+        if form.is_valid():
+            user = form.save()
+            _login_user_with_default_backend(request, user)
+            messages.success(request, "新規会員登録が完了しました。")
+            if _needs_profile_completion(request.user):
+                return redirect("club:profile_complete")
+            if _needs_schedule_survey(request.user):
+                messages.info(request, "最初にレッスン希望アンケートへご回答ください。")
+                return redirect("club:schedule_survey")
+            return redirect(_lesson_calendar_landing_url())
+
+        messages.error(request, "新規会員登録できませんでした。入力内容をご確認ください。")
+
+    return render(
+        request,
+        "register.html",
+        {
+            "form": form,
+            "liff_enabled": _liff_enabled(),
+        },
+    )
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def profile_complete_view(request):
+    if request.method == "GET" and not _needs_profile_completion(request.user):
+        return redirect(_lesson_calendar_landing_url())
+
+    form = LineProfileCompletionForm(request.POST or None, instance=request.user)
+
+    if request.method == "POST":
+        if form.is_valid():
+            form.save()
+            messages.success(request, "会員情報の登録が完了しました。")
+            if _needs_schedule_survey(request.user):
+                messages.info(request, "続けてアンケートへご回答ください。")
+                return redirect("club:schedule_survey")
+            return redirect(_lesson_calendar_landing_url())
+        messages.error(request, "会員情報を保存できませんでした。入力内容をご確認ください。")
+
+    return render(
+        request,
+        "profile_complete.html",
+        {
+            "form": form,
+        },
+    )
+
+
+@login_required
+@require_POST
+def logout_view(request):
+    logout(request)
+    return redirect("club:login")
+
+
+@require_GET
+def healthz(request):
+    return JsonResponse({"ok": True})
+
+
+@require_GET
+def help_view(request):
+    return render(
+        request,
+        "help/help.html",
+        {
+            "help_sections": [
+                {
+                    "title": "はじめての使い方",
+                    "items": [
+                        "LINEまたは通常ログインで会員登録を行います。",
+                        "初回ログイン後、会員情報の入力とアンケート回答を完了します。",
+                        "ホーム画面から予約作成・予約一覧・チケット確認へ進めます。",
+                    ],
+                },
+                {
+                    "title": "予約の流れ",
+                    "items": [
+                        "ホームや予約作成画面から希望日時・レッスン種別を選びます。",
+                        "private / group は申請後、コーチ承認で予約成立になります。",
+                        "予約一覧では、現在の予約内容確認やキャンセル可否の確認ができます。",
+                    ],
+                },
+                {
+                    "title": "チケットの考え方",
+                    "items": [
+                        "一般レッスンは2時間でチケット1枚です。",
+                        "プライベートは1時間ごとにチケット2枚です。",
+                        "グループは1時間ごとに参加人数分のチケットを消費します。",
+                    ],
+                },
+            ],
+        },
+    )
+
+
+@require_GET
+def terms_view(request):
+    return render(
+        request,
+        "terms.html",
+        {
+            "terms_sections": [
+                {
+                    "title": "第1条（適用）",
+                    "body": [
+                        "本利用規約は、Play Design Tennis が提供する予約・チケット・LINE連携等のサービス利用条件を定めるものです。",
+                        "会員および利用者は、本サービスを利用した時点で本規約に同意したものとみなします。",
+                    ],
+                },
+                {
+                    "title": "第2条（会員登録）",
+                    "body": [
+                        "会員登録時には、正確かつ最新の情報を登録してください。",
+                        "登録情報に変更があった場合は、速やかに会員情報を更新してください。",
+                    ],
+                },
+                {
+                    "title": "第3条（予約・申請）",
+                    "body": [
+                        "予約作成画面から希望日時・種別を選択し、必要に応じてコーチ承認を経て予約が成立します。",
+                        "private / group レッスンは、コーチ承認前は申請中の扱いとなります。",
+                        "運営上必要な場合、予約内容の変更・調整をお願いすることがあります。",
+                    ],
+                },
+                {
+                    "title": "第4条（チケット）",
+                    "body": [
+                        "チケットの消費ルールは、一般レッスン2時間で1枚、プライベート1時間ごとに2枚、グループ1時間ごとに参加人数分です。",
+                        "購入済みチケットの返金可否や有効性については、運営の定める運用に従います。",
+                    ],
+                },
+                {
+                    "title": "第5条（禁止事項）",
+                    "body": [
+                        "虚偽情報による登録、他者への迷惑行為、不正アクセス、営利目的での無断利用を禁止します。",
+                        "サービス運営を妨げる行為が確認された場合、利用停止等の措置を取ることがあります。",
+                    ],
+                },
+                {
+                    "title": "第6条（免責・変更）",
+                    "body": [
+                        "天候、設備状況、運営都合等により、レッスン内容や時間の変更・中止が発生する場合があります。",
+                        "本規約およびサービス内容は、必要に応じて変更されることがあります。",
+                    ],
+                },
+            ],
+        },
+    )
+
+
+@login_required
+@require_GET
+def calendar_events(request):
+    events = []
+    coach_filter = (request.GET.get("coach") or request.GET.get("coach_id") or "").strip()
+    start_filter = _parse_query_datetime(request.GET.get("start"))
+    end_filter = _parse_query_datetime(request.GET.get("end"))
+
+    availability_qs = CoachAvailability.objects.select_related("coach", "substitute_coach", "court").all()
+    reservation_qs = (
+        Reservation.objects.select_related("user", "coach", "substitute_coach", "court", "availability")
+        .prefetch_related("ticket_consumptions__purchase")
+        .exclude(status__in=[Reservation.STATUS_CANCELED, Reservation.STATUS_RAIN_CANCELED])
+    )
+
+    if coach_filter:
+        availability_qs = availability_qs.filter(coach_id=coach_filter)
+
+    if start_filter:
+        availability_qs = availability_qs.filter(end_at__gt=start_filter)
+        reservation_qs = reservation_qs.filter(end_at__gt=start_filter)
+
+    if end_filter:
+        availability_qs = availability_qs.filter(start_at__lt=end_filter)
+        reservation_qs = reservation_qs.filter(start_at__lt=end_filter)
+
+    availability_list = list(availability_qs.order_by("start_at", "coach_id", "court_id", "id"))
+    reservation_list = list(reservation_qs)
+
+    if coach_filter:
+        reservation_list = [
+            reservation
+            for reservation in reservation_list
+            if str(_assigned_coach_id_for_reservation(reservation) or "") == str(coach_filter)
+        ]
+
+    active_slot_counts = {}
+    slot_capacity_map = {}
+    my_active_slot_keys = set()
+
+    for availability in availability_list:
+        slot_key = _slot_key(
+            lesson_type=availability.lesson_type,
+            coach_id=availability.coach_id,
+            court_id=availability.court_id,
+            start_at=availability.start_at,
+            end_at=availability.end_at,
+        )
+        slot_capacity_map[slot_key] = int(availability.capacity or 0)
+
+    for reservation in reservation_list:
+        slot_key = _slot_key(
+            lesson_type=reservation.lesson_type,
+            coach_id=reservation.coach_id,
+            court_id=reservation.court_id,
+            start_at=reservation.start_at,
+            end_at=reservation.end_at,
+        )
+        if reservation.status == Reservation.STATUS_ACTIVE:
+            active_slot_counts.setdefault(slot_key, 0)
+            active_slot_counts[slot_key] += 1
+            if reservation.user_id == request.user.pk:
+                my_active_slot_keys.add(slot_key)
+
+    active_slot_keys = set(active_slot_counts.keys())
+
+    for obj in availability_list:
+        slot_key = _slot_key(
+            lesson_type=obj.lesson_type,
+            coach_id=obj.coach_id,
+            court_id=obj.court_id,
+            start_at=obj.start_at,
+            end_at=obj.end_at,
+        )
+        if slot_key in active_slot_keys:
+            continue
+
+        coach = obj.coach
+        court = obj.court
+
+        if obj.lesson_type == Reservation.LESSON_GENERAL:
+            title_text = "一般レッスン"
+        else:
+            title_text = "受付中"
+
+        query = urlencode(
+            {
+                "coach": getattr(coach, "pk", "") or "",
+                "lesson_type": obj.lesson_type,
+                "start": _to_event_datetime_str(obj.start_at) or "",
+                "end": _to_event_datetime_str(obj.end_at) or "",
+            }
+        )
+
+        events.append(
+            {
+                "id": f"availability-{obj.pk}",
+                "title": title_text,
+                "start": _to_event_datetime_str(obj.start_at),
+                "end": _to_event_datetime_str(obj.end_at),
+                "display": "auto",
+                "backgroundColor": "#22c55e",
+                "borderColor": "#22c55e",
+                "extendedProps": {
+                    "kind": "availability",
+                    "type": "availability",
+                    "pk": obj.pk,
+                    "coach_name": str(coach),
+                    "substitute_coach_name": _display_name(obj.substitute_coach) if obj.substitute_coach else "",
+                    "court": str(court),
+                    "lesson_type_display": _lesson_type_label(obj.lesson_type),
+                    "capacity": obj.capacity,
+                    "coach_count": obj.coach_count,
+                    "court_count": obj.court_count,
+                    "target_level_display": _lesson_level_label(obj) or obj.get_target_level_display(),
+                    "reserve_url": f"{reverse('club:reservation_create')}?{query}",
+                },
+            }
+        )
+
+    for obj in reservation_list:
+        is_mine = bool(obj.user_id == request.user.pk)
+        slot_key = _slot_key(
+            lesson_type=obj.lesson_type,
+            coach_id=obj.coach_id,
+            court_id=obj.court_id,
+            start_at=obj.start_at,
+            end_at=obj.end_at,
+        )
+
+        if obj.status == Reservation.STATUS_ACTIVE and not is_mine and slot_key in my_active_slot_keys:
+            continue
+
+        active_count = int(active_slot_counts.get(slot_key, 0))
+        capacity = int(
+            getattr(getattr(obj, "availability", None), "capacity", 0)
+            or slot_capacity_map.get(slot_key, 0)
+            or max(active_count, 1)
+        )
+
+        can_cancel, cancel_reason = _can_user_cancel_reservation(request.user, obj)
+        cancel_url = reverse("club:reservation_cancel", kwargs={"pk": obj.pk}) if can_cancel else ""
+
+        if obj.status == Reservation.STATUS_PENDING:
+            event_title = f"申請中 {active_count}/{capacity}"
+            background_color = "#f59e0b"
+        elif is_mine:
+            event_title = f"あなたの予約 {active_count}/{capacity}"
+            background_color = "#3b82f6"
+        else:
+            event_title = f"予約済み {active_count}/{capacity}"
+            background_color = "#ef4444"
+
+        assigned_coach = _assigned_coach_for_reservation(obj)
+
+        events.append(
+            {
+                "id": f"reservation-{obj.pk}",
+                "title": event_title,
+                "start": _to_event_datetime_str(obj.start_at),
+                "end": _to_event_datetime_str(obj.end_at),
+                "display": "auto",
+                "backgroundColor": background_color,
+                "borderColor": background_color,
+                "extendedProps": {
+                    "kind": "reservation",
+                    "type": "reservation",
+                    "pk": obj.pk,
+                    "user_name": _display_name(obj.user),
                     "coach_name": _display_name(assigned_coach),
                     "normal_coach_name": _display_name(obj.coach),
                     "substitute_coach_name": _display_name(obj.substitute_coach) if obj.substitute_coach else "",
