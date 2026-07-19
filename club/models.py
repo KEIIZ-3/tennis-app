@@ -1935,26 +1935,28 @@ class Reservation(models.Model, LessonTypeMixin):
             return ledger
 
     def refund_tickets(self, reason="reservation_cancel_refund", created_by=None, note=""):
-        if not self.ticket_consumed_at or self.ticket_refunded_at or self.tickets_used <= 0:
-            return None
-
         with transaction.atomic():
+            locked_self = Reservation.objects.select_for_update().get(pk=self.pk)
+            if not locked_self.ticket_consumed_at or locked_self.ticket_refunded_at or locked_self.tickets_used <= 0:
+                self.ticket_refunded_at = locked_self.ticket_refunded_at
+                return None
+
             consumptions = list(
-                self.ticket_consumptions.select_related("purchase").select_for_update().filter(refunded_at__isnull=True)
+                locked_self.ticket_consumptions.select_related("purchase").select_for_update().filter(refunded_at__isnull=True)
             )
 
             if not consumptions:
                 ledger = apply_ticket_change(
-                    user=self.user,
-                    amount=self.tickets_used,
+                    user=locked_self.user,
+                    amount=locked_self.tickets_used,
                     reason=reason,
                     note=note or f"チケット返却: {self.start_at:%Y-%m-%d %H:%M}",
                     created_by=created_by,
-                    reservation=self,
-                    fixed_lesson=self.fixed_lesson,
+                    reservation=locked_self,
+                    fixed_lesson=locked_self.fixed_lesson,
                 )
                 refunded_at = timezone.now()
-                Reservation.objects.filter(pk=self.pk).update(ticket_refunded_at=refunded_at)
+                Reservation.objects.filter(pk=locked_self.pk).update(ticket_refunded_at=refunded_at)
                 self.ticket_refunded_at = refunded_at
                 return ledger
 
@@ -1970,17 +1972,17 @@ class Reservation(models.Model, LessonTypeMixin):
                 consumption.save(update_fields=["refunded_at", "refund_note"])
 
             ledger = apply_ticket_change(
-                user=self.user,
-                amount=self.tickets_used,
+                user=locked_self.user,
+                amount=locked_self.tickets_used,
                 reason=reason,
                 note=note or f"チケット返却: {self.start_at:%Y-%m-%d %H:%M}",
                 created_by=created_by,
-                reservation=self,
-                fixed_lesson=self.fixed_lesson,
+                reservation=locked_self,
+                fixed_lesson=locked_self.fixed_lesson,
             )
 
             refunded_at = timezone.now()
-            Reservation.objects.filter(pk=self.pk).update(ticket_refunded_at=refunded_at)
+            Reservation.objects.filter(pk=locked_self.pk).update(ticket_refunded_at=refunded_at)
             self.ticket_refunded_at = refunded_at
             return ledger
 
@@ -1993,6 +1995,8 @@ class Reservation(models.Model, LessonTypeMixin):
 
         with transaction.atomic():
             locked_self = Reservation.objects.select_for_update().get(pk=self.pk)
+            if locked_self.status != self.STATUS_PENDING:
+                raise ValidationError("承認待ちの申請のみ承認できます。")
             locked_self.status = self.STATUS_ACTIVE
             locked_self.canceled_at = None
             locked_self.cancellation_reason = ""
@@ -2025,60 +2029,73 @@ class Reservation(models.Model, LessonTypeMixin):
         return True
 
     def reject_request(self, created_by=None, reason="コーチ却下"):
-        if self.status != self.STATUS_PENDING:
-            raise ValidationError("承認待ちの申請のみ却下できます。")
-
-        canceled_at = timezone.now()
-        Reservation.objects.filter(pk=self.pk, status=self.STATUS_PENDING).update(
-            status=self.STATUS_CANCELED,
-            canceled_at=canceled_at,
-            cancellation_reason=reason or "コーチ却下",
-        )
+        with transaction.atomic():
+            locked_self = Reservation.objects.select_for_update().get(pk=self.pk)
+            if locked_self.status != self.STATUS_PENDING:
+                raise ValidationError("承認待ちの申請のみ却下できます。")
+            canceled_at = timezone.now()
+            Reservation.objects.filter(pk=locked_self.pk).update(
+                status=self.STATUS_CANCELED,
+                canceled_at=canceled_at,
+                cancellation_reason=reason or "コーチ却下",
+            )
         self.status = self.STATUS_CANCELED
         self.canceled_at = canceled_at
         self.cancellation_reason = reason or "コーチ却下"
         return True
 
     def cancel(self, created_by=None, reason=""):
-        if self.status not in (self.STATUS_ACTIVE, self.STATUS_PENDING):
-            return False
+        with transaction.atomic():
+            locked_self = Reservation.objects.select_for_update().get(pk=self.pk)
+            if locked_self.status not in (self.STATUS_ACTIVE, self.STATUS_PENDING):
+                self.status = locked_self.status
+                self.ticket_refunded_at = locked_self.ticket_refunded_at
+                return False
 
-        canceled_at = timezone.now()
-        Reservation.objects.filter(pk=self.pk).update(
-            status=self.STATUS_CANCELED,
-            canceled_at=canceled_at,
-            cancellation_reason=reason or "会員キャンセル",
-        )
+            canceled_at = timezone.now()
+            Reservation.objects.filter(pk=locked_self.pk).update(
+                status=self.STATUS_CANCELED,
+                canceled_at=canceled_at,
+                cancellation_reason=reason or "会員キャンセル",
+            )
+            locked_self.status = self.STATUS_CANCELED
+            locked_self.refund_tickets(
+                reason=TicketLedger.REASON_CANCEL_REFUND,
+                created_by=created_by,
+                note=f"予約キャンセル返却: {locked_self.start_at:%Y-%m-%d %H:%M}",
+            )
+
         self.status = self.STATUS_CANCELED
         self.canceled_at = canceled_at
         self.cancellation_reason = reason or "会員キャンセル"
-
-        self.refund_tickets(
-            reason=TicketLedger.REASON_CANCEL_REFUND,
-            created_by=created_by,
-            note=f"予約キャンセル返却: {self.start_at:%Y-%m-%d %H:%M}",
-        )
+        self.ticket_refunded_at = locked_self.ticket_refunded_at
         return True
 
     def mark_rain_canceled(self, created_by=None, reason="雨天中止"):
-        if self.status != self.STATUS_ACTIVE:
-            return False
+        with transaction.atomic():
+            locked_self = Reservation.objects.select_for_update().get(pk=self.pk)
+            if locked_self.status != self.STATUS_ACTIVE:
+                self.status = locked_self.status
+                self.ticket_refunded_at = locked_self.ticket_refunded_at
+                return False
 
-        canceled_at = timezone.now()
-        Reservation.objects.filter(pk=self.pk).update(
-            status=self.STATUS_RAIN_CANCELED,
-            canceled_at=canceled_at,
-            cancellation_reason=reason,
-        )
+            canceled_at = timezone.now()
+            Reservation.objects.filter(pk=locked_self.pk).update(
+                status=self.STATUS_RAIN_CANCELED,
+                canceled_at=canceled_at,
+                cancellation_reason=reason,
+            )
+            locked_self.status = self.STATUS_RAIN_CANCELED
+            locked_self.refund_tickets(
+                reason=TicketLedger.REASON_RAIN_REFUND,
+                created_by=created_by,
+                note=f"雨天中止返却: {locked_self.start_at:%Y-%m-%d %H:%M}",
+            )
+
         self.status = self.STATUS_RAIN_CANCELED
         self.canceled_at = canceled_at
         self.cancellation_reason = reason
-
-        self.refund_tickets(
-            reason=TicketLedger.REASON_RAIN_REFUND,
-            created_by=created_by,
-            note=f"雨天中止返却: {self.start_at:%Y-%m-%d %H:%M}",
-        )
+        self.ticket_refunded_at = locked_self.ticket_refunded_at
         return True
 
 
