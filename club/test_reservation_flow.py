@@ -174,6 +174,16 @@ class ReservationFlowSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
 
+    def test_contractor_navigation_links_to_own_payroll(self):
+        self.client.force_login(self.contractor)
+
+        response = self.client.get(reverse("club:home"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("club:coach_payroll_summary"))
+        self.assertNotContains(response, reverse("club:coach_revenue_summary"))
+        self.assertNotContains(response, reverse("club:coach_admin_settlement"))
+
     def test_contractor_cannot_view_other_coach_lesson_members(self):
         fixed_lesson = self._create_fixed_lesson(coach=self.coach)
         fixed_lesson.members.add(self.member)

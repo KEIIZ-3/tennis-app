@@ -1020,7 +1020,9 @@
               <section class="coach-menu-group">
                 <h2 class="coach-menu-group-title">集計・管理確認</h2>
                 <div class="coach-tabs">
-                  <a href="{% url 'club:coach_revenue_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_revenue_summary' %}active{% endif %}">収支管理</a>
+                  {% if user.role != "contractor_coach" %}
+                    <a href="{% url 'club:coach_revenue_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_revenue_summary' %}active{% endif %}">収支管理</a>
+                  {% endif %}
                   <a href="{% url 'club:coach_payroll_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_payroll_summary' %}active{% endif %}">給与・精算</a>
                   <a href="{% url 'club:coach_ticket_summary' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_ticket_summary' %}active{% endif %}">チケット集計</a>
                   <a href="{% url 'club:shop_estimate' %}" class="coach-tab {% if request.resolver_match.url_name == 'shop_estimate' %}active{% endif %}">Shop</a>
@@ -1064,8 +1066,8 @@
             {% endif %}
           </span>
         </a>
-        <a href="{% url 'club:coach_revenue_summary' %}" class="{% if request.resolver_match.url_name == 'coach_revenue_summary' or request.resolver_match.url_name == 'coach_payroll_summary' or request.resolver_match.url_name == 'coach_expense_manage' or request.resolver_match.url_name == 'coach_ticket_summary' or request.resolver_match.url_name == 'coach_admin_settlement' %}is-active{% endif %}">
-          <span class="bottom-icon">¥</span><span>収支</span>
+        <a href="{% if user.role == 'contractor_coach' %}{% url 'club:coach_payroll_summary' %}{% else %}{% url 'club:coach_revenue_summary' %}{% endif %}" class="{% if request.resolver_match.url_name == 'coach_revenue_summary' or request.resolver_match.url_name == 'coach_payroll_summary' or request.resolver_match.url_name == 'coach_expense_manage' or request.resolver_match.url_name == 'coach_ticket_summary' or request.resolver_match.url_name == 'coach_admin_settlement' %}is-active{% endif %}">
+          <span class="bottom-icon">¥</span><span>{% if user.role == "contractor_coach" %}給与{% else %}収支{% endif %}</span>
         </a>
       </nav>
     {% else %}
