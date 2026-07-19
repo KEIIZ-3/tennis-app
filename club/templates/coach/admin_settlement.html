@@ -135,7 +135,7 @@
   </section>
 
   <section class="panel">
-    <div class="section-head"><div><h2 class="section-title">コーチ別 最終精算</h2><p class="help">売上貢献、コート代、会社経費支払分、共通経費、業務委託負担を分けて表示します。</p></div></div>
+    <div class="section-head"><div><h2 class="section-title">コーチ別 最終精算</h2><p class="help">売上貢献、コート代、会社経費支払分、共通経費、業務委託負担を分けて表示します。ボール代は当月の担当レッスン数に比例して負担します。</p></div></div>
     <div class="coach-grid">
       {% for row in coach_rows %}
         <article class="coach-card{% if row.is_contractor_coach %} contractor{% endif %}">
