@@ -42,7 +42,7 @@
     <div class="head">
       <div>
         <h1 class="title">実売上ベース精算</h1>
-        <p class="lead">{{ month_label }}・{{ row.coach_name }}さんの給与と本人立替精算です。</p>
+        <p class="lead">{{ month_label }}・{{ row.coach_name }}さんの給与精算です。個人経費は給与計算に含みません。</p>
       </div>
       {% if is_month_closed %}<span class="badge closed">締め済み</span>{% else %}<span class="badge open">編集中</span>{% endif %}
     </div>
@@ -69,17 +69,14 @@
   {% if is_month_closed %}
     <div class="notice">この月は締め済みです。表示金額は月次締め時点の確定値です。</div>
   {% else %}
-    <div class="notice">承認済みの本人立替は、過去月の未精算分を含めて表示します。支払い登録はadmin月次精算画面で行います。</div>
+    <div class="notice">個人事業主本人の経費記録は給与計算の対象外です。会社共通経費とコート代移転のみ精算へ反映します。</div>
   {% endif %}
 
   <section class="summary-grid">
-    <div class="summary primary"><div class="label">総未払額</div><div class="value">{{ total_unpaid }}円</div><div class="note">給与未払 + 本人立替未精算</div></div>
-    <div class="summary info"><div class="label">最終受取額</div><div class="value">{{ salary_due }}円</div><div class="note">売上・業務報酬 + 立替返金 − 経費負担</div></div>
+    <div class="summary primary"><div class="label">総未払額</div><div class="value">{{ total_unpaid }}円</div><div class="note">給与の未払額</div></div>
+    <div class="summary info"><div class="label">最終受取額</div><div class="value">{{ salary_due }}円</div><div class="note">売上・業務報酬 + 会社経費支払分 − 共通負担</div></div>
     <div class="summary success"><div class="label">給与支払済み</div><div class="value">{{ salary_paid }}円</div><div class="note">当月精算に登録された支払い</div></div>
     <div class="summary danger"><div class="label">給与未払い</div><div class="value">{{ unpaid_salary }}円</div><div class="note">給与確定額 − 支払済み</div></div>
-    <div class="summary info"><div class="label">立替返金（内数）</div><div class="value">{{ reimbursement_due }}円</div><div class="note">最終受取額に含まれる返金額</div></div>
-    <div class="summary success"><div class="label">立替精算支払記録</div><div class="value">{{ reimbursement_paid }}円</div><div class="note">当月登録された立替精算支払い</div></div>
-    <div class="summary danger"><div class="label">立替未精算</div><div class="value">{{ unpaid_reimbursement }}円</div><div class="note">過去分を含む現在の未精算残高</div></div>
     <div class="summary"><div class="label">担当レッスン</div><div class="value">{{ row.reservation_count }}件</div><div class="note">{% if row.is_contractor_coach %}{{ row.contractor_work_hours_text }}・{{ row.contractor_work_slot_count }}枠{% else %}当月の担当実績{% endif %}</div></div>
   </section>
 
@@ -95,17 +92,8 @@
       {% else %}
         <div class="row"><span>共通経費負担</span><strong class="minus">-{{ row.common_expense_share }}円</strong></div>
       {% endif %}
-      {% if row.wallet_reimbursement %}<div class="row"><span>立替返金</span><strong class="plus">+{{ row.wallet_reimbursement }}円</strong></div>{% endif %}
+      {% if row.wallet_reimbursement %}<div class="row"><span>会社経費支払分</span><strong class="plus">+{{ row.wallet_reimbursement }}円</strong></div>{% endif %}
       <div class="row"><span>最終受取額</span><strong>{{ row.salary_due }}円</strong></div>
-    </div>
-
-    <div class="panel">
-      <h2 class="detail-title">本人立替の内訳</h2>
-      <div class="row"><span>過去月からの未精算繰越</span><strong>{{ row.reimbursement_carry_in }}円</strong></div>
-      <div class="row"><span>当月承認済み立替</span><strong>{{ row.reimbursement_current_month }}円</strong></div>
-      <div class="row"><span>立替精算対象額</span><strong>{{ row.reimbursement_due }}円</strong></div>
-      <div class="row"><span>当月支払記録</span><strong>{{ row.reimbursement_paid }}円</strong></div>
-      <div class="row"><span>現在の未精算残高</span><strong class="unpaid">{{ row.unpaid_reimbursement }}円</strong></div>
     </div>
   </section>
 

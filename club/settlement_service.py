@@ -110,7 +110,7 @@ def expense_meta_row(expense):
         }
     )
     type_labels = {
-        EXPENSE_TYPE_PERSONAL: "本人立替",
+        EXPENSE_TYPE_PERSONAL: "個人経費（給与計算対象外）",
         EXPENSE_TYPE_COMMON: "共通経費",
         EXPENSE_TYPE_SALARY_PAYOUT: "給与支払い",
         EXPENSE_TYPE_REIMBURSEMENT_PAYOUT: "本人立替精算支払い",

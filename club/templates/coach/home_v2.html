@@ -82,13 +82,13 @@
         <div>
           <div class="work-kicker">月末</div>
           <div class="work-title">会社財布・月次精算</div>
-          <div class="work-text">売上、コート代、立替返金、業務委託負担、最終受取額を確認します。</div>
+          <div class="work-text">売上、コート代、会社経費支払分、業務委託負担、最終受取額を確認します。</div>
         </div>
         <div class="work-action"><span>月次精算を開く</span><span class="arrow">›</span></div>
         </a>
       {% else %}
         <a class="work-card info" href="{% url 'club:coach_payroll_summary' %}?year={{ current_year }}&month={{ current_month }}">
-          <div><div class="work-kicker">月末</div><div class="work-title">給与・精算明細</div><div class="work-text">自分の給与、立替返金、コート代負担、支払状況を確認します。</div></div>
+          <div><div class="work-kicker">月末</div><div class="work-title">給与・精算明細</div><div class="work-text">自分の給与、会社経費支払分、コート代負担、支払状況を確認します。個人経費は含みません。</div></div>
           <div class="work-action"><span>自分の明細を開く</span><span class="arrow">›</span></div>
         </a>
       {% endif %}

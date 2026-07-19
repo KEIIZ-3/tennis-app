@@ -8,6 +8,7 @@ from django.utils import timezone
 from club.settlement_balance_policy import (
     _apply_wallet_policy,
     _automatic_court_cost,
+    _build_other_expense_policy,
     _court_transfer_allocation,
     _held_execution_reservations,
     _lighting_start_hour,
@@ -104,6 +105,32 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         self.assertEqual(allocation["reimbursement_by_coach"], {})
         self.assertEqual(allocation["expense_ids"], set())
         self.assertEqual(allocation["total"], 0)
+
+    @patch("club.settlement_balance_policy._approved_monthly_expenses")
+    def test_personal_business_expense_is_excluded_from_payroll(self, expenses_mock):
+        expenses_mock.return_value = [
+            {
+                "expense": SimpleNamespace(pk=20),
+                "amount": 14740,
+                "payer_id": 1,
+                "expense_type": "personal",
+                "is_court": False,
+            },
+            {
+                "expense": SimpleNamespace(pk=21),
+                "amount": 7800,
+                "payer_id": None,
+                "expense_type": "common",
+                "is_court": False,
+            },
+        ]
+
+        policy = _build_other_expense_policy(2026, 7, [1, 2, 3])
+
+        self.assertEqual(policy["expense_total"], 7800)
+        self.assertEqual(policy["burden_by_coach"], {1: 2600, 2: 2600, 3: 2600})
+        self.assertEqual(policy["reimbursement_by_coach"], {})
+        self.assertEqual([row["expense_id"] for row in policy["detail_rows"]], [21])
 
     def test_contractor_lesson_court_cost_is_shared_by_main_coaches_once(self):
         allocation = _court_transfer_allocation(
