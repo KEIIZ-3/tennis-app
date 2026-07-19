@@ -867,6 +867,77 @@ class FixedLesson(models.Model, LessonTypeMixin):
 
         return changed_count
 
+    def cancel_and_delete(self, created_by=None):
+        """固定レッスン削除時に、生成済みの開催枠と受付情報も一体で取り消す。"""
+        if not self.pk:
+            return super().delete()
+
+        with transaction.atomic():
+            locked_lesson = FixedLesson.objects.select_for_update().get(pk=self.pk)
+            occurrence_datetimes = {
+                locked_lesson._build_datetimes_for_date(target_date)
+                for target_date in locked_lesson.scheduled_occurrence_dates()
+            }
+
+            generated_availability_ids = set(
+                CoachAvailability.objects.filter(
+                    coach=locked_lesson.primary_coach(),
+                    court=locked_lesson.court,
+                    lesson_type=locked_lesson.lesson_type,
+                    start_at__in=[start_at for start_at, _end_at in occurrence_datetimes],
+                    note__startswith="固定レッスン:",
+                ).values_list("pk", flat=True)
+            )
+            generated_availability_ids.update(
+                Reservation.objects.filter(fixed_lesson=locked_lesson)
+                .exclude(availability_id__isnull=True)
+                .values_list("availability_id", flat=True)
+            )
+            generated_availability_ids.update(
+                LessonWaitlist.objects.filter(fixed_lesson=locked_lesson)
+                .exclude(availability_id__isnull=True)
+                .values_list("availability_id", flat=True)
+            )
+
+            reservation_filter = models.Q(fixed_lesson=locked_lesson)
+            waitlist_filter = models.Q(fixed_lesson=locked_lesson)
+            if generated_availability_ids:
+                reservation_filter |= models.Q(availability_id__in=generated_availability_ids)
+                waitlist_filter |= models.Q(availability_id__in=generated_availability_ids)
+
+            reservations = list(
+                Reservation.objects.select_for_update()
+                .filter(
+                    reservation_filter,
+                    status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+                )
+                .order_by("id")
+            )
+            for reservation in reservations:
+                reservation.cancel(
+                    created_by=created_by,
+                    reason="固定レッスン削除による取消",
+                )
+
+            for waitlist in LessonWaitlist.objects.select_for_update().filter(
+                waitlist_filter,
+                status=LessonWaitlist.STATUS_WAITING,
+            ):
+                waitlist.cancel(reason="固定レッスン削除による取消")
+
+            if generated_availability_ids:
+                CoachAvailability.objects.filter(
+                    pk__in=generated_availability_ids,
+                    note__startswith="固定レッスン:",
+                ).delete()
+
+            # オーバーライドを再帰させず、ロック済みインスタンスを実削除する。
+            return models.Model.delete(locked_lesson)
+
+    def delete(self, using=None, keep_parents=False, created_by=None):
+        # Django admin の単件削除を含む全経路で、予約だけが孤児化するのを防ぐ。
+        return self.cancel_and_delete(created_by=created_by)
+
 
 class TicketPurchase(models.Model):
     PURCHASE_TYPE_SINGLE = "single"
