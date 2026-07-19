@@ -185,6 +185,11 @@ class ReservationFlowSmokeTests(TestCase):
             role=self.User.ROLE_COACH,
             full_name="候補外 コーチ",
         )
+        non_stringing_main_coach = self._create_user(
+            username="non_stringing_main_coach",
+            role=self.User.ROLE_COACH,
+            full_name="井上春佳",
+        )
         order = StringingOrder(
             user=self.member,
             assigned_coach=self.contractor,
@@ -194,14 +199,21 @@ class ReservationFlowSmokeTests(TestCase):
 
         with self.assertRaisesMessage(
             ValidationError,
-            "ガット張りの担当者にはメインコーチを指定してください。",
+            "ガット張りの担当者には対応可能なコーチを指定してください。",
         ):
             order.full_clean()
 
         order.assigned_coach = unlisted_coach
         with self.assertRaisesMessage(
             ValidationError,
-            "ガット張りの担当者にはメインコーチを指定してください。",
+            "ガット張りの担当者には対応可能なコーチを指定してください。",
+        ):
+            order.full_clean()
+
+        order.assigned_coach = non_stringing_main_coach
+        with self.assertRaisesMessage(
+            ValidationError,
+            "ガット張りの担当者には対応可能なコーチを指定してください。",
         ):
             order.full_clean()
 
@@ -209,6 +221,7 @@ class ReservationFlowSmokeTests(TestCase):
             "assigned_coach"
         ].queryset
         self.assertIn(main_coach, assigned_coach_queryset)
+        self.assertNotIn(non_stringing_main_coach, assigned_coach_queryset)
         self.assertNotIn(unlisted_coach, assigned_coach_queryset)
         self.assertNotIn(self.contractor, assigned_coach_queryset)
 

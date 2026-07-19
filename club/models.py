@@ -17,6 +17,10 @@ MAIN_COACH_NAMES = (
     "清水峻平",
     "井上春佳",
 )
+STRINGING_COACH_NAMES = (
+    "飯塚研太朗",
+    "清水峻平",
+)
 
 
 def is_preopen_cash_lesson_date(value) -> bool:
@@ -2382,7 +2386,7 @@ class StringingOrder(models.Model):
         related_name="assigned_stringing_orders",
         limit_choices_to={
             "role": User.ROLE_COACH,
-            "full_name__in": MAIN_COACH_NAMES,
+            "full_name__in": STRINGING_COACH_NAMES,
         },
     )
     racket_name = models.CharField(max_length=120, blank=True, default="")
@@ -2443,9 +2447,9 @@ class StringingOrder(models.Model):
 
         if self.assigned_coach and (
             getattr(self.assigned_coach, "role", "") != User.ROLE_COACH
-            or getattr(self.assigned_coach, "full_name", "") not in MAIN_COACH_NAMES
+            or getattr(self.assigned_coach, "full_name", "") not in STRINGING_COACH_NAMES
         ):
-            raise ValidationError("ガット張りの担当者にはメインコーチを指定してください。")
+            raise ValidationError("ガット張りの担当者には対応可能なコーチを指定してください。")
 
         if self.base_price < 0:
             raise ValidationError("基本料金は0円以上にしてください。")

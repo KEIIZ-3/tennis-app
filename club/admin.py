@@ -22,11 +22,11 @@ from .models import (
     FixedLesson,
     LessonWaitlist,
     LineAccountLink,
-    MAIN_COACH_NAMES,
     Reservation,
     ScheduleSurveyResponse,
     ShopEstimateRequest,
     ShopProductMaster,
+    STRINGING_COACH_NAMES,
     StringingOrder,
     TicketConsumption,
     TicketLedger,
@@ -458,7 +458,7 @@ class StringingOrderAdminForm(forms.ModelForm):
         if "assigned_coach" in self.fields:
             self.fields["assigned_coach"].queryset = User.objects.filter(
                 role=User.ROLE_COACH,
-                full_name__in=MAIN_COACH_NAMES,
+                full_name__in=STRINGING_COACH_NAMES,
             ).order_by("full_name", "username", "id")
             self.fields["assigned_coach"].required = False
             self.fields["assigned_coach"].label = "担当コーチ"
