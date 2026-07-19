@@ -4240,6 +4240,9 @@ def reservation_detail(request, pk):
             "slot_remaining_count": max(capacity - active_count, 0),
         },
     )
+
+
+@login_required
 @require_http_methods(["GET", "POST"])
 def stringing_order_detail(request, pk):
     survey_redirect = _require_schedule_survey(request)
@@ -6918,6 +6921,9 @@ def reservation_list(request):
             "waitlist_rows": waitlist_rows,
         },
     )
+
+
+@login_required
 @require_POST
 def reservation_cancel(request, pk):
     reservation = get_object_or_404(Reservation, pk=pk)
@@ -7092,6 +7098,7 @@ def lesson_waitlist_promote(request, pk):
 
     return redirect(redirect_to)
 
+@login_required
 @require_http_methods(["GET", "POST"])
 def coach_availability_list(request):
     if not (_is_coach_user(request.user) or _is_staff_like(request.user)):

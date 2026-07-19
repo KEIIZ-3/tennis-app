@@ -116,6 +116,18 @@ class ReservationFlowSmokeTests(TestCase):
             },
         )
 
+    def test_private_operation_endpoints_require_login(self):
+        endpoints = (
+            ("get", reverse("club:stringing_order_detail", args=[999999])),
+            ("post", reverse("club:reservation_cancel", args=[999999])),
+            ("get", reverse("club:coach_availability_list")),
+        )
+        for method, url in endpoints:
+            with self.subTest(url=url):
+                response = getattr(self.client, method)(url)
+                self.assertEqual(response.status_code, 302)
+                self.assertTrue(response.url.startswith(reverse("club:login")))
+
     def test_lesson_calendar_page_does_not_return_500_for_member(self):
         self._create_fixed_lesson()
         self.client.force_login(self.member)
