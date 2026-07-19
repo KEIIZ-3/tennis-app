@@ -9,6 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from . import lesson_execution
+from .admin import StringingOrderAdminForm
 from .models import (
     CoachAvailability,
     CoachExpense,
@@ -172,6 +173,26 @@ class ReservationFlowSmokeTests(TestCase):
         response = self.client.get(reverse("club:coach_revenue_summary"))
 
         self.assertEqual(response.status_code, 403)
+
+    def test_contractor_cannot_be_assigned_to_stringing_order(self):
+        order = StringingOrder(
+            user=self.member,
+            assigned_coach=self.contractor,
+            racket_name="テストラケット",
+            preferred_delivery_time="来週末",
+        )
+
+        with self.assertRaisesMessage(
+            ValidationError,
+            "ガット張りの担当者にはメインコーチを指定してください。",
+        ):
+            order.full_clean()
+
+        assigned_coach_queryset = StringingOrderAdminForm().fields[
+            "assigned_coach"
+        ].queryset
+        self.assertIn(self.coach, assigned_coach_queryset)
+        self.assertNotIn(self.contractor, assigned_coach_queryset)
 
     def test_lesson_calendar_page_does_not_return_500_for_member(self):
         self._create_fixed_lesson()
