@@ -1023,7 +1023,7 @@ class CoachExpense(models.Model):
     expense_date = models.DateField(default=timezone.localdate)
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default=CATEGORY_OTHER)
     amount = models.PositiveIntegerField(default=0)
-    note = models.CharField(max_length=255, blank=True, default="")
+    note = models.TextField(blank=True, default="")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

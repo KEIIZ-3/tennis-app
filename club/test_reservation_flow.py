@@ -486,6 +486,19 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertEqual(response.status_code, 302)
         expense = CoachExpense.objects.get()
         self.assertEqual(expense.created_by, payer)
+        self.assertGreater(len(expense.note), 255)
+
+        repeated_response = self.client.post(
+            reverse("club:coach_expense_manage"),
+            data={
+                "action": "create_court_transfer",
+                "availability_id": availability.pk,
+                "payer_coach_id": payer.pk,
+                "amount": "3000",
+            },
+        )
+        self.assertEqual(repeated_response.status_code, 302)
+        self.assertEqual(CoachExpense.objects.count(), 1)
 
         from .court_expense_transfer import _parse_note
         from .settlement_balance_policy import _court_transfer_allocation
