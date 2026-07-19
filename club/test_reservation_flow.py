@@ -375,6 +375,61 @@ class ReservationFlowSmokeTests(TestCase):
             )
         )
 
+    def test_contractor_dashboard_hides_global_company_metrics(self):
+        StringingOrder.objects.create(
+            user=self.member,
+            assigned_coach=None,
+            racket_name="未割当ラケット",
+            preferred_delivery_time="来週末",
+        )
+        self.client.force_login(self.contractor)
+
+        response = self.client.get(reverse("club:admin_dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["stats"]["member_count"])
+        self.assertIsNone(response.context["stats"]["low_ticket_member_count"])
+        self.assertIsNone(response.context["stats"]["unhandled_stringing_orders"])
+        self.assertNotContains(response, "チケット0枚以下")
+        self.assertNotContains(response, "未完了のガット張り")
+        self.assertNotContains(response, "分析ダッシュボード")
+        self.assertNotContains(response, "収支管理")
+        self.assertNotContains(response, "月次精算")
+        self.assertNotContains(response, "経費・コート代")
+        self.assertNotContains(response, "現在の有効会員は")
+
+    def test_dashboard_does_not_double_count_same_normal_and_substitute_coach(self):
+        target_date = timezone.localdate() + timedelta(days=1)
+        start_at = timezone.make_aware(datetime.combine(target_date, datetime.min.time().replace(hour=10)))
+        end_at = start_at + timedelta(hours=1)
+        Reservation.objects.create(
+            user=self.member,
+            coach=self.contractor,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            status=Reservation.STATUS_PENDING,
+        )
+        Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            substitute_coach=self.contractor,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at + timedelta(hours=1),
+            end_at=end_at + timedelta(hours=1),
+            status=Reservation.STATUS_PENDING,
+        )
+        self.client.force_login(self.contractor)
+
+        response = self.client.get(reverse("club:admin_dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["stats"]["pending_reservations"], 2)
+
     def test_contractor_cannot_be_assigned_to_stringing_order(self):
         main_coach = self._create_user(
             username="main_stringing_coach",
