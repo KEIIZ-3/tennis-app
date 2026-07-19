@@ -77,14 +77,21 @@
         <div class="work-action"><span>経費画面を開く</span><span class="arrow">›</span></div>
       </a>
 
-      <a class="work-card info" href="{% url 'club:coach_admin_settlement' %}?year={{ current_year }}&month={{ current_month }}">
+      {% if is_admin_user %}
+        <a class="work-card info" href="{% url 'club:coach_admin_settlement' %}?year={{ current_year }}&month={{ current_month }}">
         <div>
           <div class="work-kicker">月末</div>
           <div class="work-title">会社財布・月次精算</div>
           <div class="work-text">売上、コート代、立替返金、業務委託負担、最終受取額を確認します。</div>
         </div>
         <div class="work-action"><span>月次精算を開く</span><span class="arrow">›</span></div>
-      </a>
+        </a>
+      {% else %}
+        <a class="work-card info" href="{% url 'club:coach_payroll_summary' %}?year={{ current_year }}&month={{ current_month }}">
+          <div><div class="work-kicker">月末</div><div class="work-title">給与・精算明細</div><div class="work-text">自分の給与、立替返金、コート代負担、支払状況を確認します。</div></div>
+          <div class="work-action"><span>自分の明細を開く</span><span class="arrow">›</span></div>
+        </a>
+      {% endif %}
     </div>
   </section>
 
@@ -94,7 +101,7 @@
       <a class="small-link" href="{% url 'club:reservation_list' %}"><div><strong>予約・承認</strong><span>相談、承認待ち、キャンセルを確認</span></div><div>›</div></a>
       <a class="small-link" href="{% url 'club:coach_fixed_lesson_weekly' %}"><div><strong>固定レッスン</strong><span>今後の予定と担当を確認</span></div><div>›</div></a>
       <a class="small-link" href="{% url 'club:stringing_order_list' %}"><div><strong>ガット張り</strong><span>依頼と対応状況を確認</span></div><div>›</div></a>
-      <a class="small-link" href="{% url 'club:coach_revenue_summary' %}"><div><strong>収支管理</strong><span>売上と回収状況を確認</span></div><div>›</div></a>
+      {% if user.role != "contractor_coach" %}<a class="small-link" href="{% url 'club:coach_revenue_summary' %}"><div><strong>収支管理</strong><span>売上と回収状況を確認</span></div><div>›</div></a>{% endif %}
       <a class="small-link" href="{% url 'club:coach_payroll_summary' %}"><div><strong>コーチ別明細</strong><span>精算内訳を確認</span></div><div>›</div></a>
       <a class="small-link" href="{% url 'club:lesson_calendar' %}"><div><strong>レッスンカレンダー</strong><span>会員表示と同じ予定を確認</span></div><div>›</div></a>
       {% if is_admin_user %}
