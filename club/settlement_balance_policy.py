@@ -5,12 +5,7 @@ from django.contrib.auth import get_user_model
 from django.db.models import Sum
 from django.utils import timezone
 
-
-MAIN_COACH_NAMES = (
-    "飯塚研太朗",
-    "清水峻平",
-    "井上春佳",
-)
+from .models import MAIN_COACH_NAMES
 
 WEEKDAY_COURT_RATE_PER_HOUR = 900
 WEEKEND_HOLIDAY_COURT_RATE_PER_HOUR = 1200

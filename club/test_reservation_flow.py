@@ -175,6 +175,16 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_contractor_cannot_be_assigned_to_stringing_order(self):
+        main_coach = self._create_user(
+            username="main_stringing_coach",
+            role=self.User.ROLE_COACH,
+            full_name="清水峻平",
+        )
+        unlisted_coach = self._create_user(
+            username="unlisted_stringing_coach",
+            role=self.User.ROLE_COACH,
+            full_name="候補外 コーチ",
+        )
         order = StringingOrder(
             user=self.member,
             assigned_coach=self.contractor,
@@ -188,10 +198,18 @@ class ReservationFlowSmokeTests(TestCase):
         ):
             order.full_clean()
 
+        order.assigned_coach = unlisted_coach
+        with self.assertRaisesMessage(
+            ValidationError,
+            "ガット張りの担当者にはメインコーチを指定してください。",
+        ):
+            order.full_clean()
+
         assigned_coach_queryset = StringingOrderAdminForm().fields[
             "assigned_coach"
         ].queryset
-        self.assertIn(self.coach, assigned_coach_queryset)
+        self.assertIn(main_coach, assigned_coach_queryset)
+        self.assertNotIn(unlisted_coach, assigned_coach_queryset)
         self.assertNotIn(self.contractor, assigned_coach_queryset)
 
     def test_lesson_calendar_page_does_not_return_500_for_member(self):
