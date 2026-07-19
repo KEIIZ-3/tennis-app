@@ -510,11 +510,16 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
             start_at__date__lt=next_month,
             status=Reservation.STATUS_ACTIVE,
         )
+        .exclude(
+            fixed_lesson__isnull=True,
+            availability__note__startswith="固定レッスン:",
+        )
         .select_related(
             "user",
             "coach",
             "substitute_coach",
             "court",
+            "availability",
             "fixed_lesson",
             "fixed_lesson__coach",
             "fixed_lesson__coach_2",

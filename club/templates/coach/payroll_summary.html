@@ -74,10 +74,10 @@
 
   <section class="summary-grid">
     <div class="summary primary"><div class="label">総未払額</div><div class="value">{{ total_unpaid }}円</div><div class="note">給与未払 + 本人立替未精算</div></div>
-    <div class="summary info"><div class="label">給与確定額</div><div class="value">{{ salary_due }}円</div><div class="note">売上・業務報酬 − 共通経費</div></div>
+    <div class="summary info"><div class="label">最終受取額</div><div class="value">{{ salary_due }}円</div><div class="note">売上・業務報酬 + 立替返金 − 経費負担</div></div>
     <div class="summary success"><div class="label">給与支払済み</div><div class="value">{{ salary_paid }}円</div><div class="note">当月精算に登録された支払い</div></div>
     <div class="summary danger"><div class="label">給与未払い</div><div class="value">{{ unpaid_salary }}円</div><div class="note">給与確定額 − 支払済み</div></div>
-    <div class="summary info"><div class="label">本人立替対象</div><div class="value">{{ reimbursement_due }}円</div><div class="note">過去繰越 + 当月承認分</div></div>
+    <div class="summary info"><div class="label">立替返金（内数）</div><div class="value">{{ reimbursement_due }}円</div><div class="note">最終受取額に含まれる返金額</div></div>
     <div class="summary success"><div class="label">立替精算支払記録</div><div class="value">{{ reimbursement_paid }}円</div><div class="note">当月登録された立替精算支払い</div></div>
     <div class="summary danger"><div class="label">立替未精算</div><div class="value">{{ unpaid_reimbursement }}円</div><div class="note">過去分を含む現在の未精算残高</div></div>
     <div class="summary"><div class="label">担当レッスン</div><div class="value">{{ row.reservation_count }}件</div><div class="note">{% if row.is_contractor_coach %}{{ row.contractor_work_hours_text }}・{{ row.contractor_work_slot_count }}枠{% else %}当月の担当実績{% endif %}</div></div>
@@ -95,7 +95,8 @@
       {% else %}
         <div class="row"><span>共通経費負担</span><strong class="minus">-{{ row.common_expense_share }}円</strong></div>
       {% endif %}
-      <div class="row"><span>給与確定額</span><strong>{{ row.salary_due }}円</strong></div>
+      {% if row.wallet_reimbursement %}<div class="row"><span>立替返金</span><strong class="plus">+{{ row.wallet_reimbursement }}円</strong></div>{% endif %}
+      <div class="row"><span>最終受取額</span><strong>{{ row.salary_due }}円</strong></div>
     </div>
 
     <div class="panel">

@@ -333,6 +333,10 @@ def _eligible_reservations(year, month):
             status=Reservation.STATUS_ACTIVE,
             end_at__lte=now,
         )
+        .exclude(
+            fixed_lesson__isnull=True,
+            availability__note__startswith="固定レッスン:",
+        )
         .select_related(
             "coach",
             "substitute_coach",
@@ -656,6 +660,19 @@ def _active_salary_payment_total(settlement, coach):
     return _money(result.get("total"))
 
 
+def _active_reimbursement_payment_total(settlement, coach):
+    """旧方式で登録済みの立替精算も、最終受取額の支払済みとして扱う。"""
+    from .settlement_models import SettlementPayment
+
+    result = SettlementPayment.objects.filter(
+        monthly_settlement=settlement,
+        coach=coach,
+        payment_type=SettlementPayment.PAYMENT_TYPE_REIMBURSEMENT,
+        is_reversed=False,
+    ).aggregate(total=Sum("amount"))
+    return _money(result.get("total"))
+
+
 def _apply_wallet_policy(result, year, month):
     from .settlement_models import CoachMonthlySettlement
 
@@ -795,6 +812,7 @@ def _apply_wallet_policy(result, year, month):
 
     salary_due_total = 0
     salary_paid_total = 0
+    reimbursement_paid_total = 0
     unpaid_salary_total = 0
     negative_carry_total = 0
 
@@ -802,9 +820,14 @@ def _apply_wallet_policy(result, year, month):
         coach = row.get("coach")
         final_entitlement = _money(row.get("wallet_final_entitlement"))
         salary_paid = _active_salary_payment_total(settlement, coach)
+        reimbursement_paid = _active_reimbursement_payment_total(
+            settlement,
+            coach,
+        )
+        total_paid = salary_paid + reimbursement_paid
 
         salary_due = max(final_entitlement, 0)
-        closing_balance = final_entitlement - salary_paid
+        closing_balance = final_entitlement - total_paid
         unpaid_salary = max(closing_balance, 0)
         negative_carry = max(-closing_balance, 0)
 
@@ -821,9 +844,10 @@ def _apply_wallet_policy(result, year, month):
                 "reimbursement_due": _money(
                     row.get("wallet_reimbursement")
                 ),
+                "reimbursement_paid": reimbursement_paid,
                 "unpaid_reimbursement": 0,
                 "total_unpaid": unpaid_salary,
-                "total_paid": salary_paid,
+                "total_paid": total_paid,
                 "common_expense_share": _money(
                     row.get("total_cost_burden")
                 ),
@@ -892,7 +916,7 @@ def _apply_wallet_policy(result, year, month):
             saved_row.salary_due = salary_due
             saved_row.salary_paid = salary_paid
             saved_row.salary_unpaid = unpaid_salary
-            saved_row.reimbursement_paid = 0
+            saved_row.reimbursement_paid = reimbursement_paid
             saved_row.reimbursement_unpaid = 0
             saved_row.calculation_snapshot = snapshot
             saved_row.updated_at = timezone.now()
@@ -914,6 +938,7 @@ def _apply_wallet_policy(result, year, month):
 
         salary_due_total += salary_due
         salary_paid_total += salary_paid
+        reimbursement_paid_total += reimbursement_paid
         unpaid_salary_total += unpaid_salary
         negative_carry_total += negative_carry
 
@@ -929,14 +954,14 @@ def _apply_wallet_policy(result, year, month):
         result.get("stringing_total")
     )
     settlement.salary_cash_out = salary_paid_total
-    settlement.reimbursement_cash_out = 0
+    settlement.reimbursement_cash_out = reimbursement_paid_total
     settlement.common_expense_cash_out = 0
     settlement.contractor_cash_out = contractor_pay_total
-    settlement.cash_out_total = salary_paid_total
+    settlement.cash_out_total = salary_paid_total + reimbursement_paid_total
     settlement.unpaid_salary_total = unpaid_salary_total
     settlement.unpaid_reimbursement_total = 0
     settlement.closing_balance = max(
-        total_company_revenue - salary_paid_total,
+        total_company_revenue - salary_paid_total - reimbursement_paid_total,
         0,
     )
 
@@ -974,9 +999,9 @@ def _apply_wallet_policy(result, year, month):
             "salary_paid_total": salary_paid_total,
             "unpaid_salary_total": unpaid_salary_total,
             "reimbursement_due_total": 0,
-            "reimbursement_paid_total": 0,
+            "reimbursement_paid_total": reimbursement_paid_total,
             "unpaid_reimbursement_total": 0,
-            "cash_out_total": salary_paid_total,
+            "cash_out_total": salary_paid_total + reimbursement_paid_total,
             "approved_common_expense_total": (
                 other_expense_policy["expense_total"]
             ),
