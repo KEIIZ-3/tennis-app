@@ -35,6 +35,13 @@ def _slot_is_in_scope(slot, user):
     if _is_full_admin(user):
         return True
 
+    availability = slot.get("availability")
+    if availability is not None and user.pk in {
+        getattr(availability, "coach_id", None),
+        getattr(availability, "substitute_coach_id", None),
+    }:
+        return True
+
     fixed_lesson = slot.get("fixed_lesson")
     if fixed_lesson is not None:
         coach_ids = {
@@ -44,7 +51,6 @@ def _slot_is_in_scope(slot, user):
         }
         return user.pk in coach_ids
 
-    availability = slot.get("availability")
     if availability is None:
         return False
 

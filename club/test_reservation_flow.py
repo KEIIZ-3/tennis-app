@@ -8,7 +8,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from . import lesson_execution
+from . import admin_dashboard, lesson_execution
 from .admin import StringingOrderAdminForm
 from .models import (
     CoachAvailability,
@@ -352,6 +352,28 @@ class ReservationFlowSmokeTests(TestCase):
         }
         self.assertIn(fixed_lesson.pk, visible_fixed_lesson_ids)
         self.assertContains(response, self.member.display_name())
+
+    def test_substitute_contractor_is_in_dashboard_slot_scope(self):
+        fixed_lesson = self._create_fixed_lesson(coach=self.coach)
+        start_at, end_at = fixed_lesson._build_datetimes_for_date(self.lesson_date)
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            substitute_coach=self.contractor,
+            court=self.court,
+            lesson_type=fixed_lesson.lesson_type,
+            target_level=fixed_lesson.target_level,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=fixed_lesson.capacity,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+
+        self.assertTrue(
+            admin_dashboard._slot_is_in_scope(
+                {"fixed_lesson": fixed_lesson, "availability": availability},
+                self.contractor,
+            )
+        )
 
     def test_contractor_cannot_be_assigned_to_stringing_order(self):
         main_coach = self._create_user(
