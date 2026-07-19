@@ -60,6 +60,22 @@ def _build_note(meta, plain_note=""):
     )
 
 
+def _existing_transfer_for_availability(availability_id):
+    for expense in CoachExpense.objects.select_for_update().filter(
+        category=CoachExpense.CATEGORY_COURT,
+    ).order_by("id"):
+        meta = _parse_note(expense.note)
+        if meta.get("record_kind") != RECORD_KIND:
+            continue
+        try:
+            linked_availability_id = int(meta.get("availability_id"))
+        except (TypeError, ValueError):
+            continue
+        if linked_availability_id == int(availability_id):
+            return expense
+    return None
+
+
 def _facility_key(court):
     if not court:
         return "facility:unknown"
@@ -225,19 +241,25 @@ def coach_expense_manage(request):
                 "recorded_by_name": _display_name(request.user),
             }
             with transaction.atomic():
-                CoachExpense.objects.create(
-                    expense_date=start.date(),
-                    category=CoachExpense.CATEGORY_COURT,
-                    amount=amount,
-                    note=_build_note(meta, plain_note),
-                    created_by=payer,
-                )
+                CoachAvailability.objects.select_for_update().get(pk=availability.pk)
+                expense = _existing_transfer_for_availability(availability.pk)
+                created = expense is None
+                if created:
+                    expense = CoachExpense(
+                        category=CoachExpense.CATEGORY_COURT,
+                    )
+                expense.expense_date = start.date()
+                expense.amount = amount
+                expense.note = _build_note(meta, plain_note)
+                expense.created_by = payer
+                expense.full_clean()
+                expense.save()
                 from .settlement_service import calculate_monthly_settlement
                 calculate_monthly_settlement(start.year, start.month, force=True)
 
             messages.success(
                 request,
-                f"コート代{amount:,}円を登録しました。利用コーチから控除し、{_display_name(payer)}コーチへ加算します。",
+                f"コート代{amount:,}円を{'登録' if created else '更新'}しました。利用コーチから控除し、{_display_name(payer)}コーチへ加算します。",
             )
             return redirect("club:coach_admin_settlement")
 
