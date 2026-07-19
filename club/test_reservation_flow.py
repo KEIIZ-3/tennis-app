@@ -11,6 +11,7 @@ from django.utils import timezone
 from . import lesson_execution
 from .models import (
     CoachAvailability,
+    CoachExpense,
     Court,
     FixedLesson,
     LessonWaitlist,
@@ -392,6 +393,57 @@ class ReservationFlowSmokeTests(TestCase):
         )
         waitlist.refresh_from_db()
         self.assertEqual(waitlist.status, LessonWaitlist.STATUS_CONVERTED)
+
+    def test_unassigned_coach_cannot_manage_another_lesson_court_expense(self):
+        start_at = (timezone.now() + timedelta(days=2)).replace(minute=0, second=0, microsecond=0)
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=2),
+            capacity=6,
+        )
+        self.client.force_login(self.contractor)
+
+        response = self.client.get(
+            reverse("club:coach_expense_manage"),
+            data={"availability_id": availability.pk},
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_court_expense_payer_must_be_a_lesson_coach(self):
+        unrelated_coach = self._create_user(
+            username="unrelated_coach",
+            role=self.User.ROLE_COACH,
+            full_name="無関係 コーチ",
+        )
+        start_at = (timezone.now() + timedelta(days=2)).replace(minute=0, second=0, microsecond=0)
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=2),
+            capacity=6,
+        )
+        self.client.force_login(self.coach)
+
+        response = self.client.post(
+            reverse("club:coach_expense_manage"),
+            data={
+                "action": "create_court_transfer",
+                "availability_id": availability.pk,
+                "payer_coach_id": unrelated_coach.pk,
+                "amount": "3000",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(CoachExpense.objects.exists())
 
     def test_direct_reservation_rejects_fixed_lesson_at_capacity(self):
         fixed_lesson = self._create_fixed_lesson(title="直接保存満員テスト")
