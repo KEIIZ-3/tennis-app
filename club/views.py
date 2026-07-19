@@ -4016,13 +4016,9 @@ def coach_fixed_lesson_weekly(request):
         .order_by("weekday", "start_hour", "id")
     )
 
-    if selected_coach is not None:
-        fixed_queryset = [fixed for fixed in fixed_queryset if _fixed_lesson_includes_coach(fixed, selected_coach)]
-
     weekday_labels = dict(FixedLesson.WEEKDAY_CHOICES)
 
     for fixed in fixed_queryset:
-        members = list(fixed.members.all().order_by("full_name", "username", "id"))
         repeat_start = getattr(fixed, "start_date", None) or today
         if repeat_start < today:
             repeat_start = today
@@ -4046,6 +4042,19 @@ def coach_fixed_lesson_weekly(request):
                 )
                 .select_related("substitute_coach")
                 .first()
+            )
+
+            if selected_coach is not None and not (
+                _fixed_lesson_includes_coach(fixed, selected_coach)
+                or (
+                    slot_availability
+                    and slot_availability.substitute_coach_id == selected_coach.pk
+                )
+            ):
+                continue
+
+            members = list(
+                fixed.members.all().order_by("full_name", "username", "id")
             )
 
             week_reservations = list(
