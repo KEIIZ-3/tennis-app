@@ -116,7 +116,7 @@
   </section>
 
   <section class="panel">
-    <div class="section-head"><div><h2 class="section-title">月末一括精算を記録</h2><p class="help">立替返金・コート代負担・経費負担を差し引いた最終受取額を、コーチごとに記録します。</p></div></div>
+    <div class="section-head"><div><h2 class="section-title">月末一括精算を記録</h2><p class="help">会社経費支払分・コート代負担・共通経費負担を反映した最終受取額を、コーチごとに記録します。個人経費は対象外です。</p></div></div>
     {% if is_month_closed %}
       <div class="notice closed">締め済みのため、新しい支払いは登録できません。</div>
     {% else %}
@@ -135,7 +135,7 @@
   </section>
 
   <section class="panel">
-    <div class="section-head"><div><h2 class="section-title">コーチ別 最終精算</h2><p class="help">売上貢献、コート代、立替返金、共通経費、業務委託負担を分けて表示します。</p></div></div>
+    <div class="section-head"><div><h2 class="section-title">コーチ別 最終精算</h2><p class="help">売上貢献、コート代、会社経費支払分、共通経費、業務委託負担を分けて表示します。</p></div></div>
     <div class="coach-grid">
       {% for row in coach_rows %}
         <article class="coach-card{% if row.is_contractor_coach %} contractor{% endif %}">
@@ -149,7 +149,7 @@
             <div class="money-row minus"><span>自身のコート代負担</span><strong>-{{ row.court_cost_burden|default:0 }}円</strong></div>
             <div class="money-row minus"><span>その他経費負担</span><strong>-{{ row.other_expense_burden|default:0 }}円</strong></div>
             <div class="money-row minus"><span>業務委託費負担</span><strong>-{{ row.contractor_cost_burden|default:0 }}円</strong></div>
-            <div class="money-row plus"><span>立替返金</span><strong>+{{ row.wallet_reimbursement|default:0 }}円</strong></div>
+            <div class="money-row plus"><span>会社経費支払分</span><strong>+{{ row.wallet_reimbursement|default:0 }}円</strong></div>
             {% if row.wallet_balance_adjustment %}<div class="money-row"><span>財布残高調整</span><strong>{{ row.wallet_balance_adjustment }}円</strong></div>{% endif %}
             <div class="money-row total"><span>最終受取額</span><strong>{{ row.wallet_final_entitlement|default:row.salary_due }}円</strong></div>
             <div class="money-row"><span>支払済み</span><strong>{{ row.salary_paid }}円</strong></div>

@@ -613,18 +613,18 @@ def _build_other_expense_policy(year, month, main_coach_ids):
     for row in expenses:
         if row["is_court"]:
             continue
+        if row["expense_type"] == EXPENSE_TYPE_PERSONAL:
+            # 個人事業主が自身の経費管理のために記録する項目。
+            # 会社の給与・負担・返金には一切含めない。
+            continue
 
         amount = row["amount"]
         payer_id = row["payer_id"]
         if payer_id:
             reimbursement_by_coach[payer_id] += amount
 
-        if row["expense_type"] == EXPENSE_TYPE_COMMON:
-            target_ids = list(main_coach_ids)
-            rule = "メインコーチ3人均等負担"
-        else:
-            target_ids = [payer_id] if payer_id else []
-            rule = "本人負担"
+        target_ids = list(main_coach_ids)
+        rule = "メインコーチ3人均等負担"
 
         for coach_id, allocated in _split_amount(amount, target_ids).items():
             burden_by_coach[coach_id] += allocated
