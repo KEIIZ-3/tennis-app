@@ -195,6 +195,46 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertNotContains(response, reverse("club:coach_revenue_summary"))
         self.assertNotContains(response, reverse("club:coach_admin_settlement"))
 
+    def test_staff_coach_can_switch_payroll_to_another_coach(self):
+        self.coach.is_staff = True
+        self.coach.save(update_fields=["is_staff"])
+        self.client.force_login(self.coach)
+
+        response = self.client.get(
+            reverse("club:coach_payroll_summary"),
+            data={
+                "year": 2026,
+                "month": 7,
+                "coach_id": self.contractor.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["is_admin_mode"])
+        self.assertEqual(response.context["selected_coach"], self.contractor)
+        self.assertEqual(
+            response.context["selected_coach_id"],
+            str(self.contractor.pk),
+        )
+        self.assertEqual(response.context["row"]["coach"], self.contractor)
+
+    def test_regular_coach_cannot_switch_payroll_to_another_coach(self):
+        self.client.force_login(self.coach)
+
+        response = self.client.get(
+            reverse("club:coach_payroll_summary"),
+            data={
+                "year": 2026,
+                "month": 7,
+                "coach_id": self.contractor.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["is_admin_mode"])
+        self.assertEqual(response.context["selected_coach"], self.coach)
+        self.assertEqual(response.context["selected_coach_id"], str(self.coach.pk))
+
     def test_contractor_cannot_view_other_coach_lesson_members(self):
         fixed_lesson = self._create_fixed_lesson(coach=self.coach)
         fixed_lesson.members.add(self.member)

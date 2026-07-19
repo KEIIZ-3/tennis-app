@@ -394,10 +394,7 @@ def coach_payroll_summary(request):
         role__in=("coach", "contractor_coach")
     ).order_by("full_name", "username", "id")
 
-    if is_coach:
-        selected_coach = request.user
-        selected_coach_id = str(request.user.pk)
-    else:
+    if is_admin:
         selected_coach_id = (request.GET.get("coach_id") or "").strip()
         selected_coach = (
             coach_queryset.filter(pk=selected_coach_id).first()
@@ -405,6 +402,10 @@ def coach_payroll_summary(request):
             else coach_queryset.first()
         )
         selected_coach_id = str(selected_coach.pk) if selected_coach else ""
+    else:
+        # 一般コーチはURLのcoach_idを書き換えても本人以外へ切り替えない。
+        selected_coach = request.user
+        selected_coach_id = str(request.user.pk)
 
     result = calculate_monthly_settlement(selected_year, selected_month)
     settlement = result["settlement"]
