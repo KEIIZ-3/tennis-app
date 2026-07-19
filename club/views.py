@@ -2606,7 +2606,10 @@ def stringing_order_list(request):
     if not _is_staff_like(request.user) and not _is_coach_user(request.user):
         return redirect("club:stringing_order_create")
 
-    queryset = StringingOrder.objects.select_related("user", "assigned_coach").all().order_by("-created_at", "-id")
+    queryset = StringingOrder.objects.select_related("user", "assigned_coach")
+    if not _is_staff_like(request.user):
+        queryset = queryset.filter(assigned_coach=request.user)
+    queryset = queryset.order_by("-created_at", "-id")
 
     status_filter = (request.GET.get("status_filter") or "all").strip()
     valid_status_filters = {
@@ -8415,7 +8418,7 @@ def shop_estimate_complete_view(request, pk):
 @login_required
 @require_GET
 def coach_revenue_summary(request):
-    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
+    if not _is_staff_like(request.user):
         return HttpResponse("Forbidden", status=403)
 
     User = get_user_model()
@@ -8449,7 +8452,7 @@ def coach_revenue_summary(request):
         next_year += 1
 
     coach_queryset = User.objects.filter(role__in=("coach", "contractor_coach")).order_by("full_name", "username", "id")
-    is_admin_mode = bool(getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False))
+    is_admin_mode = True
     selected_coach_id = (request.GET.get("coach_id") or "").strip()
 
     selected_coach = None
