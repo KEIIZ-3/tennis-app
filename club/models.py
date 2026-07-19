@@ -12,6 +12,11 @@ TICKET_BALANCE_MIN = -4
 PREOPEN_CASH_START_DATE = date(2026, 7, 1)
 PREOPEN_CASH_END_DATE = date(2026, 7, 31)
 PREOPEN_CASH_PRICE = 2000
+MAIN_COACH_NAMES = (
+    "飯塚研太朗",
+    "清水峻平",
+    "井上春佳",
+)
 
 
 def is_preopen_cash_lesson_date(value) -> bool:
@@ -2375,7 +2380,10 @@ class StringingOrder(models.Model):
         null=True,
         blank=True,
         related_name="assigned_stringing_orders",
-        limit_choices_to={"role": User.ROLE_COACH},
+        limit_choices_to={
+            "role": User.ROLE_COACH,
+            "full_name__in": MAIN_COACH_NAMES,
+        },
     )
     racket_name = models.CharField(max_length=120, blank=True, default="")
     string_name = models.CharField(max_length=120, blank=True, default="")
@@ -2433,7 +2441,10 @@ class StringingOrder(models.Model):
             if default_coach:
                 self.assigned_coach = default_coach
 
-        if self.assigned_coach and getattr(self.assigned_coach, "role", "") != User.ROLE_COACH:
+        if self.assigned_coach and (
+            getattr(self.assigned_coach, "role", "") != User.ROLE_COACH
+            or getattr(self.assigned_coach, "full_name", "") not in MAIN_COACH_NAMES
+        ):
             raise ValidationError("ガット張りの担当者にはメインコーチを指定してください。")
 
         if self.base_price < 0:
