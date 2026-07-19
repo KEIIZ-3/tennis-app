@@ -2375,7 +2375,7 @@ class StringingOrder(models.Model):
         null=True,
         blank=True,
         related_name="assigned_stringing_orders",
-        limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
+        limit_choices_to={"role": User.ROLE_COACH},
     )
     racket_name = models.CharField(max_length=120, blank=True, default="")
     string_name = models.CharField(max_length=120, blank=True, default="")
@@ -2401,14 +2401,14 @@ class StringingOrder(models.Model):
     @classmethod
     def default_assigned_coach(cls):
         coach = User.objects.filter(
-            role__in=User.COACH_ROLE_VALUES,
+            role=User.ROLE_COACH,
             username=cls.DEFAULT_ASSIGNED_COACH_USERNAME,
         ).first()
         if coach:
             return coach
 
         coach = User.objects.filter(
-            role__in=User.COACH_ROLE_VALUES,
+            role=User.ROLE_COACH,
             email__iexact=cls.DEFAULT_ASSIGNED_COACH_EMAIL,
         ).first()
         if coach:
@@ -2433,8 +2433,8 @@ class StringingOrder(models.Model):
             if default_coach:
                 self.assigned_coach = default_coach
 
-        if self.assigned_coach and getattr(self.assigned_coach, "role", "") not in User.COACH_ROLE_VALUES:
-            raise ValidationError("担当コーチにはコーチまたは業務委託コーチのユーザーを指定してください。")
+        if self.assigned_coach and getattr(self.assigned_coach, "role", "") != User.ROLE_COACH:
+            raise ValidationError("ガット張りの担当者にはメインコーチを指定してください。")
 
         if self.base_price < 0:
             raise ValidationError("基本料金は0円以上にしてください。")
