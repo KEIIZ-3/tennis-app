@@ -387,8 +387,20 @@ def _held_execution_reservations(reservations, status_map):
     return list(eligible_by_slot.values())
 
 
-def _court_transfer_allocation(expense_rows, eligible_coach_ids):
+def _court_transfer_allocation(
+    expense_rows,
+    eligible_coach_ids,
+    *,
+    main_coach_ids=None,
+    contractor_coach_ids=None,
+):
     eligible_coach_id_set = set(eligible_coach_ids)
+    main_coach_id_list = [
+        coach_id
+        for coach_id in (main_coach_ids or [])
+        if coach_id in eligible_coach_id_set
+    ]
+    contractor_coach_id_set = set(contractor_coach_ids or [])
     burden_by_coach = defaultdict(int)
     reimbursement_by_coach = defaultdict(int)
     detail_rows = []
@@ -414,9 +426,16 @@ def _court_transfer_allocation(expense_rows, eligible_coach_ids):
         if amount <= 0 or not using_coach_ids:
             continue
 
+        contractor_only = bool(using_coach_ids) and all(
+            coach_id in contractor_coach_id_set for coach_id in using_coach_ids
+        )
+        burden_target_ids = main_coach_id_list if contractor_only else using_coach_ids
+        if not burden_target_ids:
+            continue
+
         for coach_id, allocated in _split_amount(
             amount,
-            using_coach_ids,
+            burden_target_ids,
         ).items():
             burden_by_coach[coach_id] += allocated
 
@@ -432,8 +451,12 @@ def _court_transfer_allocation(expense_rows, eligible_coach_ids):
                 "expense_id": row["expense"].pk,
                 "amount": amount,
                 "payer_id": payer_id,
-                "burden_target_ids": using_coach_ids,
-                "burden_rule": "登録された利用コーチで均等負担",
+                "burden_target_ids": burden_target_ids,
+                "burden_rule": (
+                    "業務委託コーチのみのためメインコーチ3人で均等負担"
+                    if contractor_only
+                    else "登録された利用コーチで均等負担"
+                ),
                 "is_court_transfer": True,
             }
         )
@@ -452,12 +475,18 @@ def _build_court_cost_policy(
     month,
     main_coach_ids,
     eligible_coach_ids,
+    contractor_coach_ids,
 ):
     month_start, next_month = _month_range(year, month)
     reservations = _eligible_reservations(year, month)
     expenses = _approved_monthly_expenses(month_start, next_month)
 
-    transfer = _court_transfer_allocation(expenses, eligible_coach_ids)
+    transfer = _court_transfer_allocation(
+        expenses,
+        eligible_coach_ids,
+        main_coach_ids=main_coach_ids,
+        contractor_coach_ids=contractor_coach_ids,
+    )
     transfer_expense_ids = transfer["expense_ids"]
 
     court_expenses_by_slot = defaultdict(list)
@@ -657,6 +686,12 @@ def _apply_wallet_policy(result, year, month):
         month,
         main_coach_ids,
         eligible_coach_ids,
+        [
+            getattr(row.get("coach"), "pk", None)
+            for row in coach_rows
+            if row.get("is_contractor_coach")
+            and getattr(row.get("coach"), "pk", None) is not None
+        ],
     )
     other_expense_policy = _build_other_expense_policy(
         year,

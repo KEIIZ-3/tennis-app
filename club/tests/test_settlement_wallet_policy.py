@@ -103,6 +103,30 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         self.assertEqual(allocation["expense_ids"], set())
         self.assertEqual(allocation["total"], 0)
 
+    def test_contractor_lesson_court_cost_is_shared_by_main_coaches_once(self):
+        allocation = _court_transfer_allocation(
+            [
+                {
+                    "expense": SimpleNamespace(pk=12),
+                    "amount": 3000,
+                    "meta": {
+                        "record_kind": "court_transfer",
+                        "payer_coach_id": 1,
+                        "using_coach_ids": [4],
+                    },
+                }
+            ],
+            eligible_coach_ids=[1, 2, 3, 4],
+            main_coach_ids=[1, 2, 3],
+            contractor_coach_ids=[4],
+        )
+
+        self.assertEqual(allocation["burden_by_coach"], {1: 1000, 2: 1000, 3: 1000})
+        self.assertEqual(allocation["reimbursement_by_coach"], {1: 3000})
+        self.assertNotIn(4, allocation["burden_by_coach"])
+        payer_net = allocation["reimbursement_by_coach"][1] - allocation["burden_by_coach"][1]
+        self.assertEqual(payer_net, 2000)
+
     def test_only_held_execution_slots_are_eligible_once(self):
         start_at = timezone.make_aware(datetime(2026, 7, 4, 19, 0))
         held_first = SimpleNamespace(
