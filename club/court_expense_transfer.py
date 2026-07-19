@@ -1,13 +1,19 @@
 import json
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
-from .models import CoachAvailability, CoachExpense, Reservation
+from .models import (
+    CoachAvailability,
+    CoachExpense,
+    Reservation,
+    ensure_accounting_month_is_open,
+)
 from .settlement_balance_policy import main_coaches
 
 EXPENSE_NOTE_META_PREFIX = "__EXPENSE_META__"
@@ -223,6 +229,11 @@ def coach_expense_manage(request):
             messages.error(request, "このレッスンの利用コーチを特定できませんでした。")
         else:
             start = _local(availability.start_at)
+            try:
+                ensure_accounting_month_is_open(start)
+            except ValidationError as exc:
+                messages.error(request, exc.messages[0])
+                return redirect("club:coach_admin_settlement")
             meta = {
                 "expense_type": "court_transfer",
                 "receipt_status": "none",

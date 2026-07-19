@@ -23,6 +23,7 @@ from .models import (
     TicketConsumption,
     TicketPurchase,
 )
+from .settlement_models import MonthlySettlement
 
 
 class ReservationFlowSmokeTests(TestCase):
@@ -544,6 +545,96 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertTrue(response.context["can_select_coach"])
         self.assertEqual(response.context["selected_coach_id"], str(self.contractor.pk))
         self.assertEqual(response.context["selected_coach"], self.contractor)
+
+    def test_closed_month_blocks_reservation_refund_and_expense_changes(self):
+        target_date = timezone.localdate().replace(day=1)
+        start_at = timezone.make_aware(
+            datetime.combine(target_date, datetime.min.time().replace(hour=10))
+        )
+        self.member.ticket_balance = 4
+        self.member.save(update_fields=["ticket_balance"])
+        reservation = Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+            status=Reservation.STATUS_ACTIVE,
+        )
+        reservation.consume_tickets(created_by=self.member)
+        existing_expense = CoachExpense.objects.create(
+            expense_date=target_date,
+            category=CoachExpense.CATEGORY_OTHER,
+            amount=1000,
+            created_by=self.coach,
+        )
+        MonthlySettlement.objects.create(
+            year=target_date.year,
+            month=target_date.month,
+            status=MonthlySettlement.STATUS_CLOSED,
+        )
+
+        with self.assertRaisesMessage(ValidationError, "締め済みの月"):
+            reservation.cancel(created_by=self.member)
+        reservation.refresh_from_db()
+        self.member.refresh_from_db()
+        self.assertEqual(reservation.status, Reservation.STATUS_ACTIVE)
+        self.assertIsNone(reservation.ticket_refunded_at)
+        self.assertEqual(self.member.ticket_balance, 2)
+
+        with self.assertRaisesMessage(ValidationError, "締め済みの月"):
+            CoachExpense.objects.create(
+                expense_date=target_date,
+                category=CoachExpense.CATEGORY_OTHER,
+                amount=2000,
+                created_by=self.coach,
+            )
+
+        existing_expense.amount = 3000
+        with self.assertRaisesMessage(ValidationError, "締め済みの月"):
+            existing_expense.save(update_fields=["amount"])
+        existing_expense.refresh_from_db()
+        self.assertEqual(existing_expense.amount, 1000)
+
+    def test_closed_month_court_transfer_endpoint_does_not_create_expense(self):
+        self.coach.full_name = "飯塚研太朗"
+        self.coach.save(update_fields=["full_name"])
+        target_date = timezone.localdate().replace(day=1)
+        start_at = timezone.make_aware(
+            datetime.combine(target_date, datetime.min.time().replace(hour=10))
+        )
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            substitute_coach=self.contractor,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+            capacity=1,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        MonthlySettlement.objects.create(
+            year=target_date.year,
+            month=target_date.month,
+            status=MonthlySettlement.STATUS_CLOSED,
+        )
+        self.client.force_login(self.contractor)
+
+        response = self.client.post(
+            reverse("club:coach_expense_manage"),
+            data={
+                "action": "create_court_transfer",
+                "availability_id": availability.pk,
+                "payer_coach_id": self.coach.pk,
+                "amount": "3000",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(CoachExpense.objects.exists())
 
     def test_contractor_cannot_be_assigned_to_stringing_order(self):
         main_coach = self._create_user(

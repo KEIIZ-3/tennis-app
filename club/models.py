@@ -23,6 +23,23 @@ STRINGING_COACH_NAMES = (
 )
 
 
+def ensure_accounting_month_is_open(value):
+    """会計対象月が締め済みなら、正本モデルの変更を拒否する。"""
+    if not value:
+        return
+    target_date = value.date() if hasattr(value, "date") else value
+    from .settlement_models import MonthlySettlement
+
+    if MonthlySettlement.objects.filter(
+        year=target_date.year,
+        month=target_date.month,
+        status=MonthlySettlement.STATUS_CLOSED,
+    ).exists():
+        raise ValidationError(
+            "締め済みの月の予約・チケット・経費は変更できません。先に締め解除してください。"
+        )
+
+
 def is_preopen_cash_lesson_date(value) -> bool:
     if not value:
         return False
@@ -326,6 +343,8 @@ class CoachAvailability(models.Model, LessonTypeMixin):
     def clean(self):
         if not self.start_at or not self.end_at:
             return
+
+        ensure_accounting_month_is_open(self.start_at)
 
         if self.start_at >= self.end_at:
             raise ValidationError("開始日時は終了日時より前にしてください。")
@@ -1049,8 +1068,13 @@ class CoachExpense(models.Model):
         return f"{self.expense_date:%Y-%m-%d} / {self.get_category_display()} / {self.amount}円"
 
     def clean(self):
+        ensure_accounting_month_is_open(self.expense_date)
         if self.amount < 0:
             raise ValidationError("経費は0円以上にしてください。")
+
+    def save(self, *args, **kwargs):
+        ensure_accounting_month_is_open(self.expense_date)
+        return super().save(*args, **kwargs)
 
 
 class ScheduleSurveyResponse(models.Model):
@@ -1700,6 +1724,8 @@ class Reservation(models.Model, LessonTypeMixin):
         if not self.start_at or not self.end_at:
             return
 
+        ensure_accounting_month_is_open(self.start_at)
+
         if self.start_at >= self.end_at:
             raise ValidationError("開始日時は終了日時より前にしてください。")
 
@@ -1889,6 +1915,7 @@ class Reservation(models.Model, LessonTypeMixin):
         return " / ".join([f"{item['label']} {item['tickets']}枚" for item in items])
 
     def consume_tickets(self, reason="reservation_use", created_by=None, note=""):
+        ensure_accounting_month_is_open(self.start_at)
         if self.ticket_consumed_at or self.tickets_used <= 0:
             return None
 
@@ -1944,6 +1971,7 @@ class Reservation(models.Model, LessonTypeMixin):
             return ledger
 
     def refund_tickets(self, reason="reservation_cancel_refund", created_by=None, note=""):
+        ensure_accounting_month_is_open(self.start_at)
         with transaction.atomic():
             locked_self = Reservation.objects.select_for_update().get(pk=self.pk)
             if not locked_self.ticket_consumed_at or locked_self.ticket_refunded_at or locked_self.tickets_used <= 0:
@@ -1996,6 +2024,7 @@ class Reservation(models.Model, LessonTypeMixin):
             return ledger
 
     def activate_after_approval(self, created_by=None, approved_note=""):
+        ensure_accounting_month_is_open(self.start_at)
         if self.status != self.STATUS_PENDING:
             raise ValidationError("承認待ちの申請のみ承認できます。")
 
@@ -2038,6 +2067,7 @@ class Reservation(models.Model, LessonTypeMixin):
         return True
 
     def reject_request(self, created_by=None, reason="コーチ却下"):
+        ensure_accounting_month_is_open(self.start_at)
         with transaction.atomic():
             locked_self = Reservation.objects.select_for_update().get(pk=self.pk)
             if locked_self.status != self.STATUS_PENDING:
@@ -2054,6 +2084,7 @@ class Reservation(models.Model, LessonTypeMixin):
         return True
 
     def cancel(self, created_by=None, reason=""):
+        ensure_accounting_month_is_open(self.start_at)
         with transaction.atomic():
             locked_self = Reservation.objects.select_for_update().get(pk=self.pk)
             if locked_self.status not in (self.STATUS_ACTIVE, self.STATUS_PENDING):
@@ -2081,6 +2112,7 @@ class Reservation(models.Model, LessonTypeMixin):
         return True
 
     def mark_rain_canceled(self, created_by=None, reason="雨天中止"):
+        ensure_accounting_month_is_open(self.start_at)
         with transaction.atomic():
             locked_self = Reservation.objects.select_for_update().get(pk=self.pk)
             if locked_self.status != self.STATUS_ACTIVE:
