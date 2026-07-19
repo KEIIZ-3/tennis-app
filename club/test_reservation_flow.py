@@ -213,6 +213,50 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertEqual(response.context["selected_coach_id"], str(self.contractor.pk))
         self.assertFalse(response.context["is_staff_mode"])
 
+    def test_contractor_cannot_execute_other_coach_lesson(self):
+        own_lesson = self._create_fixed_lesson(
+            coach=self.contractor,
+            title="業務委託実施対象",
+        )
+        other_lesson = self._create_fixed_lesson(
+            coach=self.coach,
+            title="担当外実施対象",
+        )
+        own_start, own_end = own_lesson._build_datetimes_for_date(self.lesson_date)
+        other_start, other_end = other_lesson._build_datetimes_for_date(self.lesson_date)
+        own_availability = lesson_execution._canonical_availability_for_fixed(
+            own_lesson,
+            own_start,
+            own_end,
+        )
+        other_availability = lesson_execution._canonical_availability_for_fixed(
+            other_lesson,
+            other_start,
+            other_end,
+        )
+        self.client.force_login(self.contractor)
+
+        list_response = self.client.get(
+            reverse("club:lesson_execution_manage"),
+            data={"year": self.lesson_date.year, "month": self.lesson_date.month},
+        )
+        visible_availability_ids = {
+            row["availability"].pk for row in list_response.context["rows"]
+        }
+        self.assertIn(own_availability.pk, visible_availability_ids)
+        self.assertNotIn(other_availability.pk, visible_availability_ids)
+
+        action_response = self.client.post(
+            reverse("club:lesson_execution_manage"),
+            data={
+                "year": self.lesson_date.year,
+                "month": self.lesson_date.month,
+                "availability_id": other_availability.pk,
+                "action": lesson_execution.STATUS_RAIN_CANCELED,
+            },
+        )
+        self.assertEqual(action_response.status_code, 403)
+
     def test_contractor_cannot_be_assigned_to_stringing_order(self):
         main_coach = self._create_user(
             username="main_stringing_coach",

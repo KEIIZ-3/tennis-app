@@ -49,6 +49,25 @@ def _is_allowed(user):
     )
 
 
+def _user_can_manage_slot(user, slot):
+    if getattr(user, "role", "") != "contractor_coach":
+        return True
+    fixed_lesson = slot.get("fixed_lesson")
+    if fixed_lesson:
+        try:
+            return any(coach.pk == user.pk for coach in fixed_lesson.all_coaches())
+        except Exception:
+            return getattr(fixed_lesson, "coach_id", None) == user.pk
+    availability = slot.get("availability")
+    return bool(
+        availability
+        and (
+            getattr(availability, "coach_id", None) == user.pk
+            or getattr(availability, "substitute_coach_id", None) == user.pk
+        )
+    )
+
+
 def _month_range(year, month):
     start = date(int(year), int(month), 1)
     if int(month) == 12:
@@ -381,7 +400,14 @@ def lesson_execution_manage(request):
         selected_year,
         selected_month,
     )
-    slots = _canonical_slots(selected_year, selected_month)
+    all_slots = _canonical_slots(selected_year, selected_month)
+    all_slots_by_availability_id = {
+        str(slot["availability"].pk): slot for slot in all_slots
+    }
+    slots = [
+        slot for slot in all_slots
+        if _user_can_manage_slot(request.user, slot)
+    ]
     slots_by_availability_id = {
         str(slot["availability"].pk): slot for slot in slots
     }
@@ -398,6 +424,11 @@ def lesson_execution_manage(request):
             request.POST.get("availability_id") or ""
         ).strip()
         action = (request.POST.get("action") or "").strip()
+        if (
+            availability_id in all_slots_by_availability_id
+            and availability_id not in slots_by_availability_id
+        ):
+            return HttpResponse("Forbidden", status=403)
         slot = slots_by_availability_id.get(availability_id)
 
         if slot is None:
