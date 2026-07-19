@@ -17,6 +17,7 @@ from .models import (
     LessonWaitlist,
     LessonWaitlistParticipant,
     Reservation,
+    TicketLedger,
 )
 
 
@@ -237,6 +238,35 @@ class ReservationFlowSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Reservation.objects.filter(user=self.member, fixed_lesson=fixed_lesson).exists())
+
+    def test_stale_duplicate_cancel_refunds_tickets_only_once(self):
+        lesson_date = date(2026, 8, 7)
+        self.member.ticket_balance = 10
+        self.member.save(update_fields=["ticket_balance"])
+        fixed_lesson = self._create_fixed_lesson(lesson_date=lesson_date, title="二重返却防止テスト")
+        mocked_now = timezone.make_aware(datetime(2026, 8, 6, 12, 0))
+
+        with patch("django.utils.timezone.now", return_value=mocked_now):
+            self._post_lesson_calendar_reserve(
+                user=self.member,
+                fixed_lesson=fixed_lesson,
+                lesson_date=lesson_date,
+            )
+
+        first_copy = Reservation.objects.get(user=self.member, fixed_lesson=fixed_lesson)
+        stale_copy = Reservation.objects.get(pk=first_copy.pk)
+        self.assertTrue(first_copy.cancel(created_by=self.member))
+        self.assertFalse(stale_copy.cancel(created_by=self.member))
+
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.ticket_balance, 10)
+        self.assertEqual(
+            TicketLedger.objects.filter(
+                reservation=first_copy,
+                reason=TicketLedger.REASON_CANCEL_REFUND,
+            ).count(),
+            1,
+        )
 
     def test_contractor_coach_can_take_other_coach_lesson(self):
         fixed_lesson = self._create_fixed_lesson(
