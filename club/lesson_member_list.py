@@ -29,6 +29,22 @@ def _is_coach_like(user):
     return getattr(user, "role", "") in ("coach", "contractor_coach")
 
 
+def _contractor_can_access_lesson(user, *, fixed_lesson=None, availability=None):
+    if getattr(user, "role", "") != "contractor_coach":
+        return True
+    if fixed_lesson:
+        try:
+            return any(coach.pk == user.pk for coach in fixed_lesson.all_coaches())
+        except Exception:
+            return getattr(fixed_lesson, "coach_id", None) == user.pk
+    if availability:
+        return (
+            getattr(availability, "coach_id", None) == user.pk
+            or getattr(availability, "substitute_coach_id", None) == user.pk
+        )
+    return False
+
+
 def _level_label(value):
     User = get_user_model()
     try:
@@ -535,6 +551,13 @@ def lesson_calendar_member_list(request):
             "対象レッスンが見つかりません。",
             status=404,
         )
+
+    if is_coach_view and not _contractor_can_access_lesson(
+        request.user,
+        fixed_lesson=fixed_lesson,
+        availability=availability,
+    ):
+        return HttpResponse("Forbidden", status=403)
 
     is_public_member_view = (
         not is_coach_view

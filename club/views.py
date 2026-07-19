@@ -3242,24 +3242,24 @@ def coach_today_lessons(request):
 
     coach_queryset = User.objects.filter(role__in=("coach", "contractor_coach")).order_by("full_name", "username", "id")
 
-    # コーチ本人も自分だけに固定せず、全コーチ分を確認・編集できます。
-    # coach_id が未指定または all の場合は、担当コーチによる絞り込みを行いません。
-    selected_coach_id = (
-        request.GET.get("coach_id")
-        or request.POST.get("coach_id")
-        or "all"
-    ).strip()
-
-    if selected_coach_id in ("", "all"):
-        selected_coach = None
-        selected_coach_id = "all"
+    is_staff_mode = _is_staff_like(request.user)
+    if not is_staff_mode:
+        selected_coach = request.user
+        selected_coach_id = str(request.user.pk)
+        coach_queryset = coach_queryset.filter(pk=request.user.pk)
     else:
-        selected_coach = coach_queryset.filter(pk=selected_coach_id).first()
-        if selected_coach is None:
+        selected_coach_id = (
+            request.GET.get("coach_id")
+            or request.POST.get("coach_id")
+            or "all"
+        ).strip()
+        if selected_coach_id in ("", "all"):
+            selected_coach = None
             selected_coach_id = "all"
-
-    # コーチ・業務委託コーチ・adminの全員にコーチ切替欄を表示します。
-    is_staff_mode = True
+        else:
+            selected_coach = coach_queryset.filter(pk=selected_coach_id).first()
+            if selected_coach is None:
+                selected_coach_id = "all"
 
     def _today_lessons_redirect():
         params = {"days": display_days}

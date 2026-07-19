@@ -174,6 +174,45 @@ class ReservationFlowSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
 
+    def test_contractor_cannot_view_other_coach_lesson_members(self):
+        fixed_lesson = self._create_fixed_lesson(coach=self.coach)
+        fixed_lesson.members.add(self.member)
+        self.client.force_login(self.contractor)
+
+        response = self.client.get(
+            reverse("club:lesson_calendar_member_list"),
+            data={
+                "fixed_lesson_id": fixed_lesson.pk,
+                "lesson_date": self.lesson_date.isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_contractor_today_lessons_is_limited_to_own_lessons(self):
+        own_lesson = self._create_fixed_lesson(
+            coach=self.contractor,
+            title="業務委託担当レッスン",
+        )
+        other_lesson = self._create_fixed_lesson(
+            coach=self.coach,
+            title="担当外レッスン",
+        )
+        own_lesson.members.add(self.member)
+        other_lesson.members.add(self.member)
+        self.client.force_login(self.contractor)
+
+        response = self.client.get(
+            reverse("club:coach_today_lessons"),
+            data={"days": "14", "coach_id": self.coach.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "業務委託担当レッスン")
+        self.assertNotContains(response, "担当外レッスン")
+        self.assertEqual(response.context["selected_coach_id"], str(self.contractor.pk))
+        self.assertFalse(response.context["is_staff_mode"])
+
     def test_contractor_cannot_be_assigned_to_stringing_order(self):
         main_coach = self._create_user(
             username="main_stringing_coach",
