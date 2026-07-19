@@ -802,6 +802,17 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertEqual(response.context["preopen_unpaid_total"], 0)
         self.assertNotContains(response, "削除済み7月19日レッスン")
 
+        payroll_response = self.client.get(
+            reverse("club:coach_payroll_summary"),
+            data={"year": 2026, "month": 7},
+        )
+        self.assertEqual(payroll_response.status_code, 200)
+        self.assertEqual(
+            payroll_response.context["row"]["preopen_unpaid_amount"],
+            0,
+        )
+        self.assertEqual(payroll_response.context["salary_due"], 0)
+
     def test_revenue_reconciles_paid_unpaid_and_waived_preopen_fees(self):
         lesson_date = date(2026, 7, 16)
         fixed_lesson = self._create_fixed_lesson(lesson_date=lesson_date)

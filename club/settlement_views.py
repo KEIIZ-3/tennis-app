@@ -121,6 +121,12 @@ def coach_admin_settlement(request):
             if not payment_type:
                 messages.error(request, "支払種別が不正です。")
                 return redirect(redirect_url)
+            if payment_type == SettlementPayment.PAYMENT_TYPE_REIMBURSEMENT:
+                messages.error(
+                    request,
+                    "立替返金は最終受取額に含まれます。支払種別は給与支払いを選択してください。",
+                )
+                return redirect(redirect_url)
 
             try:
                 amount = int(raw_amount or "0")
@@ -290,7 +296,6 @@ def coach_admin_settlement(request):
         "today_value": today.isoformat(),
         "payout_type_choices": [
             ("salary_payout", "給与支払い"),
-            ("reimbursement_payout", "本人立替精算支払い"),
         ],
         "settlement_status": settlement.status,
         "settlement_status_label": settlement.get_status_display(),
@@ -493,11 +498,11 @@ def coach_payroll_summary(request):
             "reimbursement_due": reimbursement_due,
             "reimbursement_paid": reimbursement_paid,
             "unpaid_reimbursement": unpaid_reimbursement,
-            "total_due": salary_due + reimbursement_due,
+            # 財布方式の salary_due は立替返金を含む最終受取額。
+            "total_due": salary_due,
             "total_paid": salary_paid + reimbursement_paid,
             "total_unpaid": unpaid_salary + unpaid_reimbursement,
             "prev_url": payroll_url(previous_year, previous_month),
             "next_url": payroll_url(next_year, next_month),
         },
     )
-

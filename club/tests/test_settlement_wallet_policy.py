@@ -161,6 +161,7 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         self.assertEqual(eligible, [held_first])
 
     @patch("club.settlement_balance_policy._active_salary_payment_total", return_value=0)
+    @patch("club.settlement_balance_policy._active_reimbursement_payment_total", return_value=2000)
     @patch("club.settlement_balance_policy._build_other_expense_policy")
     @patch("club.settlement_balance_policy._build_court_cost_policy")
     @patch("club.settlement_balance_policy.main_coaches")
@@ -171,6 +172,7 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         main_coaches_mock,
         court_policy_mock,
         other_expense_policy_mock,
+        _reimbursement_payment_mock,
         _salary_payment_mock,
     ):
         coach = SimpleNamespace(pk=1, role="coach")
@@ -220,3 +222,6 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         self.assertEqual(row["common_expense_share"], 7800)
         self.assertEqual(row["wallet_balance_adjustment"], 0)
         self.assertEqual(row["salary_due"], 18200)
+        self.assertEqual(row["reimbursement_paid"], 2000)
+        self.assertEqual(row["unpaid_salary"], 16200)
+        self.assertEqual(updated["cash_out_total"], 2000)
