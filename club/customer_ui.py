@@ -90,7 +90,11 @@ def _simplify_reservation_page(html):
 def _improve_lesson_calendar(html):
     html = html.replace(
         "通常レッスンは最後の1名になるとキャンセルできませんので、ご注意ください。",
+        "コート手配の都合上、レッスンのご予約は開催日の1週間前までにお願いいたします。",
+    )
+    html = html.replace(
         "コートのキャンセル期限が開催日の1週間前までのため、できるだけレッスン日の1週間前までにご予約をお願いします。",
+        "コート手配の都合上、レッスンのご予約は開催日の1週間前までにお願いいたします。",
     )
     return html
 
