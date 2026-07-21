@@ -101,6 +101,10 @@ def build_participant_choices_for_user(parent, target_level="", target_level_2="
             }
         )
 
+    # 予約確認画面ではテンプレートが先頭の予約可能な参加者を初期選択する。
+    # 本人が対象レベル外で家族だけ予約可能な場合でも、予約可能者を先頭へ移動し、
+    # required のラジオボタンが未選択のまま送信をブロックしないようにする。
+    choices.sort(key=lambda choice: 0 if choice.get("can_book") else 1)
     return choices
 
 
