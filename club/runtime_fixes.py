@@ -3,6 +3,7 @@ from django.db.models.signals import post_migrate
 from django.dispatch import receiver
 from django.utils import timezone
 
+from .capacity_policy import general_lesson_capacity
 from .models import (
     CoachAvailability,
     FixedLesson,
@@ -16,8 +17,24 @@ from .models import (
 )
 
 
+def coach_availability_effective_capacity(self):
+    if self.lesson_type == self.LESSON_GENERAL:
+        return general_lesson_capacity(self.coach_count, self.start_at)
+    return int(self.capacity or 0)
+
+
+def fixed_lesson_effective_capacity(self):
+    if self.lesson_type == self.LESSON_GENERAL:
+        return general_lesson_capacity(self.coach_count, self.start_date)
+    return int(self.capacity or 0)
+
+
+CoachAvailability.effective_capacity = coach_availability_effective_capacity
+FixedLesson.effective_capacity = fixed_lesson_effective_capacity
+
+
 def _sync_fixed_lesson_availabilities():
-    """固定レッスンを正本として、生成済み開催枠の対象レベル等を同期する。"""
+    """固定レッスンを正本として、生成済み開催枠の対象レベル・定員等を同期する。"""
     fixed_lessons = (
         FixedLesson.objects.filter(is_active=True)
         .select_related("coach", "coach_2", "coach_3", "court")
@@ -28,6 +45,9 @@ def _sync_fixed_lesson_availabilities():
         primary_coach = fixed_lesson.primary_coach()
         if not primary_coach:
             continue
+
+        desired_coach_count = max(int(fixed_lesson.coach_count or 1), 1)
+        desired_court_count = max(int(fixed_lesson.court_count or 1), 1)
 
         for target_date in fixed_lesson.scheduled_occurrence_dates():
             start_at, end_at = fixed_lesson._build_datetimes_for_date(target_date)
@@ -44,15 +64,12 @@ def _sync_fixed_lesson_availabilities():
             if not availability:
                 continue
 
-            updated_fields = []
-            desired_capacity = max(
-                int(fixed_lesson.effective_capacity() or 0),
-                int(fixed_lesson.capacity or 0),
-                1,
-            )
-            desired_coach_count = max(int(fixed_lesson.coach_count or 1), 1)
-            desired_court_count = max(int(fixed_lesson.court_count or 1), 1)
+            if fixed_lesson.lesson_type == FixedLesson.LESSON_GENERAL:
+                desired_capacity = general_lesson_capacity(desired_coach_count, target_date)
+            else:
+                desired_capacity = max(int(fixed_lesson.capacity or 0), 1)
 
+            updated_fields = []
             if availability.target_level != fixed_lesson.target_level:
                 availability.target_level = fixed_lesson.target_level
                 updated_fields.append("target_level")
@@ -85,6 +102,18 @@ def _sync_fixed_lesson_availabilities():
                 target_level=fixed_lesson.target_level,
                 target_level_2=fixed_lesson.target_level_2 or "",
             )
+
+        if fixed_lesson.lesson_type == FixedLesson.LESSON_GENERAL:
+            desired_fixed_capacity = general_lesson_capacity(
+                desired_coach_count,
+                fixed_lesson.start_date,
+            )
+            if fixed_lesson.capacity != desired_fixed_capacity:
+                FixedLesson.objects.filter(pk=fixed_lesson.pk).update(
+                    capacity=desired_fixed_capacity,
+                    coach_count=desired_coach_count,
+                    court_count=desired_court_count,
+                )
 
 
 @receiver(post_migrate, dispatch_uid="club.sync_fixed_lesson_availabilities")
