@@ -12,6 +12,7 @@ from . import today_lesson_actions
 from . import analytics_dashboard
 from . import court_expense_transfer
 from . import reservation_cancel_override
+from . import customer_ui
 
 app_name = "club"
 
@@ -29,7 +30,7 @@ urlpatterns = [
     path("lesson-calendar/members/", lesson_member_list.lesson_calendar_member_list, name="lesson_calendar_member_list"),
     path("calendar/events/", views.calendar_events, name="calendar_events"),
     path("api/calendar/events/", views.calendar_events, name="calendar_events_api"),
-    path("tickets/", views.tickets_view, name="tickets"),
+    path("tickets/", customer_ui.tickets_view, name="tickets"),
     path("family/", reservation_cancel_override.family_member_manage, name="family_member_manage"),
     path("help/", views.help_view, name="help"),
     path("terms/", views.terms_view, name="terms"),
@@ -41,7 +42,7 @@ urlpatterns = [
     path("shop/estimate/complete/<int:pk>/", views.shop_estimate_complete_view, name="shop_estimate_complete"),
     path("survey/", views.schedule_survey_view, name="schedule_survey"),
     path("reservations/new/", views.reservation_create, name="reservation_create"),
-    path("reservations/", reservation_cancel_override.reservation_list, name="reservation_list"),
+    path("reservations/", customer_ui.reservation_list, name="reservation_list"),
     path("reservations/<int:pk>/", views.reservation_detail, name="reservation_detail"),
     path("reservations/<int:pk>/cancel/", reservation_cancel_override.reservation_cancel, name="reservation_cancel"),
     path("waitlists/<int:pk>/cancel/", views.lesson_waitlist_cancel, name="lesson_waitlist_cancel"),
