@@ -8,7 +8,6 @@ from .models import (
     FixedLesson,
     Reservation,
     TicketConsumption,
-    TicketLedger,
     TicketPurchase,
     User,
     _ensure_ticket_purchase_stock_for_user,
@@ -89,8 +88,8 @@ def _sync_fixed_lesson_availabilities():
 
 
 @receiver(post_migrate, dispatch_uid="club.sync_fixed_lesson_availabilities")
-def sync_fixed_lesson_availabilities_after_migrate(sender, app_config=None, **kwargs):
-    if app_config is not None and app_config.label != "club":
+def sync_fixed_lesson_availabilities_after_migrate(sender, **kwargs):
+    if getattr(sender, "label", "") != "club":
         return
     _sync_fixed_lesson_availabilities()
 
