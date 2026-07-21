@@ -8,6 +8,7 @@ from .models import (
     CoachAvailability,
     FixedLesson,
     Reservation,
+    ShopEstimateRequest,
     TicketConsumption,
     TicketPurchase,
     User,
@@ -31,6 +32,14 @@ def fixed_lesson_effective_capacity(self):
 
 CoachAvailability.effective_capacity = coach_availability_effective_capacity
 FixedLesson.effective_capacity = fixed_lesson_effective_capacity
+
+
+def shop_sale_price_from_list_price(price):
+    """ショップ販売価格を定価の70%（30%OFF）で計算する。"""
+    return int(int(price or 0) * 0.7)
+
+
+ShopEstimateRequest.sale_price_from_list_price = staticmethod(shop_sale_price_from_list_price)
 
 
 def _sync_fixed_lesson_availabilities():
