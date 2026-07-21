@@ -87,6 +87,19 @@ def _simplify_reservation_page(html):
     return html
 
 
+def _improve_lesson_calendar(html):
+    html = html.replace(
+        "通常レッスンは最後の1名になるとキャンセルできませんので、ご注意ください。",
+        "コートのキャンセル期限が開催日の1週間前までのため、できるだけレッスン日の1週間前までにご予約をお願いします。",
+    )
+    return html
+
+
+def lesson_calendar_view(request):
+    response = views.lesson_calendar_view(request)
+    return _replace_html(response, _improve_lesson_calendar)
+
+
 @login_required
 def tickets_view(request):
     response = views.tickets_view(request)
