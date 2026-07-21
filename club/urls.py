@@ -11,6 +11,7 @@ from . import coach_portal
 from . import today_lesson_actions
 from . import analytics_dashboard
 from . import court_expense_transfer
+from . import reservation_cancel_override
 
 app_name = "club"
 
@@ -42,7 +43,7 @@ urlpatterns = [
     path("reservations/new/", views.reservation_create, name="reservation_create"),
     path("reservations/", views.reservation_list, name="reservation_list"),
     path("reservations/<int:pk>/", views.reservation_detail, name="reservation_detail"),
-    path("reservations/<int:pk>/cancel/", views.reservation_cancel, name="reservation_cancel"),
+    path("reservations/<int:pk>/cancel/", reservation_cancel_override.reservation_cancel, name="reservation_cancel"),
     path("waitlists/<int:pk>/cancel/", views.lesson_waitlist_cancel, name="lesson_waitlist_cancel"),
     path("waitlists/<int:pk>/promote/", views.lesson_waitlist_promote, name="lesson_waitlist_promote"),
     path("coach/today-lessons/", views.coach_today_lessons, name="coach_today_lessons"),

@@ -70,6 +70,19 @@
     {% if ticket_consumption_rows %}<div class="member-list">{% for row in ticket_consumption_rows %}<div class="member-row"><span>{{ row.unit_price_label }} / {{ row.consumption.tickets_used }}枚</span><span>{% if row.is_refunded %}返却済み{% else %}消費中{% endif %}</span></div>{% endfor %}</div>{% else %}<div class="empty-box">チケット消費履歴はありません。</div>{% endif %}
   </section>
 
-  <section class="detail-card"><div class="actions"><a href="{% url 'club:reservation_list' %}" class="btn">予約一覧へ戻る</a><a href="{% url 'club:lesson_calendar' %}" class="btn">レッスンカレンダーへ</a>{% if can_cancel %}<form method="post" action="{% url 'club:reservation_cancel' reservation.pk %}">{% csrf_token %}<button type="submit" class="btn-danger" onclick="return confirm('この予約をキャンセルしますか？');">この予約をキャンセル</button></form>{% endif %}</div></section>
+  <section class="detail-card">
+    <div class="actions">
+      <a href="{% url 'club:reservation_list' %}" class="btn">予約一覧へ戻る</a>
+      <a href="{% url 'club:lesson_calendar' %}" class="btn">レッスンカレンダーへ</a>
+      {% if reservation.status == "active" or reservation.status == "pending" %}
+        {% if user.pk == reservation.user_id or user.is_staff or user.is_superuser or user.role == "coach" or user.role == "contractor_coach" %}
+          <form method="post" action="{% url 'club:reservation_cancel' reservation.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-danger" onclick="return confirm('この予約をキャンセルしますか？');">この予約をキャンセル</button>
+          </form>
+        {% endif %}
+      {% endif %}
+    </div>
+  </section>
 </div>
 {% endblock %}
