@@ -1,0 +1,43 @@
+name: Apply PostgreSQL select_for_update fix
+
+on:
+  push:
+    branches:
+      - fix/postgres-select-for-update
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/postgres-select-for-update
+
+      - name: Apply targeted replacement
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('club/views.py')
+          text = path.read_text(encoding='utf-8')
+          old = 'CoachAvailability.objects.select_for_update()\n'
+          new = 'CoachAvailability.objects.select_for_update(of=("self",))\n'
+          count = text.count(old)
+          if count != 2:
+              raise SystemExit(f'Expected 2 select_for_update occurrences, found {count}')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
+
+      - name: Remove one-time workflow
+        run: rm .github/workflows/apply-select-for-update-fix.yml
+
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add club/views.py .github/workflows/apply-select-for-update-fix.yml
+          git commit -m "Fix PostgreSQL select_for_update outer join error"
+          git push origin fix/postgres-select-for-update
