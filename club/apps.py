@@ -8,4 +8,5 @@ class ClubConfig(AppConfig):
 
     def ready(self):
         from . import runtime_fixes  # noqa: F401
+        from . import lesson_calendar_fixes  # noqa: F401
         from . import signals  # noqa: F401
