@@ -1435,7 +1435,7 @@ def lesson_calendar_view(request):
                             pk=request.user.pk
                         )
                         availability = (
-                            CoachAvailability.objects.select_for_update()
+                            CoachAvailability.objects.select_for_update(of=("self",))
                             .select_related("coach", "substitute_coach", "court")
                             .get(pk=availability.pk)
                         )
@@ -1521,7 +1521,7 @@ def lesson_calendar_view(request):
                     pk=request.user.pk
                 )
                 availability = (
-                    CoachAvailability.objects.select_for_update()
+                    CoachAvailability.objects.select_for_update(of=("self",))
                     .select_related("coach", "substitute_coach", "court")
                     .get(pk=availability.pk)
                 )
