@@ -874,6 +874,57 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertFalse(CoachExpense.objects.exists())
 
+    def test_court_transfer_lists_all_main_coaches_as_payer_options(self):
+        main_coaches = [
+            self._create_user(
+                username="main_iizuka",
+                role=self.User.ROLE_COACH,
+                full_name="飯塚研太朗",
+            ),
+            self._create_user(
+                username="main_shimizu",
+                role=self.User.ROLE_COACH,
+                full_name="清水峻平",
+            ),
+            self._create_user(
+                username="main_inoue",
+                role=self.User.ROLE_COACH,
+                full_name="井上春佳",
+            ),
+        ]
+        main_coaches[0].is_active = False
+        main_coaches[0].save(update_fields=["is_active"])
+        main_coaches[1].is_active = False
+        main_coaches[1].save(update_fields=["is_active"])
+        start_at = timezone.make_aware(
+            datetime.combine(
+                timezone.localdate() + timedelta(days=7),
+                datetime.min.time().replace(hour=10),
+            )
+        )
+        availability = CoachAvailability.objects.create(
+            coach=main_coaches[2],
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+            capacity=1,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        self.client.force_login(main_coaches[2])
+
+        response = self.client.get(
+            reverse("club:coach_expense_manage"),
+            data={"availability_id": availability.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [coach.full_name for coach in response.context["payer_options"]],
+            ["飯塚研太朗", "清水峻平", "井上春佳"],
+        )
+
     def test_revenue_uses_current_fixed_lesson_coach_for_stale_reservations(self):
         inoue = self._create_user(
             username="inoue_revenue",
