@@ -437,6 +437,103 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertIn(fixed_lesson.pk, visible_fixed_lesson_ids)
         self.assertContains(response, self.member.display_name())
 
+    def test_execution_list_tracks_missing_and_no_court_cost(self):
+        lesson_date = timezone.localdate() - timedelta(days=1)
+        start_at = timezone.make_aware(
+            datetime.combine(
+                lesson_date,
+                datetime.min.time(),
+            ).replace(hour=10)
+        )
+        end_at = start_at + timedelta(hours=1)
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=1,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            availability=availability,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            status=Reservation.STATUS_ACTIVE,
+        )
+        self.client.force_login(self.coach)
+
+        held_response = self.client.post(
+            reverse("club:lesson_execution_manage"),
+            data={
+                "year": lesson_date.year,
+                "month": lesson_date.month,
+                "availability_id": availability.pk,
+                "action": lesson_execution.STATUS_HELD,
+            },
+        )
+        self.assertEqual(held_response.status_code, 302)
+
+        pending_response = self.client.get(
+            reverse("club:lesson_execution_manage"),
+            data={
+                "year": lesson_date.year,
+                "month": lesson_date.month,
+                "pending": "1",
+            },
+        )
+        self.assertEqual(pending_response.status_code, 200)
+        self.assertEqual(
+            pending_response.context["counts"]["court_unregistered"],
+            1,
+        )
+        self.assertEqual(pending_response.context["visible_row_count"], 1)
+        self.assertEqual(
+            pending_response.context["rows"][0]["court_status"],
+            "unregistered",
+        )
+
+        no_cost_response = self.client.post(
+            reverse("club:lesson_execution_manage"),
+            data={
+                "year": lesson_date.year,
+                "month": lesson_date.month,
+                "availability_id": availability.pk,
+                "action": "court_not_required",
+                "pending": "1",
+            },
+        )
+        self.assertEqual(no_cost_response.status_code, 302)
+        expense = CoachExpense.objects.get(
+            category=CoachExpense.CATEGORY_COURT,
+            expense_date=lesson_date,
+        )
+        self.assertEqual(expense.amount, 0)
+        self.assertIn('"court_cost_not_required": true', expense.note)
+
+        updated_response = self.client.get(
+            reverse("club:lesson_execution_manage"),
+            data={
+                "year": lesson_date.year,
+                "month": lesson_date.month,
+            },
+        )
+        self.assertEqual(updated_response.status_code, 200)
+        self.assertEqual(
+            updated_response.context["counts"]["court_unregistered"],
+            0,
+        )
+        self.assertEqual(
+            updated_response.context["rows"][0]["court_status"],
+            "not_required",
+        )
+
     def test_substitute_contractor_is_in_dashboard_slot_scope(self):
         fixed_lesson = self._create_fixed_lesson(coach=self.coach)
         start_at, end_at = fixed_lesson._build_datetimes_for_date(self.lesson_date)
