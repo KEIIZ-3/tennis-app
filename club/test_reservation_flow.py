@@ -1169,6 +1169,7 @@ class ReservationFlowSmokeTests(TestCase):
         closed_page = self.client.get(member_list_url, data=params)
         self.assertContains(closed_page, "参加者募集を終了しています")
         self.assertContains(closed_page, "募集を再開する")
+        self.assertContains(closed_page, "btn-recruitment-reopen")
 
         reopen_response = self.client.post(
             member_list_url,
@@ -1178,6 +1179,9 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertEqual(reopen_response.status_code, 302)
         availability.refresh_from_db()
         self.assertFalse(availability.is_recruitment_closed)
+
+        reopened_page = self.client.get(member_list_url, data=params)
+        self.assertContains(reopened_page, "btn-recruitment-close")
 
     def test_closed_recruitment_is_visible_and_rejects_direct_reservation(self):
         fixed_lesson = self._create_fixed_lesson(title="顧客募集終了表示テスト")
