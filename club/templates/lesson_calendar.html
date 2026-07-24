@@ -1297,6 +1297,7 @@
                               <div class="event-time">{{ item.time_label }}</div>
                               <div class="event-court">コート：{{ item.court_name }}</div>
                               <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
+                              {% if item.is_recruitment_closed %}<div class="event-meta">募集終了</div>{% endif %}
                               <div class="event-level">{{ item.target_level_label }}</div>
                               {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
                               {% if item.is_reserved_by_user %}<div class="event-meta">予約済み</div>{% elif item.is_waitlisted_by_user %}<div class="event-meta">キャンセル待ち中</div>{% endif %}
@@ -1318,6 +1319,7 @@
                               <div class="event-time">{{ item.time_label }}</div>
                               <div class="event-court">コート：{{ item.court_name }}</div>
                               <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
+                              {% if item.is_recruitment_closed %}<div class="event-meta">募集終了</div>{% endif %}
                               <div class="event-level">{{ item.target_level_label }}</div>
                               {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
                               {% if item.is_reserved_by_user %}<div class="event-meta">予約済み</div>{% elif item.is_waitlisted_by_user %}<div class="event-meta">キャンセル待ち中</div>{% endif %}
@@ -1339,6 +1341,7 @@
                               <div class="event-time">{{ item.time_label }}</div>
                               <div class="event-court">コート：{{ item.court_name }}</div>
                               <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
+                              {% if item.is_recruitment_closed %}<div class="event-meta">募集終了</div>{% endif %}
                               <div class="event-level">{{ item.target_level_label }}</div>
                               {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
                               {% if item.is_reserved_by_user %}<div class="event-meta">予約済み</div>{% elif item.is_waitlisted_by_user %}<div class="event-meta">キャンセル待ち中</div>{% endif %}
@@ -1383,6 +1386,7 @@
               <span class="schedule-level">{{ item.target_level_label }}</span>
               <span>参加：{{ item.member_count }}/{{ item.capacity }}名</span>
               <span>定員：{{ item.capacity }}名</span>
+              {% if item.is_recruitment_closed %}<span class="waitlist-badge">募集終了</span>{% endif %}
               {% if item.waitlist_count %}<span class="waitlist-badge">キャンセル待ち {{ item.waitlist_count }}名</span>{% endif %}
               {% if item.is_reserved_by_user %}<span class="waitlist-badge">予約済み</span>{% elif item.is_waitlisted_by_user %}<span class="waitlist-badge">キャンセル待ち中</span>{% endif %}
               <span class="schedule-coach">

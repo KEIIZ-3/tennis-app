@@ -290,6 +290,10 @@ class CoachAvailability(models.Model, LessonTypeMixin):
     court_count = models.PositiveIntegerField(default=1)
     note = models.CharField(max_length=255, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OPEN)
+    is_recruitment_closed = models.BooleanField(
+        default=False,
+        verbose_name="参加者募集を終了",
+    )
     custom_ticket_price = models.PositiveIntegerField(default=0)
     custom_duration_hours = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)

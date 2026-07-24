@@ -1364,6 +1364,8 @@ def lesson_calendar_view(request):
                 availability = _get_or_create_availability_from_fixed_lesson(fixed_lesson, target_date)
                 if availability.status != CoachAvailability.STATUS_OPEN:
                     raise ValidationError("このレッスンはまだ受付準備中です。")
+                if availability.is_recruitment_closed and action != "cancel_waitlist":
+                    raise ValidationError("このレッスンは募集を終了しています。")
                 if availability.start_at < timezone.now():
                     raise ValidationError("このレッスンは受付終了です。")
                 if availability.lesson_type not in (Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT):
@@ -1376,6 +1378,8 @@ def lesson_calendar_view(request):
                 )
                 if availability.status != CoachAvailability.STATUS_OPEN:
                     raise ValidationError("このレッスンはまだ受付準備中です。")
+                if availability.is_recruitment_closed and action != "cancel_waitlist":
+                    raise ValidationError("このレッスンは募集を終了しています。")
                 if availability.start_at < timezone.now():
                     raise ValidationError("このレッスンは受付終了です。")
             else:
@@ -1467,6 +1471,8 @@ def lesson_calendar_view(request):
                             .select_related("coach", "substitute_coach", "court")
                             .get(pk=availability.pk)
                         )
+                        if availability.is_recruitment_closed:
+                            raise ValidationError("このレッスンは募集を終了しています。")
                         locked_active_count = Reservation.objects.filter(
                             coach=availability.coach,
                             court=availability.court,
@@ -1553,6 +1559,8 @@ def lesson_calendar_view(request):
                     .select_related("coach", "substitute_coach", "court")
                     .get(pk=availability.pk)
                 )
+                if availability.is_recruitment_closed:
+                    raise ValidationError("このレッスンは募集を終了しています。")
                 locked_active_count = Reservation.objects.filter(
                     coach=availability.coach,
                     court=availability.court,
@@ -1865,6 +1873,7 @@ def lesson_calendar_view(request):
         allow_fixed_booking=False,
         user_slot_status_override="",
         user_waitlist_id_override="",
+        is_recruitment_closed=False,
     ):
         start_local = _local_dt(start_at)
         end_local = _local_dt(end_at)
@@ -1889,6 +1898,8 @@ def lesson_calendar_view(request):
 
         if start_at < timezone.now():
             disabled_reason = "受付終了"
+        elif is_recruitment_closed:
+            disabled_reason = "募集終了"
         elif source_kind != "availability" and not allow_fixed_booking:
             disabled_reason = "受付準備中"
         elif status != CoachAvailability.STATUS_OPEN and not allow_fixed_booking:
@@ -2011,6 +2022,7 @@ def lesson_calendar_view(request):
             "is_reserved_by_user": user_slot_status == Reservation.STATUS_ACTIVE,
             "is_waitlisted_by_user": bool(user_waitlist_id),
             "disabled_reason": disabled_reason,
+            "is_recruitment_closed": bool(is_recruitment_closed),
             "color_class": color_class,
             "color_combo_class": color_combo_class,
         }
@@ -2057,6 +2069,7 @@ def lesson_calendar_view(request):
                 court = matching_availability.court
                 capacity = _capacity_for_availability(matching_availability)
                 status = matching_availability.status
+                is_recruitment_closed = matching_availability.is_recruitment_closed
                 availability_id = str(matching_availability.pk)
                 substitute_coach = matching_availability.substitute_coach
                 slot_coach = matching_availability.coach
@@ -2071,6 +2084,7 @@ def lesson_calendar_view(request):
                 court = fixed_lesson.court or _first_active_court()
                 capacity = _capacity_for_fixed_lesson(fixed_lesson)
                 status = CoachAvailability.STATUS_OPEN
+                is_recruitment_closed = False
                 availability_id = ""
                 substitute_coach = None
                 slot_coach = primary_coach
@@ -2137,6 +2151,7 @@ def lesson_calendar_view(request):
                 allow_fixed_booking=bool(court),
                 user_slot_status_override=fixed_user_status,
                 user_waitlist_id_override=fixed_user_waitlist_id,
+                is_recruitment_closed=is_recruitment_closed,
             )
 
             day_event_map.setdefault(cursor_date, [])
@@ -2201,6 +2216,7 @@ def lesson_calendar_view(request):
             pending_count=pending_count,
             waitlist_count=int(waitlist_counts.get(slot_key, 0)),
             status=availability.status,
+            is_recruitment_closed=availability.is_recruitment_closed,
             color_class=_coach_color_class(availability),
             color_combo_class=_coach_combo_class_from_names(_display_name(assigned_coach)),
         )
@@ -2370,6 +2386,7 @@ def lesson_reservation_confirm(request):
                 court = availability.court
                 capacity = _capacity_for_availability(availability)
                 status = availability.status
+                is_recruitment_closed = availability.is_recruitment_closed
                 coach = availability.coach
                 substitute_coach = availability.substitute_coach
                 target_level = availability.target_level
@@ -2377,6 +2394,7 @@ def lesson_reservation_confirm(request):
             else:
                 capacity = _capacity_for_fixed_lesson(fixed_lesson)
                 status = CoachAvailability.STATUS_OPEN
+                is_recruitment_closed = False
                 coach = primary_coach
                 substitute_coach = None
                 target_level = fixed_lesson.target_level
@@ -2408,6 +2426,7 @@ def lesson_reservation_confirm(request):
             court = availability.court
             capacity = _capacity_for_availability(availability)
             status = availability.status
+            is_recruitment_closed = availability.is_recruitment_closed
             source_kind = "availability"
 
         else:
@@ -2519,6 +2538,8 @@ def lesson_reservation_confirm(request):
 
         if start_at < timezone.now():
             disabled_reason = "このレッスンは受付終了です。"
+        elif is_recruitment_closed:
+            disabled_reason = "このレッスンは募集を終了しています。"
         elif status != CoachAvailability.STATUS_OPEN and source_kind != "fixed_lesson":
             disabled_reason = "このレッスンはまだ受付準備中です。"
         elif lesson_type not in (Reservation.LESSON_GENERAL, Reservation.LESSON_EVENT):
@@ -2568,6 +2589,7 @@ def lesson_reservation_confirm(request):
             "can_join_waitlist": can_join_waitlist,
             "can_cancel_waitlist": can_cancel_waitlist,
             "disabled_reason": disabled_reason,
+            "is_recruitment_closed": bool(is_recruitment_closed),
         }
 
     except ValidationError as e:
