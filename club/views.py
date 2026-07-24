@@ -43,6 +43,7 @@ from .models import (
     LessonWaitlist,
     LineAccountLink,
     Reservation,
+    ReservationParticipant,
     ScheduleSurveyResponse,
     ShopEstimateRequest,
     ShopProductMaster,
@@ -1392,6 +1393,33 @@ def lesson_calendar_view(request):
                 start_at=availability.start_at,
             )
 
+            participant_reservations = Reservation.objects.filter(
+                user=request.user,
+                coach=availability.coach,
+                court=availability.court,
+                lesson_type=availability.lesson_type,
+                start_at=availability.start_at,
+                end_at=availability.end_at,
+                status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+            )
+            snapshots = ReservationParticipant.objects.filter(
+                reservation__in=participant_reservations,
+            )
+            if participant.get("type") == "family":
+                already_booked = snapshots.filter(
+                    family_member_id=participant.get("family_member_id"),
+                ).exists()
+            else:
+                already_booked = snapshots.filter(
+                    participant_type="self",
+                ).exists() or participant_reservations.filter(
+                    participant_snapshot__isnull=True,
+                ).exists()
+            if already_booked:
+                raise ValidationError(
+                    f"{participant.get('name') or '選択された参加者'}さんは、このレッスンを予約済みです。"
+                )
+
             active_count = Reservation.objects.filter(
                 coach=availability.coach,
                 court=availability.court,
@@ -1871,9 +1899,15 @@ def lesson_calendar_view(request):
             disabled_reason = "ログインすると予約できます。"
         elif not _can_user_take_lessons(request.user):
             disabled_reason = "会員または業務委託コーチアカウントで予約できます。"
-        elif user_slot_status == Reservation.STATUS_ACTIVE:
+        elif (
+            user_slot_status == Reservation.STATUS_ACTIVE
+            and not request.user.family_member_profiles.filter(is_active=True).exists()
+        ):
             disabled_reason = "予約済みです。"
-        elif user_slot_status == Reservation.STATUS_PENDING:
+        elif (
+            user_slot_status == Reservation.STATUS_PENDING
+            and not request.user.family_member_profiles.filter(is_active=True).exists()
+        ):
             disabled_reason = "承認待ちの申請があります。"
         elif not _slot_level_allowed(
             request.user,
@@ -2435,7 +2469,40 @@ def lesson_reservation_confirm(request):
             target_level,
             target_level_2,
         )
+        own_reservations = Reservation.objects.filter(
+            user=request.user,
+            coach=coach,
+            court=court,
+            lesson_type=lesson_type,
+            start_at=start_at,
+            end_at=end_at,
+            status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+        )
+        booked_family_ids = set(
+            ReservationParticipant.objects.filter(
+                reservation__in=own_reservations,
+                participant_type="family",
+                family_member_id__isnull=False,
+            ).values_list("family_member_id", flat=True)
+        )
+        self_is_booked = ReservationParticipant.objects.filter(
+            reservation__in=own_reservations,
+            participant_type="self",
+        ).exists() or own_reservations.filter(
+            participant_snapshot__isnull=True,
+        ).exists()
+        for choice in participant_choices:
+            is_booked = (
+                choice.get("family_member_id") in booked_family_ids
+                if choice.get("type") == "family"
+                else self_is_booked
+            )
+            if is_booked:
+                choice["can_book"] = False
+                choice["disabled_reason"] = "この参加者は予約済みです。"
         has_bookable_participant = any(choice.get("can_book") for choice in participant_choices)
+        if has_bookable_participant:
+            user_slot_status = ""
 
         can_submit = False
         can_join_waitlist = False
@@ -4839,60 +4906,9 @@ def _court_expense_matches_availability(expense, availability):
 
 
 def _mark_court_expenses_refund_pending_for_rain_cancel(availability, *, changed_by=None):
-    """
-    承認済みの対象コート費用を、雨天返金待ちへ自動差戻しします。
-    返金待ち・返金済み・未承認の経費は変更しません。
-    """
-    if not availability:
-        return 0
-
-    try:
-        lesson_date = timezone.localtime(availability.start_at).date() if timezone.is_aware(availability.start_at) else availability.start_at.date()
-    except Exception:
-        return 0
-
-    changed_count = 0
-    court_expenses = CoachExpense.objects.filter(
-        expense_date=lesson_date,
-        category=CoachExpense.CATEGORY_COURT,
-    ).order_by("id")
-
-    for expense in court_expenses:
-        meta = _expense_parse_note(expense.note)
-        if meta.get("approval_status") != EXPENSE_APPROVAL_APPROVED:
-            continue
-        if not _court_expense_matches_availability(expense, availability):
-            continue
-
-        extra_meta = {
-            key: value
-            for key, value in meta.items()
-            if key not in {
-                "expense_type",
-                "receipt_status",
-                "receipt_check_status",
-                "approval_status",
-                "plain_note",
-            }
-        }
-        extra_meta.update(
-            {
-                "rain_canceled_at": timezone.now().isoformat(),
-                "rain_canceled_by_id": getattr(changed_by, "pk", None),
-                "rain_canceled_by_name": _display_name(changed_by),
-                "rain_canceled_lesson_label": _availability_court_refund_lesson_label(availability),
-            }
-        )
-        expense.note = _expense_build_note(
-            meta.get("plain_note", ""),
-            expense_type=meta.get("expense_type", EXPENSE_TYPE_COMMON),
-            receipt_status=meta.get("receipt_status", EXPENSE_RECEIPT_NONE),
-            receipt_check_status=meta.get("receipt_check_status", EXPENSE_RECEIPT_CHECK_UNCHECKED),
-            approval_status=EXPENSE_APPROVAL_REFUND_PENDING,
-            extra_meta=extra_meta,
-        )
-        expense.save(update_fields=["note"])
-        changed_count += 1
+    # コート代はレッスンと独立した月次経費として扱う。
+    # 雨天中止でも登録済み経費の状態・金額は変更しない。
+    return 0
 
     return changed_count
 
@@ -5922,14 +5938,7 @@ def coach_expense_manage(request):
         visible_queryset = visible_queryset.filter(created_by=request.user)
 
     today = timezone.localdate()
-    court_refund_lesson_choices = _court_refund_lesson_choices_for_user(
-        request.user,
-        start_date=today - timedelta(days=60),
-        end_date=today + timedelta(days=120),
-    )
-    court_refund_lesson_choice_map = {
-        row["key"]: row for row in court_refund_lesson_choices
-    }
+    court_refund_lesson_choices = []
 
     if request.method == "POST":
         action = (request.POST.get("action") or "create").strip()
@@ -6002,7 +6011,6 @@ def coach_expense_manage(request):
         raw_category = (request.POST.get("category") or "").strip()
         raw_amount = (request.POST.get("amount") or "").strip()
         raw_note = (request.POST.get("note") or "").strip()
-        raw_court_refund_slot_key = (request.POST.get("court_refund_slot_key") or "").strip()
         raw_expense_type = (request.POST.get("expense_type") or EXPENSE_TYPE_PERSONAL).strip()
         raw_receipt_status = (request.POST.get("receipt_status") or EXPENSE_RECEIPT_NONE).strip()
 
@@ -6056,18 +6064,6 @@ def coach_expense_manage(request):
             return redirect("club:coach_expense_manage")
 
         extra_meta = {}
-        if raw_category == CoachExpense.CATEGORY_COURT:
-            selected_court_refund_lesson = court_refund_lesson_choice_map.get(raw_court_refund_slot_key)
-            if not selected_court_refund_lesson:
-                messages.error(request, "コート費用は対象レッスンを選択してください。")
-                return redirect("club:coach_expense_manage")
-            extra_meta.update(
-                {
-                    "court_refund_slot_key": selected_court_refund_lesson["key"],
-                    "court_refund_lesson_label": selected_court_refund_lesson["label"],
-                    "court_refund_facility_label": selected_court_refund_lesson["facility_label"],
-                }
-            )
 
         try:
             expense = CoachExpense(

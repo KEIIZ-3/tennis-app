@@ -185,6 +185,11 @@ def coach_expense_manage(request):
     if not _is_allowed(request.user):
         return HttpResponse("Forbidden", status=403)
 
+    # レッスン紐づけ専用のコート代登録は廃止し、
+    # 通常の月次経費登録へ統一する。
+    from . import views
+    return views.coach_expense_manage(request)
+
     availability_id = (
         request.GET.get("availability_id")
         or request.POST.get("availability_id")

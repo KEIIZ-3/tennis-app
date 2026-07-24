@@ -1887,7 +1887,19 @@ class Reservation(models.Model, LessonTypeMixin):
         if self.pk:
             user_overlap_qs = user_overlap_qs.exclude(pk=self.pk)
         if user_overlap_qs.exists():
-            raise ValidationError("同じ時間帯にすでに別の予約があります。")
+            same_family_lesson = (
+                self.lesson_type in (self.LESSON_GENERAL, self.LESSON_EVENT)
+                and self.user.family_member_profiles.filter(is_active=True).exists()
+                and not user_overlap_qs.exclude(
+                    coach=self.coach,
+                    court=self.court,
+                    lesson_type=self.lesson_type,
+                    start_at=self.start_at,
+                    end_at=self.end_at,
+                ).exists()
+            )
+            if not same_family_lesson:
+                raise ValidationError("同じ時間帯にすでに別の予約があります。")
 
         availability = self.matching_availability()
 
