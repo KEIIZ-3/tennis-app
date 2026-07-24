@@ -1170,6 +1170,7 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertContains(closed_page, "参加者募集を終了しています")
         self.assertContains(closed_page, "募集を再開する")
         self.assertContains(closed_page, "btn-recruitment-reopen")
+        self.assertContains(closed_page, "↻ 募集を再開する")
 
         reopen_response = self.client.post(
             member_list_url,
@@ -1209,6 +1210,7 @@ class ReservationFlowSmokeTests(TestCase):
             },
         )
         self.assertContains(calendar_response, "募集終了")
+        self.assertContains(calendar_response, "recruitment-closed-label")
 
         reserve_response = self._post_lesson_calendar_reserve(
             user=self.member,
