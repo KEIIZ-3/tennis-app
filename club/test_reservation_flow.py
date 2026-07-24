@@ -8,7 +8,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from . import admin_dashboard, lesson_execution
+from . import admin_dashboard, lesson_execution, settlement_balance_policy
 from .admin import StringingOrderAdminForm
 from .models import (
     CoachAvailability,
@@ -939,6 +939,71 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertEqual(
             [coach.full_name for coach in response.context["payer_options"]],
             ["飯塚研太朗", "清水峻平", "井上春佳"],
+        )
+
+    def test_new_court_transfer_is_not_reported_as_unregistered_or_unused(self):
+        lesson_date = self.lesson_date
+        start_at = timezone.make_aware(
+            datetime.combine(
+                lesson_date,
+                datetime.min.time().replace(hour=10),
+            )
+        )
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+            capacity=1,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        reservation = Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            availability=availability,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+            status=Reservation.STATUS_ACTIVE,
+        )
+        CoachExpense.objects.create(
+            created_by=self.coach,
+            expense_date=lesson_date,
+            category=CoachExpense.CATEGORY_COURT,
+            amount=1800,
+            note=(
+                '__EXPENSE_META__{"expense_type":"court_transfer",'
+                '"approval_status":"approved",'
+                '"record_kind":"court_transfer",'
+                f'"availability_id":{availability.pk},'
+                f'"payer_coach_id":{self.coach.pk},'
+                f'"using_coach_ids":[{self.coach.pk}]}\n'
+            ),
+        )
+
+        with patch.object(
+            settlement_balance_policy,
+            "_eligible_reservations",
+            return_value=[reservation],
+        ):
+            result = settlement_balance_policy._build_court_cost_policy(
+                lesson_date.year,
+                lesson_date.month,
+                [self.coach.pk],
+                [self.coach.pk],
+                [],
+            )
+
+        self.assertEqual(result["unmatched_expected_total"], 0)
+        self.assertEqual(result["unused_registered_total"], 0)
+        self.assertEqual(result["finalized_court_cost_total"], 1800)
+        self.assertEqual(
+            result["reimbursement_by_coach"][self.coach.pk],
+            1800,
         )
 
     def test_revenue_uses_current_fixed_lesson_coach_for_stale_reservations(self):
