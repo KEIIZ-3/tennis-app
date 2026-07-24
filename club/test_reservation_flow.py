@@ -981,7 +981,7 @@ class ReservationFlowSmokeTests(TestCase):
                 '"record_kind":"court_transfer",'
                 f'"availability_id":{availability.pk},'
                 f'"payer_coach_id":{self.coach.pk},'
-                f'"using_coach_ids":[{self.coach.pk}]}\n'
+                f'"using_coach_ids":[{self.coach.pk}]}}\n'
             ),
         )
 
