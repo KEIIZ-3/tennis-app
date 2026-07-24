@@ -70,19 +70,6 @@
     margin-bottom:14px;
   }
 
-  .court-link-box{
-    display:none;
-    padding:13px 14px;
-    border:1px solid #fed7aa;
-    background:#fff7ed;
-    border-radius:14px;
-    margin:0 0 14px;
-  }
-
-  .court-link-box.is-visible{
-    display:block;
-  }
-
   .desktop-table-area{
     display:block;
   }
@@ -297,7 +284,7 @@
     <div class="expense-note-box">
       <strong>入力のコツ：</strong><br>
       コート費用を登録する場合は、カテゴリで「コート費用」を選び、対象レッスンを選択してください。<br>
-      コート番号は直前に決まるため、雨天返金の紐づけには使いません。
+      コート代を含む経費は、レッスンとは独立した月次経費として登録します。
     </div>
 
     <form method="post">
@@ -326,25 +313,6 @@
           {% endfor %}
         </select>
       </p>
-
-      <div id="court-refund-link-box" class="court-link-box">
-        <p style="margin:0 0 8px; font-size:13px; color:#9a3412; line-height:1.6;">
-          <strong>コート費用のみ必須：</strong><br>
-          雨天中止時に自動で返金待ちへ差し戻すため、対象レッスンを選択してください。
-        </p>
-        <label for="id_court_refund_slot_key">対象レッスン（施設名・日付・時間帯）</label>
-        <select id="id_court_refund_slot_key" name="court_refund_slot_key">
-          <option value="">対象レッスンを選択</option>
-          {% for row in court_refund_lesson_choices %}
-            <option value="{{ row.key }}">{{ row.label }}</option>
-          {% endfor %}
-        </select>
-        {% if not court_refund_lesson_choices %}
-          <p class="muted" style="margin:8px 0 0; font-size:12px;">
-            対象にできるレッスン枠が見つかりません。先にコーチスケジュールを登録してください。
-          </p>
-        {% endif %}
-      </div>
 
       <p>
         <label for="id_amount">金額</label>
@@ -591,18 +559,6 @@
             </div>
 
             <div class="mobile-info-row">
-              <div class="mobile-info-label">対象レッスン</div>
-              <div class="mobile-info-value">
-                {% if row.court_refund_lesson_label %}
-                  {{ row.court_refund_lesson_label }}
-                {% elif row.rain_canceled_lesson_label %}
-                  {{ row.rain_canceled_lesson_label }}
-                {% else %}
-                  -
-                {% endif %}
-              </div>
-            </div>
-            <div class="mobile-info-row">
               <div class="mobile-info-label">領収書</div>
               <div class="mobile-info-value">{{ row.receipt_status_label }}</div>
             </div>
@@ -661,28 +617,4 @@
   {% endif %}
 </div>
 
-<script>
-  (function(){
-    const category = document.getElementById("id_category");
-    const box = document.getElementById("court-refund-link-box");
-    const slot = document.getElementById("id_court_refund_slot_key");
-
-    function syncCourtBox(){
-      if (!category || !box) return;
-      const isCourt = category.value === "court";
-      box.classList.toggle("is-visible", isCourt);
-      if (slot) {
-        slot.required = isCourt;
-        if (!isCourt) {
-          slot.value = "";
-        }
-      }
-    }
-
-    if (category) {
-      category.addEventListener("change", syncCourtBox);
-      syncCourtBox();
-    }
-  })();
-</script>
 {% endblock %}
