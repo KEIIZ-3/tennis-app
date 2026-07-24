@@ -30,7 +30,7 @@
 
 <div class="court-page">
   <section class="panel hero">
-    <h1 class="title">コート代登録</h1>
+    <h1 class="title">コート代{% if is_edit %}登録・修正{% else %}登録{% endif %}</h1>
     <p class="lead">コートを利用したコーチの給与から負担額を差し引き、実際に支払ったメインコーチへ同額を加算します。</p>
     <div class="lesson-box">
       <div class="lesson-label">{{ lesson_label }}</div>
@@ -53,6 +53,7 @@
     <form method="post" class="form-grid">{% csrf_token %}
       <input type="hidden" name="action" value="create_court_transfer">
       <input type="hidden" name="availability_id" value="{{ availability.id }}">
+      <input type="hidden" name="next" value="{{ next_url }}">
 
       <div>
         <label for="expense_date">利用日</label>
@@ -61,7 +62,7 @@
 
       <div>
         <label for="amount">コート代</label>
-        <input id="amount" name="amount" type="number" min="1" step="1" inputmode="numeric" placeholder="例：2400"{% if fee_quote %} value="{{ fee_quote.total }}"{% endif %} required>
+        <input id="amount" name="amount" type="number" min="1" step="1" inputmode="numeric" placeholder="例：2400"{% if existing_amount != None %} value="{{ existing_amount }}"{% elif fee_quote %} value="{{ fee_quote.total }}"{% endif %} required>
         <p class="help">西猪名公園・尼崎記念公園はDjango側で公式料金から自動計算します。実際の支払額が異なる場合は上書きできます。</p>
       </div>
 
@@ -78,7 +79,7 @@
         <select id="payer_coach_id" name="payer_coach_id" required>
           <option value="">選択してください</option>
           {% for coach in payer_options %}
-            <option value="{{ coach.id }}">{{ coach.display_name }}</option>
+            <option value="{{ coach.id }}" {% if existing_payer_id == coach.id|stringformat:"s" %}selected{% endif %}>{{ coach.display_name }}</option>
           {% endfor %}
         </select>
         <p class="help">ここで選択したコーチの給与へ、立替回収額として全額加算します。</p>
@@ -86,7 +87,7 @@
 
       <div>
         <label for="note">メモ（任意）</label>
-        <input id="note" name="note" type="text" maxlength="120" placeholder="例：7月分を清水コーチが一括支払い">
+        <input id="note" name="note" type="text" maxlength="120" value="{{ existing_note }}" placeholder="例：7月分を清水コーチが一括支払い">
       </div>
 
       <div class="calculation">
@@ -94,8 +95,8 @@
       </div>
 
       <div class="actions">
-        <button type="submit" class="btn btn-primary" onclick="return confirm('この内容でコート代を登録しますか？');">登録する</button>
-        <a href="{% url 'club:coach_today_lessons' %}?days=1" class="btn">本日の受付へ戻る</a>
+        <button type="submit" class="btn btn-primary" onclick="return confirm('この内容でコート代を保存しますか？');">{% if is_edit %}修正を保存する{% else %}登録する{% endif %}</button>
+        <a href="{{ next_url }}" class="btn">レッスンへ戻る</a>
       </div>
     </form>
   </section>
