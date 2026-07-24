@@ -46,14 +46,21 @@ def _display_name(user):
 
 def main_coaches():
     User = get_user_model()
-    users_by_name = {
-        _display_name(user): user
-        for user in User.objects.filter(role="coach").order_by("id")
-    }
+    def normalized_name(value):
+        return "".join(str(value or "").replace("\u3000", " ").split())
+
+    users_by_name = {}
+    for user in User.objects.all().order_by("id"):
+        display_name = normalized_name(_display_name(user))
+        full_name = normalized_name(getattr(user, "full_name", ""))
+        for name in (display_name, full_name):
+            if name:
+                users_by_name[name] = user
+
     return [
-        users_by_name[coach_name]
+        users_by_name[normalized_name(coach_name)]
         for coach_name in MAIN_COACH_NAMES
-        if coach_name in users_by_name
+        if normalized_name(coach_name) in users_by_name
     ]
 
 
