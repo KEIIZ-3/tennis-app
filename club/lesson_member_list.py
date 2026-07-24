@@ -786,6 +786,38 @@ def lesson_calendar_member_list(request):
         fixed_lesson_id=fixed_lesson_id,
         lesson_date_text=lesson_date_text,
     )
+    execution_status = None
+    court_summary = None
+    if availability and is_coach_view:
+        from . import lesson_execution
+        from .court_expense_transfer import (
+            court_transfer_summary_for_availability,
+        )
+
+        status_map = lesson_execution.status_by_availability(
+            request.user,
+            {(start_at.year, start_at.month)},
+        )
+        execution_status = status_map.get(availability.pk)
+        court_summary = court_transfer_summary_for_availability(
+            availability
+        )
+        if (
+            execution_status
+            and execution_status.get("execution_status")
+            in (
+                lesson_execution.STATUS_RAIN_CANCELED,
+                lesson_execution.STATUS_REFUND_PENDING,
+                lesson_execution.STATUS_REFUNDED,
+            )
+            and court_summary["status"] == "unregistered"
+        ):
+            court_summary = {
+                "status": "not_required",
+                "status_label": "登録不要",
+                "amount": None,
+                "payer_name": "",
+            }
 
     return render(
         request,
@@ -849,5 +881,7 @@ def lesson_calendar_member_list(request):
                 availability and availability.is_recruitment_closed
             ),
             "reservation_url": reservation_url,
+            "execution_status": execution_status,
+            "court_summary": court_summary,
         },
     )

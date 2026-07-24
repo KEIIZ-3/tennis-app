@@ -5,7 +5,9 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods
 
 from .models import (
@@ -66,10 +68,13 @@ def _build_note(meta, plain_note=""):
     )
 
 
-def _existing_transfer_for_availability(availability_id):
-    for expense in CoachExpense.objects.select_for_update().filter(
+def _existing_transfer_for_availability(availability_id, *, for_update=True):
+    expenses = CoachExpense.objects.filter(
         category=CoachExpense.CATEGORY_COURT,
-    ).order_by("id"):
+    ).order_by("id")
+    if for_update:
+        expenses = expenses.select_for_update()
+    for expense in expenses:
         meta = _parse_note(expense.note)
         if meta.get("record_kind") != RECORD_KIND:
             continue
@@ -80,6 +85,52 @@ def _existing_transfer_for_availability(availability_id):
         if linked_availability_id == int(availability_id):
             return expense
     return None
+
+
+def court_transfer_summary_for_availability(availability):
+    expense = _existing_transfer_for_availability(
+        availability.pk,
+        for_update=False,
+    )
+    if expense is None:
+        return {
+            "status": "unregistered",
+            "status_label": "未登録",
+            "amount": None,
+            "payer_name": "",
+        }
+    meta = _parse_note(expense.note)
+    if meta.get("court_cost_not_required"):
+        return {
+            "status": "not_required",
+            "status_label": "登録不要",
+            "amount": 0,
+            "payer_name": "",
+        }
+    return {
+        "status": "registered",
+        "status_label": "登録済み",
+        "amount": int(expense.amount or 0),
+        "payer_name": (
+            meta.get("payer_coach_name")
+            or _display_name(expense.created_by)
+        ),
+    }
+
+
+def _safe_next_url(request, default):
+    candidate = (
+        request.POST.get("next")
+        or request.GET.get("next")
+        or ""
+    ).strip()
+    if candidate and url_has_allowed_host_and_scheme(
+        candidate,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return candidate
+    return default
 
 
 def _facility_key(court):
@@ -185,11 +236,6 @@ def coach_expense_manage(request):
     if not _is_allowed(request.user):
         return HttpResponse("Forbidden", status=403)
 
-    # レッスン紐づけ専用のコート代登録は廃止し、
-    # 通常の月次経費登録へ統一する。
-    from . import views
-    return views.coach_expense_manage(request)
-
     availability_id = (
         request.GET.get("availability_id")
         or request.POST.get("availability_id")
@@ -214,6 +260,15 @@ def coach_expense_manage(request):
 
     payer_options = [coach for coach in main_coaches() if coach.is_active]
     payer_by_id = {str(coach.pk): coach for coach in payer_options}
+    existing_expense = _existing_transfer_for_availability(
+        availability.pk,
+        for_update=False,
+    )
+    existing_meta = (
+        _parse_note(existing_expense.note)
+        if existing_expense is not None
+        else {}
+    )
 
     if request.method == "POST":
         payer_id = (request.POST.get("payer_coach_id") or "").strip()
@@ -277,7 +332,12 @@ def coach_expense_manage(request):
                 request,
                 f"コート代{amount:,}円を{'登録' if created else '更新'}しました。利用コーチから控除し、{_display_name(payer)}コーチへ加算します。",
             )
-            return redirect("club:coach_admin_settlement")
+            default_url = (
+                f"{reverse('club:lesson_execution_manage')}?"
+                f"year={start.year}&month={start.month}"
+                f"#lesson-{availability.pk}"
+            )
+            return redirect(_safe_next_url(request, default_url))
 
     return render(
         request,
@@ -288,5 +348,23 @@ def coach_expense_manage(request):
             "using_coaches": using_coaches,
             "payer_options": payer_options,
             "expense_date": _local(availability.start_at).date().isoformat(),
+            "existing_amount": (
+                int(existing_expense.amount or 0)
+                if existing_expense is not None
+                else None
+            ),
+            "existing_payer_id": str(
+                existing_meta.get("payer_coach_id") or ""
+            ),
+            "existing_note": (
+                str(existing_expense.note or "").split("\n", 1)[-1].strip()
+                if existing_expense is not None
+                else ""
+            ),
+            "next_url": _safe_next_url(
+                request,
+                reverse("club:lesson_execution_manage"),
+            ),
+            "is_edit": existing_expense is not None,
         },
     )
