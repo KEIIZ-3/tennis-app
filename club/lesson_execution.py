@@ -89,11 +89,14 @@ def _next_month(year, month):
     return year, month + 1
 
 
-def _month_url(year, month):
-    return (
+def _month_url(year, month, pending_only=False):
+    url = (
         f"{reverse('club:lesson_execution_manage')}"
         f"?year={int(year)}&month={int(month)}"
     )
+    if pending_only:
+        url += "&pending=1"
+    return url
 
 
 def _display_name(user):
@@ -365,6 +368,72 @@ def _mark_refunded(availability, changed_by):
     return changed_count
 
 
+def _court_expense_for_availability(expenses, availability):
+    from .court_expense_transfer import _parse_note as _parse_transfer_note
+    from .views import _court_expense_matches_availability, _expense_parse_note
+
+    for expense in expenses:
+        transfer_meta = _parse_transfer_note(expense.note)
+        try:
+            linked_availability_id = int(
+                transfer_meta.get("availability_id")
+            )
+        except (TypeError, ValueError):
+            linked_availability_id = None
+        if linked_availability_id == availability.pk:
+            return expense, transfer_meta
+        if _court_expense_matches_availability(expense, availability):
+            return expense, _expense_parse_note(expense.note)
+    return None, {}
+
+
+def _mark_court_cost_not_required(availability, changed_by):
+    from .court_expense_transfer import (
+        APPROVAL_APPROVED,
+        RECORD_KIND,
+        _build_note,
+        _existing_transfer_for_availability,
+        _facility_label,
+        _lesson_label,
+        _slot_key as _court_slot_key,
+        _using_coaches,
+    )
+
+    using_coaches = _using_coaches(availability)
+    meta = {
+        "expense_type": "court_transfer",
+        "receipt_status": "none",
+        "receipt_check_status": "checked",
+        "approval_status": APPROVAL_APPROVED,
+        "record_kind": RECORD_KIND,
+        "availability_id": availability.pk,
+        "court_refund_slot_key": _court_slot_key(availability),
+        "court_refund_lesson_label": _lesson_label(availability),
+        "court_refund_facility_label": _facility_label(availability.court),
+        "payer_coach_id": None,
+        "payer_coach_name": "登録不要",
+        "using_coach_ids": [coach.pk for coach in using_coaches],
+        "using_coach_names": [_display_name(coach) for coach in using_coaches],
+        "recorded_by_id": changed_by.pk,
+        "recorded_by_name": _display_name(changed_by),
+        "court_cost_not_required": True,
+    }
+    with transaction.atomic():
+        CoachAvailability.objects.select_for_update().get(pk=availability.pk)
+        expense = _existing_transfer_for_availability(availability.pk)
+        if expense is not None and int(expense.amount or 0) > 0:
+            return False
+        if expense is None:
+            expense = CoachExpense(category=CoachExpense.CATEGORY_COURT)
+        expense.expense_date = _local(availability.start_at).date()
+        expense.amount = 0
+        expense.note = _build_note(meta, "コート代なし")
+        expense.created_by = changed_by
+        expense.full_clean()
+        expense.save()
+    return True
+
+
 @login_required
 @require_http_methods(["GET", "POST"])
 def lesson_execution_manage(request):
@@ -395,7 +464,16 @@ def lesson_execution_manage(request):
     if selected_month < 1 or selected_month > 12:
         selected_month = today.month
 
-    redirect_url = _month_url(selected_year, selected_month)
+    pending_only = str(
+        request.GET.get("pending")
+        or request.POST.get("pending")
+        or ""
+    ).strip() == "1"
+    redirect_url = _month_url(
+        selected_year,
+        selected_month,
+        pending_only=pending_only,
+    )
     settlement = get_or_create_monthly_settlement(
         selected_year,
         selected_month,
@@ -525,6 +603,32 @@ def lesson_execution_manage(request):
                 f"コート代の返金済みを登録しました。対象経費{refunded_count}件を精算対象外にしました。",
             )
 
+        elif action == "court_not_required":
+            status = _status_entry(
+                read_status_map(settlement),
+                slot,
+            ).get("status")
+            if status != STATUS_HELD:
+                messages.error(
+                    request,
+                    "実施済みのレッスンだけコート代なしにできます。",
+                )
+                return redirect(redirect_url)
+            created = _mark_court_cost_not_required(
+                availability,
+                request.user,
+            )
+            if created:
+                messages.success(
+                    request,
+                    "コート代なしとして確認済みにしました。",
+                )
+            else:
+                messages.error(
+                    request,
+                    "登録済みのコート代があります。修正画面でご確認ください。",
+                )
+
         else:
             messages.error(request, "変更内容が正しくありません。")
             return redirect(redirect_url)
@@ -545,7 +649,20 @@ def lesson_execution_manage(request):
         STATUS_RAIN_CANCELED: 0,
         STATUS_REFUND_PENDING: 0,
         STATUS_REFUNDED: 0,
+        "court_registered": 0,
+        "court_unregistered": 0,
+        "court_not_required": 0,
     }
+    month_start, next_month = _month_range(selected_year, selected_month)
+    court_expenses = list(
+        CoachExpense.objects.filter(
+            expense_date__gte=month_start,
+            expense_date__lt=next_month,
+            category=CoachExpense.CATEGORY_COURT,
+        )
+        .select_related("created_by")
+        .order_by("-id")
+    )
 
     for slot in slots:
         availability = slot["availability"]
@@ -570,6 +687,56 @@ def lesson_execution_manage(request):
             1
             for reservation in reservations
             if reservation.status == Reservation.STATUS_CANCELED
+        )
+        court_expense, court_meta = _court_expense_for_availability(
+            court_expenses,
+            availability,
+        )
+        approval_status = court_meta.get("approval_status", "")
+        court_not_required = bool(
+            court_meta.get("court_cost_not_required")
+        )
+        court_registered = bool(
+            court_expense is not None
+            and approval_status == "approved"
+        )
+
+        if status in (STATUS_RAIN_CANCELED, STATUS_REFUND_PENDING):
+            court_status = "refund_pending" if court_expense else "not_required"
+            court_status_label = (
+                "返金待ち"
+                if court_expense
+                else "登録不要"
+            )
+        elif status == STATUS_REFUNDED:
+            court_status = "not_required"
+            court_status_label = "返金済み"
+        elif court_not_required:
+            court_status = "not_required"
+            court_status_label = "コート代なし"
+        elif court_registered:
+            court_status = "registered"
+            court_status_label = "登録済み"
+        elif status == STATUS_HELD:
+            court_status = "unregistered"
+            court_status_label = "未登録"
+        elif status == STATUS_SCHEDULED:
+            court_status = "scheduled"
+            court_status_label = "開催後に確認"
+        else:
+            court_status = "waiting"
+            court_status_label = "実施確認後"
+
+        if court_status == "registered":
+            counts["court_registered"] += 1
+        elif court_status == "unregistered":
+            counts["court_unregistered"] += 1
+        elif court_status == "not_required":
+            counts["court_not_required"] += 1
+
+        needs_attention = bool(
+            status in (STATUS_UNCONFIRMED, STATUS_REFUND_PENDING)
+            or court_status == "unregistered"
         )
 
         rows.append(
@@ -602,8 +769,34 @@ def lesson_execution_manage(request):
                 in (STATUS_RAIN_CANCELED, STATUS_REFUND_PENDING),
                 "updated_by_name": entry.get("updated_by_name", ""),
                 "source_kind": slot["source_kind"],
+                "court_status": court_status,
+                "court_status_label": court_status_label,
+                "court_amount": (
+                    int(court_expense.amount or 0)
+                    if court_expense is not None
+                    else None
+                ),
+                "court_payer_name": (
+                    _display_name(court_expense.created_by)
+                    if court_expense is not None
+                    and not court_not_required
+                    else ""
+                ),
+                "court_expense_url": (
+                    f"{reverse('club:coach_expense_manage')}?"
+                    f"availability_id={availability.pk}"
+                    f"&date={_local(slot['start_at']).date().isoformat()}"
+                ),
+                "can_mark_court_not_required": (
+                    status == STATUS_HELD
+                    and court_status == "unregistered"
+                ),
+                "needs_attention": needs_attention,
             }
         )
+
+    if pending_only:
+        rows = [row for row in rows if row["needs_attention"]]
 
     prev_year, prev_month = _previous_month(
         selected_year,
@@ -622,13 +815,23 @@ def lesson_execution_manage(request):
             "selected_year": selected_year,
             "selected_month": selected_month,
             "month_label": f"{selected_year}年{selected_month}月",
-            "prev_url": _month_url(prev_year, prev_month),
-            "next_url": _month_url(next_year, next_month_value),
+            "prev_url": _month_url(
+                prev_year,
+                prev_month,
+                pending_only=pending_only,
+            ),
+            "next_url": _month_url(
+                next_year,
+                next_month_value,
+                pending_only=pending_only,
+            ),
             "settlement_url": (
                 f"{reverse('club:coach_admin_settlement')}?"
                 f"year={selected_year}&month={selected_month}"
             ),
             "is_month_closed": settlement.is_closed,
             "counts": counts,
+            "pending_only": pending_only,
+            "visible_row_count": len(rows),
         },
     )
