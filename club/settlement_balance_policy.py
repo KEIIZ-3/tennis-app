@@ -782,6 +782,34 @@ def _active_reimbursement_payment_total(settlement, coach):
     return _money(result.get("total"))
 
 
+def _negative_carry_in_by_coach(year, month, coach_ids):
+    """直前の締め済み月からコーチ別のマイナス残高を引き継ぐ。"""
+    from .settlement_models import CoachMonthlySettlement, MonthlySettlement
+
+    if month == 1:
+        previous_year, previous_month = year - 1, 12
+    else:
+        previous_year, previous_month = year, month - 1
+
+    previous_rows = CoachMonthlySettlement.objects.filter(
+        monthly_settlement__year=previous_year,
+        monthly_settlement__month=previous_month,
+        monthly_settlement__status=MonthlySettlement.STATUS_CLOSED,
+        coach_id__in=coach_ids,
+    ).values("coach_id", "calculation_snapshot")
+
+    carry_by_coach = {}
+    for previous_row in previous_rows:
+        snapshot = dict(previous_row.get("calculation_snapshot") or {})
+        negative_carry = max(
+            _money(snapshot.get("negative_carry")),
+            0,
+        )
+        if negative_carry:
+            carry_by_coach[previous_row["coach_id"]] = negative_carry
+    return carry_by_coach
+
+
 def _apply_wallet_policy(result, year, month):
     from .settlement_models import CoachMonthlySettlement
 
@@ -801,6 +829,11 @@ def _apply_wallet_policy(result, year, month):
         for row in coach_rows
         if getattr(row.get("coach"), "pk", None) is not None
     ]
+    negative_carry_in_by_coach = _negative_carry_in_by_coach(
+        year,
+        month,
+        eligible_coach_ids,
+    )
 
     court_policy = _build_court_cost_policy(
         year,
@@ -870,6 +903,9 @@ def _apply_wallet_policy(result, year, month):
         reimbursement_total = (
             court_reimbursement + other_expense_reimbursement
         )
+        negative_carry_in = _money(
+            negative_carry_in_by_coach.get(coach_id)
+        )
 
         if is_contractor:
             earned_amount = (
@@ -889,6 +925,7 @@ def _apply_wallet_policy(result, year, month):
             earned_amount
             + reimbursement_total
             - burden_total
+            - negative_carry_in
         )
 
         row.update(
@@ -907,6 +944,7 @@ def _apply_wallet_policy(result, year, month):
                 ),
                 "wallet_reimbursement": reimbursement_total,
                 "wallet_earned_amount": earned_amount,
+                "negative_carry_in": negative_carry_in,
                 "wallet_final_entitlement": final_entitlement,
                 "wallet_balance_adjustment": 0,
             }
@@ -1003,6 +1041,9 @@ def _apply_wallet_policy(result, year, month):
                     ),
                     "wallet_earned_amount": _money(
                         row.get("wallet_earned_amount")
+                    ),
+                    "negative_carry_in": _money(
+                        row.get("negative_carry_in")
                     ),
                     "wallet_balance_adjustment": _money(
                         row.get("wallet_balance_adjustment")
