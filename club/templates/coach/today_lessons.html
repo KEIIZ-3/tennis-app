@@ -33,6 +33,12 @@
   .counts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-content:flex-start}
   .count{display:inline-flex;align-items:center;justify-content:center;min-height:29px;padding:5px 9px;border-radius:999px;background:#ecfdf5;color:#047857;font-size:11px;font-weight:1000;white-space:nowrap}
   .count.warn{background:#fff7ed;color:#c2410c}
+  .count.held{background:#dcfce7;color:#166534}
+  .count.pending{background:#fef3c7;color:#92400e}
+  .count.canceled{background:#fee2e2;color:#991b1b}
+  .status-strip{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
+  .month-filter{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
+  .month-filter input{min-height:42px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;font-weight:800}
   .lesson-body{display:grid;gap:11px;padding:13px}
   .facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
   .fact{padding:10px;border-radius:12px;background:#f8fafc}
@@ -66,7 +72,7 @@
   @media(max-width:900px){.summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.operation-actions{grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media(max-width:700px){
     .panel{padding:13px}.title{font-size:23px}.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-    .toolbar,.nav-links,.coach-filter{display:grid;grid-template-columns:1fr 1fr}.coach-filter select,.coach-filter .btn{width:100%}
+    .toolbar,.nav-links,.coach-filter,.month-filter{display:grid;grid-template-columns:1fr 1fr}.coach-filter select,.coach-filter .btn,.month-filter input,.month-filter .btn{width:100%}
     .lesson-head,.person{grid-template-columns:1fr}.counts,.person-actions{justify-content:flex-start}.facts{grid-template-columns:1fr}.operation-actions{grid-template-columns:1fr}
     .person-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.mini-btn,.person-actions form{width:100%}
   }
@@ -82,6 +88,12 @@
       <a href="{% url 'club:coach_today_lessons' %}?days=14&coach_id={{ selected_coach_id }}" class="btn {% if display_days == 14 %}btn-primary{% endif %}">14日間</a>
       <a href="{% url 'club:coach_today_lessons' %}?days=28&coach_id={{ selected_coach_id }}" class="btn {% if display_days == 28 %}btn-primary{% endif %}">過去1か月</a>
     </div>
+    <form method="get" class="month-filter">
+      <input type="month" name="month" value="{{ selected_month_value }}" aria-label="対象月">
+      <input type="hidden" name="coach_id" value="{{ selected_coach_id }}">
+      <button type="submit" class="btn {% if month_mode and not execution_pending_only %}btn-primary{% endif %}">月ごとに表示</button>
+      <button type="submit" name="execution_pending" value="1" class="btn {% if execution_pending_only %}btn-primary{% endif %}">未処理のみ</button>
+    </form>
     {% if is_staff_mode %}
       <form method="get" class="coach-filter">
         <input type="hidden" name="days" value="{{ display_days }}">
@@ -169,8 +181,8 @@
 
   {% if grouped_days %}
     <section class="panel">
-      <h2 class="section-title">{% if display_days == 28 %}過去1か月のレッスン{% else %}表示期間のレッスン{% endif %} <span class="badge">{{ summary.lesson_count }}</span></h2>
-      {% for group in grouped_days %}{% if group.rows %}<div class="day-heading">{{ group.date_label }}（{{ group.weekday_label }}）{% if group.is_today %} 本日{% endif %}</div><div class="lesson-list">{% for row in group.rows %}<article class="lesson-card {% if row.is_today %}today{% endif %} {% if row.needs_attention %}attention{% endif %}"><div class="lesson-head"><div><div class="lesson-date">{{ row.time_label }}</div><div class="lesson-name">{{ row.title }}</div><div class="lesson-meta"><span class="pill dark">{{ row.target_level_label }}</span><span class="pill">{{ row.coach_name }}</span><span class="pill">{{ row.court_name }}</span></div></div><div class="counts"><span class="count">参加 {{ row.participant_count }}/{{ row.capacity }}</span>{% if row.waitlist_count %}<span class="count warn">待ち {{ row.waitlist_count }}</span>{% endif %}</div></div><div class="lesson-body"><div class="operation-actions">{% if row.availability %}<a href="{% url 'club:lesson_execution_manage' %}?year={{ row.start_at|date:'Y' }}&month={{ row.start_at|date:'n' }}#lesson-{{ row.availability.id }}" class="btn">実施管理</a><a href="{% url 'club:coach_expense_manage' %}?availability_id={{ row.availability.id }}&date={{ row.start_at|date:'Y-m-d' }}" class="btn btn-expense">コート代登録</a>{% else %}<a href="{% url 'club:lesson_execution_manage' %}?year={{ row.start_at|date:'Y' }}&month={{ row.start_at|date:'n' }}" class="btn">実施管理</a>{% endif %}</div></div></article>{% endfor %}</div>{% endif %}{% endfor %}
+      <h2 class="section-title">{% if month_mode %}{{ selected_month_value }}のレッスン{% elif display_days == 28 %}過去1か月のレッスン{% else %}表示期間のレッスン{% endif %} <span class="badge">{{ summary.lesson_count }}</span></h2>
+      {% for group in grouped_days %}{% if group.rows %}<div class="day-heading">{{ group.date_label }}（{{ group.weekday_label }}）{% if group.is_today %} 本日{% endif %}</div><div class="lesson-list">{% for row in group.rows %}<article class="lesson-card {% if row.is_today %}today{% endif %} {% if row.needs_attention %}attention{% endif %}"><div class="lesson-head"><div><div class="lesson-date">{{ row.time_label }}</div><div class="lesson-name">{{ row.title }}</div><div class="lesson-meta"><span class="pill dark">{{ row.target_level_label }}</span><span class="pill">{{ row.coach_name }}</span><span class="pill">{{ row.court_name }}</span></div><div class="status-strip">{% if row.execution_status_label %}<span class="count {{ row.execution_status }}">{{ row.execution_status_label }}</span>{% endif %}{% if row.court_status_label %}<span class="count {% if row.court_status == 'unregistered' %}warn{% elif row.court_status == 'registered' or row.court_status == 'not_required' %}held{% endif %}">コート代：{{ row.court_status_label }}{% if row.court_amount != None and row.court_status == 'registered' %} {{ row.court_amount }}円{% endif %}{% if row.court_payer_name %}（{{ row.court_payer_name }}）{% endif %}</span>{% endif %}</div></div><div class="counts"><span class="count">参加 {{ row.participant_count }}/{{ row.capacity }}</span>{% if row.waitlist_count %}<span class="count warn">待ち {{ row.waitlist_count }}</span>{% endif %}</div></div><div class="lesson-body"><div class="operation-actions">{% if row.availability %}<a href="{% url 'club:lesson_execution_manage' %}?year={{ row.start_at|date:'Y' }}&month={{ row.start_at|date:'n' }}#lesson-{{ row.availability.id }}" class="btn">実施管理</a><a href="{% url 'club:coach_expense_manage' %}?availability_id={{ row.availability.id }}&date={{ row.start_at|date:'Y-m-d' }}" class="btn btn-expense">{% if row.court_status == 'registered' %}コート代を修正{% else %}コート代登録{% endif %}</a>{% else %}<a href="{% url 'club:lesson_execution_manage' %}?year={{ row.start_at|date:'Y' }}&month={{ row.start_at|date:'n' }}" class="btn">実施管理</a>{% endif %}</div></div></article>{% endfor %}</div>{% endif %}{% endfor %}
     </section>
   {% endif %}
 </div>

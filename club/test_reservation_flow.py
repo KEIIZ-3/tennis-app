@@ -534,6 +534,65 @@ class ReservationFlowSmokeTests(TestCase):
             "not_required",
         )
 
+    def test_today_lessons_month_view_shows_execution_and_court_status(self):
+        lesson_date = timezone.localdate() - timedelta(days=1)
+        start_at = timezone.make_aware(
+            datetime.combine(
+                lesson_date,
+                datetime.min.time(),
+            ).replace(hour=10)
+        )
+        end_at = start_at + timedelta(hours=1)
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=1,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            availability=availability,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            status=Reservation.STATUS_ACTIVE,
+        )
+        self.client.force_login(self.coach)
+        self.client.post(
+            reverse("club:lesson_execution_manage"),
+            data={
+                "year": lesson_date.year,
+                "month": lesson_date.month,
+                "availability_id": availability.pk,
+                "action": lesson_execution.STATUS_HELD,
+            },
+        )
+
+        response = self.client.get(
+            reverse("club:coach_today_lessons"),
+            data={
+                "month": f"{lesson_date:%Y-%m}",
+                "execution_pending": "1",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["month_mode"])
+        self.assertTrue(response.context["execution_pending_only"])
+        self.assertEqual(len(response.context["lesson_rows"]), 1)
+        row = response.context["lesson_rows"][0]
+        self.assertEqual(row["execution_status"], lesson_execution.STATUS_HELD)
+        self.assertEqual(row["court_status"], "unregistered")
+        self.assertContains(response, "実施済み")
+        self.assertContains(response, "コート代：未登録")
+
     def test_substitute_contractor_is_in_dashboard_slot_scope(self):
         fixed_lesson = self._create_fixed_lesson(coach=self.coach)
         start_at, end_at = fixed_lesson._build_datetimes_for_date(self.lesson_date)
