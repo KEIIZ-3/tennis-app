@@ -3232,6 +3232,20 @@ def coach_today_lessons(request):
     # 初期表示を「全コーチ・過去1か月」に統一します。
     default_display_days = 28
 
+    selected_month_value = (
+        request.GET.get("month") or request.POST.get("month") or ""
+    ).strip()
+    month_mode = False
+    try:
+        selected_month_date = datetime.strptime(
+            selected_month_value,
+            "%Y-%m",
+        ).date()
+        month_mode = True
+    except (TypeError, ValueError):
+        selected_month_date = today.replace(day=1)
+        selected_month_value = f"{today:%Y-%m}"
+
     try:
         display_days = int(request.GET.get("days") or request.POST.get("days") or default_display_days)
     except Exception:
@@ -3241,7 +3255,19 @@ def coach_today_lessons(request):
 
     # 「過去1か月」は、今日を含む直近28日間を表示します。
     # 今日・7日間・14日間はこれまでどおり未来の予定確認用です。
-    if display_days == 28:
+    if month_mode:
+        range_start = selected_month_date.replace(day=1)
+        if range_start.month == 12:
+            next_month_start = range_start.replace(
+                year=range_start.year + 1,
+                month=1,
+            )
+        else:
+            next_month_start = range_start.replace(
+                month=range_start.month + 1,
+            )
+        range_end = next_month_start - timedelta(days=1)
+    elif display_days == 28:
         range_start = today - timedelta(days=27)
         range_end = today
     else:
@@ -3271,6 +3297,8 @@ def coach_today_lessons(request):
 
     def _today_lessons_redirect():
         params = {"days": display_days}
+        if month_mode:
+            params["month"] = selected_month_value
         if selected_coach_id:
             params["coach_id"] = selected_coach_id
         return f"{reverse('club:coach_today_lessons')}?{urlencode(params)}"
@@ -3902,6 +3930,41 @@ def coach_today_lessons(request):
         )
 
     lesson_rows = sorted(slot_map.values(), key=lambda row: (row["start_at"], row["title"], row["key"]))
+    from . import lesson_execution
+
+    year_month_pairs = {
+        (row["date"].year, row["date"].month)
+        for row in lesson_rows
+        if row.get("availability")
+    }
+    execution_status_map = lesson_execution.status_by_availability(
+        request.user,
+        year_month_pairs,
+    )
+    for row in lesson_rows:
+        availability = row.get("availability")
+        status = (
+            execution_status_map.get(availability.pk)
+            if availability is not None
+            else None
+        )
+        if status:
+            row.update(status)
+            row["needs_attention"] = bool(
+                row["needs_attention"]
+                or status["execution_needs_attention"]
+            )
+
+    execution_pending_only = (
+        request.GET.get("execution_pending")
+        or request.POST.get("execution_pending")
+        or ""
+    ) == "1"
+    if execution_pending_only:
+        lesson_rows = [
+            row for row in lesson_rows
+            if row.get("execution_needs_attention")
+        ]
     today_rows = [row for row in lesson_rows if row["date"] == today]
     upcoming_rows = [row for row in lesson_rows if row["date"] != today]
     attention_rows = [row for row in lesson_rows if row["needs_attention"] and not row["is_past"]]
@@ -3980,6 +4043,9 @@ def coach_today_lessons(request):
             "selected_coach_id": selected_coach_id,
             "is_staff_mode": is_staff_mode,
             "display_days": display_days,
+            "month_mode": month_mode,
+            "selected_month_value": selected_month_value,
+            "execution_pending_only": execution_pending_only,
             "range_start": range_start,
             "range_end": range_end,
             "grouped_days": grouped_days,
