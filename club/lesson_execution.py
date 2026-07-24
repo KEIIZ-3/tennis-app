@@ -114,6 +114,97 @@ def _local(value):
     return value
 
 
+def status_by_availability(user, year_month_pairs):
+    """受付・精算画面でも実施管理と同じ判定結果を表示する。"""
+    result = {}
+    for year, month in sorted(set(year_month_pairs)):
+        settlement = get_or_create_monthly_settlement(year, month)
+        status_map = read_status_map(settlement)
+        month_start, next_month = _month_range(year, month)
+        court_expenses = list(
+            CoachExpense.objects.filter(
+                expense_date__gte=month_start,
+                expense_date__lt=next_month,
+                category=CoachExpense.CATEGORY_COURT,
+            )
+            .select_related("created_by")
+            .order_by("-id")
+        )
+        for slot in _canonical_slots(year, month):
+            if not _user_can_manage_slot(user, slot):
+                continue
+            availability = slot["availability"]
+            entry = _status_entry(status_map, slot)
+            saved_status = entry.get("status")
+            if saved_status in STATUS_LABELS:
+                status = saved_status
+            elif slot["end_at"] > timezone.now():
+                status = STATUS_SCHEDULED
+            else:
+                status = STATUS_UNCONFIRMED
+
+            court_expense, court_meta = _court_expense_for_availability(
+                court_expenses,
+                availability,
+            )
+            approval_status = court_meta.get("approval_status", "")
+            court_not_required = bool(
+                court_meta.get("court_cost_not_required")
+            )
+            court_registered = bool(
+                court_expense is not None
+                and approval_status == "approved"
+            )
+            if status in (STATUS_RAIN_CANCELED, STATUS_REFUND_PENDING):
+                court_status = (
+                    "refund_pending" if court_expense else "not_required"
+                )
+                court_status_label = (
+                    "返金待ち" if court_expense else "登録不要"
+                )
+            elif status == STATUS_REFUNDED:
+                court_status = "not_required"
+                court_status_label = "返金済み"
+            elif court_not_required:
+                court_status = "not_required"
+                court_status_label = "コート代なし"
+            elif court_registered:
+                court_status = "registered"
+                court_status_label = "登録済み"
+            elif status == STATUS_HELD:
+                court_status = "unregistered"
+                court_status_label = "未登録"
+            elif status == STATUS_SCHEDULED:
+                court_status = "scheduled"
+                court_status_label = "開催後に確認"
+            else:
+                court_status = "waiting"
+                court_status_label = "実施確認後"
+
+            result[availability.pk] = {
+                "execution_status": status,
+                "execution_status_label": STATUS_LABELS[status],
+                "court_status": court_status,
+                "court_status_label": court_status_label,
+                "court_amount": (
+                    int(court_expense.amount or 0)
+                    if court_expense is not None
+                    else None
+                ),
+                "court_payer_name": (
+                    _display_name(court_expense.created_by)
+                    if court_expense is not None
+                    and not court_not_required
+                    else ""
+                ),
+                "execution_needs_attention": bool(
+                    status in (STATUS_UNCONFIRMED, STATUS_REFUND_PENDING)
+                    or court_status == "unregistered"
+                ),
+            }
+    return result
+
+
 def _availability_key(availability):
     return f"availability:{availability.pk}"
 
