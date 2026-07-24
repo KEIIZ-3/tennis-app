@@ -258,7 +258,9 @@ def coach_expense_manage(request):
     if not is_full_admin and request.user.pk not in using_coach_ids:
         return HttpResponse("Forbidden", status=403)
 
-    payer_options = [coach for coach in main_coaches() if coach.is_active]
+    # 支払者候補はログイン可否ではなく、会計上のメインコーチ区分で決める。
+    # 休止中のアカウントでも過去・当月の立替払いは登録できる必要がある。
+    payer_options = main_coaches()
     payer_by_id = {str(coach.pk): coach for coach in payer_options}
     existing_expense = _existing_transfer_for_availability(
         availability.pk,
