@@ -96,6 +96,43 @@ def _improve_lesson_calendar(html):
         "コートのキャンセル期限が開催日の1週間前までのため、できるだけレッスン日の1週間前までにご予約をお願いします。",
         "コート手配の都合上、レッスンのご予約は開催日の1週間前までにお願いいたします。",
     )
+
+    ticket_notice = """
+<div style="padding:16px; border:1px solid #bfdbfe; background:#eff6ff; border-radius:16px; color:#1e3a8a; margin-bottom:16px;">
+  <div style="font-weight:900; font-size:16px; margin-bottom:8px;">🎫 チケットについて</div>
+  <div style="font-size:13px; line-height:1.75; font-weight:700;">
+    <strong>チケットが0枚でもレッスンをご予約いただけます。</strong><br>
+    ご予約時にチケットをお持ちでなくても問題ありません。<br>
+    レッスン当日に会場で現金にてチケットをご購入いただき、ご購入後にスタッフがチケットを反映いたします。
+  </div>
+  <div style="font-weight:900; font-size:16px; margin:14px 0 8px;">📅 ご予約について</div>
+  <div style="font-size:13px; line-height:1.75; font-weight:700;">
+    コート手配の都合上、レッスンのご予約は開催日の1週間前までにお願いいたします。
+  </div>
+</div>
+""".strip()
+
+    existing_notice_pattern = re.compile(
+        r'<div[^>]*>\s*(?:🎫\s*)?チケットが足りない場合もご予約いただけます。.*?'</n        r'コート手配の都合上、レッスンのご予約は開催日の1週間前までにお願いいたします。\s*</div>',
+        re.DOTALL,
+    )
+    html = existing_notice_pattern.sub(ticket_notice, html, count=1)
+
+    if ticket_notice not in html:
+        marker_candidates = [
+            '<div class="calendar-container">',
+            '<div class="calendar-wrapper">',
+            '<main',
+        ]
+        for marker in marker_candidates:
+            if marker in html:
+                html = html.replace(marker, ticket_notice + "\n" + marker, 1)
+                break
+
+    html = html.replace(
+        ">予約する<",
+        "><span style=\"display:block; font-size:11px; font-weight:800; margin-bottom:2px;\">チケット0枚でも予約OK</span>予約する<",
+    )
     return html
 
 
