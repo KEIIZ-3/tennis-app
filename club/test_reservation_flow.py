@@ -289,7 +289,7 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertFalse(CoachAvailability.objects.filter(pk=availability_id).exists())
 
     def test_today_lessons_hides_legacy_orphaned_fixed_lesson_slot(self):
-        lesson_date = date(2026, 7, 19)
+        lesson_date = self.lesson_date
         lesson = self._create_fixed_lesson(
             lesson_date=lesson_date,
             title="削除済み固定レッスン",
