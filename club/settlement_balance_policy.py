@@ -413,6 +413,23 @@ def _held_execution_reservations(reservations, status_map):
     return list(eligible_by_slot.values())
 
 
+def _held_lesson_count_by_coach(year, month, coach_ids):
+    """実施管理で「実施済み」のレッスンだけを担当コーチ別に数える。"""
+    eligible_coach_ids = set(coach_ids or [])
+    counts = defaultdict(int)
+
+    for reservation in _eligible_reservations(year, month):
+        counted_coach_ids = {
+            coach.pk
+            for coach in _reservation_coaches(reservation)
+            if getattr(coach, "pk", None) in eligible_coach_ids
+        }
+        for coach_id in counted_coach_ids:
+            counts[coach_id] += 1
+
+    return dict(counts)
+
+
 def _court_transfer_allocation(
     expense_rows,
     eligible_coach_ids,
@@ -750,13 +767,7 @@ def _apply_wallet_policy(result, year, month):
         year,
         month,
         main_coach_ids,
-        {
-            getattr(row.get("coach"), "pk", None): _money(
-                row.get("reservation_count")
-            )
-            for row in coach_rows
-            if getattr(row.get("coach"), "pk", None) in main_coach_id_set
-        },
+        _held_lesson_count_by_coach(year, month, main_coach_ids),
     )
 
     contractor_pay_total = sum(
