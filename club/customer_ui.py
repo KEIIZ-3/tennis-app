@@ -89,42 +89,35 @@ def _simplify_reservation_page(html):
 
 def _improve_lesson_calendar(html):
     replacement_notice = """
-<div style="font-weight:900; font-size:16px; margin-bottom:8px;">🎫 チケットについて</div>
-<div style="font-size:13px; line-height:1.75; font-weight:700;">
-  <strong>チケットが0枚でもレッスンをご予約いただけます。</strong><br>
-  ご予約時にチケットをお持ちでなくても問題ありません。<br>
-  レッスン当日に会場で現金にてチケットをご購入いただけます。<br>
-  ご購入後にスタッフがチケットを反映いたします。
-</div>
-<div style="font-weight:900; font-size:16px; margin:14px 0 8px;">📅 ご予約について</div>
-<div style="font-size:13px; line-height:1.75; font-weight:700;">
-  コート手配の都合上、レッスンのご予約は開催日の1週間前までにお願いいたします。
+<div class="ticket-notice" style="border-color:#60a5fa; background:#eff6ff; color:#1e3a8a;">
+  <span class="ticket-notice-icon" style="background:#2563eb;">i</span>
+  <div>
+    <p class="ticket-notice-title" style="color:#1e3a8a;">🎫 チケットについて</p>
+    <p class="ticket-notice-text">
+      <strong>チケットが0枚でもレッスンをご予約いただけます。</strong><br>
+      ご予約時にチケットをお持ちでなくても問題ありません。<br>
+      レッスン当日に会場で現金にてチケットをご購入いただけます。<br>
+      ご購入後にスタッフがチケットを反映いたします。
+    </p>
+    <p class="ticket-notice-title" style="color:#1e3a8a; margin-top:12px;">📅 ご予約について</p>
+    <p class="ticket-notice-text">
+      コート手配の都合上、レッスンのご予約は開催日の1週間前までにお願いいたします。
+    </p>
+  </div>
 </div>
 """.strip()
 
     notice_pattern = re.compile(
-        r'(?:<strong>)?チケットが足りない場合もご予約いただけます。(?:</strong>)?\s*'
-        r'(?:<br>\s*)?'
-        r'コート手配の都合上、レッスンのご予約は開催日の1週間前までにお願いいたします。?',
+        r'<div class="ticket-notice">\s*'
+        r'<span class="ticket-notice-icon">✓</span>\s*'
+        r'<div>\s*'
+        r'<p class="ticket-notice-title">チケットが足りない場合もご予約いただけます。</p>\s*'
+        r'<p class="ticket-notice-text">.*?</p>\s*'
+        r'</div>\s*'
+        r'</div>',
         re.DOTALL,
     )
     html = notice_pattern.sub(replacement_notice, html, count=1)
-
-    old_expanded_notice_pattern = re.compile(
-        r'(?:<strong>)?チケットが0枚でもレッスンをご予約いただけます。(?:</strong>)?\s*<br>\s*'
-        r'ご予約時にチケットをお持ちでなくても問題ありません。\s*<br>\s*'
-        r'レッスン当日に会場で現金にてチケットをご購入いただけます。\s*<br>\s*'
-        r'ご購入後にスタッフがチケットを反映いたします。\s*<br>\s*'
-        r'<span[^>]*>📅 ご予約について</span>\s*'
-        r'コート手配の都合上、レッスンのご予約は開催日の1週間前までにお願いいたします。?',
-        re.DOTALL,
-    )
-    html = old_expanded_notice_pattern.sub(replacement_notice, html, count=1)
-
-    html = html.replace(
-        "通常レッスンは最後の1名になるとキャンセルできませんので、ご注意ください。",
-        "",
-    )
 
     return html
 
