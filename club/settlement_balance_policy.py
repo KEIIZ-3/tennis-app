@@ -542,6 +542,7 @@ def _build_court_cost_policy(
     # 新方式のコート代は availability_id を正規の紐づけキーとする。
     # 金額0円の「登録不要」も含め、旧方式の日付・施設・時刻照合へ流さない。
     transfer_availability_ids = set()
+    transfer_slot_keys = set()
     for row in expenses:
         meta = row["meta"]
         if meta.get("record_kind") != COURT_TRANSFER_RECORD_KIND:
@@ -552,6 +553,21 @@ def _build_court_cost_policy(
             continue
         transfer_availability_ids.add(availability_id)
         transfer_expense_ids.add(row["expense"].pk)
+        slot_key = str(meta.get("court_refund_slot_key") or "").strip()
+        if slot_key:
+            transfer_slot_keys.add(slot_key)
+
+    # 新方式の登録と同じ開催回を示す旧方式データは、移行前の重複記録として扱う。
+    # 給与計算は availability_id を持つ新方式だけを正とし、旧データを
+    # 「レッスンと不一致」の警告へ重複加算しない。
+    superseded_legacy_expense_ids = {
+        row["expense"].pk
+        for row in expenses
+        if row["is_court"]
+        and row["expense"].pk not in transfer_expense_ids
+        and row["slot_key"]
+        and row["slot_key"] in transfer_slot_keys
+    }
 
     court_expenses_by_slot = defaultdict(list)
     unlinked_court_expenses = []
@@ -574,6 +590,7 @@ def _build_court_cost_policy(
     detail_rows = list(transfer["detail_rows"])
     unmatched_expected_total = 0
     used_expense_ids = set(transfer_expense_ids)
+    used_expense_ids.update(superseded_legacy_expense_ids)
 
     for reservation in reservations:
         # 新方式の登録は _court_transfer_allocation で既に給与へ反映済み。
