@@ -113,7 +113,8 @@ def _improve_lesson_calendar(html):
 """.strip()
 
     existing_notice_pattern = re.compile(
-        r'<div[^>]*>\s*(?:🎫\s*)?チケットが足りない場合もご予約いただけます。.*?'</n        r'コート手配の都合上、レッスンのご予約は開催日の1週間前までにお願いいたします。\s*</div>',
+        r'<div[^>]*>\s*(?:🎫\s*)?チケットが足りない場合もご予約いただけます。.*?'
+        r'コート手配の都合上、レッスンのご予約は開催日の1週間前までにお願いいたします。\s*</div>',
         re.DOTALL,
     )
     html = existing_notice_pattern.sub(ticket_notice, html, count=1)
