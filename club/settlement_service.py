@@ -448,6 +448,15 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
                     "wallet_reimbursement": money(
                         saved.calculation_snapshot.get("wallet_reimbursement")
                     ),
+                    "negative_carry_in": money(
+                        saved.calculation_snapshot.get("negative_carry_in")
+                    ),
+                    "wallet_final_entitlement": money(
+                        saved.calculation_snapshot.get(
+                            "wallet_final_entitlement",
+                            saved.salary_due,
+                        )
+                    ),
                     "personal_reimbursement_due": saved.reimbursement_due,
                     "reimbursement_carry_in": saved.reimbursement_carry_in,
                     "reimbursement_current_month": saved.reimbursement_current_month,

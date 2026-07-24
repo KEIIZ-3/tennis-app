@@ -13,6 +13,7 @@ from club.settlement_balance_policy import (
     _held_execution_reservations,
     _held_lesson_count_by_coach,
     _lighting_start_hour,
+    _negative_carry_in_by_coach,
 )
 
 
@@ -63,6 +64,39 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         )
 
         self.assertEqual(_automatic_court_cost(reservation), 6400)
+
+    @patch("club.settlement_models.CoachMonthlySettlement.objects.filter")
+    def test_negative_carry_uses_only_previous_closed_month(self, filter_mock):
+        filter_mock.return_value.values.return_value = [
+            {
+                "coach_id": 2,
+                "calculation_snapshot": {"negative_carry": 2080},
+            }
+        ]
+
+        carry = _negative_carry_in_by_coach(2026, 8, [1, 2, 3])
+
+        self.assertEqual(carry, {2: 2080})
+        filter_mock.assert_called_once_with(
+            monthly_settlement__year=2026,
+            monthly_settlement__month=7,
+            monthly_settlement__status="closed",
+            coach_id__in=[1, 2, 3],
+        )
+
+    @patch("club.settlement_models.CoachMonthlySettlement.objects.filter")
+    def test_negative_carry_crosses_year_boundary(self, filter_mock):
+        filter_mock.return_value.values.return_value = []
+
+        carry = _negative_carry_in_by_coach(2027, 1, [2])
+
+        self.assertEqual(carry, {})
+        filter_mock.assert_called_once_with(
+            monthly_settlement__year=2026,
+            monthly_settlement__month=12,
+            monthly_settlement__status="closed",
+            coach_id__in=[2],
+        )
 
     def test_court_transfer_is_applied_in_wallet_policy(self):
         expense = SimpleNamespace(pk=10)
@@ -245,6 +279,7 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
 
     @patch("club.settlement_balance_policy._active_salary_payment_total", return_value=0)
     @patch("club.settlement_balance_policy._active_reimbursement_payment_total", return_value=2000)
+    @patch("club.settlement_balance_policy._negative_carry_in_by_coach", return_value={1: 2080})
     @patch("club.settlement_balance_policy._held_lesson_count_by_coach", return_value={1: 1})
     @patch("club.settlement_balance_policy._build_other_expense_policy")
     @patch("club.settlement_balance_policy._build_court_cost_policy")
@@ -257,6 +292,7 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         court_policy_mock,
         other_expense_policy_mock,
         _held_lesson_count_mock,
+        _negative_carry_mock,
         _reimbursement_payment_mock,
         _salary_payment_mock,
     ):
@@ -306,7 +342,8 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         self.assertEqual(row["wallet_earned_amount"], 26000)
         self.assertEqual(row["common_expense_share"], 7800)
         self.assertEqual(row["wallet_balance_adjustment"], 0)
-        self.assertEqual(row["salary_due"], 18200)
+        self.assertEqual(row["negative_carry_in"], 2080)
+        self.assertEqual(row["salary_due"], 16120)
         self.assertEqual(row["reimbursement_paid"], 2000)
-        self.assertEqual(row["unpaid_salary"], 16200)
+        self.assertEqual(row["unpaid_salary"], 14120)
         self.assertEqual(updated["cash_out_total"], 2000)
