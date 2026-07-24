@@ -112,15 +112,10 @@
             <div class="fact"><div class="fact-label">有効予約</div><div class="fact-value">{{ row.active_count }}件</div></div>
             <div class="fact"><div class="fact-label">キャンセル済み</div><div class="fact-value">{{ row.canceled_count }}件</div></div>
             <div class="fact"><div class="fact-label">コート数</div><div class="fact-value">{{ row.availability.court_count }}面</div></div>
-            <div class="fact">
-              <div class="fact-label">コート代</div>
-              <div class="fact-value"><span class="court-status {{ row.court_status }}">{{ row.court_status_label }}</span></div>
-              {% if row.court_amount %}<div class="muted">{{ row.court_amount }}円 / 支払：{{ row.court_payer_name }}</div>{% endif %}
-            </div>
           </div>
 
           {% if row.status == "held" %}
-            <div class="confirmed-note">実施確認済みです。売上とコート代の精算対象に反映されています。</div>
+            <div class="confirmed-note">実施確認済みです。売上の精算対象に反映されています。</div>
           {% endif %}
 
           {% if not is_month_closed %}
@@ -131,14 +126,8 @@
               {% if row.can_mark_rain %}
                 <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}">{% if pending_only %}<input type="hidden" name="pending" value="1">{% endif %}<input type="hidden" name="availability_id" value="{{ row.availability.id }}"><input type="hidden" name="action" value="rain_canceled"><button type="submit" class="btn btn-rain" onclick="return confirm('雨天中止として、対象予約のチケットを返却しますか？');">雨天中止</button></form>
               {% endif %}
-              {% if row.can_mark_refunded %}
-                <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}">{% if pending_only %}<input type="hidden" name="pending" value="1">{% endif %}<input type="hidden" name="availability_id" value="{{ row.availability.id }}"><input type="hidden" name="action" value="refunded"><button type="submit" class="btn btn-refund" onclick="return confirm('コート代の返金受領を登録しますか？');">返金済みにする</button></form>
-              {% endif %}
               {% if row.status == "held" %}
-                <a href="{{ row.court_expense_url }}" class="btn">{% if row.court_status == "registered" %}コート代を修正{% else %}コート代を登録{% endif %}</a>
-              {% endif %}
-              {% if row.can_mark_court_not_required %}
-                <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}">{% if pending_only %}<input type="hidden" name="pending" value="1">{% endif %}<input type="hidden" name="availability_id" value="{{ row.availability.id }}"><input type="hidden" name="action" value="court_not_required"><button type="submit" class="btn" onclick="return confirm('このレッスンはコート代なしとして確定しますか？');">コート代なし</button></form>
+                <a href="{% url 'club:coach_expense_manage' %}" class="btn">経費登録</a>
               {% endif %}
             </div>
           {% endif %}
