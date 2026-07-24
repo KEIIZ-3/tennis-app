@@ -36,8 +36,8 @@
   .line-notice-btn:hover{border-color:#05ad4a!important;background:#05ad4a!important;color:#fff!important;}
   .btn-recruitment-close{border-color:#dc2626!important;background:#dc2626!important;color:#fff!important;box-shadow:0 6px 14px rgba(220,38,38,.24);}
   .btn-recruitment-close:hover{border-color:#b91c1c!important;background:#b91c1c!important;color:#fff!important;}
-  .btn-recruitment-reopen{border-color:#16a34a!important;background:#16a34a!important;color:#fff!important;box-shadow:0 6px 14px rgba(22,163,74,.22);}
-  .btn-recruitment-reopen:hover{border-color:#15803d!important;background:#15803d!important;color:#fff!important;}
+  .btn-recruitment-reopen{border-color:#2563eb!important;background:#2563eb!important;color:#fff!important;box-shadow:0 6px 14px rgba(37,99,235,.24);}
+  .btn-recruitment-reopen:hover{border-color:#1d4ed8!important;background:#1d4ed8!important;color:#fff!important;}
   .empty-box{padding:14px;border:1px dashed #cbd5e1;border-radius:14px;background:#f8fafc;color:#64748b;font-size:14px;line-height:1.7;text-align:center;font-weight:800;}
   .execution-panel{padding:16px;border:1px solid #86efac;border-radius:18px;background:linear-gradient(180deg,#f0fdf4 0%,#ffffff 100%);box-shadow:0 8px 20px rgba(22,101,52,.08);}
   .execution-title{margin:0;color:#166534;font-size:20px;line-height:1.35;font-weight:1000;}
@@ -83,7 +83,7 @@
           {% csrf_token %}
           {% if is_recruitment_closed %}
             <input type="hidden" name="action" value="reopen_recruitment">
-            <button type="submit" class="btn btn-recruitment-reopen" onclick="return confirm('このレッスンの参加者募集を再開しますか？');">募集を再開する</button>
+            <button type="submit" class="btn btn-recruitment-reopen" onclick="return confirm('このレッスンの参加者募集を再開しますか？');">↻ 募集を再開する</button>
           {% else %}
             <input type="hidden" name="action" value="close_recruitment">
             <button type="submit" class="btn btn-recruitment-close" onclick="return confirm('定員に達していなくても、このレッスンの参加者募集を終了しますか？');">募集をクローズする</button>
