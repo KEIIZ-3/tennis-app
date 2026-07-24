@@ -672,6 +672,14 @@ def _build_court_cost_policy(
             continue
         if row["expense"].pk in used_expense_ids:
             continue
+        # 開催回キーを持たない旧方式のコート代は、現在のレッスンへ安全に
+        # 照合できない移行前データである。availability_id 付きの新方式を
+        # 正規記録とし、この旧データだけを不一致警告へ加算しない。
+        if (
+            row["meta"].get("record_kind") != COURT_TRANSFER_RECORD_KIND
+            and not row["slot_key"]
+        ):
+            continue
         unused_registered_total += row["amount"]
 
     return {
