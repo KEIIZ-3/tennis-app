@@ -4030,6 +4030,10 @@ def coach_today_lessons(request):
         request.user,
         year_month_pairs,
     )
+    from .court_expense_transfer import (
+        court_transfer_summary_for_availability,
+    )
+
     for row in lesson_rows:
         availability = row.get("availability")
         status = (
@@ -4042,6 +4046,26 @@ def coach_today_lessons(request):
             row["needs_attention"] = bool(
                 row["needs_attention"]
                 or status["execution_needs_attention"]
+            )
+        if availability is not None:
+            court_summary = court_transfer_summary_for_availability(
+                availability
+            )
+            row.update(
+                {
+                    "court_status": court_summary["status"],
+                    "court_status_label": court_summary["status_label"],
+                    "court_amount": court_summary["amount"],
+                    "court_payer_name": court_summary["payer_name"],
+                    "court_expense_url": (
+                        f"{reverse('club:coach_expense_manage')}?"
+                        f"{urlencode({
+                            'availability_id': availability.pk,
+                            'date': row['date'].isoformat(),
+                            'next': request.get_full_path(),
+                        })}"
+                    ),
+                }
             )
 
     execution_pending_only = (

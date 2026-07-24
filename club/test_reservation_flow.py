@@ -536,7 +536,7 @@ class ReservationFlowSmokeTests(TestCase):
             "not_required",
         )
 
-    def test_today_lessons_month_view_shows_execution_without_court_link_status(self):
+    def test_today_lessons_month_view_shows_execution_and_court_status(self):
         lesson_date = timezone.localdate() - timedelta(days=1)
         start_at = timezone.make_aware(
             datetime.combine(
@@ -576,6 +576,17 @@ class ReservationFlowSmokeTests(TestCase):
                 "action": lesson_execution.STATUS_HELD,
             },
         )
+        CoachExpense.objects.create(
+            created_by=self.coach,
+            expense_date=lesson_date,
+            category=CoachExpense.CATEGORY_COURT,
+            amount=1800,
+            note=(
+                '__EXPENSE_META__{"record_kind":"court_transfer",'
+                f'"availability_id":{availability.pk},'
+                '"payer_coach_name":"飯塚研太朗"}\n'
+            ),
+        )
 
         response = self.client.get(
             reverse("club:coach_today_lessons"),
@@ -590,9 +601,12 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertEqual(len(response.context["lesson_rows"]), 1)
         row = response.context["lesson_rows"][0]
         self.assertEqual(row["execution_status"], lesson_execution.STATUS_HELD)
-        self.assertNotIn("court_status", row)
+        self.assertEqual(row["court_status"], "registered")
+        self.assertEqual(row["court_amount"], 1800)
+        self.assertEqual(row["court_payer_name"], "飯塚研太朗")
         self.assertContains(response, "実施済み")
-        self.assertNotContains(response, "コート代：")
+        self.assertContains(response, "コート代：登録済み")
+        self.assertContains(response, "支払者：飯塚研太朗")
 
     def test_substitute_contractor_is_in_dashboard_slot_scope(self):
         fixed_lesson = self._create_fixed_lesson(coach=self.coach)
@@ -892,10 +906,12 @@ class ReservationFlowSmokeTests(TestCase):
                 full_name="井上春佳",
             ),
         ]
+        main_coaches[0].role = self.User.ROLE_MEMBER
         main_coaches[0].is_active = False
-        main_coaches[0].save(update_fields=["is_active"])
+        main_coaches[0].save(update_fields=["role", "is_active"])
+        main_coaches[1].role = self.User.ROLE_MEMBER
         main_coaches[1].is_active = False
-        main_coaches[1].save(update_fields=["is_active"])
+        main_coaches[1].save(update_fields=["role", "is_active"])
         start_at = timezone.make_aware(
             datetime.combine(
                 timezone.localdate() + timedelta(days=7),
