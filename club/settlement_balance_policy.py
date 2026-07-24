@@ -810,6 +810,33 @@ def _negative_carry_in_by_coach(year, month, coach_ids):
     return carry_by_coach
 
 
+def _unpaid_salary_carry_in_by_coach(year, month, coach_ids):
+    """直前の締め済み月からコーチ別の給与未払い残高を引き継ぐ。"""
+    from .settlement_models import CoachMonthlySettlement, MonthlySettlement
+
+    if month == 1:
+        previous_year, previous_month = year - 1, 12
+    else:
+        previous_year, previous_month = year, month - 1
+
+    previous_rows = CoachMonthlySettlement.objects.filter(
+        monthly_settlement__year=previous_year,
+        monthly_settlement__month=previous_month,
+        monthly_settlement__status=MonthlySettlement.STATUS_CLOSED,
+        coach_id__in=coach_ids,
+    ).values("coach_id", "salary_unpaid")
+
+    carry_by_coach = {}
+    for previous_row in previous_rows:
+        unpaid_salary = max(
+            _money(previous_row.get("salary_unpaid")),
+            0,
+        )
+        if unpaid_salary:
+            carry_by_coach[previous_row["coach_id"]] = unpaid_salary
+    return carry_by_coach
+
+
 def _apply_wallet_policy(result, year, month):
     from .settlement_models import CoachMonthlySettlement
 
@@ -830,6 +857,11 @@ def _apply_wallet_policy(result, year, month):
         if getattr(row.get("coach"), "pk", None) is not None
     ]
     negative_carry_in_by_coach = _negative_carry_in_by_coach(
+        year,
+        month,
+        eligible_coach_ids,
+    )
+    unpaid_salary_carry_in_by_coach = _unpaid_salary_carry_in_by_coach(
         year,
         month,
         eligible_coach_ids,
@@ -906,6 +938,9 @@ def _apply_wallet_policy(result, year, month):
         negative_carry_in = _money(
             negative_carry_in_by_coach.get(coach_id)
         )
+        unpaid_salary_carry_in = _money(
+            unpaid_salary_carry_in_by_coach.get(coach_id)
+        )
 
         if is_contractor:
             earned_amount = (
@@ -924,6 +959,7 @@ def _apply_wallet_policy(result, year, month):
         final_entitlement = (
             earned_amount
             + reimbursement_total
+            + unpaid_salary_carry_in
             - burden_total
             - negative_carry_in
         )
@@ -945,6 +981,7 @@ def _apply_wallet_policy(result, year, month):
                 "wallet_reimbursement": reimbursement_total,
                 "wallet_earned_amount": earned_amount,
                 "negative_carry_in": negative_carry_in,
+                "unpaid_salary_carry_in": unpaid_salary_carry_in,
                 "wallet_final_entitlement": final_entitlement,
                 "wallet_balance_adjustment": 0,
             }
@@ -1044,6 +1081,9 @@ def _apply_wallet_policy(result, year, month):
                     ),
                     "negative_carry_in": _money(
                         row.get("negative_carry_in")
+                    ),
+                    "unpaid_salary_carry_in": _money(
+                        row.get("unpaid_salary_carry_in")
                     ),
                     "wallet_balance_adjustment": _money(
                         row.get("wallet_balance_adjustment")

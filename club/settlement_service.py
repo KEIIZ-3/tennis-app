@@ -451,6 +451,11 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
                     "negative_carry_in": money(
                         saved.calculation_snapshot.get("negative_carry_in")
                     ),
+                    "unpaid_salary_carry_in": money(
+                        saved.calculation_snapshot.get(
+                            "unpaid_salary_carry_in"
+                        )
+                    ),
                     "wallet_final_entitlement": money(
                         saved.calculation_snapshot.get(
                             "wallet_final_entitlement",
