@@ -45,6 +45,9 @@
   .execution-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px;}
   .execution-actions form{margin:0;}
   .execution-actions .btn{width:100%;min-height:44px;border-radius:12px;font-weight:1000;}
+  .court-state{margin-top:10px;padding:11px 12px;border:1px solid #cbd5e1;border-radius:13px;background:#f8fafc;color:#334155;font-size:13px;font-weight:900;}
+  .court-state.registered{border-color:#86efac;background:#f0fdf4;color:#166534;}
+  .court-state.unregistered{border-color:#fdba74;background:#fff7ed;color:#9a3412;}
   .btn-held{border-color:#16a34a!important;background:#16a34a!important;color:#fff!important;}
   .btn-rain{border-color:#dc2626!important;background:#fff!important;color:#b91c1c!important;}
   .btn-expense{border-color:#f59e0b!important;background:#fffbeb!important;color:#92400e!important;}
@@ -114,6 +117,15 @@
       <p class="execution-text">
         レッスン終了後は「実施済み」を登録してください。雨天中止では対象予約をキャンセルし、消費済みチケットを返却します。
       </p>
+      {% if execution_status %}
+        <div class="court-state">実施状況：{{ execution_status.execution_status_label }}</div>
+      {% endif %}
+      {% if court_summary %}
+        <div class="court-state {{ court_summary.status }}">
+          コート代：{{ court_summary.status_label }}
+          {% if court_summary.status == "registered" %}（{{ court_summary.amount }}円・支払者：{{ court_summary.payer_name }}）{% endif %}
+        </div>
+      {% endif %}
       {% if request.GET.availability_id %}
         <div class="execution-actions">
           <form method="post" action="{% url 'club:lesson_quick_action' %}">
@@ -123,7 +135,7 @@
             <input type="hidden" name="availability_id" value="{{ request.GET.availability_id }}">
             <input type="hidden" name="action" value="held">
             <input type="hidden" name="next" value="{{ request.get_full_path }}">
-            <button type="submit" class="btn btn-held" onclick="return confirm('このレッスンを実施済みにしますか？');">実施済みにする</button>
+            <button type="submit" class="btn btn-held" onclick="return confirm('このレッスンを実施済みにしますか？');">実施登録</button>
           </form>
           <form method="post" action="{% url 'club:lesson_quick_action' %}">
             {% csrf_token %}
@@ -134,7 +146,7 @@
             <input type="hidden" name="next" value="{{ request.get_full_path }}">
             <button type="submit" class="btn btn-rain" onclick="return confirm('雨天中止として予約をキャンセルし、チケットを返却しますか？');">雨天中止</button>
           </form>
-          <a href="{% url 'club:coach_expense_manage' %}?availability_id={{ request.GET.availability_id }}&date={{ start_at|date:'Y-m-d' }}" class="btn btn-expense">コート代を登録</a>
+          <a href="{% url 'club:coach_expense_manage' %}?availability_id={{ request.GET.availability_id }}&date={{ start_at|date:'Y-m-d' }}&next={{ request.get_full_path|urlencode }}" class="btn btn-expense">コート代登録・修正</a>
         </div>
       {% else %}
         <div class="empty-box">
