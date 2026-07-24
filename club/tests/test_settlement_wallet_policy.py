@@ -11,6 +11,7 @@ from club.settlement_balance_policy import (
     _build_other_expense_policy,
     _court_transfer_allocation,
     _held_execution_reservations,
+    _held_lesson_count_by_coach,
     _lighting_start_hour,
 )
 
@@ -213,8 +214,38 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
 
         self.assertEqual(eligible, [held_first])
 
+    @patch("club.settlement_balance_policy._eligible_reservations")
+    def test_ball_lesson_count_uses_only_held_execution_lessons(
+        self,
+        eligible_reservations_mock,
+    ):
+        coach_1 = SimpleNamespace(pk=1, role="coach")
+        coach_2 = SimpleNamespace(pk=2, role="coach")
+        held_by_two_coaches = SimpleNamespace(
+            fixed_lesson=SimpleNamespace(
+                all_coaches=lambda: [coach_1, coach_2],
+            ),
+            substitute_coach=None,
+        )
+        held_by_coach_1 = SimpleNamespace(
+            fixed_lesson=SimpleNamespace(
+                all_coaches=lambda: [coach_1],
+            ),
+            substitute_coach=None,
+        )
+        eligible_reservations_mock.return_value = [
+            held_by_two_coaches,
+            held_by_coach_1,
+        ]
+
+        counts = _held_lesson_count_by_coach(2026, 7, [1, 2, 3])
+
+        self.assertEqual(counts, {1: 2, 2: 1})
+        eligible_reservations_mock.assert_called_once_with(2026, 7)
+
     @patch("club.settlement_balance_policy._active_salary_payment_total", return_value=0)
     @patch("club.settlement_balance_policy._active_reimbursement_payment_total", return_value=2000)
+    @patch("club.settlement_balance_policy._held_lesson_count_by_coach", return_value={1: 1})
     @patch("club.settlement_balance_policy._build_other_expense_policy")
     @patch("club.settlement_balance_policy._build_court_cost_policy")
     @patch("club.settlement_balance_policy.main_coaches")
@@ -225,6 +256,7 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         main_coaches_mock,
         court_policy_mock,
         other_expense_policy_mock,
+        _held_lesson_count_mock,
         _reimbursement_payment_mock,
         _salary_payment_mock,
     ):
