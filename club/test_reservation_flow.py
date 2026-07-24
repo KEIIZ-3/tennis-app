@@ -1142,6 +1142,83 @@ class ReservationFlowSmokeTests(TestCase):
 
         self.assertNotEqual(response.status_code, 500)
 
+    def test_coach_can_close_and_reopen_recruitment_for_one_lesson(self):
+        fixed_lesson = self._create_fixed_lesson(title="募集終了テスト")
+        member_list_url = reverse("club:lesson_calendar_member_list")
+        params = {
+            "fixed_lesson_id": str(fixed_lesson.pk),
+            "lesson_date": self.lesson_date.isoformat(),
+            "year": str(self.lesson_date.year),
+            "month": str(self.lesson_date.month),
+        }
+        self.client.force_login(self.coach)
+
+        close_response = self.client.post(
+            member_list_url,
+            data={"action": "close_recruitment"},
+            query_params=params,
+        )
+
+        self.assertEqual(close_response.status_code, 302)
+        availability = CoachAvailability.objects.get(
+            start_at__date=self.lesson_date,
+            lesson_type=Reservation.LESSON_GENERAL,
+        )
+        self.assertTrue(availability.is_recruitment_closed)
+
+        closed_page = self.client.get(member_list_url, data=params)
+        self.assertContains(closed_page, "参加者募集を終了しています")
+        self.assertContains(closed_page, "募集を再開する")
+
+        reopen_response = self.client.post(
+            member_list_url,
+            data={"action": "reopen_recruitment"},
+            query_params=params,
+        )
+        self.assertEqual(reopen_response.status_code, 302)
+        availability.refresh_from_db()
+        self.assertFalse(availability.is_recruitment_closed)
+
+    def test_closed_recruitment_is_visible_and_rejects_direct_reservation(self):
+        fixed_lesson = self._create_fixed_lesson(title="顧客募集終了表示テスト")
+        start_at, end_at = fixed_lesson._build_datetimes_for_date(self.lesson_date)
+        CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=6,
+            coach_count=1,
+            court_count=1,
+            status=CoachAvailability.STATUS_OPEN,
+            is_recruitment_closed=True,
+        )
+        self.client.force_login(self.member)
+
+        calendar_response = self.client.get(
+            reverse("club:lesson_calendar"),
+            data={
+                "year": str(self.lesson_date.year),
+                "month": str(self.lesson_date.month),
+            },
+        )
+        self.assertContains(calendar_response, "募集終了")
+
+        reserve_response = self._post_lesson_calendar_reserve(
+            user=self.member,
+            fixed_lesson=fixed_lesson,
+        )
+        self.assertEqual(reserve_response.status_code, 302)
+        self.assertFalse(
+            Reservation.objects.filter(
+                user=self.member,
+                fixed_lesson=fixed_lesson,
+                status=Reservation.STATUS_ACTIVE,
+            ).exists()
+        )
+
     def test_lesson_execution_creates_one_canonical_availability(self):
         fixed_lesson = self._create_fixed_lesson()
         fixed_lesson.court = None

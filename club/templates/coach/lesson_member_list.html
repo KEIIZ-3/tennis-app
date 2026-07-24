@@ -74,6 +74,18 @@
       </p>
     {% endif %}
     <div class="member-list-actions">
+      {% if is_coach_view %}
+        <form method="post">
+          {% csrf_token %}
+          {% if is_recruitment_closed %}
+            <input type="hidden" name="action" value="reopen_recruitment">
+            <button type="submit" class="btn btn-primary" onclick="return confirm('このレッスンの参加者募集を再開しますか？');">募集を再開する</button>
+          {% else %}
+            <input type="hidden" name="action" value="close_recruitment">
+            <button type="submit" class="btn btn-danger" onclick="return confirm('定員に達していなくても、このレッスンの参加者募集を終了しますか？');">募集をクローズする</button>
+          {% endif %}
+        </form>
+      {% endif %}
       {% if is_public_member_view and reservation_url %}
         <a href="{{ reservation_url }}" class="btn btn-primary">このレッスンを予約する</a>
       {% endif %}
@@ -87,6 +99,10 @@
       {% endif %}
     </div>
   </section>
+
+  {% if is_recruitment_closed %}
+    <div class="public-note">このレッスンは参加者募集を終了しています。現在の参加者の予約はそのまま維持されます。</div>
+  {% endif %}
 
   {% if is_coach_view %}
     <section class="execution-panel">

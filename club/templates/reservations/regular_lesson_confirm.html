@@ -342,7 +342,9 @@
           <div class="confirm-info-label">参加状況</div>
           <div class="confirm-info-value">
             {{ selected_lesson.member_count }}/{{ selected_lesson.capacity }}名
-            {% if selected_lesson.member_count < selected_lesson.capacity %}
+            {% if selected_lesson.is_recruitment_closed %}
+              <br><span style="color:#9a3412; font-size:13px;">募集終了</span>
+            {% elif selected_lesson.member_count < selected_lesson.capacity %}
               <br><span style="color:#047857; font-size:13px;">空きあり</span>
             {% else %}
               <br><span style="color:#9a3412; font-size:13px;">満員</span>

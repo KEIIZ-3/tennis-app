@@ -1,11 +1,12 @@
 from datetime import date, datetime, timedelta
 
 from django.contrib.auth import get_user_model
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.db.models import Q
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
@@ -559,6 +560,41 @@ def lesson_calendar_member_list(request):
     ):
         return HttpResponse("Forbidden", status=403)
 
+    if request.method == "POST":
+        if not is_coach_view:
+            return HttpResponse("Forbidden", status=403)
+
+        action = (request.POST.get("action") or "").strip()
+        if action not in ("close_recruitment", "reopen_recruitment"):
+            return HttpResponse("Bad Request", status=400)
+
+        if availability is None and fixed_lesson is not None:
+            if not coach or not court:
+                messages.error(request, "募集状態を保存できるレッスン枠が見つかりません。")
+                return redirect(request.get_full_path())
+            availability = CoachAvailability.objects.create(
+                coach=coach,
+                court=court,
+                lesson_type=lesson_type,
+                target_level=fixed_lesson.target_level,
+                target_level_2=getattr(fixed_lesson, "target_level_2", "") or "",
+                start_at=start_at,
+                end_at=end_at,
+                capacity=_capacity_for_slot(fixed_lesson=fixed_lesson),
+                coach_count=max(int(getattr(fixed_lesson, "coach_count", 1) or 1), 1),
+                court_count=max(int(getattr(fixed_lesson, "court_count", 1) or 1), 1),
+                status=CoachAvailability.STATUS_OPEN,
+                note=f"固定レッスン: {title}",
+            )
+
+        availability.is_recruitment_closed = action == "close_recruitment"
+        availability.save(update_fields=["is_recruitment_closed"])
+        if availability.is_recruitment_closed:
+            messages.success(request, "このレッスンの参加者募集を終了しました。")
+        else:
+            messages.success(request, "このレッスンの参加者募集を再開しました。")
+        return redirect(request.get_full_path())
+
     is_public_member_view = (
         not is_coach_view
     ) and _is_2026_july_slot(start_at)
@@ -809,6 +845,9 @@ def lesson_calendar_member_list(request):
                 is_public_member_view
             ),
             "is_coach_view": is_coach_view,
+            "is_recruitment_closed": bool(
+                availability and availability.is_recruitment_closed
+            ),
             "reservation_url": reservation_url,
         },
     )
