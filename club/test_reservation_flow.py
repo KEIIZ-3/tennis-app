@@ -1083,6 +1083,36 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertEqual(result["finalized_court_cost_total"], 1800)
         self.assertEqual(result["court_reimbursement_total"], 1800)
 
+    def test_unlinked_legacy_court_expense_is_not_reported_as_unused(self):
+        CoachExpense.objects.create(
+            created_by=self.coach,
+            expense_date=self.lesson_date,
+            category=CoachExpense.CATEGORY_COURT,
+            amount=5600,
+            note=(
+                '__EXPENSE_META__{"expense_type":"common",'
+                '"approval_status":"approved"}\n'
+                "移行前に登録されたコート代"
+            ),
+        )
+
+        with patch.object(
+            settlement_balance_policy,
+            "_eligible_reservations",
+            return_value=[],
+        ):
+            result = settlement_balance_policy._build_court_cost_policy(
+                self.lesson_date.year,
+                self.lesson_date.month,
+                [self.coach.pk],
+                [self.coach.pk],
+                [],
+            )
+
+        self.assertEqual(result["unmatched_expected_total"], 0)
+        self.assertEqual(result["unused_registered_total"], 0)
+        self.assertEqual(result["finalized_court_cost_total"], 0)
+
     def test_revenue_uses_current_fixed_lesson_coach_for_stale_reservations(self):
         inoue = self._create_user(
             username="inoue_revenue",
