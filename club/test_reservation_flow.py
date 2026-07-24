@@ -14,10 +14,12 @@ from .models import (
     CoachAvailability,
     CoachExpense,
     Court,
+    FamilyMember,
     FixedLesson,
     LessonWaitlist,
     LessonWaitlistParticipant,
     Reservation,
+    ReservationParticipant,
     StringingOrder,
     TicketLedger,
     TicketConsumption,
@@ -534,7 +536,7 @@ class ReservationFlowSmokeTests(TestCase):
             "not_required",
         )
 
-    def test_today_lessons_month_view_shows_execution_and_court_status(self):
+    def test_today_lessons_month_view_shows_execution_without_court_link_status(self):
         lesson_date = timezone.localdate() - timedelta(days=1)
         start_at = timezone.make_aware(
             datetime.combine(
@@ -579,19 +581,18 @@ class ReservationFlowSmokeTests(TestCase):
             reverse("club:coach_today_lessons"),
             data={
                 "month": f"{lesson_date:%Y-%m}",
-                "execution_pending": "1",
             },
         )
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.context["month_mode"])
-        self.assertTrue(response.context["execution_pending_only"])
+        self.assertFalse(response.context["execution_pending_only"])
         self.assertEqual(len(response.context["lesson_rows"]), 1)
         row = response.context["lesson_rows"][0]
         self.assertEqual(row["execution_status"], lesson_execution.STATUS_HELD)
-        self.assertEqual(row["court_status"], "unregistered")
+        self.assertNotIn("court_status", row)
         self.assertContains(response, "実施済み")
-        self.assertContains(response, "コート代：未登録")
+        self.assertNotContains(response, "コート代：")
 
     def test_substitute_contractor_is_in_dashboard_slot_scope(self):
         fixed_lesson = self._create_fixed_lesson(coach=self.coach)
@@ -1421,121 +1422,77 @@ class ReservationFlowSmokeTests(TestCase):
         waitlist.refresh_from_db()
         self.assertEqual(waitlist.status, LessonWaitlist.STATUS_CONVERTED)
 
-    def test_unassigned_coach_cannot_manage_another_lesson_court_expense(self):
-        start_at = (timezone.now() + timedelta(days=2)).replace(minute=0, second=0, microsecond=0)
-        availability = CoachAvailability.objects.create(
-            coach=self.coach,
-            court=self.court,
-            lesson_type=Reservation.LESSON_GENERAL,
-            target_level=self.User.LEVEL_BEGINNER,
-            start_at=start_at,
-            end_at=start_at + timedelta(hours=2),
-            capacity=6,
-            status=CoachAvailability.STATUS_OPEN,
-        )
-        self.client.force_login(self.contractor)
-
-        response = self.client.get(
-            reverse("club:coach_expense_manage"),
-            data={"availability_id": availability.pk},
-        )
-
-        self.assertEqual(response.status_code, 403)
-
-    def test_court_expense_payer_must_be_one_of_the_main_coaches(self):
-        unrelated_coach = self._create_user(
-            username="unrelated_coach",
-            role=self.User.ROLE_COACH,
-            full_name="無関係 コーチ",
-        )
-        start_at = (timezone.now() + timedelta(days=2)).replace(minute=0, second=0, microsecond=0)
-        availability = CoachAvailability.objects.create(
-            coach=self.coach,
-            court=self.court,
-            lesson_type=Reservation.LESSON_GENERAL,
-            target_level=self.User.LEVEL_BEGINNER,
-            start_at=start_at,
-            end_at=start_at + timedelta(hours=2),
-            capacity=6,
-        )
+    def test_court_expense_does_not_require_a_lesson(self):
         self.client.force_login(self.coach)
 
         response = self.client.post(
             reverse("club:coach_expense_manage"),
             data={
-                "action": "create_court_transfer",
-                "availability_id": availability.pk,
-                "payer_coach_id": unrelated_coach.pk,
+                "action": "create",
+                "expense_date": timezone.localdate().isoformat(),
+                "expense_type": "personal",
+                "category": CoachExpense.CATEGORY_COURT,
                 "amount": "3000",
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(CoachExpense.objects.exists())
-
-    def test_court_expense_can_credit_a_different_main_coach(self):
-        payer = self._create_user(
-            username="main_payer",
-            role=self.User.ROLE_COACH,
-            full_name="清水峻平",
-        )
-        lesson_date = timezone.localdate() + timedelta(days=2)
-        fixed_lesson = self._create_fixed_lesson(lesson_date=lesson_date, title="支払者振替テスト")
-        fixed_lesson.sync_future_reservations(created_by=self.coach)
-        start_at, _end_at = fixed_lesson._build_datetimes_for_date(lesson_date)
-        availability = CoachAvailability.objects.get(
-            coach=self.coach,
-            court=self.court,
-            start_at=start_at,
-        )
-        self.client.force_login(self.coach)
-
-        calendar_response = self.client.get(
-            reverse("club:lesson_calendar"),
-            data={"year": start_at.year, "month": start_at.month},
-        )
-        expense_url = (
-            f"{reverse('club:coach_expense_manage')}?"
-            f"availability_id={availability.pk}&amp;date={start_at.date().isoformat()}"
-        )
-        self.assertContains(calendar_response, expense_url)
-
-        response = self.client.post(
-            reverse("club:coach_expense_manage"),
-            data={
-                "action": "create_court_transfer",
-                "availability_id": availability.pk,
-                "payer_coach_id": payer.pk,
-                "amount": "3000",
+                "receipt_status": "none",
+                "note": "月次コート代",
             },
         )
 
         self.assertEqual(response.status_code, 302)
         expense = CoachExpense.objects.get()
-        self.assertEqual(expense.created_by, payer)
-        self.assertGreater(len(expense.note), 255)
+        self.assertNotIn("court_refund_slot_key", expense.note)
 
-        repeated_response = self.client.post(
-            reverse("club:coach_expense_manage"),
-            data={
-                "action": "create_court_transfer",
-                "availability_id": availability.pk,
-                "payer_coach_id": payer.pk,
-                "amount": "3000",
-            },
+    def test_two_family_members_can_book_the_same_lesson(self):
+        self.member.ticket_balance = 10
+        self.member.save(update_fields=["ticket_balance"])
+        child_1 = FamilyMember.objects.create(
+            parent=self.member,
+            full_name="子供 一郎",
+            relationship="child",
+            member_level=self.User.LEVEL_BEGINNER,
         )
-        self.assertEqual(repeated_response.status_code, 302)
-        self.assertEqual(CoachExpense.objects.count(), 1)
-
-        from .court_expense_transfer import _parse_note
-        from .settlement_balance_policy import _court_transfer_allocation
-
-        allocation = _court_transfer_allocation(
-            [{"expense": expense, "amount": expense.amount, "meta": _parse_note(expense.note)}],
-            [self.coach.pk, payer.pk],
+        child_2 = FamilyMember.objects.create(
+            parent=self.member,
+            full_name="子供 二郎",
+            relationship="child",
+            member_level=self.User.LEVEL_BEGINNER,
         )
-        self.assertEqual(allocation["burden_by_coach"], {self.coach.pk: 3000})
-        self.assertEqual(allocation["reimbursement_by_coach"], {payer.pk: 3000})
+        fixed_lesson = self._create_fixed_lesson(title="家族同時参加テスト")
+        start_at, _end_at = fixed_lesson._build_datetimes_for_date(self.lesson_date)
+        self.client.force_login(self.member)
+        payload = {
+            "action": "reserve",
+            "fixed_lesson_id": fixed_lesson.pk,
+            "lesson_date": self.lesson_date.isoformat(),
+            "year": start_at.year,
+            "month": start_at.month,
+        }
+
+        first = self.client.post(
+            reverse("club:lesson_calendar"),
+            data={**payload, "participant_key": f"family:{child_1.pk}"},
+        )
+        second = self.client.post(
+            reverse("club:lesson_calendar"),
+            data={**payload, "participant_key": f"family:{child_2.pk}"},
+        )
+
+        self.assertEqual(first.status_code, 302)
+        self.assertEqual(second.status_code, 302)
+        reservations = Reservation.objects.filter(
+            user=self.member,
+            start_at=start_at,
+            status=Reservation.STATUS_ACTIVE,
+        )
+        self.assertEqual(reservations.count(), 2)
+        self.assertEqual(
+            set(
+                ReservationParticipant.objects.filter(
+                    reservation__in=reservations,
+                ).values_list("family_member_id", flat=True)
+            ),
+            {child_1.pk, child_2.pk},
+        )
 
     def test_direct_reservation_rejects_fixed_lesson_at_capacity(self):
         fixed_lesson = self._create_fixed_lesson(title="直接保存満員テスト")
