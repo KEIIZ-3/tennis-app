@@ -448,6 +448,11 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
                     "ball_expense_burden": money(
                         saved.calculation_snapshot.get("ball_expense_burden")
                     ),
+                    "ball_expense_reimbursement": money(
+                        saved.calculation_snapshot.get(
+                            "ball_expense_reimbursement"
+                        )
+                    ),
                     "wallet_reimbursement": money(
                         saved.calculation_snapshot.get("wallet_reimbursement")
                     ),
