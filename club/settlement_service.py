@@ -445,6 +445,9 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
                     "court_cost_burden": money(
                         saved.calculation_snapshot.get("court_cost_burden")
                     ),
+                    "ball_expense_burden": money(
+                        saved.calculation_snapshot.get("ball_expense_burden")
+                    ),
                     "wallet_reimbursement": money(
                         saved.calculation_snapshot.get("wallet_reimbursement")
                     ),

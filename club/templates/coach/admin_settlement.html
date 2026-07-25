@@ -135,7 +135,7 @@
   </section>
 
   <section class="panel">
-    <div class="section-head"><div><h2 class="section-title">コーチ別 最終精算</h2><p class="help">売上貢献、コート代、会社経費支払分、共通経費、業務委託負担を分けて表示します。ボール代は当月の担当レッスン数に比例して負担します。</p></div></div>
+    <div class="section-head"><div><h2 class="section-title">コーチ別 最終精算</h2><p class="help">売上貢献、コート代、ボール代、会社経費支払分、その他経費、業務委託負担を分けて表示します。ボール代は対象月の完了済みレッスンで担当した参加人数に比例して負担します。</p></div></div>
     <div class="coach-grid">
       {% for row in coach_rows %}
         <article class="coach-card{% if row.is_contractor_coach %} contractor{% endif %}">
@@ -147,6 +147,7 @@
             <div class="money-row plus"><span>ガット張り売上</span><strong>+{{ row.stringing_amount }}円</strong></div>
             {% if row.is_contractor_coach %}<div class="money-row plus"><span>業務委託報酬</span><strong>+{{ row.contractor_hourly_pay_amount }}円</strong></div>{% endif %}
             <div class="money-row minus"><span>自身のコート代負担</span><strong>-{{ row.court_cost_burden|default:0 }}円</strong></div>
+            <div class="money-row minus"><span>ボール代負担</span><strong>-{{ row.ball_expense_burden|default:0 }}円</strong></div>
             <div class="money-row minus"><span>その他経費負担</span><strong>-{{ row.other_expense_burden|default:0 }}円</strong></div>
             <div class="money-row minus"><span>業務委託費負担</span><strong>-{{ row.contractor_cost_burden|default:0 }}円</strong></div>
             <div class="money-row plus"><span>会社経費支払分</span><strong>+{{ row.wallet_reimbursement|default:0 }}円</strong></div>
