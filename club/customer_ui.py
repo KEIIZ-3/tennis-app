@@ -1,6 +1,7 @@
 import re
 
 from django.contrib.auth.decorators import login_required
+from django.db import models
 from django.http import HttpResponseForbidden
 from django.utils import timezone
 
@@ -114,15 +115,27 @@ def _sync_missing_fixed_reservations_for_member(user):
         if not occurrence_datetimes:
             continue
 
-        recorded_starts = set(
+        active_or_member_canceled_starts = set(
             Reservation.objects.filter(
                 user=user,
                 fixed_lesson=fixed_lesson,
                 start_at__in=[start_at for start_at, _end_at in occurrence_datetimes],
-            ).values_list("start_at", flat=True)
+            )
+            .filter(
+                models.Q(status__in=[
+                    Reservation.STATUS_ACTIVE,
+                    Reservation.STATUS_PENDING,
+                    Reservation.STATUS_RAIN_CANCELED,
+                ])
+                | models.Q(
+                    status=Reservation.STATUS_CANCELED,
+                    cancellation_reason="会員が予約確認画面からキャンセル",
+                )
+            )
+            .values_list("start_at", flat=True)
         )
         if all(
-            start_at in recorded_starts
+            start_at in active_or_member_canceled_starts
             for start_at, _end_at in occurrence_datetimes
         ):
             continue

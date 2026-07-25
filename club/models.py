@@ -840,18 +840,22 @@ class FixedLesson(models.Model, LessonTypeMixin):
                         changed_count += 1
                     continue
 
-                # 会員が開催回単位で取り消した固定予約は、管理画面の再保存や
-                # 予約確認画面の不足データ補完で復活させない。
+                # 会員本人が予約確認画面から開催回単位で取り消した場合と、
+                # 雨天中止になった場合だけは再生成しない。管理操作による
+                # 自動整理・メンバー解除の取消履歴は、現在の固定参加設定が
+                # 有効なら予約確認時に復旧できるようにする。
                 canceled_occurrence_exists = Reservation.objects.filter(
                     user=member,
                     fixed_lesson=self,
                     is_fixed_entry=True,
                     start_at=start_at,
                     end_at=end_at,
-                    status__in=[
-                        Reservation.STATUS_CANCELED,
-                        Reservation.STATUS_RAIN_CANCELED,
-                    ],
+                ).filter(
+                    models.Q(status=Reservation.STATUS_RAIN_CANCELED)
+                    | models.Q(
+                        status=Reservation.STATUS_CANCELED,
+                        cancellation_reason="会員が予約確認画面からキャンセル",
+                    )
                 ).exists()
                 if canceled_occurrence_exists:
                     continue

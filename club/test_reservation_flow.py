@@ -271,6 +271,62 @@ class ReservationFlowSmokeTests(TestCase):
         )
         self.assertEqual(len(second_response.context["future_reservation_rows"]), 0)
 
+    def test_automatic_fixed_cancellation_is_restored_in_confirmation(self):
+        fixed_lesson = self._create_fixed_lesson(title="自動整理後の固定予約")
+        fixed_lesson.members.add(self.member)
+        fixed_lesson.sync_future_reservations(created_by=self.coach)
+        reservation = Reservation.objects.get(
+            user=self.member,
+            fixed_lesson=fixed_lesson,
+            start_at__date=self.lesson_date,
+        )
+        reservation.cancel(
+            created_by=self.coach,
+            reason="固定レッスンの開催回数変更による自動整理",
+        )
+
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("club:reservation_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            Reservation.objects.filter(
+                user=self.member,
+                fixed_lesson=fixed_lesson,
+                start_at__date=self.lesson_date,
+                status=Reservation.STATUS_ACTIVE,
+            ).exists()
+        )
+        self.assertEqual(len(response.context["future_reservation_rows"]), 1)
+
+    def test_member_canceled_fixed_occurrence_is_not_restored(self):
+        fixed_lesson = self._create_fixed_lesson(title="本人取消を保持する固定予約")
+        fixed_lesson.members.add(self.member)
+        fixed_lesson.sync_future_reservations(created_by=self.coach)
+        reservation = Reservation.objects.get(
+            user=self.member,
+            fixed_lesson=fixed_lesson,
+            start_at__date=self.lesson_date,
+        )
+        reservation.cancel(
+            created_by=self.member,
+            reason="会員が予約確認画面からキャンセル",
+        )
+
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("club:reservation_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            Reservation.objects.filter(
+                user=self.member,
+                fixed_lesson=fixed_lesson,
+                start_at__date=self.lesson_date,
+                status=Reservation.STATUS_ACTIVE,
+            ).exists()
+        )
+        self.assertEqual(len(response.context["future_reservation_rows"]), 0)
+
     def test_contractor_only_sees_assigned_stringing_orders(self):
         other_contractor = self._create_user(
             username="other_contractor",
