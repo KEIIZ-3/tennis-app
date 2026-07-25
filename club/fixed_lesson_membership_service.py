@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.utils import timezone
@@ -12,8 +14,32 @@ from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation
 
 MEMBER_CANCEL_REASON = "会員が予約確認画面からキャンセル"
 MEMBER_REMOVED_REASON = "固定レッスンメンバー解除"
-OCCURRENCE_REMOVED_REASON = "固定レッスンの開催回数変更による自動整理"
+OCCURRENCE_REMOVED_REASON = "固定レッスンの予約生成期間変更による自動整理"
 DUPLICATE_RESERVATION_REASON = "固定メンバー予約との重複整理"
+
+
+def _rolling_target_dates(fixed_lesson, reference_date):
+    """有効な固定レッスンについて、基準日以降の予約生成対象日を返す。
+
+    FixedLesson.start_date は固定レッスン自体の開始日であり、終了日ではない。
+    weeks_ahead は start_date からの総開催回数ではなく、基準日以降に
+    Reservation を実体化しておく回数として扱う。
+    """
+    repeat_start = getattr(fixed_lesson, "start_date", None) or reference_date
+    search_start = max(repeat_start, reference_date)
+    weekday = int(getattr(fixed_lesson, "weekday", search_start.weekday()))
+    first_offset = (weekday - search_start.weekday()) % 7
+    first_date = search_start + timedelta(days=first_offset)
+
+    try:
+        occurrence_count = max(int(getattr(fixed_lesson, "weeks_ahead", 1) or 1), 1)
+    except Exception:
+        occurrence_count = 1
+
+    return [
+        first_date + timedelta(days=7 * index)
+        for index in range(occurrence_count)
+    ]
 
 
 def _is_intentionally_canceled(fixed_lesson, member, start_at, end_at):
@@ -286,11 +312,7 @@ def synchronize_fixed_lesson_membership(fixed_lesson_id, created_by=None):
             raise ValidationError("固定メンバーの予約生成にはコート設定が必要です。")
 
         today = timezone.localdate()
-        target_dates = [
-            target_date
-            for target_date in fixed_lesson.scheduled_occurrence_dates()
-            if target_date >= today
-        ]
+        target_dates = _rolling_target_dates(fixed_lesson, today)
         target_datetimes = {
             fixed_lesson._build_datetimes_for_date(target_date)
             for target_date in target_dates
