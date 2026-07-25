@@ -148,9 +148,10 @@
             {% if row.is_contractor_coach %}<div class="money-row plus"><span>業務委託報酬</span><strong>+{{ row.contractor_hourly_pay_amount }}円</strong></div>{% endif %}
             <div class="money-row minus"><span>自身のコート代負担</span><strong>-{{ row.court_cost_burden|default:0 }}円</strong></div>
             <div class="money-row minus"><span>ボール代負担</span><strong>-{{ row.ball_expense_burden|default:0 }}円</strong></div>
+            <div class="money-row plus"><span>ボール代立替付与</span><strong>+{{ row.ball_expense_reimbursement|default:0 }}円</strong></div>
             <div class="money-row minus"><span>その他経費負担</span><strong>-{{ row.other_expense_burden|default:0 }}円</strong></div>
             <div class="money-row minus"><span>業務委託費負担</span><strong>-{{ row.contractor_cost_burden|default:0 }}円</strong></div>
-            <div class="money-row plus"><span>会社経費支払分</span><strong>+{{ row.wallet_reimbursement|default:0 }}円</strong></div>
+            <div class="money-row plus"><span>経費立替付与合計</span><strong>+{{ row.wallet_reimbursement|default:0 }}円</strong></div>
             {% if row.unpaid_salary_carry_in %}<div class="money-row plus"><span>前月未払い繰越</span><strong>+{{ row.unpaid_salary_carry_in }}円</strong></div>{% endif %}
             {% if row.negative_carry_in %}<div class="money-row minus"><span>前月マイナス繰越</span><strong>-{{ row.negative_carry_in }}円</strong></div>{% endif %}
             {% if row.wallet_balance_adjustment %}<div class="money-row"><span>財布残高調整</span><strong>{{ row.wallet_balance_adjustment }}円</strong></div>{% endif %}
