@@ -12,6 +12,7 @@ from django.views.decorators.http import require_http_methods
 
 from .lesson_execution_storage import read_status_map, save_status
 from .models import CoachAvailability, CoachExpense, Court, FixedLesson, Reservation
+from .settlement_balance_policy import main_coaches
 from .settlement_service import calculate_monthly_settlement, get_or_create_monthly_settlement
 
 
@@ -363,6 +364,13 @@ def _mark_refunded(availability, changed_by):
             continue
 
         meta = _expense_parse_note(expense.note)
+        if meta.get("approval_status") != EXPENSE_APPROVAL_REFUND_PENDING:
+            continue
+        if not (
+            meta.get("rain_refund_debit_coach_id")
+            and meta.get("rain_refund_payer_coach_id")
+        ):
+            continue
         extra_meta = {
             key: value
             for key, value in meta.items()
@@ -395,6 +403,132 @@ def _mark_refunded(availability, changed_by):
             changed_count += 1
 
     return changed_count
+
+
+def _rain_refund_input(request):
+    coaches = main_coaches()
+    coach_by_id = {str(coach.pk): coach for coach in coaches}
+    account_value = (
+        request.POST.get("rain_booking_account") or ""
+    ).strip()
+    collection_coach = coach_by_id.get(
+        (request.POST.get("rain_collection_coach_id") or "").strip()
+    )
+    payer_coach = coach_by_id.get(
+        (request.POST.get("rain_court_payer_id") or "").strip()
+    )
+    account_other = (
+        request.POST.get("rain_booking_account_other") or ""
+    ).strip()
+
+    if account_value == "other":
+        if not account_other:
+            return None, "予約アカウント「その他」のアカウント情報を入力してください。"
+        if collection_coach is None:
+            return None, "回収予定コーチを選択してください。"
+        debit_coach = collection_coach
+        account_coach = None
+    else:
+        account_coach = coach_by_id.get(account_value)
+        if account_coach is None:
+            return None, "予約アカウントを選択してください。"
+        debit_coach = account_coach
+
+    if collection_coach is None:
+        return None, "回収予定コーチを選択してください。"
+    if payer_coach is None:
+        return None, "コート支払者を選択してください。"
+
+    return {
+        "account_kind": "other" if account_value == "other" else "coach",
+        "account_coach": account_coach,
+        "account_other": account_other,
+        "collection_coach": collection_coach,
+        "payer_coach": payer_coach,
+        "debit_coach": debit_coach,
+    }, ""
+
+
+def _mark_court_expense_refund_pending(
+    availability,
+    *,
+    changed_by,
+    refund_input,
+):
+    from .views import (
+        EXPENSE_APPROVAL_REFUND_PENDING,
+        _court_expense_matches_availability,
+        _expense_build_note,
+        _expense_parse_note,
+    )
+
+    expenses = CoachExpense.objects.filter(
+        expense_date=_local(availability.start_at).date(),
+        category=CoachExpense.CATEGORY_COURT,
+    ).order_by("id")
+    for expense in expenses:
+        if not _court_expense_matches_availability(expense, availability):
+            continue
+        meta = _expense_parse_note(expense.note)
+        if int(expense.amount or 0) <= 0:
+            continue
+        if meta.get("approval_status") not in ("approved", "refund_pending"):
+            continue
+
+        extra_meta = {
+            key: value
+            for key, value in meta.items()
+            if key not in {
+                "expense_type",
+                "receipt_status",
+                "receipt_check_status",
+                "approval_status",
+                "plain_note",
+            }
+        }
+        account_coach = refund_input["account_coach"]
+        collection_coach = refund_input["collection_coach"]
+        payer_coach = refund_input["payer_coach"]
+        debit_coach = refund_input["debit_coach"]
+        extra_meta.update(
+            {
+                "rain_refund_account_kind": refund_input["account_kind"],
+                "rain_refund_account_coach_id": (
+                    account_coach.pk if account_coach else None
+                ),
+                "rain_refund_account_name": (
+                    _display_name(account_coach)
+                    if account_coach
+                    else refund_input["account_other"]
+                ),
+                "rain_refund_account_other": refund_input["account_other"],
+                "rain_refund_collection_coach_id": collection_coach.pk,
+                "rain_refund_collection_coach_name": _display_name(
+                    collection_coach
+                ),
+                "rain_refund_payer_coach_id": payer_coach.pk,
+                "rain_refund_payer_coach_name": _display_name(payer_coach),
+                "rain_refund_debit_coach_id": debit_coach.pk,
+                "rain_refund_debit_coach_name": _display_name(debit_coach),
+                "rain_canceled_at": timezone.now().isoformat(),
+                "rain_canceled_by_id": getattr(changed_by, "pk", None),
+                "rain_canceled_by_name": _display_name(changed_by),
+            }
+        )
+        expense.note = _expense_build_note(
+            meta.get("plain_note", ""),
+            expense_type=meta.get("expense_type", "court_transfer"),
+            receipt_status=meta.get("receipt_status", "none"),
+            receipt_check_status=meta.get(
+                "receipt_check_status",
+                "checked",
+            ),
+            approval_status=EXPENSE_APPROVAL_REFUND_PENDING,
+            extra_meta=extra_meta,
+        )
+        expense.save(update_fields=["note"])
+        return expense
+    return None
 
 
 def _court_expense_for_availability(expenses, availability):
@@ -579,8 +713,23 @@ def lesson_execution_manage(request):
             )
 
         elif action == STATUS_RAIN_CANCELED:
+            refund_input, input_error = _rain_refund_input(request)
+            if input_error:
+                messages.error(request, input_error)
+                return redirect(redirect_url)
             canceled_count = 0
             with transaction.atomic():
+                pending_expense = _mark_court_expense_refund_pending(
+                    availability,
+                    changed_by=request.user,
+                    refund_input=refund_input,
+                )
+                if pending_expense is None:
+                    messages.error(
+                        request,
+                        "返金対象の登録済みコート代がありません。先にコート代を登録してください。",
+                    )
+                    return redirect(redirect_url)
                 for reservation in reservations:
                     if reservation.status != Reservation.STATUS_ACTIVE:
                         continue
@@ -590,25 +739,10 @@ def lesson_execution_manage(request):
                     )
                     canceled_count += 1
 
-                from .views import (
-                    _mark_court_expenses_refund_pending_for_rain_cancel,
-                )
-
-                pending_count = (
-                    _mark_court_expenses_refund_pending_for_rain_cancel(
-                        availability,
-                        changed_by=request.user,
-                    )
-                )
-                next_status = (
-                    STATUS_REFUND_PENDING
-                    if pending_count > 0
-                    else STATUS_RAIN_CANCELED
-                )
                 save_status(
                     settlement,
                     _slot_key(slot),
-                    next_status,
+                    STATUS_REFUND_PENDING,
                     request.user,
                     legacy_keys=_legacy_keys(slot),
                 )
@@ -620,6 +754,12 @@ def lesson_execution_manage(request):
 
         elif action == STATUS_REFUNDED:
             refunded_count = _mark_refunded(availability, request.user)
+            if refunded_count <= 0:
+                messages.error(
+                    request,
+                    "返金待ちのコート代を確認できませんでした。",
+                )
+                return redirect(redirect_url)
             save_status(
                 settlement,
                 _slot_key(slot),
@@ -811,6 +951,18 @@ def lesson_execution_manage(request):
                     and not court_not_required
                     else ""
                 ),
+                "rain_refund_account_name": court_meta.get(
+                    "rain_refund_account_name",
+                    "",
+                ),
+                "rain_refund_collection_coach_name": court_meta.get(
+                    "rain_refund_collection_coach_name",
+                    "",
+                ),
+                "rain_refund_payer_coach_name": court_meta.get(
+                    "rain_refund_payer_coach_name",
+                    "",
+                ),
                 "court_expense_url": (
                     f"{reverse('club:coach_expense_manage')}?"
                     f"availability_id={availability.pk}"
@@ -862,5 +1014,6 @@ def lesson_execution_manage(request):
             "counts": counts,
             "pending_only": pending_only,
             "visible_row_count": len(rows),
+            "main_coach_options": main_coaches(),
         },
     )

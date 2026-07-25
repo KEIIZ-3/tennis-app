@@ -408,7 +408,11 @@ class ReservationFlowSmokeTests(TestCase):
         )
         self.assertEqual(action_response.status_code, 302)
         reservation.refresh_from_db()
-        self.assertEqual(reservation.status, Reservation.STATUS_RAIN_CANCELED)
+        self.assertEqual(reservation.status, Reservation.STATUS_ACTIVE)
+        self.assertIn(
+            reverse("club:lesson_execution_manage"),
+            action_response["Location"],
+        )
 
     def test_substitute_contractor_sees_fixed_lesson_weekly(self):
         fixed_lesson = self._create_fixed_lesson(
