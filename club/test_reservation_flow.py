@@ -135,6 +135,77 @@ class ReservationFlowSmokeTests(TestCase):
                 self.assertEqual(response.status_code, 302)
                 self.assertTrue(response.url.startswith(reverse("club:login")))
 
+    def test_reservation_confirmation_is_member_only(self):
+        self.client.force_login(self.member)
+        member_response = self.client.get(reverse("club:reservation_list"))
+        self.assertEqual(member_response.status_code, 200)
+        self.assertContains(member_response, "予約・キャンセル待ち確認")
+        self.assertContains(member_response, "予約確認")
+
+        for user in (self.coach, self.contractor):
+            with self.subTest(role=user.role):
+                self.client.force_login(user)
+                response = self.client.get(reverse("club:reservation_list"))
+                self.assertEqual(response.status_code, 403)
+
+    def test_member_can_cancel_own_reservation_from_confirmation(self):
+        self.member.ticket_balance = 10
+        self.member.save(update_fields=["ticket_balance"])
+        fixed_lesson = self._create_fixed_lesson()
+        reserve_response = self._post_lesson_calendar_reserve(
+            user=self.member,
+            fixed_lesson=fixed_lesson,
+        )
+        self.assertEqual(reserve_response.status_code, 302)
+        reservation = Reservation.objects.get(
+            user=self.member,
+            fixed_lesson=fixed_lesson,
+            start_at__date=self.lesson_date,
+        )
+        self.client.force_login(self.member)
+
+        list_response = self.client.get(reverse("club:reservation_list"))
+        self.assertContains(
+            list_response,
+            reverse("club:reservation_cancel", args=[reservation.pk]),
+        )
+
+        cancel_response = self.client.post(
+            reverse("club:reservation_cancel", args=[reservation.pk])
+        )
+        self.assertRedirects(
+            cancel_response,
+            reverse("club:reservation_detail", args=[reservation.pk]),
+            fetch_redirect_response=False,
+        )
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.status, Reservation.STATUS_CANCELED)
+
+    def test_non_member_cannot_cancel_reservation_from_confirmation(self):
+        self.member.ticket_balance = 10
+        self.member.save(update_fields=["ticket_balance"])
+        fixed_lesson = self._create_fixed_lesson()
+        reserve_response = self._post_lesson_calendar_reserve(
+            user=self.member,
+            fixed_lesson=fixed_lesson,
+        )
+        self.assertEqual(reserve_response.status_code, 302)
+        reservation = Reservation.objects.get(
+            user=self.member,
+            fixed_lesson=fixed_lesson,
+            start_at__date=self.lesson_date,
+        )
+
+        for user in (self.coach, self.contractor):
+            with self.subTest(role=user.role):
+                self.client.force_login(user)
+                response = self.client.post(
+                    reverse("club:reservation_cancel", args=[reservation.pk])
+                )
+                self.assertEqual(response.status_code, 403)
+                reservation.refresh_from_db()
+                self.assertEqual(reservation.status, Reservation.STATUS_ACTIVE)
+
     def test_contractor_only_sees_assigned_stringing_orders(self):
         other_contractor = self._create_user(
             username="other_contractor",

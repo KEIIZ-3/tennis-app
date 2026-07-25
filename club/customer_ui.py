@@ -1,6 +1,7 @@
 import re
 
 from django.contrib.auth.decorators import login_required
+from django.http import HttpResponseForbidden
 
 from . import reservation_cancel_override, views
 
@@ -135,5 +136,8 @@ def tickets_view(request):
 
 @login_required
 def reservation_list(request):
+    if getattr(request.user, "role", "") != "member":
+        return HttpResponseForbidden("予約確認は会員専用です。")
+
     response = reservation_cancel_override.reservation_list(request)
     return _replace_html(response, _simplify_reservation_page)
