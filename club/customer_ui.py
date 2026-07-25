@@ -6,7 +6,7 @@ from django.http import HttpResponseForbidden
 from django.shortcuts import redirect
 
 from . import reservation_cancel_override, views
-from .fixed_lesson_membership_service import synchronize_fixed_lesson_membership
+from .fixed_lesson_sync_facade import synchronize_fixed_lesson_membership
 from .models import FixedLesson
 
 
@@ -94,7 +94,6 @@ def _member_fixed_lessons(user):
         FixedLesson.objects.filter(
             is_active=True,
             members=user,
-            court__isnull=False,
         )
         .select_related("coach", "coach_2", "coach_3", "court")
         .distinct()

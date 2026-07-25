@@ -3,7 +3,7 @@ import logging
 from django.db.models.signals import m2m_changed, post_save, pre_save
 from django.dispatch import receiver
 
-from .fixed_lesson_membership_service import synchronize_fixed_lesson_membership
+from .fixed_lesson_sync_facade import synchronize_fixed_lesson_membership
 from .models import FixedLesson, Reservation
 from .notifications import build_reservation_canceled_message, notify_user_email_only
 
