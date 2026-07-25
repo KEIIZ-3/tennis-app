@@ -311,6 +311,42 @@ def _is_court_expense(expense):
         return False
 
 
+def _ball_expense_amount_for_month(expense, meta, month_start, next_month):
+    """複数月分の購入総額から、指定精算月だけのボール代を返す。"""
+    amount = _money(expense.amount)
+    period_start = str(meta.get("ball_period_start") or "").strip()
+    period_end = str(meta.get("ball_period_end") or "").strip()
+    target_month = f"{month_start.year:04d}-{month_start.month:02d}"
+
+    if not (period_start and period_end):
+        if month_start <= expense.expense_date < next_month:
+            return amount
+        return None
+
+    if not (period_start <= target_month <= period_end):
+        return None
+
+    try:
+        start_year, start_month = map(int, period_start.split("-"))
+        end_year, end_month = map(int, period_end.split("-"))
+        month_count = (
+            (end_year - start_year) * 12
+            + end_month
+            - start_month
+            + 1
+        )
+        month_index = (
+            (month_start.year - start_year) * 12
+            + month_start.month
+            - start_month
+        )
+        base_amount, remainder = divmod(amount, month_count)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
+
+    return base_amount + (1 if month_index < remainder else 0)
+
+
 def _approved_monthly_expenses(month_start, next_month):
     from .models import CoachExpense
 
@@ -339,31 +375,13 @@ def _approved_monthly_expenses(month_start, next_month):
 
         amount = _money(expense.amount)
         if expense.category == CoachExpense.CATEGORY_BALL:
-            period_start = str(meta.get("ball_period_start") or "").strip()
-            period_end = str(meta.get("ball_period_end") or "").strip()
-            target_month = f"{month_start.year:04d}-{month_start.month:02d}"
-            if period_start and period_end:
-                if not (period_start <= target_month <= period_end):
-                    continue
-                try:
-                    start_year, start_month = map(int, period_start.split("-"))
-                    end_year, end_month = map(int, period_end.split("-"))
-                    month_count = (
-                        (end_year - start_year) * 12
-                        + end_month
-                        - start_month
-                        + 1
-                    )
-                    month_index = (
-                        (month_start.year - start_year) * 12
-                        + month_start.month
-                        - start_month
-                    )
-                    base_amount, remainder = divmod(amount, month_count)
-                    amount = base_amount + (1 if month_index < remainder else 0)
-                except (TypeError, ValueError, ZeroDivisionError):
-                    continue
-            elif not (month_start <= expense.expense_date < next_month):
+            amount = _ball_expense_amount_for_month(
+                expense,
+                meta,
+                month_start,
+                next_month,
+            )
+            if amount is None:
                 continue
 
         rows.append(
@@ -770,6 +788,8 @@ def _build_other_expense_policy(
     burden_by_coach = defaultdict(int)
     ball_burden_by_coach = defaultdict(int)
     other_burden_by_coach = defaultdict(int)
+    ball_reimbursement_by_coach = defaultdict(int)
+    other_reimbursement_by_coach = defaultdict(int)
     reimbursement_by_coach = defaultdict(int)
     detail_rows = []
 
@@ -785,6 +805,10 @@ def _build_other_expense_policy(
         payer_id = row["payer_id"]
         if payer_id:
             reimbursement_by_coach[payer_id] += amount
+            if getattr(row["expense"], "category", "") == "ball":
+                ball_reimbursement_by_coach[payer_id] += amount
+            else:
+                other_reimbursement_by_coach[payer_id] += amount
 
         target_ids = list(main_coach_ids)
         if getattr(row["expense"], "category", "") == "ball":
@@ -819,6 +843,8 @@ def _build_other_expense_policy(
         "burden_by_coach": dict(burden_by_coach),
         "ball_burden_by_coach": dict(ball_burden_by_coach),
         "other_burden_by_coach": dict(other_burden_by_coach),
+        "ball_reimbursement_by_coach": dict(ball_reimbursement_by_coach),
+        "other_reimbursement_by_coach": dict(other_reimbursement_by_coach),
         "reimbursement_by_coach": dict(reimbursement_by_coach),
         "detail_rows": detail_rows,
         "expense_total": sum(row["amount"] for row in detail_rows),
@@ -1004,11 +1030,22 @@ def _apply_wallet_policy(result, year, month):
         court_reimbursement = _money(
             court_policy["reimbursement_by_coach"].get(coach_id)
         )
+        ball_expense_reimbursement = _money(
+            other_expense_policy.get(
+                "ball_reimbursement_by_coach",
+                {},
+            ).get(coach_id)
+        )
         other_expense_reimbursement = _money(
-            other_expense_policy["reimbursement_by_coach"].get(coach_id)
+            other_expense_policy.get(
+                "other_reimbursement_by_coach",
+                other_expense_policy["reimbursement_by_coach"],
+            ).get(coach_id)
         )
         reimbursement_total = (
-            court_reimbursement + other_expense_reimbursement
+            court_reimbursement
+            + ball_expense_reimbursement
+            + other_expense_reimbursement
         )
         negative_carry_in = _money(
             negative_carry_in_by_coach.get(coach_id)
@@ -1052,6 +1089,9 @@ def _apply_wallet_policy(result, year, month):
                 "contractor_cost_burden": contractor_burden,
                 "total_cost_burden": burden_total,
                 "court_reimbursement": court_reimbursement,
+                "ball_expense_reimbursement": (
+                    ball_expense_reimbursement
+                ),
                 "other_expense_reimbursement": (
                     other_expense_reimbursement
                 ),
@@ -1149,6 +1189,9 @@ def _apply_wallet_policy(result, year, month):
                     ),
                     "court_reimbursement": _money(
                         row.get("court_reimbursement")
+                    ),
+                    "ball_expense_reimbursement": _money(
+                        row.get("ball_expense_reimbursement")
                     ),
                     "other_expense_reimbursement": _money(
                         row.get("other_expense_reimbursement")
