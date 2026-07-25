@@ -435,6 +435,99 @@ def _upsert_user_by_line_identity(request, line_user_id, email="", picture_url="
     return user, "created"
 
 
+def _normalize_phone_number(value):
+    return re.sub(r"\D", "", str(value or ""))
+
+
+def _existing_member_for_line_profile(current_user, post_data):
+    """
+    管理画面で先に作成された会員と、初回LIFFログインで作成された仮会員を照合する。
+
+    メールだけでは別人を誤連携する可能性があるため、既存会員に電話番号が
+    ある場合は電話番号も一致、ない場合は氏名も一致した一意の会員だけを返す。
+    """
+    if not current_user or getattr(current_user, "is_profile_completed", False):
+        return None
+
+    try:
+        current_link = LineAccountLink.objects.filter(
+            user=current_user,
+            is_active=True,
+        ).first()
+    except Exception:
+        return None
+    if not current_link:
+        return None
+
+    email = str(post_data.get("email") or "").strip()
+    full_name = str(post_data.get("full_name") or "").strip()
+    phone_number = _normalize_phone_number(post_data.get("phone_number"))
+    if not email or not full_name or not phone_number:
+        return None
+
+    User = get_user_model()
+    candidates = list(
+        User.objects.filter(
+            role=User.ROLE_MEMBER,
+            is_active=True,
+            email__iexact=email,
+        )
+        .exclude(pk=current_user.pk)
+        .order_by("pk")
+    )
+
+    matched = []
+    for candidate in candidates:
+        candidate_phone = _normalize_phone_number(
+            getattr(candidate, "phone_number", "")
+        )
+        if candidate_phone:
+            if candidate_phone == phone_number:
+                matched.append(candidate)
+            continue
+        if (getattr(candidate, "full_name", "") or "").strip() == full_name:
+            matched.append(candidate)
+
+    if len(matched) != 1:
+        return None
+
+    candidate = matched[0]
+    if LineAccountLink.objects.filter(user=candidate).exclude(
+        line_user_id=current_link.line_user_id
+    ).exists():
+        return None
+    return candidate
+
+
+def _move_line_link_to_existing_member(current_user, existing_user):
+    with transaction.atomic():
+        current_link = LineAccountLink.objects.select_for_update().get(
+            user=current_user
+        )
+        conflict = (
+            LineAccountLink.objects.select_for_update()
+            .filter(user=existing_user)
+            .exclude(line_user_id=current_link.line_user_id)
+            .first()
+        )
+        if conflict:
+            raise ValidationError(
+                "入力された会員情報は別のLINEアカウントに連携済みです。"
+            )
+
+        same_link = LineAccountLink.objects.filter(
+            user=existing_user,
+            line_user_id=current_link.line_user_id,
+        ).first()
+        if not same_link:
+            current_link.user = existing_user
+            current_link.is_active = True
+            current_link.last_event_at = timezone.now()
+            current_link.save(
+                update_fields=["user", "is_active", "last_event_at"]
+            )
+
+
 def _user_can_access_reservation(user, reservation):
     if not user or not user.is_authenticated:
         return False
@@ -6406,13 +6499,44 @@ def profile_complete_view(request):
     if request.method == "GET" and not _needs_profile_completion(request.user):
         return redirect(_lesson_calendar_landing_url())
 
-    form = LineProfileCompletionForm(request.POST or None, instance=request.user)
+    existing_user = None
+    if request.method == "POST":
+        existing_user = _existing_member_for_line_profile(
+            request.user,
+            request.POST,
+        )
+
+    form_user = existing_user or request.user
+    form = LineProfileCompletionForm(request.POST or None, instance=form_user)
 
     if request.method == "POST":
         if form.is_valid():
-            form.save()
-            messages.success(request, "会員情報の登録が完了しました。")
-            if _needs_schedule_survey(request.user):
+            completed_user = form.save()
+            if existing_user and existing_user.pk != request.user.pk:
+                try:
+                    _move_line_link_to_existing_member(
+                        request.user,
+                        completed_user,
+                    )
+                except ValidationError as exc:
+                    form.add_error(None, exc)
+                    messages.error(
+                        request,
+                        "会員情報を既存アカウントへ連携できませんでした。",
+                    )
+                    return render(
+                        request,
+                        "profile_complete.html",
+                        {"form": form},
+                    )
+                _login_user_with_default_backend(request, completed_user)
+                messages.success(
+                    request,
+                    "既存の会員情報とLINEアカウントを連携しました。",
+                )
+            else:
+                messages.success(request, "会員情報の登録が完了しました。")
+            if _needs_schedule_survey(completed_user):
                 messages.info(request, "続けてアンケートへご回答ください。")
                 return redirect("club:schedule_survey")
             return redirect(_lesson_calendar_landing_url())
