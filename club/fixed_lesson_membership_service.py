@@ -155,6 +155,10 @@ def _active_occurrence_reservations(fixed_lesson, member, availability, start_at
             status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
         )
         .filter(
+            models.Q(participant_snapshot__participant_type="self")
+            | models.Q(participant_snapshot__isnull=True)
+        )
+        .filter(
             models.Q(fixed_lesson=fixed_lesson)
             | models.Q(availability=availability)
             | models.Q(
@@ -398,6 +402,9 @@ def synchronize_fixed_lesson_membership(fixed_lesson_id, created_by=None):
                     start_at=start_at,
                     end_at=end_at,
                     status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+                ).filter(
+                    models.Q(participant_snapshot__participant_type="self")
+                    | models.Q(participant_snapshot__isnull=True)
                 )
                 fixed_count = active_qs.filter(
                     fixed_lesson=fixed_lesson,
