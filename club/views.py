@@ -1,4 +1,5 @@
 import json
+import re
 import secrets
 import urllib.error
 import urllib.parse
@@ -1629,6 +1630,18 @@ def lesson_calendar_view(request):
         return redirect(redirect_url)
 
     target_year, target_month = _parse_target_month(request.GET.get("year"), request.GET.get("month"))
+    from .lesson_execution_storage import read_status_map
+    from .settlement_models import MonthlySettlement
+
+    calendar_settlement = MonthlySettlement.objects.filter(
+        year=target_year,
+        month=target_month,
+    ).first()
+    calendar_execution_statuses = (
+        read_status_map(calendar_settlement)
+        if calendar_settlement is not None
+        else {}
+    )
     month_start, next_month = _month_start_end(target_year, target_month)
 
     prev_year = target_year
@@ -1880,6 +1893,20 @@ def lesson_calendar_view(request):
         target_date = start_local.date()
         weekday_label = weekday_short[target_date.weekday()]
         remaining_count = max(int(capacity or 0) - int(member_count or 0), 0)
+        execution_key = (
+            f"fixed:{fixed_lesson_id}:{lesson_date}"
+            if fixed_lesson_id and lesson_date
+            else f"availability:{availability_id}"
+        )
+        execution_status = str(
+            (calendar_execution_statuses.get(execution_key) or {}).get("status")
+            or ""
+        )
+        is_rain_canceled = execution_status in (
+            "rain_canceled",
+            "refund_pending",
+            "refunded",
+        )
 
         can_book = False
         can_join_waitlist = False
@@ -1896,7 +1923,9 @@ def lesson_calendar_view(request):
         user_slot_status = user_slot_status_override or user_slot_status_map.get(slot_key, "")
         user_waitlist_id = user_waitlist_id_override or user_waitlist_map.get(slot_key, "")
 
-        if start_at < timezone.now():
+        if is_rain_canceled:
+            disabled_reason = "雨天中止"
+        elif start_at < timezone.now():
             disabled_reason = "受付終了"
         elif is_recruitment_closed:
             disabled_reason = "募集終了"
@@ -2007,13 +2036,14 @@ def lesson_calendar_view(request):
             "has_substitute": bool(substitute_coach),
             "court_name": str(court) if court else "未定",
             "lesson_type_label": lesson_type_label,
-            "target_level_label": target_level_label,
+            "target_level_label": "雨天中止" if is_rain_canceled else target_level_label,
             "target_level_2": target_level_2,
             "capacity": capacity,
             "member_count": int(member_count or 0),
             "pending_count": int(pending_count or 0),
             "remaining_count": remaining_count,
             "is_past": target_date < today,
+            "is_rain_canceled": is_rain_canceled,
             "can_book": can_book,
             "can_join_waitlist": can_join_waitlist,
             "can_cancel_waitlist": can_cancel_waitlist,
@@ -4961,6 +4991,15 @@ def _mark_court_expenses_refund_pending_for_rain_cancel(availability, *, changed
 
 def _expense_meta_row(expense):
     meta = _expense_parse_note(getattr(expense, "note", ""))
+    ball_period_start = str(meta.get("ball_period_start") or "").strip()
+    ball_period_end = str(meta.get("ball_period_end") or "").strip()
+    ball_period_label = ""
+    if ball_period_start and ball_period_end:
+        ball_period_label = (
+            ball_period_start
+            if ball_period_start == ball_period_end
+            else f"{ball_period_start}〜{ball_period_end}"
+        )
     return {
         "expense": expense,
         "plain_note": meta["plain_note"],
@@ -4980,6 +5019,9 @@ def _expense_meta_row(expense):
         "court_refund_lesson_label": meta.get("court_refund_lesson_label", ""),
         "court_refund_facility_label": meta.get("court_refund_facility_label", ""),
         "rain_canceled_lesson_label": meta.get("rain_canceled_lesson_label", ""),
+        "ball_period_start": ball_period_start,
+        "ball_period_end": ball_period_end,
+        "ball_period_label": ball_period_label,
     }
 
 
@@ -6006,6 +6048,16 @@ def coach_expense_manage(request):
             receipt_check_status = (request.POST.get("receipt_check_status") or current_meta["receipt_check_status"]).strip()
             approval_status = (request.POST.get("approval_status") or current_meta["approval_status"]).strip()
             plain_note = current_meta["plain_note"]
+            ball_period_start = (
+                request.POST.get("ball_period_start")
+                or current_meta.get("ball_period_start")
+                or ""
+            ).strip()
+            ball_period_end = (
+                request.POST.get("ball_period_end")
+                or current_meta.get("ball_period_end")
+                or ""
+            ).strip()
 
             valid_expense_types = {value for value, _label in EXPENSE_TYPE_CHOICES}
             valid_receipt_status = {value for value, _label in EXPENSE_RECEIPT_CHOICES}
@@ -6036,6 +6088,16 @@ def coach_expense_manage(request):
                     "plain_note",
                 }
             }
+            if expense.category == CoachExpense.CATEGORY_BALL:
+                if (
+                    not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", ball_period_start)
+                    or not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", ball_period_end)
+                    or ball_period_start > ball_period_end
+                ):
+                    messages.error(request, "ボール代の対象開始月・終了月を正しく選択してください。")
+                    return redirect("club:coach_expense_manage")
+                extra_meta["ball_period_start"] = ball_period_start
+                extra_meta["ball_period_end"] = ball_period_end
             if approval_status == EXPENSE_APPROVAL_REFUNDED:
                 extra_meta["refunded_at"] = timezone.now().isoformat()
                 extra_meta["refunded_by_id"] = getattr(request.user, "pk", None)
@@ -6110,6 +6172,18 @@ def coach_expense_manage(request):
             return redirect("club:coach_expense_manage")
 
         extra_meta = {}
+        if raw_category == CoachExpense.CATEGORY_BALL:
+            ball_period_start = (request.POST.get("ball_period_start") or "").strip()
+            ball_period_end = (request.POST.get("ball_period_end") or "").strip()
+            if (
+                not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", ball_period_start)
+                or not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", ball_period_end)
+                or ball_period_start > ball_period_end
+            ):
+                messages.error(request, "ボール代の対象開始月・終了月を正しく選択してください。")
+                return redirect("club:coach_expense_manage")
+            extra_meta["ball_period_start"] = ball_period_start
+            extra_meta["ball_period_end"] = ball_period_end
 
         try:
             expense = CoachExpense(

@@ -314,6 +314,21 @@
         </select>
       </p>
 
+      <div id="ball-period-fields" style="display:none; padding:12px; border:1px solid #bfdbfe; background:#eff6ff; border-radius:14px; margin-bottom:14px;">
+        <strong style="display:block; margin-bottom:8px; color:#1e3a8a;">ボール代の精算対象月</strong>
+        <div class="grid-2">
+          <p style="margin:0;">
+            <label for="id_ball_period_start">開始月</label>
+            <input type="month" id="id_ball_period_start" name="ball_period_start" value="{{ today_value|slice:':7' }}">
+          </p>
+          <p style="margin:0;">
+            <label for="id_ball_period_end">終了月</label>
+            <input type="month" id="id_ball_period_end" name="ball_period_end" value="{{ today_value|slice:':7' }}">
+          </p>
+        </div>
+        <p class="muted" style="margin:8px 0 0; font-size:12px;">総額を対象月数で分け、各月の完了済みレッスンで担当した参加人数比により負担額を計算します。</p>
+      </div>
+
       <p>
         <label for="id_amount">金額</label>
         <input type="number" id="id_amount" name="amount" min="0" step="1" placeholder="例: 1200" required>
@@ -527,6 +542,11 @@
                         {% endfor %}
                       </select>
 
+                      {% if row.expense.category == "ball" %}
+                        <label>対象開始月<input type="month" name="ball_period_start" value="{{ row.ball_period_start }}" required></label>
+                        <label>対象終了月<input type="month" name="ball_period_end" value="{{ row.ball_period_end }}" required></label>
+                      {% endif %}
+
                       <button type="submit">更新</button>
                     </form>
                   </td>
@@ -570,6 +590,12 @@
               <div class="mobile-info-label">メモ</div>
               <div class="mobile-info-value">{{ row.plain_note|default:"-" }}</div>
             </div>
+            {% if row.ball_period_label %}
+              <div class="mobile-info-row">
+                <div class="mobile-info-label">ボール対象月</div>
+                <div class="mobile-info-value">{{ row.ball_period_label }}</div>
+              </div>
+            {% endif %}
             {% if is_admin_mode %}
               <div class="mobile-info-row">
                 <div class="mobile-info-label">登録者</div>
@@ -605,6 +631,11 @@
                   {% endfor %}
                 </select>
 
+                {% if row.expense.category == "ball" %}
+                  <label>対象開始月<input type="month" name="ball_period_start" value="{{ row.ball_period_start }}" required></label>
+                  <label>対象終了月<input type="month" name="ball_period_end" value="{{ row.ball_period_end }}" required></label>
+                {% endif %}
+
                 <button type="submit">更新</button>
               </form>
             {% endif %}
@@ -616,5 +647,22 @@
     <p class="muted" style="margin:0;">まだ経費登録はありません。</p>
   {% endif %}
 </div>
+
+<script>
+  (function () {
+    const category = document.getElementById("id_category");
+    const fields = document.getElementById("ball-period-fields");
+    const start = document.getElementById("id_ball_period_start");
+    const end = document.getElementById("id_ball_period_end");
+    function syncBallPeriod() {
+      const isBall = category && category.value === "ball";
+      fields.style.display = isBall ? "block" : "none";
+      start.required = isBall;
+      end.required = isBall;
+    }
+    category.addEventListener("change", syncBallPeriod);
+    syncBallPeriod();
+  })();
+</script>
 
 {% endblock %}

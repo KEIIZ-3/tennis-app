@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import date
 
 from django.contrib.auth import get_user_model
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import MAIN_COACH_NAMES
@@ -317,8 +317,8 @@ def _approved_monthly_expenses(month_start, next_month):
     rows = []
     queryset = (
         CoachExpense.objects.filter(
-            expense_date__gte=month_start,
-            expense_date__lt=next_month,
+            Q(expense_date__gte=month_start, expense_date__lt=next_month)
+            | Q(category=CoachExpense.CATEGORY_BALL)
         )
         .select_related("created_by")
         .order_by("expense_date", "id")
@@ -337,12 +337,41 @@ def _approved_monthly_expenses(month_start, next_month):
         ):
             continue
 
+        amount = _money(expense.amount)
+        if expense.category == CoachExpense.CATEGORY_BALL:
+            period_start = str(meta.get("ball_period_start") or "").strip()
+            period_end = str(meta.get("ball_period_end") or "").strip()
+            target_month = f"{month_start.year:04d}-{month_start.month:02d}"
+            if period_start and period_end:
+                if not (period_start <= target_month <= period_end):
+                    continue
+                try:
+                    start_year, start_month = map(int, period_start.split("-"))
+                    end_year, end_month = map(int, period_end.split("-"))
+                    month_count = (
+                        (end_year - start_year) * 12
+                        + end_month
+                        - start_month
+                        + 1
+                    )
+                    month_index = (
+                        (month_start.year - start_year) * 12
+                        + month_start.month
+                        - start_month
+                    )
+                    base_amount, remainder = divmod(amount, month_count)
+                    amount = base_amount + (1 if month_index < remainder else 0)
+                except (TypeError, ValueError, ZeroDivisionError):
+                    continue
+            elif not (month_start <= expense.expense_date < next_month):
+                continue
+
         rows.append(
             {
                 "expense": expense,
                 "meta": meta,
                 "expense_type": expense_type,
-                "amount": _money(expense.amount),
+                "amount": amount,
                 "payer_id": getattr(expense, "created_by_id", None),
                 "is_court": _is_court_expense(expense),
                 "slot_key": str(meta.get("court_refund_slot_key") or "").strip(),

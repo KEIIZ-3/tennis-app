@@ -100,5 +100,18 @@
       </div>
     </form>
   </section>
+
+  <section class="panel" style="border-color:#93c5fd;background:#eff6ff;">
+    <h2 class="title" style="font-size:19px;">雨天で開催しなかった場合</h2>
+    <p class="help">下のボタンから雨天中止を登録してください。予約の取消、チケット返却、月次精算からの除外、レッスンカレンダーの「雨天中止」表示を一括で行います。</p>
+    <form method="post" action="{% url 'club:lesson_execution_manage' %}">
+      {% csrf_token %}
+      <input type="hidden" name="year" value="{{ availability.start_at|date:'Y' }}">
+      <input type="hidden" name="month" value="{{ availability.start_at|date:'n' }}">
+      <input type="hidden" name="availability_id" value="{{ availability.id }}">
+      <input type="hidden" name="action" value="rain_canceled">
+      <button type="submit" class="btn" style="width:100%;margin-top:10px;background:#2563eb;color:#fff;" onclick="return confirm('雨天中止として予約を取り消し、チケットを返却しますか？');">雨天中止として登録</button>
+    </form>
+  </section>
 </div>
 {% endblock %}
