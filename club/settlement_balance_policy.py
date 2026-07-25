@@ -458,7 +458,7 @@ def _held_execution_reservations(reservations, status_map):
 
 
 def _held_participant_count_by_coach(year, month, coach_ids):
-    """実施済みレッスンの参加人数を担当コーチ別に集計する。"""
+    """終了済みかつ雨天中止でないレッスンの参加人数を担当別に集計する。"""
     eligible_coach_ids = set(coach_ids or [])
     counts = defaultdict(int)
     reservations, status_map = _monthly_execution_reservations_and_status(
@@ -473,7 +473,11 @@ def _held_participant_count_by_coach(year, month, coach_ids):
         if not slot_key:
             continue
         entry = status_map.get(slot_key) or {}
-        if entry.get("status") != "held":
+        # 対象予約は _monthly_execution_reservations_and_status() で
+        # 「終了日時を過ぎた有効予約」に限定済み。実運用では手動の実施済み登録を
+        # 行わない月もあるため、scheduled/未登録も終了済みとして数える。
+        # 雨天中止だけは予約状態との同期漏れに備えて明示的に除外する。
+        if entry.get("status") == "rain_canceled":
             continue
 
         participant_id = getattr(reservation, "user_id", None)
