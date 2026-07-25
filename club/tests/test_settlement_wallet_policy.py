@@ -299,10 +299,10 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
             {1: 3901, 2: 2600, 3: 1300},
         )
         self.assertEqual(policy["other_burden_by_coach"], {})
-        self.assertEqual(policy["ball_reimbursement_by_coach"], {1: 7801})
+        self.assertEqual(policy["ball_reimbursement_by_coach"], {1: 3900})
         self.assertEqual(policy["other_reimbursement_by_coach"], {})
-        self.assertEqual(policy["reimbursement_by_coach"], {1: 7801})
-        self.assertEqual(policy["reimbursement_total"], 7801)
+        self.assertEqual(policy["reimbursement_by_coach"], {1: 3900})
+        self.assertEqual(policy["reimbursement_total"], 3900)
         self.assertEqual(sum(policy["burden_by_coach"].values()), 7801)
         self.assertEqual(
             policy["detail_rows"][0]["burden_rule"],
@@ -332,7 +332,8 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
             policy["ball_burden_by_coach"],
             {1: 5298, 2: 1514, 3: 756},
         )
-        self.assertEqual(policy["ball_reimbursement_by_coach"], {1: 7568})
+        self.assertEqual(policy["ball_reimbursement_by_coach"], {1: 2270})
+        self.assertEqual(policy["reimbursement_by_coach"], {1: 2270})
         self.assertEqual(sum(policy["ball_burden_by_coach"].values()), 7568)
 
     @patch("club.models.RainRefund.objects.filter")
@@ -522,8 +523,8 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         return_value={
             "burden_by_coach": {},
             "reimbursement_by_coach": {},
-            "pending_rows": [],
-            "pending_total": 0,
+            "pending_rows": [{"amount": 2600}],
+            "pending_total": 2600,
             "refunded_rows": [],
             "refunded_total": 0,
         },
@@ -612,3 +613,7 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
             settlement.calculation_snapshot["company_internal_reserve"],
             6000,
         )
+        self.assertEqual(updated["rain_refund_pending_rows"], [{"amount": 2600}])
+        self.assertEqual(updated["rain_refund_pending_total"], 2600)
+        self.assertEqual(updated["rain_refunded_rows"], [])
+        self.assertEqual(updated["rain_refunded_total"], 0)
