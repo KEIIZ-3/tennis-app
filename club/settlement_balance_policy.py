@@ -251,7 +251,7 @@ def _split_amount(amount, coach_ids):
 
 
 def _split_amount_by_lesson_count(amount, coach_ids, lesson_count_by_coach):
-    """合計額を担当レッスン数に比例配分し、1円単位の端数も保存する。"""
+    """合計額を担当人数比で四捨五入し、差額は最少担当者から調整する。"""
     unique_ids = list(dict.fromkeys(coach_id for coach_id in coach_ids if coach_id))
     weights = {
         coach_id: max(_money((lesson_count_by_coach or {}).get(coach_id)), 0)
@@ -261,19 +261,23 @@ def _split_amount_by_lesson_count(amount, coach_ids, lesson_count_by_coach):
     if total_weight <= 0:
         return _split_amount(amount, unique_ids)
 
+    total_amount = _money(amount)
     allocations = {}
-    remainders = []
-    allocated_total = 0
-    for index, coach_id in enumerate(unique_ids):
-        numerator = _money(amount) * weights[coach_id]
-        allocated, remainder = divmod(numerator, total_weight)
-        allocations[coach_id] = allocated
-        allocated_total += allocated
-        remainders.append((remainder, -index, coach_id))
+    for coach_id in unique_ids:
+        numerator = total_amount * weights[coach_id]
+        allocations[coach_id] = (numerator * 2 + total_weight) // (
+            total_weight * 2
+        )
 
-    remaining = _money(amount) - allocated_total
-    for _remainder, _negative_index, coach_id in sorted(remainders, reverse=True)[:remaining]:
-        allocations[coach_id] += 1
+    difference = total_amount - sum(allocations.values())
+    adjustment_order = sorted(
+        unique_ids,
+        key=lambda coach_id: (weights[coach_id], unique_ids.index(coach_id)),
+    )
+    step = 1 if difference > 0 else -1
+    for index in range(abs(difference)):
+        coach_id = adjustment_order[index % len(adjustment_order)]
+        allocations[coach_id] += step
     return allocations
 
 
@@ -316,35 +320,28 @@ def _is_court_expense(expense):
 def _ball_expense_amount_for_month(expense, meta, month_start, next_month):
     """複数月分の購入総額から、指定精算月だけのボール代を返す。"""
     amount = _money(expense.amount)
-    period_start = str(meta.get("ball_period_start") or "").strip()
-    period_end = str(meta.get("ball_period_end") or "").strip()
-    target_month = f"{month_start.year:04d}-{month_start.month:02d}"
-
-    # ボール代は経費日付ではなく、登録時に指定した精算対象月だけを参照する。
-    # 対象月が欠けた旧データを経費日付の月へ自動計上すると、登録月と
-    # 精算対象月が混同されるため、月次精算から除外して登録内容の修正を促す。
+    period_start = getattr(expense, "settlement_period_start", None)
+    period_end = getattr(expense, "settlement_period_end", None)
     if not (period_start and period_end):
         return None
-
+    target_month = month_start.replace(day=1)
     if not (period_start <= target_month <= period_end):
         return None
 
     try:
-        start_year, start_month = map(int, period_start.split("-"))
-        end_year, end_month = map(int, period_end.split("-"))
         month_count = (
-            (end_year - start_year) * 12
-            + end_month
-            - start_month
+            (period_end.year - period_start.year) * 12
+            + period_end.month
+            - period_start.month
             + 1
         )
         month_index = (
-            (month_start.year - start_year) * 12
+            (target_month.year - period_start.year) * 12
             + month_start.month
-            - start_month
+            - period_start.month
         )
         base_amount, remainder = divmod(amount, month_count)
-    except (TypeError, ValueError, ZeroDivisionError):
+    except (AttributeError, TypeError, ValueError, ZeroDivisionError):
         return None
 
     return base_amount + (1 if month_index < remainder else 0)
@@ -357,7 +354,11 @@ def _approved_monthly_expenses(month_start, next_month):
     queryset = (
         CoachExpense.objects.filter(
             Q(expense_date__gte=month_start, expense_date__lt=next_month)
-            | Q(category=CoachExpense.CATEGORY_BALL)
+            | Q(
+                category=CoachExpense.CATEGORY_BALL,
+                settlement_period_start__lte=month_start,
+                settlement_period_end__gte=month_start,
+            )
         )
         .select_related("created_by")
         .order_by("expense_date", "id")
@@ -404,7 +405,7 @@ def _approved_monthly_expenses(month_start, next_month):
 
 def _rain_refund_policy(year, month, main_coach_ids):
     """返金確認済みだけを回収者から支払者への振替として精算する。"""
-    from .models import CoachExpense
+    from .models import RainRefund
 
     month_start, next_month = _month_range(year, month)
     main_coach_id_set = set(main_coach_ids)
@@ -413,48 +414,41 @@ def _rain_refund_policy(year, month, main_coach_ids):
     pending_rows = []
     refunded_rows = []
 
-    expenses = (
-        CoachExpense.objects.filter(
-            expense_date__gte=month_start,
-            expense_date__lt=next_month,
-            category=CoachExpense.CATEGORY_COURT,
+    refunds = (
+        RainRefund.objects.filter(
+            lesson_date__gte=month_start,
+            lesson_date__lt=next_month,
         )
-        .select_related("created_by")
-        .order_by("expense_date", "id")
+        .select_related(
+            "expense",
+            "booking_account_coach",
+            "collection_coach",
+            "debit_coach",
+            "payer_coach",
+        )
+        .order_by("lesson_date", "id")
     )
-    for expense in expenses:
-        meta = _parse_expense_note(expense.note)
-        status = meta.get("approval_status")
-        if status not in (
-            EXPENSE_APPROVAL_REFUND_PENDING,
-            EXPENSE_APPROVAL_REFUNDED,
-        ):
-            continue
-        amount = max(_money(expense.amount), 0)
+    for refund in refunds:
+        amount = max(_money(refund.amount), 0)
         row = {
-            "expense_id": expense.pk,
-            "expense_date": expense.expense_date.isoformat(),
+            "expense_id": refund.expense_id,
+            "expense_date": refund.lesson_date.isoformat(),
             "amount": amount,
-            "lesson_label": meta.get("court_refund_lesson_label", ""),
-            "account_name": meta.get("rain_refund_account_name", ""),
-            "collection_coach_name": meta.get(
-                "rain_refund_collection_coach_name",
-                "",
+            "lesson_label": refund.lesson_label,
+            "account_name": refund.account_name,
+            "collection_coach_name": (
+                refund.collection_coach.display_name()
+                if refund.collection_coach_id
+                else ""
             ),
-            "payer_coach_name": meta.get(
-                "rain_refund_payer_coach_name",
-                "",
-            ),
+            "payer_coach_name": refund.payer_coach.display_name(),
         }
-        if status == EXPENSE_APPROVAL_REFUND_PENDING:
+        if refund.status == RainRefund.STATUS_PENDING:
             pending_rows.append(row)
             continue
 
-        try:
-            debit_coach_id = int(meta.get("rain_refund_debit_coach_id"))
-            payer_coach_id = int(meta.get("rain_refund_payer_coach_id"))
-        except (TypeError, ValueError):
-            continue
+        debit_coach_id = refund.debit_coach_id
+        payer_coach_id = refund.payer_coach_id
         if (
             amount <= 0
             or debit_coach_id not in main_coach_id_set

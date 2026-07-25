@@ -1127,6 +1127,16 @@ class CoachExpense(models.Model):
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default=CATEGORY_OTHER)
     amount = models.PositiveIntegerField(default=0)
     note = models.TextField(blank=True, default="")
+    settlement_period_start = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="精算対象開始月",
+    )
+    settlement_period_end = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="精算対象終了月",
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -1146,10 +1156,117 @@ class CoachExpense(models.Model):
         ensure_accounting_month_is_open(self.expense_date)
         if self.amount < 0:
             raise ValidationError("経費は0円以上にしてください。")
+        if self.category == self.CATEGORY_BALL:
+            if not self.settlement_period_start or not self.settlement_period_end:
+                raise ValidationError("ボール代の精算対象開始月・終了月を選択してください。")
+            if self.settlement_period_start.day != 1 or self.settlement_period_end.day != 1:
+                raise ValidationError("ボール代の精算対象月は月単位で指定してください。")
+            if self.settlement_period_start > self.settlement_period_end:
+                raise ValidationError("精算対象終了月は開始月以降にしてください。")
 
     def save(self, *args, **kwargs):
         ensure_accounting_month_is_open(self.expense_date)
         return super().save(*args, **kwargs)
+
+
+class RainRefund(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_REFUNDED = "refunded"
+    STATUS_CHOICES = (
+        (STATUS_PENDING, "返金待ち"),
+        (STATUS_REFUNDED, "返金済み"),
+    )
+    ACCOUNT_COACH = "coach"
+    ACCOUNT_OTHER = "other"
+    ACCOUNT_KIND_CHOICES = (
+        (ACCOUNT_COACH, "メインコーチ"),
+        (ACCOUNT_OTHER, "その他"),
+    )
+
+    expense = models.OneToOneField(
+        CoachExpense,
+        on_delete=models.CASCADE,
+        related_name="rain_refund",
+    )
+    availability = models.ForeignKey(
+        "CoachAvailability",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="rain_refunds",
+    )
+    lesson_date = models.DateField()
+    lesson_label = models.CharField(max_length=255, blank=True, default="")
+    amount = models.PositiveIntegerField(default=0)
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+    )
+    booking_account_kind = models.CharField(
+        max_length=20,
+        choices=ACCOUNT_KIND_CHOICES,
+    )
+    booking_account_coach = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="rain_refunds_as_booking_account",
+    )
+    booking_account_other = models.CharField(max_length=255, blank=True, default="")
+    collection_coach = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="rain_refunds_to_collect",
+    )
+    debit_coach = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="rain_refund_debits",
+    )
+    payer_coach = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="rain_refund_reimbursements",
+    )
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="confirmed_rain_refunds",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["lesson_date", "id"]
+
+    @property
+    def account_name(self):
+        if self.booking_account_coach_id:
+            return self.booking_account_coach.display_name()
+        return self.booking_account_other
+
+    def clean(self):
+        if self.amount <= 0:
+            raise ValidationError("雨天中止返金額は1円以上にしてください。")
+        if self.booking_account_kind == self.ACCOUNT_OTHER:
+            if not self.booking_account_other or not self.collection_coach_id:
+                raise ValidationError(
+                    "その他の予約アカウントでは、アカウント情報と回収予定コーチが必要です。"
+                )
+            if self.debit_coach_id != self.collection_coach_id:
+                raise ValidationError("控除元は回収予定コーチと一致させてください。")
+        elif (
+            not self.booking_account_coach_id
+            or self.debit_coach_id != self.booking_account_coach_id
+        ):
+            raise ValidationError("控除元は予約アカウントのコーチと一致させてください。")
 
 
 class ScheduleSurveyResponse(models.Model):

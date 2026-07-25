@@ -45,6 +45,7 @@ from .models import (
     LineAccountLink,
     Reservation,
     ReservationParticipant,
+    RainRefund,
     ScheduleSurveyResponse,
     ShopEstimateRequest,
     ShopProductMaster,
@@ -4983,8 +4984,10 @@ def _court_expense_matches_availability(expense, availability):
 
 def _expense_meta_row(expense):
     meta = _expense_parse_note(getattr(expense, "note", ""))
-    ball_period_start = str(meta.get("ball_period_start") or "").strip()
-    ball_period_end = str(meta.get("ball_period_end") or "").strip()
+    period_start = getattr(expense, "settlement_period_start", None)
+    period_end = getattr(expense, "settlement_period_end", None)
+    ball_period_start = period_start.strftime("%Y-%m") if period_start else ""
+    ball_period_end = period_end.strftime("%Y-%m") if period_end else ""
     ball_period_label = ""
     if ball_period_start and ball_period_end:
         ball_period_label = (
@@ -6090,10 +6093,34 @@ def coach_expense_manage(request):
                     return redirect("club:coach_expense_manage")
                 extra_meta["ball_period_start"] = ball_period_start
                 extra_meta["ball_period_end"] = ball_period_end
+                expense.settlement_period_start = date.fromisoformat(
+                    f"{ball_period_start}-01"
+                )
+                expense.settlement_period_end = date.fromisoformat(
+                    f"{ball_period_end}-01"
+                )
             if approval_status == EXPENSE_APPROVAL_REFUNDED:
+                rain_refund = RainRefund.objects.filter(expense=expense).first()
+                if rain_refund is None:
+                    messages.error(
+                        request,
+                        "雨天返金の専用情報がありません。雨天中止画面から再登録してください。",
+                    )
+                    return redirect("club:coach_expense_manage")
                 extra_meta["refunded_at"] = timezone.now().isoformat()
                 extra_meta["refunded_by_id"] = getattr(request.user, "pk", None)
                 extra_meta["refunded_by_name"] = _display_name(request.user)
+                rain_refund.status = RainRefund.STATUS_REFUNDED
+                rain_refund.confirmed_at = timezone.now()
+                rain_refund.confirmed_by = request.user
+                rain_refund.save(
+                    update_fields=[
+                        "status",
+                        "confirmed_at",
+                        "confirmed_by",
+                        "updated_at",
+                    ]
+                )
 
             expense.note = _expense_build_note(
                 plain_note,
@@ -6103,7 +6130,12 @@ def coach_expense_manage(request):
                 approval_status=approval_status,
                 extra_meta=extra_meta,
             )
-            expense.save(update_fields=["note"])
+            update_fields = ["note"]
+            if expense.category == CoachExpense.CATEGORY_BALL:
+                update_fields.extend(
+                    ["settlement_period_start", "settlement_period_end"]
+                )
+            expense.save(update_fields=update_fields)
             messages.success(request, "経費ステータスを更新しました。")
             return redirect("club:coach_expense_manage")
 
@@ -6176,12 +6208,23 @@ def coach_expense_manage(request):
                 return redirect("club:coach_expense_manage")
             extra_meta["ball_period_start"] = ball_period_start
             extra_meta["ball_period_end"] = ball_period_end
+            settlement_period_start = date.fromisoformat(
+                f"{ball_period_start}-01"
+            )
+            settlement_period_end = date.fromisoformat(
+                f"{ball_period_end}-01"
+            )
+        else:
+            settlement_period_start = None
+            settlement_period_end = None
 
         try:
             expense = CoachExpense(
                 expense_date=expense_date_value,
                 category=raw_category,
                 amount=amount_value,
+                settlement_period_start=settlement_period_start,
+                settlement_period_end=settlement_period_end,
                 note=_expense_build_note(
                     raw_note,
                     expense_type=raw_expense_type,

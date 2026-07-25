@@ -156,8 +156,8 @@
             <div class="money-row plus"><span>ガット張り売上</span><strong>+{{ row.stringing_amount }}円</strong></div>
             {% if row.is_contractor_coach %}<div class="money-row plus"><span>業務委託報酬</span><strong>+{{ row.contractor_hourly_pay_amount }}円</strong></div>{% endif %}
             <div class="money-row minus"><span>自身のコート代負担</span><strong>-{{ row.court_cost_burden|default:0 }}円</strong></div>
-            <div class="money-row minus"><span>雨天中止返金負担</span><strong>-{{ row.rain_refund_burden|default:0 }}円</strong></div>
-            <div class="money-row plus"><span>雨天中止返金付与</span><strong>+{{ row.rain_refund_reimbursement|default:0 }}円</strong></div>
+            {% if row.rain_refund_burden %}<div class="money-row minus"><span>雨天中止返金負担</span><strong>-{{ row.rain_refund_burden }}円</strong></div>{% endif %}
+            {% if row.rain_refund_reimbursement %}<div class="money-row plus"><span>雨天中止返金付与</span><strong>+{{ row.rain_refund_reimbursement }}円</strong></div>{% endif %}
             <div class="money-row minus"><span>ボール代負担</span><strong>-{{ row.ball_expense_burden|default:0 }}円</strong></div>
             <div class="money-row plus"><span>ボール代立替付与</span><strong>+{{ row.ball_expense_reimbursement|default:0 }}円</strong></div>
             <div class="money-row minus"><span>その他経費負担</span><strong>-{{ row.other_expense_burden|default:0 }}円</strong></div>
