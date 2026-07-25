@@ -270,6 +270,12 @@ def coach_admin_settlement(request):
         selected_month,
     )
     settlement = result["settlement"]
+    from .lesson_execution import missing_rain_refund_rows
+
+    missing_refund_rows = missing_rain_refund_rows(
+        selected_year,
+        selected_month,
+    )
 
     previous_year, previous_month = _previous_month(
         selected_year,
@@ -302,6 +308,7 @@ def coach_admin_settlement(request):
         "is_month_closed": settlement.is_closed,
         "opening_balance": settlement.opening_balance,
         "closing_balance": settlement.closing_balance,
+        "rain_refund_missing_rows": missing_refund_rows,
     }
 
     if "payout_history_rows" not in context:
