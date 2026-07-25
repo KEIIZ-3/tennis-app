@@ -352,7 +352,7 @@ def _approved_monthly_expenses(month_start, next_month):
     return rows
 
 
-def _eligible_reservations(year, month):
+def _monthly_execution_reservations_and_status(year, month):
     from .models import Reservation
     from .lesson_execution_storage import read_status_map
     from .settlement_models import MonthlySettlement
@@ -388,10 +388,18 @@ def _eligible_reservations(year, month):
         month=int(month),
     ).first()
     if settlement is None:
-        return []
+        return reservations, {}
+    return reservations, read_status_map(settlement)
+
+
+def _eligible_reservations(year, month):
+    reservations, status_map = _monthly_execution_reservations_and_status(
+        year,
+        month,
+    )
     return _held_execution_reservations(
         reservations,
-        read_status_map(settlement),
+        status_map,
     )
 
 
@@ -420,19 +428,39 @@ def _held_execution_reservations(reservations, status_map):
     return list(eligible_by_slot.values())
 
 
-def _held_lesson_count_by_coach(year, month, coach_ids):
-    """実施管理で「実施済み」のレッスンだけを担当コーチ別に数える。"""
+def _held_participant_count_by_coach(year, month, coach_ids):
+    """実施済みレッスンの参加人数を担当コーチ別に集計する。"""
     eligible_coach_ids = set(coach_ids or [])
     counts = defaultdict(int)
+    reservations, status_map = _monthly_execution_reservations_and_status(
+        year,
+        month,
+    )
+    participants_by_slot = defaultdict(set)
+    coach_ids_by_slot = defaultdict(set)
 
-    for reservation in _eligible_reservations(year, month):
-        counted_coach_ids = {
+    for reservation in reservations:
+        slot_key = _execution_slot_key(reservation)
+        if not slot_key:
+            continue
+        entry = status_map.get(slot_key) or {}
+        if entry.get("status") != "held":
+            continue
+
+        participant_id = getattr(reservation, "user_id", None)
+        if participant_id is None:
+            participant_id = f"reservation:{getattr(reservation, 'pk', id(reservation))}"
+        participants_by_slot[slot_key].add(participant_id)
+        coach_ids_by_slot[slot_key].update(
             coach.pk
             for coach in _reservation_coaches(reservation)
             if getattr(coach, "pk", None) in eligible_coach_ids
-        }
-        for coach_id in counted_coach_ids:
-            counts[coach_id] += 1
+        )
+
+    for slot_key, participant_ids in participants_by_slot.items():
+        participant_count = len(participant_ids)
+        for coach_id in coach_ids_by_slot[slot_key]:
+            counts[coach_id] += participant_count
 
     return dict(counts)
 
@@ -701,7 +729,7 @@ def _build_other_expense_policy(
     year,
     month,
     main_coach_ids,
-    lesson_count_by_coach=None,
+    participant_count_by_coach=None,
 ):
     month_start, next_month = _month_range(year, month)
     expenses = _approved_monthly_expenses(month_start, next_month)
@@ -728,9 +756,9 @@ def _build_other_expense_policy(
             allocations = _split_amount_by_lesson_count(
                 amount,
                 target_ids,
-                lesson_count_by_coach,
+                participant_count_by_coach,
             )
-            rule = "当月担当レッスン数に比例"
+            rule = "完了済みレッスンの担当参加人数に比例"
         else:
             allocations = _split_amount(amount, target_ids)
             rule = "メインコーチ3人均等負担"
@@ -883,7 +911,7 @@ def _apply_wallet_policy(result, year, month):
         year,
         month,
         main_coach_ids,
-        _held_lesson_count_by_coach(year, month, main_coach_ids),
+        _held_participant_count_by_coach(year, month, main_coach_ids),
     )
 
     contractor_pay_total = sum(
@@ -1133,7 +1161,11 @@ def _apply_wallet_policy(result, year, month):
         unpaid_salary_total += unpaid_salary
         negative_carry_total += negative_carry
 
-    settlement.opening_balance = 0
+    company_internal_reserve = max(
+        _money(settlement.opening_balance),
+        0,
+    )
+    settlement.opening_balance = company_internal_reserve
     settlement.cash_in_total = total_company_revenue
     settlement.ticket_cash_in = _money(
         result.get("ticket_amount_total")
@@ -1152,7 +1184,10 @@ def _apply_wallet_policy(result, year, month):
     settlement.unpaid_salary_total = unpaid_salary_total
     settlement.unpaid_reimbursement_total = 0
     settlement.closing_balance = max(
-        total_company_revenue - salary_paid_total - reimbursement_paid_total,
+        company_internal_reserve
+        + total_company_revenue
+        - salary_paid_total
+        - reimbursement_paid_total,
         0,
     )
 
@@ -1160,7 +1195,7 @@ def _apply_wallet_policy(result, year, month):
     settlement_snapshot.update(
         {
             "wallet_policy": True,
-            "company_internal_reserve": 0,
+            "company_internal_reserve": company_internal_reserve,
             "company_revenue_definition": (
                 "ticket_consumption + collected_cash + stringing"
             ),
@@ -1185,7 +1220,7 @@ def _apply_wallet_policy(result, year, month):
             "coach_rows": coach_rows,
             "cash_in_total": total_company_revenue,
             "company_balance": settlement.closing_balance,
-            "opening_balance": 0,
+            "opening_balance": company_internal_reserve,
             "salary_due_total": salary_due_total,
             "salary_paid_total": salary_paid_total,
             "unpaid_salary_total": unpaid_salary_total,

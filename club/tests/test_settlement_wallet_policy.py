@@ -11,7 +11,7 @@ from club.settlement_balance_policy import (
     _build_other_expense_policy,
     _court_transfer_allocation,
     _held_execution_reservations,
-    _held_lesson_count_by_coach,
+    _held_participant_count_by_coach,
     _lighting_start_hour,
     _negative_carry_in_by_coach,
     _unpaid_salary_carry_in_by_coach,
@@ -186,7 +186,7 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         self.assertEqual([row["expense_id"] for row in policy["detail_rows"]], [21])
 
     @patch("club.settlement_balance_policy._approved_monthly_expenses")
-    def test_ball_expense_is_split_by_monthly_lesson_count(self, expenses_mock):
+    def test_ball_expense_is_split_by_held_participant_count(self, expenses_mock):
         expenses_mock.return_value = [
             {
                 "expense": SimpleNamespace(pk=22, category="ball"),
@@ -208,7 +208,7 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         self.assertEqual(sum(policy["burden_by_coach"].values()), 7801)
         self.assertEqual(
             policy["detail_rows"][0]["burden_rule"],
-            "当月担当レッスン数に比例",
+            "完了済みレッスンの担当参加人数に比例",
         )
 
     def test_contractor_lesson_court_cost_is_shared_by_main_coaches_once(self):
@@ -266,40 +266,67 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
 
         self.assertEqual(eligible, [held_first])
 
-    @patch("club.settlement_balance_policy._eligible_reservations")
-    def test_ball_lesson_count_uses_only_held_execution_lessons(
+    @patch(
+        "club.settlement_balance_policy."
+        "_monthly_execution_reservations_and_status"
+    )
+    def test_ball_participant_count_uses_only_held_execution_lessons(
         self,
-        eligible_reservations_mock,
+        execution_rows_mock,
     ):
         coach_1 = SimpleNamespace(pk=1, role="coach")
         coach_2 = SimpleNamespace(pk=2, role="coach")
-        held_by_two_coaches = SimpleNamespace(
+        held_member_1 = SimpleNamespace(
+            pk=1,
+            user_id=101,
+            start_at=timezone.make_aware(datetime(2026, 7, 4, 19, 0)),
             fixed_lesson=SimpleNamespace(
+                pk=10,
                 all_coaches=lambda: [coach_1, coach_2],
             ),
+            availability=None,
             substitute_coach=None,
         )
-        held_by_coach_1 = SimpleNamespace(
+        held_member_2 = SimpleNamespace(
+            pk=2,
+            user_id=102,
+            start_at=timezone.make_aware(datetime(2026, 7, 4, 19, 0)),
             fixed_lesson=SimpleNamespace(
+                pk=10,
+                all_coaches=lambda: [coach_1, coach_2],
+            ),
+            availability=None,
+            substitute_coach=None,
+        )
+        scheduled_member = SimpleNamespace(
+            pk=3,
+            user_id=103,
+            start_at=timezone.make_aware(datetime(2026, 7, 5, 19, 0)),
+            fixed_lesson=SimpleNamespace(
+                pk=11,
                 all_coaches=lambda: [coach_1],
             ),
+            availability=None,
             substitute_coach=None,
         )
-        eligible_reservations_mock.return_value = [
-            held_by_two_coaches,
-            held_by_coach_1,
-        ]
+        execution_rows_mock.return_value = (
+            [held_member_1, held_member_2, scheduled_member],
+            {
+                "fixed:10:2026-07-04": {"status": "held"},
+                "fixed:11:2026-07-05": {"status": "scheduled"},
+            },
+        )
 
-        counts = _held_lesson_count_by_coach(2026, 7, [1, 2, 3])
+        counts = _held_participant_count_by_coach(2026, 7, [1, 2, 3])
 
-        self.assertEqual(counts, {1: 2, 2: 1})
-        eligible_reservations_mock.assert_called_once_with(2026, 7)
+        self.assertEqual(counts, {1: 2, 2: 2})
+        execution_rows_mock.assert_called_once_with(2026, 7)
 
     @patch("club.settlement_balance_policy._active_salary_payment_total", return_value=0)
     @patch("club.settlement_balance_policy._active_reimbursement_payment_total", return_value=2000)
     @patch("club.settlement_balance_policy._unpaid_salary_carry_in_by_coach", return_value={1: 221})
     @patch("club.settlement_balance_policy._negative_carry_in_by_coach", return_value={1: 2080})
-    @patch("club.settlement_balance_policy._held_lesson_count_by_coach", return_value={1: 1})
+    @patch("club.settlement_balance_policy._held_participant_count_by_coach", return_value={1: 1})
     @patch("club.settlement_balance_policy._build_other_expense_policy")
     @patch("club.settlement_balance_policy._build_court_cost_policy")
     @patch("club.settlement_balance_policy.main_coaches")
@@ -334,6 +361,7 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         }
         settlement = SimpleNamespace(
             is_closed=False,
+            opening_balance=6000,
             closing_balance=0,
             calculation_snapshot={},
             save=MagicMock(),
@@ -368,3 +396,9 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         self.assertEqual(row["reimbursement_paid"], 2000)
         self.assertEqual(row["unpaid_salary"], 14341)
         self.assertEqual(updated["cash_out_total"], 2000)
+        self.assertEqual(updated["opening_balance"], 6000)
+        self.assertEqual(updated["company_balance"], 30000)
+        self.assertEqual(
+            settlement.calculation_snapshot["company_internal_reserve"],
+            6000,
+        )

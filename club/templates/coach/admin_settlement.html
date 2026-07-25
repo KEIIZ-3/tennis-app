@@ -80,7 +80,7 @@
   {% if is_month_closed %}
     <div class="notice closed">この月は締め済みです。会社財布とコーチ別受取額は締め時点の値で固定されています。</div>
   {% else %}
-    <div class="notice info">会社の内部留保は0円です。当月のチケット消費売上・回収済み現金売上・ガット張り売上だけを支払原資として使用します。</div>
+    <div class="notice info">前月からの準備金 {{ opening_balance|default:0 }}円と、当月のチケット消費売上・回収済み現金売上・ガット張り売上を支払原資として使用します。</div>
   {% endif %}
 
   {% if court_cost_expected_unregistered_total %}
@@ -92,7 +92,7 @@
   {% endif %}
 
   <section class="summary-grid">
-    <div class="summary primary"><div class="summary-label">会社財布の支払可能残高</div><div class="summary-value">{{ company_balance }}円</div><div class="summary-note">当月売上 − 記録済み一括精算支払い</div></div>
+    <div class="summary primary"><div class="summary-label">会社財布の支払可能残高</div><div class="summary-value">{{ company_balance }}円</div><div class="summary-note">前月準備金＋当月売上−記録済み一括精算支払い</div></div>
     <div class="summary success"><div class="summary-label">当月売上</div><div class="summary-value">{{ wallet_revenue_total|default:cash_in_total }}円</div><div class="summary-note">チケット消費＋回収済み現金＋ガット張り</div></div>
     <div class="summary info"><div class="summary-label">チケット消費売上</div><div class="summary-value">{{ ticket_amount_total }}円</div><div class="summary-note">販売時入金ではなく当月消費金額</div></div>
     <div class="summary info"><div class="summary-label">現金回収売上</div><div class="summary-value">{{ preopen_paid_total }}円</div><div class="summary-note">未回収 {{ preopen_unpaid_total }}円</div></div>

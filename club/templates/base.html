@@ -1009,8 +1009,6 @@
                 <div class="coach-tabs">
                   <a href="{% url 'club:lesson_calendar' %}" class="coach-tab {% if request.resolver_match.url_name == 'lesson_calendar' %}active{% endif %}">レッスンカレンダー</a>
                   <a href="{% url 'club:family_member_manage' %}" class="coach-tab {% if request.resolver_match.url_name == 'family_member_manage' %}active{% endif %}">家族</a>
-                  <a href="{% url 'club:coach_fixed_lesson_weekly' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_fixed_lesson_weekly' %}active{% endif %}">固定レッスン</a>
-                  <a href="{% url 'club:coach_availability_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_availability_list' or request.resolver_match.url_name == 'coach_availability_create' or request.resolver_match.url_name == 'coach_availability_edit' %}active{% endif %}">スケジュール枠</a>
                   {% if user.role == "contractor_coach" %}
                     <a href="{% url 'club:reservation_list' %}" class="coach-tab">自分の受講予約</a>
                   {% endif %}
