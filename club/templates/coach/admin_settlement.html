@@ -100,6 +100,15 @@
     </section>
   {% endif %}
 
+  {% if rain_refund_missing_rows %}
+    <section class="panel">
+      <div class="section-head"><div><h2 class="section-title">雨天中止・返金情報未登録</h2><p class="help">雨天中止は登録済みですが、月次集計に必要な予約アカウントとコート支払者が未登録です。</p></div></div>
+      {% for refund in rain_refund_missing_rows %}
+        <div class="payment-row"><strong>{{ refund.lesson_date }}</strong><div>{{ refund.lesson_label }}</div><span class="status-badge open">要入力</span><a href="{{ refund.registration_url }}" class="btn danger-button">コート支払者を入力</a></div>
+      {% endfor %}
+    </section>
+  {% endif %}
+
   <section class="summary-grid">
     <div class="summary primary"><div class="summary-label">会社財布の支払可能残高</div><div class="summary-value">{{ company_balance }}円</div><div class="summary-note">前月準備金＋当月売上−記録済み一括精算支払い</div></div>
     <div class="summary success"><div class="summary-label">当月売上</div><div class="summary-value">{{ wallet_revenue_total|default:cash_in_total }}円</div><div class="summary-note">チケット消費＋回収済み現金＋ガット張り</div></div>
