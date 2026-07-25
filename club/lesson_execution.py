@@ -434,8 +434,6 @@ def _rain_refund_input(request):
             return None, "予約アカウントを選択してください。"
         debit_coach = account_coach
 
-    if collection_coach is None:
-        return None, "回収予定コーチを選択してください。"
     if payer_coach is None:
         return None, "コート支払者を選択してください。"
 
@@ -502,9 +500,11 @@ def _mark_court_expense_refund_pending(
                     else refund_input["account_other"]
                 ),
                 "rain_refund_account_other": refund_input["account_other"],
-                "rain_refund_collection_coach_id": collection_coach.pk,
-                "rain_refund_collection_coach_name": _display_name(
-                    collection_coach
+                "rain_refund_collection_coach_id": (
+                    collection_coach.pk if collection_coach else None
+                ),
+                "rain_refund_collection_coach_name": (
+                    _display_name(collection_coach) if collection_coach else ""
                 ),
                 "rain_refund_payer_coach_id": payer_coach.pk,
                 "rain_refund_payer_coach_name": _display_name(payer_coach),

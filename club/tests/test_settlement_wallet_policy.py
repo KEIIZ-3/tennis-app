@@ -157,6 +157,49 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
             coach_id__in=[1, 2, 3],
         )
 
+    def test_ball_expense_without_target_month_is_not_counted(self):
+        expense = SimpleNamespace(
+            amount=7568,
+            expense_date=datetime(2026, 7, 25).date(),
+        )
+
+        self.assertIsNone(
+            _ball_expense_amount_for_month(
+                expense,
+                {},
+                datetime(2026, 7, 1).date(),
+                datetime(2026, 8, 1).date(),
+            )
+        )
+
+    def test_future_ball_target_month_is_not_counted_in_past(self):
+        expense = SimpleNamespace(
+            amount=7568,
+            expense_date=datetime(2026, 7, 25).date(),
+        )
+        meta = {
+            "ball_period_start": "2026-08",
+            "ball_period_end": "2026-08",
+        }
+
+        self.assertIsNone(
+            _ball_expense_amount_for_month(
+                expense,
+                meta,
+                datetime(2026, 7, 1).date(),
+                datetime(2026, 8, 1).date(),
+            )
+        )
+        self.assertEqual(
+            _ball_expense_amount_for_month(
+                expense,
+                meta,
+                datetime(2026, 8, 1).date(),
+                datetime(2026, 9, 1).date(),
+            ),
+            7568,
+        )
+
     def test_court_transfer_is_applied_in_wallet_policy(self):
         expense = SimpleNamespace(pk=10)
         allocation = _court_transfer_allocation(
