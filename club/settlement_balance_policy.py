@@ -320,9 +320,10 @@ def _ball_expense_amount_for_month(expense, meta, month_start, next_month):
     period_end = str(meta.get("ball_period_end") or "").strip()
     target_month = f"{month_start.year:04d}-{month_start.month:02d}"
 
+    # ボール代は経費日付ではなく、登録時に指定した精算対象月だけを参照する。
+    # 対象月が欠けた旧データを経費日付の月へ自動計上すると、登録月と
+    # 精算対象月が混同されるため、月次精算から除外して登録内容の修正を促す。
     if not (period_start and period_end):
-        if month_start <= expense.expense_date < next_month:
-            return amount
         return None
 
     if not (period_start <= target_month <= period_end):
