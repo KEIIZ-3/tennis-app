@@ -18,6 +18,7 @@ from club.settlement_balance_policy import (
     _rain_refund_policy,
     _unpaid_salary_carry_in_by_coach,
 )
+from club.settlement_views import _matching_active_payment
 
 
 class SettlementWalletCourtCostTests(SimpleTestCase):
@@ -242,6 +243,101 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         self.assertEqual(allocation["reimbursement_by_coach"], {})
         self.assertEqual(allocation["expense_ids"], set())
         self.assertEqual(allocation["total"], 0)
+
+    def test_duplicate_court_transfers_use_only_latest_record(self):
+        allocation = _court_transfer_allocation(
+            [
+                {
+                    "expense": SimpleNamespace(pk=10),
+                    "amount": 3200,
+                    "meta": {
+                        "record_kind": "court_transfer",
+                        "availability_id": 50,
+                        "payer_coach_id": 2,
+                        "using_coach_ids": [2],
+                    },
+                },
+                {
+                    "expense": SimpleNamespace(pk=11),
+                    "amount": 4200,
+                    "meta": {
+                        "record_kind": "court_transfer",
+                        "availability_id": 50,
+                        "payer_coach_id": 2,
+                        "using_coach_ids": [2],
+                    },
+                },
+            ],
+            eligible_coach_ids=[1, 2, 3],
+            main_coach_ids=[1, 2, 3],
+        )
+
+        self.assertEqual(allocation["burden_by_coach"], {2: 4200})
+        self.assertEqual(allocation["reimbursement_by_coach"], {2: 4200})
+        self.assertEqual(allocation["total"], 4200)
+
+    def test_rain_canceled_availability_excludes_all_duplicate_court_records(self):
+        allocation = _court_transfer_allocation(
+            [
+                {
+                    "expense": SimpleNamespace(pk=20),
+                    "amount": 3200,
+                    "meta": {
+                        "record_kind": "court_transfer",
+                        "availability_id": 60,
+                        "payer_coach_id": 2,
+                        "using_coach_ids": [2],
+                    },
+                },
+                {
+                    "expense": SimpleNamespace(pk=21),
+                    "amount": 4200,
+                    "meta": {
+                        "record_kind": "court_transfer",
+                        "availability_id": 60,
+                        "payer_coach_id": 2,
+                        "using_coach_ids": [2],
+                    },
+                },
+            ],
+            eligible_coach_ids=[1, 2, 3],
+            main_coach_ids=[1, 2, 3],
+            excluded_availability_ids={60},
+        )
+
+        self.assertEqual(allocation["burden_by_coach"], {})
+        self.assertEqual(allocation["reimbursement_by_coach"], {})
+        self.assertEqual(allocation["total"], 0)
+
+    @patch("club.settlement_views.SettlementPayment.objects.select_for_update")
+    def test_identical_settlement_payment_lookup_prevents_duplicate(
+        self,
+        select_for_update_mock,
+    ):
+        existing = SimpleNamespace(pk=99)
+        select_for_update_mock.return_value.filter.return_value.first.return_value = (
+            existing
+        )
+
+        result = _matching_active_payment(
+            settlement=SimpleNamespace(pk=1),
+            coach=SimpleNamespace(pk=2),
+            payment_type="salary",
+            amount=13865,
+            paid_date=date(2026, 7, 25),
+            note="7月分",
+        )
+
+        self.assertIs(result, existing)
+        select_for_update_mock.return_value.filter.assert_called_once_with(
+            monthly_settlement=SimpleNamespace(pk=1),
+            coach=SimpleNamespace(pk=2),
+            payment_type="salary",
+            amount=13865,
+            paid_date=date(2026, 7, 25),
+            note="7月分",
+            is_reversed=False,
+        )
 
     @patch("club.settlement_balance_policy._approved_monthly_expenses")
     def test_personal_business_expense_is_excluded_from_payroll(self, expenses_mock):
