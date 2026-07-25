@@ -19,11 +19,10 @@ _LAST_MEMBER_MESSAGE = "最後の1名となるため、この予約はキャン�
 def _can_cancel_reservation(user, reservation):
     if not user or not getattr(user, "is_authenticated", False):
         return False
-    if reservation.user_id == getattr(user, "pk", None):
-        return True
-    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
-        return True
-    return getattr(user, "role", "") in ("coach", "contractor_coach")
+    return (
+        getattr(user, "role", "") == "member"
+        and reservation.user_id == getattr(user, "pk", None)
+    )
 
 
 def _replace_last_member_cancel_message(request, response):
@@ -143,7 +142,7 @@ def family_member_manage(request):
 @login_required
 @require_POST
 def reservation_cancel(request, pk):
-    """参加者が最後の1名の場合でも予約キャンセルを許可する。"""
+    """会員本人が予約確認画面から予約をキャンセルする。"""
     reservation = get_object_or_404(
         Reservation.objects.select_related(
             "user",
@@ -155,6 +154,9 @@ def reservation_cancel(request, pk):
         ),
         pk=pk,
     )
+
+    if getattr(request.user, "role", "") != "member":
+        return HttpResponse("Forbidden", status=403)
 
     if not _can_cancel_reservation(request.user, reservation):
         return HttpResponse("Forbidden", status=403)
@@ -169,7 +171,7 @@ def reservation_cancel(request, pk):
     try:
         canceled = reservation.cancel(
             created_by=request.user,
-            reason="会員キャンセル" if reservation.user_id == request.user.pk else "コーチ・管理者キャンセル",
+            reason="会員が予約確認画面からキャンセル",
         )
         if canceled:
             messages.success(request, "予約をキャンセルしました。消費済みチケットは返却しました。")
