@@ -280,7 +280,7 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         "club.settlement_balance_policy."
         "_monthly_execution_reservations_and_status"
     )
-    def test_ball_participant_count_uses_only_held_execution_lessons(
+    def test_ball_participant_count_uses_finished_non_rain_canceled_lessons(
         self,
         execution_rows_mock,
     ):
@@ -319,17 +319,34 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
             availability=None,
             substitute_coach=None,
         )
+        rain_canceled_member = SimpleNamespace(
+            pk=4,
+            user_id=104,
+            start_at=timezone.make_aware(datetime(2026, 7, 6, 19, 0)),
+            fixed_lesson=SimpleNamespace(
+                pk=12,
+                all_coaches=lambda: [coach_2],
+            ),
+            availability=None,
+            substitute_coach=None,
+        )
         execution_rows_mock.return_value = (
-            [held_member_1, held_member_2, scheduled_member],
+            [
+                held_member_1,
+                held_member_2,
+                scheduled_member,
+                rain_canceled_member,
+            ],
             {
                 "fixed:10:2026-07-04": {"status": "held"},
                 "fixed:11:2026-07-05": {"status": "scheduled"},
+                "fixed:12:2026-07-06": {"status": "rain_canceled"},
             },
         )
 
         counts = _held_participant_count_by_coach(2026, 7, [1, 2, 3])
 
-        self.assertEqual(counts, {1: 2, 2: 2})
+        self.assertEqual(counts, {1: 3, 2: 2})
         execution_rows_mock.assert_called_once_with(2026, 7)
 
     @patch("club.settlement_balance_policy._active_salary_payment_total", return_value=0)
