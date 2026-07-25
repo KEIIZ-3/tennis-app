@@ -2,8 +2,10 @@ import re
 
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseForbidden
+from django.utils import timezone
 
 from . import reservation_cancel_override, views
+from .models import FixedLesson, Reservation
 
 
 def _replace_html(response, transform):
@@ -88,6 +90,46 @@ def _simplify_reservation_page(html):
     return html
 
 
+def _sync_missing_fixed_reservations_for_member(user):
+    """
+    固定参加登録はあるものの、過去の定員判定不整合などで開催日別の
+    Reservation が欠けた会員だけを予約確認表示前に補完する。
+    """
+    fixed_lessons = (
+        FixedLesson.objects.filter(
+            is_active=True,
+            members=user,
+            court__isnull=False,
+        )
+        .select_related("coach", "coach_2", "coach_3", "court")
+        .distinct()
+    )
+
+    for fixed_lesson in fixed_lessons:
+        occurrence_datetimes = [
+            fixed_lesson._build_datetimes_for_date(target_date)
+            for target_date in fixed_lesson.scheduled_occurrence_dates()
+            if target_date >= timezone.localdate()
+        ]
+        if not occurrence_datetimes:
+            continue
+
+        recorded_starts = set(
+            Reservation.objects.filter(
+                user=user,
+                fixed_lesson=fixed_lesson,
+                start_at__in=[start_at for start_at, _end_at in occurrence_datetimes],
+            ).values_list("start_at", flat=True)
+        )
+        if all(
+            start_at in recorded_starts
+            for start_at, _end_at in occurrence_datetimes
+        ):
+            continue
+
+        fixed_lesson.sync_future_reservations(created_by=user)
+
+
 def _improve_lesson_calendar(html):
     replacement_notice = """
 <div class="ticket-notice" style="border-color:#60a5fa; background:#eff6ff; color:#1e3a8a;">
@@ -139,5 +181,6 @@ def reservation_list(request):
     if getattr(request.user, "role", "") != "member":
         return HttpResponseForbidden("予約確認は会員専用です。")
 
+    _sync_missing_fixed_reservations_for_member(request.user)
     response = reservation_cancel_override.reservation_list(request)
     return _replace_html(response, _simplify_reservation_page)

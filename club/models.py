@@ -840,6 +840,22 @@ class FixedLesson(models.Model, LessonTypeMixin):
                         changed_count += 1
                     continue
 
+                # 会員が開催回単位で取り消した固定予約は、管理画面の再保存や
+                # 予約確認画面の不足データ補完で復活させない。
+                canceled_occurrence_exists = Reservation.objects.filter(
+                    user=member,
+                    fixed_lesson=self,
+                    is_fixed_entry=True,
+                    start_at=start_at,
+                    end_at=end_at,
+                    status__in=[
+                        Reservation.STATUS_CANCELED,
+                        Reservation.STATUS_RAIN_CANCELED,
+                    ],
+                ).exists()
+                if canceled_occurrence_exists:
+                    continue
+
                 reservation = Reservation(
                     user=member,
                     coach=primary_coach,
@@ -1920,7 +1936,23 @@ class Reservation(models.Model, LessonTypeMixin):
         if self.fixed_lesson_id:
             fixed_member_count = self.fixed_lesson.members.count()
 
-        if max(active_count, fixed_member_count) >= capacity:
+        # 固定参加者は FixedLesson.members の人数にすでに含まれている。
+        # その参加者の開催日別 Reservation を同期するときまで
+        # fixed_member_count を満員判定へ使うと、定員ちょうどの固定枠では
+        # 1件も予約レコードを生成できないため、実レコード数だけで判定する。
+        is_registered_fixed_member = bool(
+            self.is_fixed_entry
+            and self.fixed_lesson_id
+            and self.user_id
+            and self.fixed_lesson.members.filter(pk=self.user_id).exists()
+        )
+        occupancy_count = (
+            active_count
+            if is_registered_fixed_member
+            else max(active_count, fixed_member_count)
+        )
+
+        if occupancy_count >= capacity:
             raise ValidationError(
                 f"このレッスンは満員です（定員{capacity}名）。"
                 "キャンセル待ちをご利用ください。"

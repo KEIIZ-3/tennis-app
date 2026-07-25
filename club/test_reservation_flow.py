@@ -206,6 +206,71 @@ class ReservationFlowSmokeTests(TestCase):
                 reservation.refresh_from_db()
                 self.assertEqual(reservation.status, Reservation.STATUS_ACTIVE)
 
+    def test_fixed_members_at_capacity_are_created_and_shown_in_confirmation(self):
+        fixed_lesson = self._create_fixed_lesson(title="定員ちょうどの固定レッスン")
+        members = [self.member]
+        capacity = fixed_lesson.effective_capacity()
+        for index in range(capacity - 1):
+            members.append(
+                self._create_user(
+                    username=f"fixed_capacity_member_{index}",
+                    role=self.User.ROLE_MEMBER,
+                    full_name=f"固定会員 {index}",
+                )
+            )
+        fixed_lesson.members.set(members)
+
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("club:reservation_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            Reservation.objects.filter(
+                fixed_lesson=fixed_lesson,
+                is_fixed_entry=True,
+                status=Reservation.STATUS_ACTIVE,
+            ).count(),
+            capacity,
+        )
+        self.assertEqual(len(response.context["future_reservation_rows"]), 1)
+        reservation = response.context["future_reservation_rows"][0]["reservation"]
+        self.assertEqual(reservation.user, self.member)
+        self.assertEqual(reservation.fixed_lesson, fixed_lesson)
+
+    def test_canceled_fixed_occurrence_is_not_recreated_on_confirmation_reload(self):
+        self.member.ticket_balance = 4
+        self.member.save(update_fields=["ticket_balance"])
+        fixed_lesson = self._create_fixed_lesson(title="固定予約キャンセル保持")
+        fixed_lesson.members.add(self.member)
+
+        self.client.force_login(self.member)
+        first_response = self.client.get(reverse("club:reservation_list"))
+        self.assertEqual(first_response.status_code, 200)
+        reservation = Reservation.objects.get(
+            user=self.member,
+            fixed_lesson=fixed_lesson,
+            start_at__date=self.lesson_date,
+        )
+
+        cancel_response = self.client.post(
+            reverse("club:reservation_cancel", args=[reservation.pk])
+        )
+        self.assertEqual(cancel_response.status_code, 302)
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.status, Reservation.STATUS_CANCELED)
+
+        second_response = self.client.get(reverse("club:reservation_list"))
+        self.assertEqual(second_response.status_code, 200)
+        self.assertFalse(
+            Reservation.objects.filter(
+                user=self.member,
+                fixed_lesson=fixed_lesson,
+                start_at__date=self.lesson_date,
+                status=Reservation.STATUS_ACTIVE,
+            ).exists()
+        )
+        self.assertEqual(len(second_response.context["future_reservation_rows"]), 0)
+
     def test_contractor_only_sees_assigned_stringing_orders(self):
         other_contractor = self._create_user(
             username="other_contractor",
