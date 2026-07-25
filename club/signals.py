@@ -1,9 +1,10 @@
 import logging
 
-from django.db.models.signals import pre_save, post_save
+from django.db.models.signals import m2m_changed, post_save, pre_save
 from django.dispatch import receiver
 
-from .models import Reservation
+from .fixed_lesson_membership_service import synchronize_fixed_lesson_membership
+from .models import FixedLesson, Reservation
 from .notifications import build_reservation_canceled_message, notify_user_email_only
 
 logger = logging.getLogger(__name__)
@@ -51,3 +52,18 @@ def reservation_status_notification(sender, instance, created, **kwargs):
         )
     except Exception as e:
         logger.warning("reservation_status_notification failed: %s", e)
+
+
+@receiver(m2m_changed, sender=FixedLesson.members.through)
+def fixed_lesson_members_changed(sender, instance, action, reverse, pk_set, **kwargs):
+    """固定メンバー設定を正本として、どの更新経路でも将来予約を同期する。"""
+    if action not in {"post_add", "post_remove", "post_clear"}:
+        return
+
+    if reverse:
+        fixed_lesson_ids = set(pk_set or [])
+    else:
+        fixed_lesson_ids = {instance.pk}
+
+    for fixed_lesson_id in sorted(fixed_lesson_ids):
+        synchronize_fixed_lesson_membership(fixed_lesson_id)
