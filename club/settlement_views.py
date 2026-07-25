@@ -40,6 +40,29 @@ def _next_month(year, month):
     return year, month
 
 
+def _matching_active_payment(
+    settlement,
+    coach,
+    payment_type,
+    amount,
+    paid_date,
+    note,
+):
+    return (
+        SettlementPayment.objects.select_for_update()
+        .filter(
+            monthly_settlement=settlement,
+            coach=coach,
+            payment_type=payment_type,
+            amount=amount,
+            paid_date=paid_date,
+            note=note,
+            is_reversed=False,
+        )
+        .first()
+    )
+
+
 @login_required
 @require_http_methods(["GET", "POST"])
 def coach_admin_settlement(request):
@@ -147,22 +170,38 @@ def coach_admin_settlement(request):
                 return redirect(redirect_url)
 
             with transaction.atomic():
-                payment = SettlementPayment.objects.create(
-                    monthly_settlement=settlement,
-                    coach=coach,
-                    payment_type=payment_type,
-                    amount=amount,
-                    paid_date=paid_date,
-                    note=note,
-                    created_by=request.user,
+                duplicate = _matching_active_payment(
+                    settlement,
+                    coach,
+                    payment_type,
+                    amount,
+                    paid_date,
+                    note,
                 )
+                payment = duplicate
+                if payment is None:
+                    payment = SettlementPayment.objects.create(
+                        monthly_settlement=settlement,
+                        coach=coach,
+                        payment_type=payment_type,
+                        amount=amount,
+                        paid_date=paid_date,
+                        note=note,
+                        created_by=request.user,
+                    )
                 allocated = 0
                 if (
                     payment_type
                     == SettlementPayment.PAYMENT_TYPE_REIMBURSEMENT
+                    and duplicate is None
                 ):
                     allocated = allocate_reimbursement_fifo(payment)
 
+            if duplicate is not None:
+                messages.info(
+                    request,
+                    "同じ内容の支払いは既に記録済みのため、重複登録しませんでした。",
+                )
             if (
                 payment_type
                 == SettlementPayment.PAYMENT_TYPE_REIMBURSEMENT
@@ -175,7 +214,7 @@ def coach_admin_settlement(request):
                         f"{allocated:,}円を充当しました。"
                     ),
                 )
-            else:
+            elif duplicate is None:
                 messages.success(
                     request,
                     (
