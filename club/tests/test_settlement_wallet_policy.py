@@ -8,6 +8,7 @@ from django.utils import timezone
 from club.settlement_balance_policy import (
     _apply_wallet_policy,
     _automatic_court_cost,
+    _ball_expense_amount_for_month,
     _build_other_expense_policy,
     _court_transfer_allocation,
     _held_execution_reservations,
@@ -32,6 +33,45 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         self.assertEqual(_lighting_start_hour(datetime(2026, 9, 30).date()), 18)
         self.assertEqual(_lighting_start_hour(datetime(2026, 10, 1).date()), 17)
         self.assertEqual(_lighting_start_hour(datetime(2026, 2, 28).date()), 17)
+
+    def test_ball_expense_uses_only_selected_settlement_month(self):
+        expense = SimpleNamespace(
+            amount=37840,
+            expense_date=datetime(2026, 5, 10).date(),
+        )
+        meta = {
+            "ball_period_start": "2026-07",
+            "ball_period_end": "2026-09",
+        }
+
+        july = _ball_expense_amount_for_month(
+            expense,
+            meta,
+            datetime(2026, 7, 1).date(),
+            datetime(2026, 8, 1).date(),
+        )
+        august = _ball_expense_amount_for_month(
+            expense,
+            meta,
+            datetime(2026, 8, 1).date(),
+            datetime(2026, 9, 1).date(),
+        )
+        september = _ball_expense_amount_for_month(
+            expense,
+            meta,
+            datetime(2026, 9, 1).date(),
+            datetime(2026, 10, 1).date(),
+        )
+        october = _ball_expense_amount_for_month(
+            expense,
+            meta,
+            datetime(2026, 10, 1).date(),
+            datetime(2026, 11, 1).date(),
+        )
+
+        self.assertEqual((july, august, september), (12614, 12613, 12613))
+        self.assertEqual(july + august + september, 37840)
+        self.assertIsNone(october)
 
     def test_weekday_two_hour_court_without_lighting(self):
         reservation = self._reservation(
@@ -196,7 +236,7 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
             {
                 "expense": SimpleNamespace(pk=22, category="ball"),
                 "amount": 7801,
-                "payer_id": None,
+                "payer_id": 1,
                 "expense_type": "common",
                 "is_court": False,
             },
@@ -215,6 +255,10 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
             {1: 3901, 2: 2600, 3: 1300},
         )
         self.assertEqual(policy["other_burden_by_coach"], {})
+        self.assertEqual(policy["ball_reimbursement_by_coach"], {1: 7801})
+        self.assertEqual(policy["other_reimbursement_by_coach"], {})
+        self.assertEqual(policy["reimbursement_by_coach"], {1: 7801})
+        self.assertEqual(policy["reimbursement_total"], 7801)
         self.assertEqual(sum(policy["burden_by_coach"].values()), 7801)
         self.assertEqual(
             policy["detail_rows"][0]["burden_rule"],
@@ -385,7 +429,9 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
             "burden_by_coach": {coach.pk: 7800},
             "ball_burden_by_coach": {coach.pk: 3000},
             "other_burden_by_coach": {coach.pk: 4800},
-            "reimbursement_by_coach": {},
+            "ball_reimbursement_by_coach": {coach.pk: 3000},
+            "other_reimbursement_by_coach": {},
+            "reimbursement_by_coach": {coach.pk: 3000},
             "expense_total": 7800,
         }
         settlement = SimpleNamespace(
@@ -418,14 +464,15 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
 
         self.assertEqual(row["wallet_earned_amount"], 26000)
         self.assertEqual(row["ball_expense_burden"], 3000)
+        self.assertEqual(row["ball_expense_reimbursement"], 3000)
         self.assertEqual(row["other_expense_burden"], 4800)
         self.assertEqual(row["common_expense_share"], 7800)
         self.assertEqual(row["wallet_balance_adjustment"], 0)
         self.assertEqual(row["negative_carry_in"], 2080)
         self.assertEqual(row["unpaid_salary_carry_in"], 221)
-        self.assertEqual(row["salary_due"], 16341)
+        self.assertEqual(row["salary_due"], 19341)
         self.assertEqual(row["reimbursement_paid"], 2000)
-        self.assertEqual(row["unpaid_salary"], 14341)
+        self.assertEqual(row["unpaid_salary"], 17341)
         self.assertEqual(updated["cash_out_total"], 2000)
         self.assertEqual(updated["opening_balance"], 6000)
         self.assertEqual(updated["company_balance"], 30000)
