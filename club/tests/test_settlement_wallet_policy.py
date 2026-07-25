@@ -15,6 +15,7 @@ from club.settlement_balance_policy import (
     _held_participant_count_by_coach,
     _lighting_start_hour,
     _negative_carry_in_by_coach,
+    _rain_refund_policy,
     _unpaid_salary_carry_in_by_coach,
 )
 
@@ -263,6 +264,80 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         self.assertEqual(
             policy["detail_rows"][0]["burden_rule"],
             "完了済みレッスンの担当参加人数に比例",
+        )
+
+    @patch("club.settlement_balance_policy._approved_monthly_expenses")
+    def test_july_ball_expense_7568_uses_participant_ratio(self, expenses_mock):
+        expenses_mock.return_value = [
+            {
+                "expense": SimpleNamespace(pk=23, category="ball"),
+                "amount": 7568,
+                "payer_id": 1,
+                "expense_type": "common",
+                "is_court": False,
+            },
+        ]
+
+        policy = _build_other_expense_policy(
+            2026,
+            7,
+            [1, 2, 3],
+            {1: 14, 2: 4, 3: 2},
+        )
+
+        self.assertEqual(
+            policy["ball_burden_by_coach"],
+            {1: 5298, 2: 1514, 3: 756},
+        )
+        self.assertEqual(policy["ball_reimbursement_by_coach"], {1: 7568})
+        self.assertEqual(sum(policy["ball_burden_by_coach"].values()), 7568)
+
+    @patch("club.models.CoachExpense.objects.filter")
+    def test_rain_refund_waits_then_transfers_after_confirmation(
+        self,
+        filter_mock,
+    ):
+        import json
+
+        pending_meta = {
+            "approval_status": "refund_pending",
+            "rain_refund_account_name": "外部予約サイト",
+            "rain_refund_collection_coach_name": "清水峻平",
+            "rain_refund_payer_coach_name": "飯塚研太朗",
+            "rain_refund_debit_coach_id": 2,
+            "rain_refund_payer_coach_id": 1,
+        }
+        refunded_meta = {
+            **pending_meta,
+            "approval_status": "refunded",
+        }
+        pending_expense = SimpleNamespace(
+            pk=30,
+            expense_date=datetime(2026, 7, 12).date(),
+            amount=2600,
+            note=f"__EXPENSE_META__{json.dumps(pending_meta)}\n",
+        )
+        refunded_expense = SimpleNamespace(
+            pk=31,
+            expense_date=datetime(2026, 7, 19).date(),
+            amount=3200,
+            note=f"__EXPENSE_META__{json.dumps(refunded_meta)}\n",
+        )
+        filter_mock.return_value.select_related.return_value.order_by.return_value = [
+            pending_expense,
+            refunded_expense,
+        ]
+
+        policy = _rain_refund_policy(2026, 7, [1, 2, 3])
+
+        self.assertEqual(policy["pending_total"], 2600)
+        self.assertEqual(policy["burden_by_coach"], {2: 3200})
+        self.assertEqual(policy["reimbursement_by_coach"], {1: 3200})
+        self.assertEqual(policy["refunded_total"], 3200)
+        self.assertEqual(
+            sum(policy["reimbursement_by_coach"].values())
+            - sum(policy["burden_by_coach"].values()),
+            0,
         )
 
     def test_contractor_lesson_court_cost_is_shared_by_main_coaches_once(self):

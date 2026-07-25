@@ -15,6 +15,8 @@ EXPENSE_TYPE_PERSONAL = "personal"
 EXPENSE_TYPE_COMMON = "common"
 EXPENSE_TYPE_COURT_TRANSFER = "court_transfer"
 EXPENSE_APPROVAL_APPROVED = "approved"
+EXPENSE_APPROVAL_REFUND_PENDING = "refund_pending"
+EXPENSE_APPROVAL_REFUNDED = "refunded"
 EXPENSE_NOTE_META_PREFIX = "__EXPENSE_META__"
 COURT_TRANSFER_RECORD_KIND = "court_transfer"
 
@@ -397,6 +399,85 @@ def _approved_monthly_expenses(month_start, next_month):
         )
 
     return rows
+
+
+def _rain_refund_policy(year, month, main_coach_ids):
+    """返金確認済みだけを回収者から支払者への振替として精算する。"""
+    from .models import CoachExpense
+
+    month_start, next_month = _month_range(year, month)
+    main_coach_id_set = set(main_coach_ids)
+    burden_by_coach = defaultdict(int)
+    reimbursement_by_coach = defaultdict(int)
+    pending_rows = []
+    refunded_rows = []
+
+    expenses = (
+        CoachExpense.objects.filter(
+            expense_date__gte=month_start,
+            expense_date__lt=next_month,
+            category=CoachExpense.CATEGORY_COURT,
+        )
+        .select_related("created_by")
+        .order_by("expense_date", "id")
+    )
+    for expense in expenses:
+        meta = _parse_expense_note(expense.note)
+        status = meta.get("approval_status")
+        if status not in (
+            EXPENSE_APPROVAL_REFUND_PENDING,
+            EXPENSE_APPROVAL_REFUNDED,
+        ):
+            continue
+        amount = max(_money(expense.amount), 0)
+        row = {
+            "expense_id": expense.pk,
+            "expense_date": expense.expense_date.isoformat(),
+            "amount": amount,
+            "lesson_label": meta.get("court_refund_lesson_label", ""),
+            "account_name": meta.get("rain_refund_account_name", ""),
+            "collection_coach_name": meta.get(
+                "rain_refund_collection_coach_name",
+                "",
+            ),
+            "payer_coach_name": meta.get(
+                "rain_refund_payer_coach_name",
+                "",
+            ),
+        }
+        if status == EXPENSE_APPROVAL_REFUND_PENDING:
+            pending_rows.append(row)
+            continue
+
+        try:
+            debit_coach_id = int(meta.get("rain_refund_debit_coach_id"))
+            payer_coach_id = int(meta.get("rain_refund_payer_coach_id"))
+        except (TypeError, ValueError):
+            continue
+        if (
+            amount <= 0
+            or debit_coach_id not in main_coach_id_set
+            or payer_coach_id not in main_coach_id_set
+        ):
+            continue
+        burden_by_coach[debit_coach_id] += amount
+        reimbursement_by_coach[payer_coach_id] += amount
+        refunded_rows.append(
+            {
+                **row,
+                "debit_coach_id": debit_coach_id,
+                "payer_coach_id": payer_coach_id,
+            }
+        )
+
+    return {
+        "burden_by_coach": dict(burden_by_coach),
+        "reimbursement_by_coach": dict(reimbursement_by_coach),
+        "pending_rows": pending_rows,
+        "refunded_rows": refunded_rows,
+        "pending_total": sum(row["amount"] for row in pending_rows),
+        "refunded_total": sum(row["amount"] for row in refunded_rows),
+    }
 
 
 def _monthly_execution_reservations_and_status(year, month):
@@ -980,6 +1061,11 @@ def _apply_wallet_policy(result, year, month):
         main_coach_ids,
         _held_participant_count_by_coach(year, month, main_coach_ids),
     )
+    rain_refund_policy = _rain_refund_policy(
+        year,
+        month,
+        main_coach_ids,
+    )
 
     contractor_pay_total = sum(
         _money(row.get("contractor_hourly_pay_amount"))
@@ -1026,6 +1112,9 @@ def _apply_wallet_policy(result, year, month):
         contractor_burden = _money(
             contractor_share_by_main.get(coach_id)
         )
+        rain_refund_burden = _money(
+            rain_refund_policy["burden_by_coach"].get(coach_id)
+        )
 
         court_reimbursement = _money(
             court_policy["reimbursement_by_coach"].get(coach_id)
@@ -1042,10 +1131,14 @@ def _apply_wallet_policy(result, year, month):
                 other_expense_policy["reimbursement_by_coach"],
             ).get(coach_id)
         )
+        rain_refund_reimbursement = _money(
+            rain_refund_policy["reimbursement_by_coach"].get(coach_id)
+        )
         reimbursement_total = (
             court_reimbursement
             + ball_expense_reimbursement
             + other_expense_reimbursement
+            + rain_refund_reimbursement
         )
         negative_carry_in = _money(
             negative_carry_in_by_coach.get(coach_id)
@@ -1067,6 +1160,7 @@ def _apply_wallet_policy(result, year, month):
                 + ball_expense_burden
                 + other_expense_burden
                 + contractor_burden
+                + rain_refund_burden
             )
 
         final_entitlement = (
@@ -1087,6 +1181,7 @@ def _apply_wallet_policy(result, year, month):
                 "ball_expense_burden": ball_expense_burden,
                 "other_expense_burden": other_expense_burden,
                 "contractor_cost_burden": contractor_burden,
+                "rain_refund_burden": rain_refund_burden,
                 "total_cost_burden": burden_total,
                 "court_reimbursement": court_reimbursement,
                 "ball_expense_reimbursement": (
@@ -1095,6 +1190,7 @@ def _apply_wallet_policy(result, year, month):
                 "other_expense_reimbursement": (
                     other_expense_reimbursement
                 ),
+                "rain_refund_reimbursement": rain_refund_reimbursement,
                 "wallet_reimbursement": reimbursement_total,
                 "wallet_earned_amount": earned_amount,
                 "negative_carry_in": negative_carry_in,
@@ -1184,6 +1280,9 @@ def _apply_wallet_policy(result, year, month):
                     "contractor_cost_burden": _money(
                         row.get("contractor_cost_burden")
                     ),
+                    "rain_refund_burden": _money(
+                        row.get("rain_refund_burden")
+                    ),
                     "total_cost_burden": _money(
                         row.get("total_cost_burden")
                     ),
@@ -1195,6 +1294,9 @@ def _apply_wallet_policy(result, year, month):
                     ),
                     "other_expense_reimbursement": _money(
                         row.get("other_expense_reimbursement")
+                    ),
+                    "rain_refund_reimbursement": _money(
+                        row.get("rain_refund_reimbursement")
                     ),
                     "wallet_reimbursement": _money(
                         row.get("wallet_reimbursement")
@@ -1301,9 +1403,14 @@ def _apply_wallet_policy(result, year, month):
             "contractor_share_by_main": contractor_share_by_main,
             "court_policy": court_policy,
             "other_expense_policy": other_expense_policy,
+            "rain_refund_policy": rain_refund_policy,
             "wallet_difference_before_adjustment": wallet_difference,
             "wallet_adjustment_by_coach": adjustment_by_coach,
             "negative_carry_total": negative_carry_total,
+            "rain_refund_pending_rows": rain_refund_policy["pending_rows"],
+            "rain_refund_pending_total": rain_refund_policy["pending_total"],
+            "rain_refunded_rows": rain_refund_policy["refunded_rows"],
+            "rain_refunded_total": rain_refund_policy["refunded_total"],
         }
     )
     settlement.calculation_snapshot = settlement_snapshot

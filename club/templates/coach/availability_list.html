@@ -473,12 +473,7 @@
                   <div style="display:flex; gap:8px; flex-wrap:wrap;">
                     <a href="{% url 'club:coach_availability_edit' availability.pk %}" class="btn">編集</a>
 
-                    <form method="post" action="{% url 'club:coach_availability_list' %}" style="margin:0;" onsubmit="return confirm('この時間枠の予約を雨天中止にします。会員への返却処理と通知も行います。よろしいですか？');">
-                      {% csrf_token %}
-                      <input type="hidden" name="action" value="rain_cancel_slot">
-                      <input type="hidden" name="availability_id" value="{{ availability.pk }}">
-                      <button type="submit" class="btn danger-btn" {% if not row.can_rain_cancel %}disabled{% endif %}>雨天中止</button>
-                    </form>
+                    {% if row.can_rain_cancel %}<a href="{% url 'club:lesson_execution_manage' %}?year={{ availability.start_at|date:'Y' }}&month={{ availability.start_at|date:'n' }}#lesson-{{ availability.pk }}" class="btn danger-btn">雨天中止</a>{% else %}<button type="button" class="btn danger-btn" disabled>雨天中止</button>{% endif %}
 
                     <form method="post" action="{% url 'club:coach_availability_delete' availability.pk %}" style="margin:0;" onsubmit="return confirm('この枠を削除しますか？');">
                       {% csrf_token %}
@@ -564,12 +559,7 @@
               <div class="item-actions">
                 <a href="{% url 'club:coach_availability_edit' availability.pk %}" class="btn">編集</a>
 
-                <form method="post" action="{% url 'club:coach_availability_list' %}" style="margin:0;" onsubmit="return confirm('この時間枠の予約を雨天中止にします。会員への返却処理と通知も行います。よろしいですか？');">
-                  {% csrf_token %}
-                  <input type="hidden" name="action" value="rain_cancel_slot">
-                  <input type="hidden" name="availability_id" value="{{ availability.pk }}">
-                  <button type="submit" class="btn danger-btn" {% if not row.can_rain_cancel %}disabled{% endif %}>雨天中止</button>
-                </form>
+                {% if row.can_rain_cancel %}<a href="{% url 'club:lesson_execution_manage' %}?year={{ availability.start_at|date:'Y' }}&month={{ availability.start_at|date:'n' }}#lesson-{{ availability.pk }}" class="btn danger-btn">雨天中止</a>{% else %}<button type="button" class="btn danger-btn" disabled>雨天中止</button>{% endif %}
 
                 <form method="post" action="{% url 'club:coach_availability_delete' availability.pk %}" style="margin:0;" onsubmit="return confirm('この枠を削除しますか？');">
                   {% csrf_token %}

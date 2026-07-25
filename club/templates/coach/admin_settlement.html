@@ -91,6 +91,15 @@
     <div class="notice">実施済みレッスンと一致していない登録済みコート代が {{ court_cost_registered_unused_total }}円あります。対象レッスン、雨天中止、返金状態をご確認ください。</div>
   {% endif %}
 
+  {% if rain_refund_pending_rows %}
+    <section class="panel">
+      <div class="section-head"><div><h2 class="section-title">雨天中止返金待ち</h2><p class="help">返金確認前のため、コーチ別精算にはまだ反映されていません。</p></div></div>
+      {% for refund in rain_refund_pending_rows %}
+        <div class="payment-row"><strong>{{ refund.expense_date }}</strong><div>{{ refund.lesson_label|default:"雨天中止レッスン" }}<br><span class="muted">予約アカウント：{{ refund.account_name }} / 回収予定：{{ refund.collection_coach_name }} / コート支払者：{{ refund.payer_coach_name }}</span></div><strong>{{ refund.amount }}円</strong><span class="status-badge open">返金待ち</span></div>
+      {% endfor %}
+    </section>
+  {% endif %}
+
   <section class="summary-grid">
     <div class="summary primary"><div class="summary-label">会社財布の支払可能残高</div><div class="summary-value">{{ company_balance }}円</div><div class="summary-note">前月準備金＋当月売上−記録済み一括精算支払い</div></div>
     <div class="summary success"><div class="summary-label">当月売上</div><div class="summary-value">{{ wallet_revenue_total|default:cash_in_total }}円</div><div class="summary-note">チケット消費＋回収済み現金＋ガット張り</div></div>
@@ -147,6 +156,8 @@
             <div class="money-row plus"><span>ガット張り売上</span><strong>+{{ row.stringing_amount }}円</strong></div>
             {% if row.is_contractor_coach %}<div class="money-row plus"><span>業務委託報酬</span><strong>+{{ row.contractor_hourly_pay_amount }}円</strong></div>{% endif %}
             <div class="money-row minus"><span>自身のコート代負担</span><strong>-{{ row.court_cost_burden|default:0 }}円</strong></div>
+            <div class="money-row minus"><span>雨天中止返金負担</span><strong>-{{ row.rain_refund_burden|default:0 }}円</strong></div>
+            <div class="money-row plus"><span>雨天中止返金付与</span><strong>+{{ row.rain_refund_reimbursement|default:0 }}円</strong></div>
             <div class="money-row minus"><span>ボール代負担</span><strong>-{{ row.ball_expense_burden|default:0 }}円</strong></div>
             <div class="money-row plus"><span>ボール代立替付与</span><strong>+{{ row.ball_expense_reimbursement|default:0 }}円</strong></div>
             <div class="money-row minus"><span>その他経費負担</span><strong>-{{ row.other_expense_burden|default:0 }}円</strong></div>

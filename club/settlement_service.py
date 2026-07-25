@@ -445,12 +445,20 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
                     "court_cost_burden": money(
                         saved.calculation_snapshot.get("court_cost_burden")
                     ),
+                    "rain_refund_burden": money(
+                        saved.calculation_snapshot.get("rain_refund_burden")
+                    ),
                     "ball_expense_burden": money(
                         saved.calculation_snapshot.get("ball_expense_burden")
                     ),
                     "ball_expense_reimbursement": money(
                         saved.calculation_snapshot.get(
                             "ball_expense_reimbursement"
+                        )
+                    ),
+                    "rain_refund_reimbursement": money(
+                        saved.calculation_snapshot.get(
+                            "rain_refund_reimbursement"
                         )
                     ),
                     "wallet_reimbursement": money(
@@ -485,10 +493,30 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
                     "total_paid": saved.salary_paid + saved.reimbursement_paid,
                 }
             )
+        rain_refund_policy = dict(
+            (settlement.calculation_snapshot or {}).get(
+                "rain_refund_policy",
+                {},
+            )
+        )
         return {
             "settlement": settlement,
             "coach_rows": coach_rows,
             "is_closed": True,
+            "rain_refund_pending_rows": rain_refund_policy.get(
+                "pending_rows",
+                [],
+            ),
+            "rain_refund_pending_total": money(
+                rain_refund_policy.get("pending_total")
+            ),
+            "rain_refunded_rows": rain_refund_policy.get(
+                "refunded_rows",
+                [],
+            ),
+            "rain_refunded_total": money(
+                rain_refund_policy.get("refunded_total")
+            ),
         }
 
     coaches = list(

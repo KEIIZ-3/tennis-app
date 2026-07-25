@@ -4981,14 +4981,6 @@ def _court_expense_matches_availability(expense, availability):
     )
 
 
-def _mark_court_expenses_refund_pending_for_rain_cancel(availability, *, changed_by=None):
-    # コート代はレッスンと独立した月次経費として扱う。
-    # 雨天中止でも登録済み経費の状態・金額は変更しない。
-    return 0
-
-    return changed_count
-
-
 def _expense_meta_row(expense):
     meta = _expense_parse_note(getattr(expense, "note", ""))
     ball_period_start = str(meta.get("ball_period_start") or "").strip()
@@ -7334,47 +7326,20 @@ def coach_availability_list(request):
 
             if not _availability_can_manage(request.user, availability):
                 return HttpResponse("Forbidden", status=403)
-
-            active_reservations = _active_reservations_for_availability(availability)
-            if not active_reservations:
-                messages.warning(request, "この時間枠に雨天中止対象の予約はありません。")
-                return redirect("club:coach_availability_list")
-
-            canceled_count = 0
-            for reservation in active_reservations:
-                try:
-                    with transaction.atomic():
-                        succeeded = reservation.mark_rain_canceled(
-                            created_by=request.user,
-                            reason="雨天中止（スケジュール管理から実行）",
-                        )
-                    if succeeded:
-                        canceled_count += 1
-                        member_message = build_reservation_rain_canceled_message(reservation)
-                        _send_line_notification_safely(reservation.user, member_message)
-                except Exception:
-                    continue
-
-            if canceled_count > 0:
-                refund_pending_count = _mark_court_expenses_refund_pending_for_rain_cancel(
-                    availability,
-                    changed_by=request.user,
-                )
-                message_text = (
-                    f"雨天中止を実行しました。対象予約 {canceled_count} 件を中止し、会員へ通知しました。"
-                )
-                if refund_pending_count:
-                    message_text += f" コート費用 {refund_pending_count} 件を「雨天返金待ち」に差し戻しました。"
-                else:
-                    message_text += (
-                        " 紐づく承認済みコート費用は見つかりませんでした。"
-                        " 経費登録時に、対象レッスン（施設名・日付・時間帯）を選択しているか確認してください。"
-                    )
-                messages.success(request, message_text)
-            else:
-                messages.warning(request, "雨天中止の対象予約はありませんでした。")
-
-            return redirect("club:coach_availability_list")
+            start_local = (
+                timezone.localtime(availability.start_at)
+                if timezone.is_aware(availability.start_at)
+                else availability.start_at
+            )
+            messages.info(
+                request,
+                "予約アカウント・回収予定コーチ・コート支払者を選択してください。",
+            )
+            return redirect(
+                f"{reverse('club:lesson_execution_manage')}?"
+                f"year={start_local.year}&month={start_local.month}"
+                f"#lesson-{availability.pk}"
+            )
 
         messages.error(request, "不正な操作です。")
         return redirect("club:coach_availability_list")
