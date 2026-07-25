@@ -414,6 +414,77 @@ class ReservationFlowSmokeTests(TestCase):
             action_response["Location"],
         )
 
+    def test_legacy_rain_cancel_without_refund_data_has_recovery_link(self):
+        lesson_date = timezone.localdate() - timedelta(days=1)
+        start_at = timezone.make_aware(
+            datetime.combine(
+                lesson_date,
+                datetime.min.time(),
+            ).replace(hour=10)
+        )
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+            capacity=1,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        settlement = MonthlySettlement.objects.create(
+            year=lesson_date.year,
+            month=lesson_date.month,
+        )
+        Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            availability=availability,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+            status=Reservation.STATUS_RAIN_CANCELED,
+            cancellation_reason="雨天中止（旧方式）",
+        )
+
+        missing_rows = lesson_execution.missing_rain_refund_rows(
+            lesson_date.year,
+            lesson_date.month,
+        )
+
+        self.assertEqual(len(missing_rows), 1)
+        self.assertEqual(
+            missing_rows[0]["availability_id"],
+            availability.pk,
+        )
+        self.assertIn(
+            f"open_rain={availability.pk}",
+            missing_rows[0]["registration_url"],
+        )
+
+        self.coach.is_staff = True
+        self.coach.save(update_fields=["is_staff"])
+        self.client.force_login(self.coach)
+        settlement_response = self.client.get(
+            reverse("club:coach_admin_settlement"),
+            data={"year": lesson_date.year, "month": lesson_date.month},
+        )
+        self.assertContains(settlement_response, "雨天中止・返金情報未登録")
+        self.assertContains(settlement_response, "コート支払者を入力")
+
+        execution_response = self.client.get(
+            reverse("club:lesson_execution_manage"),
+            data={
+                "year": lesson_date.year,
+                "month": lesson_date.month,
+                "open_rain": availability.pk,
+            },
+        )
+        self.assertContains(execution_response, "雨天中止の返金情報を入力してください")
+        self.assertContains(execution_response, "雨天中止・返金情報を登録")
+
     def test_substitute_contractor_sees_fixed_lesson_weekly(self):
         fixed_lesson = self._create_fixed_lesson(
             coach=self.coach,

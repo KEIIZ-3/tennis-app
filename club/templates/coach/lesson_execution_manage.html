@@ -123,14 +123,19 @@
               {% if row.can_mark_held and row.status != "held" %}
                 <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}">{% if pending_only %}<input type="hidden" name="pending" value="1">{% endif %}<input type="hidden" name="availability_id" value="{{ row.availability.id }}"><input type="hidden" name="action" value="held"><button type="submit" class="btn btn-held" onclick="return confirm('このレッスンを実施済みにしますか？');">実施済みにする</button></form>
               {% endif %}
-              {% if row.can_mark_rain %}
+              {% if row.can_mark_rain or row.rain_refund_missing %}
+                {% if open_rain_id == row.availability.id|stringformat:"s" %}
                 <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}">{% if pending_only %}<input type="hidden" name="pending" value="1">{% endif %}<input type="hidden" name="availability_id" value="{{ row.availability.id }}"><input type="hidden" name="action" value="rain_canceled">
+                  <div class="confirmed-note">雨天中止の返金情報を入力してください。ここで選んだコート支払者が、返金確認後の付与先になります。</div>
                   <label>予約アカウント<select name="rain_booking_account" required onchange="const isOther=this.value==='other'; const other=this.form.querySelector('[name=rain_booking_account_other]'); const collection=this.form.querySelector('[data-rain-collection]'); const collectionSelect=this.form.querySelector('[name=rain_collection_coach_id]'); other.hidden=!isOther; other.required=isOther; collection.hidden=!isOther; collectionSelect.required=isOther; if(!isOther){other.value=''; collectionSelect.value='';}"><option value="">選択してください</option>{% for coach in main_coach_options %}<option value="{{ coach.id }}">{{ coach.display_name }}</option>{% endfor %}<option value="other">その他</option></select></label>
                   <input name="rain_booking_account_other" type="text" placeholder="その他のアカウント情報" hidden>
                   <label data-rain-collection hidden>回収予定コーチ<select name="rain_collection_coach_id"><option value="">選択してください</option>{% for coach in main_coach_options %}<option value="{{ coach.id }}">{{ coach.display_name }}</option>{% endfor %}</select></label>
                   <label>コート支払者<select name="rain_court_payer_id" required><option value="">選択してください</option>{% for coach in main_coach_options %}<option value="{{ coach.id }}">{{ coach.display_name }}</option>{% endfor %}</select></label>
-                  <button type="submit" class="btn btn-rain" onclick="return confirm('雨天中止として予約をキャンセルし、コート代を返金待ちにしますか？');">雨天中止</button>
+                  <button type="submit" class="btn btn-rain" onclick="return confirm('入力内容を保存し、コート代を返金待ちにしますか？');">雨天中止・返金情報を登録</button>
                 </form>
+                {% else %}
+                  <a href="?year={{ selected_year }}&month={{ selected_month }}{% if pending_only %}&pending=1{% endif %}&open_rain={{ row.availability.id }}#lesson-{{ row.availability.id }}" class="btn btn-rain">雨天中止・コート支払者入力へ</a>
+                {% endif %}
               {% endif %}
               {% if row.can_mark_refunded %}
                 <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}">{% if pending_only %}<input type="hidden" name="pending" value="1">{% endif %}<input type="hidden" name="availability_id" value="{{ row.availability.id }}"><input type="hidden" name="action" value="refunded"><button type="submit" class="btn btn-held" onclick="return confirm('コート側からの返金を確認済みにしますか？');">返金確認</button></form>

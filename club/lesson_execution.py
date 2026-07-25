@@ -151,6 +151,51 @@ def status_by_availability(user, year_month_pairs):
     return result
 
 
+def missing_rain_refund_rows(year, month):
+    """雨天中止済みだが返金情報が未登録の開催枠を月次画面へ返す。"""
+    settlement = get_or_create_monthly_settlement(year, month)
+    status_map = read_status_map(settlement)
+    registered_availability_ids = set(
+        RainRefund.objects.filter(
+            lesson_date__gte=_month_range(year, month)[0],
+            lesson_date__lt=_month_range(year, month)[1],
+            availability_id__isnull=False,
+        ).values_list("availability_id", flat=True)
+    )
+    rows = []
+    for slot in _canonical_slots(year, month):
+        availability = slot["availability"]
+        status = _status_entry(status_map, slot).get("status")
+        has_legacy_rain_cancel = any(
+            reservation.status == Reservation.STATUS_RAIN_CANCELED
+            or "雨天中止" in str(reservation.cancellation_reason or "")
+            for reservation in _reservation_queryset(slot)
+        )
+        if (
+            status not in (STATUS_RAIN_CANCELED, STATUS_REFUND_PENDING)
+            and not has_legacy_rain_cancel
+        ) or availability.pk in registered_availability_ids:
+            continue
+        start_local = _local(slot["start_at"])
+        rows.append(
+            {
+                "availability_id": availability.pk,
+                "lesson_date": start_local.date().isoformat(),
+                "lesson_label": (
+                    f"{start_local:%Y/%m/%d %H:%M} "
+                    f"{availability.get_lesson_type_display()} / {availability.court}"
+                ),
+                "registration_url": (
+                    f"{reverse('club:lesson_execution_manage')}?"
+                    f"year={int(year)}&month={int(month)}"
+                    f"&open_rain={availability.pk}"
+                    f"#lesson-{availability.pk}"
+                ),
+            }
+        )
+    return rows
+
+
 def _availability_key(availability):
     return f"availability:{availability.pk}"
 
@@ -661,6 +706,7 @@ def lesson_execution_manage(request):
         or request.POST.get("pending")
         or ""
     ).strip() == "1"
+    open_rain_id = str(request.GET.get("open_rain") or "").strip()
     redirect_url = _month_url(
         selected_year,
         selected_month,
@@ -861,15 +907,29 @@ def lesson_execution_manage(request):
         .select_related("created_by")
         .order_by("-id")
     )
+    rain_refund_availability_ids = set(
+        RainRefund.objects.filter(
+            lesson_date__gte=month_start,
+            lesson_date__lt=next_month,
+            availability_id__isnull=False,
+        ).values_list("availability_id", flat=True)
+    )
 
     for slot in slots:
         availability = slot["availability"]
         reservations = list(_reservation_queryset(slot))
         entry = _status_entry(status_map, slot)
         saved_status = entry.get("status")
+        has_legacy_rain_cancel = any(
+            reservation.status == Reservation.STATUS_RAIN_CANCELED
+            or "雨天中止" in str(reservation.cancellation_reason or "")
+            for reservation in reservations
+        )
 
         if saved_status in STATUS_LABELS:
             status = saved_status
+        elif has_legacy_rain_cancel:
+            status = STATUS_RAIN_CANCELED
         elif slot["end_at"] > timezone.now():
             status = STATUS_SCHEDULED
         else:
@@ -890,6 +950,7 @@ def lesson_execution_manage(request):
             court_expenses,
             availability,
         )
+        rain_refund_exists = availability.pk in rain_refund_availability_ids
         approval_status = court_meta.get("approval_status", "")
         court_not_required = bool(
             court_meta.get("court_cost_not_required")
@@ -963,8 +1024,13 @@ def lesson_execution_manage(request):
                     STATUS_REFUNDED,
                     STATUS_REFUND_PENDING,
                 ),
-                "can_mark_refunded": status
-                in (STATUS_RAIN_CANCELED, STATUS_REFUND_PENDING),
+                "can_mark_refunded": (
+                    rain_refund_exists
+                    and status in (
+                        STATUS_RAIN_CANCELED,
+                        STATUS_REFUND_PENDING,
+                    )
+                ),
                 "updated_by_name": entry.get("updated_by_name", ""),
                 "source_kind": slot["source_kind"],
                 "court_status": court_status,
@@ -1002,6 +1068,10 @@ def lesson_execution_manage(request):
                     and court_status == "unregistered"
                 ),
                 "needs_attention": needs_attention,
+                "rain_refund_missing": bool(
+                    status in (STATUS_RAIN_CANCELED, STATUS_REFUND_PENDING)
+                    and not rain_refund_exists
+                ),
             }
         )
 
@@ -1044,5 +1114,6 @@ def lesson_execution_manage(request):
             "pending_only": pending_only,
             "visible_row_count": len(rows),
             "main_coach_options": main_coaches(),
+            "open_rain_id": open_rain_id,
         },
     )
