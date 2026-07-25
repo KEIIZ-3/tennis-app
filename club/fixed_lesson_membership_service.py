@@ -2,12 +2,18 @@ from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.utils import timezone
 
+from .family_reservations import (
+    PARTICIPANT_SELF,
+    resolve_reservation_participant,
+    save_reservation_participant_snapshot,
+)
 from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation
 
 
 MEMBER_CANCEL_REASON = "会員が予約確認画面からキャンセル"
 MEMBER_REMOVED_REASON = "固定レッスンメンバー解除"
 OCCURRENCE_REMOVED_REASON = "固定レッスンの開催回数変更による自動整理"
+DUPLICATE_RESERVATION_REASON = "固定メンバー予約との重複整理"
 
 
 def _is_intentionally_canceled(fixed_lesson, member, start_at, end_at):
@@ -26,111 +32,243 @@ def _is_intentionally_canceled(fixed_lesson, member, start_at, end_at):
     ).exists()
 
 
-def _sync_availability(fixed_lesson, start_at, end_at, required_capacity):
+def _fixed_note(fixed_lesson):
+    return f"固定レッスン: {fixed_lesson.title or fixed_lesson.get_weekday_display()}"
+
+
+def _canonical_availability(fixed_lesson, start_at, end_at, required_capacity):
+    """同一コーチ・種別・日時を1つの開催枠として扱う。"""
     primary_coach = fixed_lesson.primary_coach()
-    availability, _created = CoachAvailability.objects.get_or_create(
-        coach=primary_coach,
-        court=fixed_lesson.court,
-        lesson_type=fixed_lesson.lesson_type,
-        start_at=start_at,
-        end_at=end_at,
-        defaults={
-            "capacity": required_capacity,
-            "coach_count": fixed_lesson.coach_count,
-            "court_count": fixed_lesson.court_count,
-            "target_level": fixed_lesson.target_level,
-            "target_level_2": fixed_lesson.target_level_2,
-            "note": f"固定レッスン: {fixed_lesson.title or fixed_lesson.get_weekday_display()}",
-        },
+    candidates = list(
+        CoachAvailability.objects.select_for_update()
+        .filter(
+            coach=primary_coach,
+            lesson_type=fixed_lesson.lesson_type,
+            start_at=start_at,
+            end_at=end_at,
+        )
+        .order_by("id")
     )
 
-    updated_fields = []
+    if candidates:
+        availability = candidates[0]
+    else:
+        availability = CoachAvailability(
+            coach=primary_coach,
+            court=fixed_lesson.court,
+            lesson_type=fixed_lesson.lesson_type,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=required_capacity,
+            coach_count=fixed_lesson.coach_count,
+            court_count=fixed_lesson.court_count,
+            target_level=fixed_lesson.target_level,
+            target_level_2=fixed_lesson.target_level_2,
+            note=_fixed_note(fixed_lesson),
+        )
+        availability.save()
+        candidates = [availability]
+
     desired_values = {
+        "court": fixed_lesson.court,
         "capacity": required_capacity,
         "coach_count": fixed_lesson.coach_count,
         "court_count": fixed_lesson.court_count,
         "target_level": fixed_lesson.target_level,
         "target_level_2": fixed_lesson.target_level_2,
+        "note": _fixed_note(fixed_lesson),
     }
+    updated_fields = []
     for field_name, desired_value in desired_values.items():
-        if getattr(availability, field_name) != desired_value:
+        current_id = getattr(availability, f"{field_name}_id", None)
+        desired_id = getattr(desired_value, "pk", None)
+        changed = (
+            current_id != desired_id
+            if desired_id is not None
+            else getattr(availability, field_name) != desired_value
+        )
+        if changed:
             setattr(availability, field_name, desired_value)
             updated_fields.append(field_name)
-
-    if not availability.note:
-        availability.note = f"固定レッスン: {fixed_lesson.title or fixed_lesson.get_weekday_display()}"
-        updated_fields.append("note")
-
     if updated_fields:
         availability.save(update_fields=updated_fields)
+
+    duplicate_ids = [item.pk for item in candidates[1:]]
+    if duplicate_ids:
+        Reservation.objects.filter(
+            availability_id__in=duplicate_ids,
+            fixed_lesson=fixed_lesson,
+            start_at=start_at,
+            end_at=end_at,
+            status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+        ).update(
+            coach=primary_coach,
+            court=fixed_lesson.court,
+            availability=availability,
+            lesson_type=fixed_lesson.lesson_type,
+            target_level=fixed_lesson.target_level,
+            target_level_2=fixed_lesson.target_level_2,
+            substitute_coach=availability.substitute_coach,
+            custom_ticket_price=availability.custom_ticket_price,
+            custom_duration_hours=availability.custom_duration_hours,
+        )
+        LessonWaitlist.objects.filter(
+            availability_id__in=duplicate_ids,
+            fixed_lesson=fixed_lesson,
+            start_at=start_at,
+            end_at=end_at,
+            status=LessonWaitlist.STATUS_WAITING,
+        ).update(
+            coach=primary_coach,
+            court=fixed_lesson.court,
+            availability=availability,
+            lesson_type=fixed_lesson.lesson_type,
+            target_level=fixed_lesson.target_level,
+            target_level_2=fixed_lesson.target_level_2,
+            substitute_coach=availability.substitute_coach,
+        )
+
+        for duplicate in candidates[1:]:
+            has_links = (
+                Reservation.objects.filter(availability=duplicate).exists()
+                or LessonWaitlist.objects.filter(availability=duplicate).exists()
+            )
+            if not has_links and (duplicate.note or "").startswith("固定レッスン:"):
+                duplicate.delete()
 
     return availability
 
 
-def _create_or_update_reservation(fixed_lesson, member, availability, start_at, end_at):
-    existing = Reservation.objects.filter(
-        user=member,
-        fixed_lesson=fixed_lesson,
-        is_fixed_entry=True,
-        start_at=start_at,
-        end_at=end_at,
-        status=Reservation.STATUS_ACTIVE,
-    ).first()
+def _ensure_self_snapshot(reservation):
+    participant = resolve_reservation_participant(reservation.user, PARTICIPANT_SELF)
+    save_reservation_participant_snapshot(reservation, participant)
 
-    if existing:
-        update_fields = []
+
+def _active_occurrence_reservations(fixed_lesson, member, availability, start_at, end_at):
+    return list(
+        Reservation.objects.select_for_update()
+        .filter(
+            user=member,
+            lesson_type=fixed_lesson.lesson_type,
+            start_at=start_at,
+            end_at=end_at,
+            status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+        )
+        .filter(
+            models.Q(fixed_lesson=fixed_lesson)
+            | models.Q(availability=availability)
+            | models.Q(
+                coach=fixed_lesson.primary_coach(),
+                court=fixed_lesson.court,
+            )
+        )
+        .order_by("-is_fixed_entry", "id")
+        .distinct()
+    )
+
+
+def _cancel_duplicate_reservations(reservations, canonical, created_by=None):
+    for reservation in reservations:
+        if reservation.pk == canonical.pk:
+            continue
+        reservation.cancel(
+            created_by=created_by,
+            reason=DUPLICATE_RESERVATION_REASON,
+        )
+
+
+def _create_or_update_reservation(
+    fixed_lesson,
+    member,
+    availability,
+    start_at,
+    end_at,
+    created_by=None,
+):
+    occurrence_reservations = _active_occurrence_reservations(
+        fixed_lesson,
+        member,
+        availability,
+        start_at,
+        end_at,
+    )
+    canonical = next(
+        (
+            reservation
+            for reservation in occurrence_reservations
+            if reservation.is_fixed_entry
+            and reservation.fixed_lesson_id == fixed_lesson.pk
+        ),
+        None,
+    )
+
+    if canonical is None:
+        for reservation in occurrence_reservations:
+            reservation.cancel(
+                created_by=created_by,
+                reason=DUPLICATE_RESERVATION_REASON,
+            )
+
+        canonical = Reservation(
+            user=member,
+            coach=fixed_lesson.primary_coach(),
+            substitute_coach=availability.substitute_coach,
+            court=fixed_lesson.court,
+            availability=availability,
+            fixed_lesson=fixed_lesson,
+            is_fixed_entry=True,
+            lesson_type=fixed_lesson.lesson_type,
+            target_level=fixed_lesson.target_level,
+            target_level_2=fixed_lesson.target_level_2,
+            start_at=start_at,
+            end_at=end_at,
+            status=Reservation.STATUS_ACTIVE,
+            custom_ticket_price=availability.custom_ticket_price,
+            custom_duration_hours=availability.custom_duration_hours,
+        )
+        canonical.full_clean()
+        canonical.save()
+    else:
         desired_values = {
             "coach": fixed_lesson.primary_coach(),
             "substitute_coach": availability.substitute_coach,
             "court": fixed_lesson.court,
             "availability": availability,
+            "fixed_lesson": fixed_lesson,
+            "is_fixed_entry": True,
             "lesson_type": fixed_lesson.lesson_type,
             "target_level": fixed_lesson.target_level,
             "target_level_2": fixed_lesson.target_level_2,
             "custom_ticket_price": availability.custom_ticket_price,
             "custom_duration_hours": availability.custom_duration_hours,
         }
+        updated_fields = []
         for field_name, desired_value in desired_values.items():
-            current_id = getattr(existing, f"{field_name}_id", None)
+            current_id = getattr(canonical, f"{field_name}_id", None)
             desired_id = getattr(desired_value, "pk", None)
-            if desired_id is not None:
-                changed = current_id != desired_id
-            else:
-                changed = getattr(existing, field_name) != desired_value
+            changed = (
+                current_id != desired_id
+                if desired_id is not None
+                else getattr(canonical, field_name) != desired_value
+            )
             if changed:
-                setattr(existing, field_name, desired_value)
-                update_fields.append(field_name)
-        if update_fields:
-            existing.save(update_fields=update_fields)
-        return existing
+                setattr(canonical, field_name, desired_value)
+                updated_fields.append(field_name)
+        if updated_fields:
+            canonical.save(update_fields=updated_fields)
 
-    reservation = Reservation(
-        user=member,
-        coach=fixed_lesson.primary_coach(),
-        substitute_coach=availability.substitute_coach,
-        court=fixed_lesson.court,
-        availability=availability,
-        fixed_lesson=fixed_lesson,
-        is_fixed_entry=True,
-        lesson_type=fixed_lesson.lesson_type,
-        target_level=fixed_lesson.target_level,
-        target_level_2=fixed_lesson.target_level_2,
-        start_at=start_at,
-        end_at=end_at,
-        status=Reservation.STATUS_ACTIVE,
-        custom_ticket_price=availability.custom_ticket_price,
-        custom_duration_hours=availability.custom_duration_hours,
-    )
-    reservation.full_clean()
-    reservation.save()
+        _cancel_duplicate_reservations(
+            occurrence_reservations,
+            canonical,
+            created_by=created_by,
+        )
 
-    # 固定メンバー登録は参加枠の確保であり、将来回のチケット前払いではない。
-    # チケット0枚でも予約可能という運用要件を守るため、ここでは消費しない。
-    return reservation
+    _ensure_self_snapshot(canonical)
+    return canonical
 
 
 def synchronize_fixed_lesson_membership(fixed_lesson_id, created_by=None):
-    """FixedLesson.members を正本として、将来の固定予約を原子的に一致させる。"""
+    """FixedLesson.members を正本として、開催枠・参加者・予約を原子的に一致させる。"""
     with transaction.atomic():
         fixed_lesson = (
             FixedLesson.objects.select_for_update()
@@ -175,7 +313,7 @@ def synchronize_fixed_lesson_membership(fixed_lesson_id, created_by=None):
 
         for target_date in target_dates:
             start_at, end_at = fixed_lesson._build_datetimes_for_date(target_date)
-            availability = _sync_availability(
+            availability = _canonical_availability(
                 fixed_lesson,
                 start_at,
                 end_at,
@@ -221,25 +359,29 @@ def synchronize_fixed_lesson_membership(fixed_lesson_id, created_by=None):
                     end_at,
                 ):
                     continue
-                before_exists = Reservation.objects.filter(
-                    user=member,
-                    fixed_lesson=fixed_lesson,
-                    is_fixed_entry=True,
-                    start_at=start_at,
-                    end_at=end_at,
-                    status=Reservation.STATUS_ACTIVE,
-                ).exists()
-                _create_or_update_reservation(
+                before_ids = set(
+                    Reservation.objects.filter(
+                        user=member,
+                        fixed_lesson=fixed_lesson,
+                        is_fixed_entry=True,
+                        start_at=start_at,
+                        end_at=end_at,
+                        status=Reservation.STATUS_ACTIVE,
+                    ).values_list("pk", flat=True)
+                )
+                reservation = _create_or_update_reservation(
                     fixed_lesson,
                     member,
                     availability,
                     start_at,
                     end_at,
+                    created_by=created_by,
                 )
-                if not before_exists:
+                if reservation.pk not in before_ids:
                     changed_count += 1
 
         missing = []
+        duplicates = []
         for target_date in target_dates:
             start_at, end_at = fixed_lesson._build_datetimes_for_date(target_date)
             for member in members:
@@ -250,20 +392,29 @@ def synchronize_fixed_lesson_membership(fixed_lesson_id, created_by=None):
                     end_at,
                 ):
                     continue
-                exists = Reservation.objects.filter(
+                active_qs = Reservation.objects.filter(
                     user=member,
-                    fixed_lesson=fixed_lesson,
-                    is_fixed_entry=True,
+                    lesson_type=fixed_lesson.lesson_type,
                     start_at=start_at,
                     end_at=end_at,
-                    status=Reservation.STATUS_ACTIVE,
-                ).exists()
-                if not exists:
+                    status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+                )
+                fixed_count = active_qs.filter(
+                    fixed_lesson=fixed_lesson,
+                    is_fixed_entry=True,
+                ).count()
+                if fixed_count != 1:
                     missing.append(f"{member.display_name()} / {target_date:%Y-%m-%d}")
+                if active_qs.count() != 1:
+                    duplicates.append(f"{member.display_name()} / {target_date:%Y-%m-%d}")
 
         if missing:
             raise ValidationError(
                 "固定メンバー予約の生成結果が設定と一致しません: " + "、".join(missing)
+            )
+        if duplicates:
+            raise ValidationError(
+                "同一参加者の重複予約が解消されていません: " + "、".join(duplicates)
             )
 
         return changed_count
