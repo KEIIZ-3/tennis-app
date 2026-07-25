@@ -11,7 +11,14 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from .lesson_execution_storage import read_status_map, save_status
-from .models import CoachAvailability, CoachExpense, Court, FixedLesson, Reservation
+from .models import (
+    CoachAvailability,
+    CoachExpense,
+    Court,
+    FixedLesson,
+    RainRefund,
+    Reservation,
+)
 from .settlement_balance_policy import main_coaches
 from .settlement_service import calculate_monthly_settlement, get_or_create_monthly_settlement
 
@@ -455,6 +462,7 @@ def _mark_court_expense_refund_pending(
 ):
     from .views import (
         EXPENSE_APPROVAL_REFUND_PENDING,
+        _availability_court_refund_lesson_label,
         _court_expense_matches_availability,
         _expense_build_note,
         _expense_parse_note,
@@ -527,6 +535,27 @@ def _mark_court_expense_refund_pending(
             extra_meta=extra_meta,
         )
         expense.save(update_fields=["note"])
+        RainRefund.objects.update_or_create(
+            expense=expense,
+            defaults={
+                "availability": availability,
+                "lesson_date": _local(availability.start_at).date(),
+                "lesson_label": meta.get(
+                    "court_refund_lesson_label",
+                    _availability_court_refund_lesson_label(availability),
+                ),
+                "amount": int(expense.amount or 0),
+                "status": RainRefund.STATUS_PENDING,
+                "booking_account_kind": refund_input["account_kind"],
+                "booking_account_coach": account_coach,
+                "booking_account_other": refund_input["account_other"],
+                "collection_coach": collection_coach,
+                "debit_coach": debit_coach,
+                "payer_coach": payer_coach,
+                "confirmed_at": None,
+                "confirmed_by": None,
+            },
+        )
         return expense
     return None
 

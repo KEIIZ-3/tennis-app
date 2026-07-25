@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -39,11 +39,10 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         expense = SimpleNamespace(
             amount=37840,
             expense_date=datetime(2026, 5, 10).date(),
+            settlement_period_start=date(2026, 7, 1),
+            settlement_period_end=date(2026, 9, 1),
         )
-        meta = {
-            "ball_period_start": "2026-07",
-            "ball_period_end": "2026-09",
-        }
+        meta = {}
 
         july = _ball_expense_amount_for_month(
             expense,
@@ -161,6 +160,8 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         expense = SimpleNamespace(
             amount=7568,
             expense_date=datetime(2026, 7, 25).date(),
+            settlement_period_start=None,
+            settlement_period_end=None,
         )
 
         self.assertIsNone(
@@ -176,11 +177,10 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         expense = SimpleNamespace(
             amount=7568,
             expense_date=datetime(2026, 7, 25).date(),
+            settlement_period_start=date(2026, 8, 1),
+            settlement_period_end=date(2026, 8, 1),
         )
-        meta = {
-            "ball_period_start": "2026-08",
-            "ball_period_end": "2026-08",
-        }
+        meta = {}
 
         self.assertIsNone(
             _ball_expense_amount_for_month(
@@ -335,40 +335,42 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         self.assertEqual(policy["ball_reimbursement_by_coach"], {1: 7568})
         self.assertEqual(sum(policy["ball_burden_by_coach"].values()), 7568)
 
-    @patch("club.models.CoachExpense.objects.filter")
+    @patch("club.models.RainRefund.objects.filter")
     def test_rain_refund_waits_then_transfers_after_confirmation(
         self,
         filter_mock,
     ):
-        import json
-
-        pending_meta = {
-            "approval_status": "refund_pending",
-            "rain_refund_account_name": "外部予約サイト",
-            "rain_refund_collection_coach_name": "清水峻平",
-            "rain_refund_payer_coach_name": "飯塚研太朗",
-            "rain_refund_debit_coach_id": 2,
-            "rain_refund_payer_coach_id": 1,
-        }
-        refunded_meta = {
-            **pending_meta,
-            "approval_status": "refunded",
-        }
-        pending_expense = SimpleNamespace(
-            pk=30,
-            expense_date=datetime(2026, 7, 12).date(),
+        payer = SimpleNamespace(display_name=lambda: "飯塚研太朗")
+        collection = SimpleNamespace(display_name=lambda: "清水峻平")
+        pending_refund = SimpleNamespace(
+            expense_id=30,
+            lesson_date=date(2026, 7, 12),
             amount=2600,
-            note=f"__EXPENSE_META__{json.dumps(pending_meta)}\n",
+            lesson_label="7月12日レッスン",
+            account_name="外部予約サイト",
+            collection_coach_id=2,
+            collection_coach=collection,
+            payer_coach=payer,
+            payer_coach_id=1,
+            debit_coach_id=2,
+            status="pending",
         )
-        refunded_expense = SimpleNamespace(
-            pk=31,
-            expense_date=datetime(2026, 7, 19).date(),
+        refunded_refund = SimpleNamespace(
+            expense_id=31,
+            lesson_date=date(2026, 7, 19),
             amount=3200,
-            note=f"__EXPENSE_META__{json.dumps(refunded_meta)}\n",
+            lesson_label="7月19日レッスン",
+            account_name="外部予約サイト",
+            collection_coach_id=2,
+            collection_coach=collection,
+            payer_coach=payer,
+            payer_coach_id=1,
+            debit_coach_id=2,
+            status="refunded",
         )
         filter_mock.return_value.select_related.return_value.order_by.return_value = [
-            pending_expense,
-            refunded_expense,
+            pending_refund,
+            refunded_refund,
         ]
 
         policy = _rain_refund_policy(2026, 7, [1, 2, 3])
@@ -515,6 +517,17 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
     @patch("club.settlement_balance_policy._active_reimbursement_payment_total", return_value=2000)
     @patch("club.settlement_balance_policy._unpaid_salary_carry_in_by_coach", return_value={1: 221})
     @patch("club.settlement_balance_policy._negative_carry_in_by_coach", return_value={1: 2080})
+    @patch(
+        "club.settlement_balance_policy._rain_refund_policy",
+        return_value={
+            "burden_by_coach": {},
+            "reimbursement_by_coach": {},
+            "pending_rows": [],
+            "pending_total": 0,
+            "refunded_rows": [],
+            "refunded_total": 0,
+        },
+    )
     @patch("club.settlement_balance_policy._held_participant_count_by_coach", return_value={1: 1})
     @patch("club.settlement_balance_policy._build_other_expense_policy")
     @patch("club.settlement_balance_policy._build_court_cost_policy")
@@ -527,6 +540,7 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         court_policy_mock,
         other_expense_policy_mock,
         _held_lesson_count_mock,
+        _rain_refund_mock,
         _negative_carry_mock,
         _unpaid_salary_carry_mock,
         _reimbursement_payment_mock,
