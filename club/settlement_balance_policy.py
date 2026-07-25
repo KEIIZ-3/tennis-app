@@ -598,6 +598,7 @@ def _court_transfer_allocation(
     *,
     main_coach_ids=None,
     contractor_coach_ids=None,
+    excluded_availability_ids=None,
 ):
     eligible_coach_id_set = set(eligible_coach_ids)
     main_coach_id_list = [
@@ -609,11 +610,31 @@ def _court_transfer_allocation(
     burden_by_coach = defaultdict(int)
     reimbursement_by_coach = defaultdict(int)
     detail_rows = []
+    excluded_availability_id_set = set(excluded_availability_ids or [])
+    canonical_rows_by_availability = {}
+    rows_without_availability = []
 
     for row in expense_rows:
         meta = row["meta"]
         if meta.get("record_kind") != COURT_TRANSFER_RECORD_KIND:
             continue
+        try:
+            availability_id = int(meta.get("availability_id"))
+        except (TypeError, ValueError):
+            rows_without_availability.append(row)
+            continue
+        if availability_id in excluded_availability_id_set:
+            continue
+        current = canonical_rows_by_availability.get(availability_id)
+        if current is None or row["expense"].pk > current["expense"].pk:
+            canonical_rows_by_availability[availability_id] = row
+
+    canonical_rows = [
+        *rows_without_availability,
+        *canonical_rows_by_availability.values(),
+    ]
+    for row in canonical_rows:
+        meta = row["meta"]
 
         using_coach_ids = []
         for value in meta.get("using_coach_ids") or []:
@@ -682,15 +703,25 @@ def _build_court_cost_policy(
     eligible_coach_ids,
     contractor_coach_ids,
 ):
+    from .models import RainRefund
+
     month_start, next_month = _month_range(year, month)
     reservations = _eligible_reservations(year, month)
     expenses = _approved_monthly_expenses(month_start, next_month)
+    rain_refund_availability_ids = set(
+        RainRefund.objects.filter(
+            lesson_date__gte=month_start,
+            lesson_date__lt=next_month,
+            availability_id__isnull=False,
+        ).values_list("availability_id", flat=True)
+    )
 
     transfer = _court_transfer_allocation(
         expenses,
         eligible_coach_ids,
         main_coach_ids=main_coach_ids,
         contractor_coach_ids=contractor_coach_ids,
+        excluded_availability_ids=rain_refund_availability_ids,
     )
     transfer_expense_ids = transfer["expense_ids"]
 

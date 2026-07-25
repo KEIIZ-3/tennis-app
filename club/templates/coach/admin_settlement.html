@@ -91,11 +91,14 @@
     <div class="notice">実施済みレッスンと一致していない登録済みコート代が {{ court_cost_registered_unused_total }}円あります。対象レッスン、雨天中止、返金状態をご確認ください。</div>
   {% endif %}
 
-  {% if rain_refund_pending_rows %}
+  {% if rain_refund_pending_rows or rain_refunded_rows %}
     <section class="panel">
-      <div class="section-head"><div><h2 class="section-title">雨天中止返金待ち</h2><p class="help">返金確認前のため、コーチ別精算にはまだ反映されていません。</p></div></div>
+      <div class="section-head"><div><h2 class="section-title">雨天中止・返金状況</h2><p class="help">返金待ちは精算へ未反映、返金済みはコーチ別精算の負担・付与へ反映済みです。</p></div></div>
       {% for refund in rain_refund_pending_rows %}
         <div class="payment-row"><strong>{{ refund.expense_date }}</strong><div>{{ refund.lesson_label|default:"雨天中止レッスン" }}<br><span class="muted">予約アカウント：{{ refund.account_name }} / 回収予定：{{ refund.collection_coach_name }} / コート支払者：{{ refund.payer_coach_name }}</span></div><strong>{{ refund.amount }}円</strong><span class="status-badge open">返金待ち</span></div>
+      {% endfor %}
+      {% for refund in rain_refunded_rows %}
+        <div class="payment-row"><strong>{{ refund.expense_date }}</strong><div>{{ refund.lesson_label|default:"雨天中止レッスン" }}<br><span class="muted">予約アカウント：{{ refund.account_name }} / 回収担当：{{ refund.collection_coach_name|default:"-" }} / コート支払者：{{ refund.payer_coach_name }}</span></div><strong>{{ refund.amount }}円</strong><span class="status-badge closed">返金済み・精算反映済み</span></div>
       {% endfor %}
     </section>
   {% endif %}
