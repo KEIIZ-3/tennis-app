@@ -1,12 +1,13 @@
 import re
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db import models
 from django.http import HttpResponseForbidden
-from django.utils import timezone
+from django.shortcuts import redirect
 
 from . import reservation_cancel_override, views
-from .models import FixedLesson, Reservation
+from .fixed_lesson_membership_service import synchronize_fixed_lesson_membership
+from .models import FixedLesson
 
 
 def _replace_html(response, transform):
@@ -35,12 +36,10 @@ def _improve_ticket_page(html):
         "{{ user.display_name }} さんのチケット残数、保有内訳、消費履歴を確認できます。",
         "{{ user.display_name }} さんの現在のチケット残数、予約時に差し引かれた内訳、返却履歴を確認できます。",
     )
-
     html = html.replace(
         '<a href="#ticket-consumptions" class="ticket-jump-link">消費内訳</a>',
         '<a href="#ticket-consumptions" class="ticket-jump-link">予約分の差し引き</a>',
     )
-
     html = html.replace(
         "残数、保有内訳、消費履歴を確認できます。残数が少ない場合は追加購入をご相談ください。",
         "現在の残数には、予約済みレッスンで使用するチケットの差し引きがすでに反映されています。",
@@ -87,16 +86,11 @@ def _simplify_reservation_page(html):
         r'</section>',
         re.DOTALL,
     )
-    html = canceled_section_pattern.sub("", html)
-    return html
+    return canceled_section_pattern.sub("", html)
 
 
-def _sync_missing_fixed_reservations_for_member(user):
-    """
-    固定参加登録はあるものの、過去の定員判定不整合などで開催日別の
-    Reservation が欠けた会員だけを予約確認表示前に補完する。
-    """
-    fixed_lessons = (
+def _member_fixed_lessons(user):
+    return (
         FixedLesson.objects.filter(
             is_active=True,
             members=user,
@@ -106,41 +100,46 @@ def _sync_missing_fixed_reservations_for_member(user):
         .distinct()
     )
 
-    for fixed_lesson in fixed_lessons:
-        occurrence_datetimes = [
-            fixed_lesson._build_datetimes_for_date(target_date)
-            for target_date in fixed_lesson.scheduled_occurrence_dates()
-            if target_date >= timezone.localdate()
-        ]
-        if not occurrence_datetimes:
-            continue
 
-        active_or_member_canceled_starts = set(
-            Reservation.objects.filter(
-                user=user,
-                fixed_lesson=fixed_lesson,
-                start_at__in=[start_at for start_at, _end_at in occurrence_datetimes],
-            )
-            .filter(
-                models.Q(status__in=[
-                    Reservation.STATUS_ACTIVE,
-                    Reservation.STATUS_PENDING,
-                    Reservation.STATUS_RAIN_CANCELED,
-                ])
-                | models.Q(
-                    status=Reservation.STATUS_CANCELED,
-                    cancellation_reason="会員が予約確認画面からキャンセル",
-                )
-            )
-            .values_list("start_at", flat=True)
+def _synchronize_member_fixed_lessons(user):
+    """固定メンバー設定と開催日別予約を同じ同期サービスで検証する。"""
+    for fixed_lesson in _member_fixed_lessons(user):
+        synchronize_fixed_lesson_membership(
+            fixed_lesson.pk,
+            created_by=user,
         )
-        if all(
-            start_at in active_or_member_canceled_starts
-            for start_at, _end_at in occurrence_datetimes
-        ):
-            continue
 
-        fixed_lesson.sync_future_reservations(created_by=user)
+
+def _synchronize_posted_fixed_lesson(request):
+    fixed_lesson_id = (request.POST.get("fixed_lesson_id") or "").strip()
+    if not fixed_lesson_id:
+        return
+    fixed_lesson = FixedLesson.objects.filter(
+        pk=fixed_lesson_id,
+        is_active=True,
+    ).first()
+    if fixed_lesson is None:
+        return
+    synchronize_fixed_lesson_membership(
+        fixed_lesson.pk,
+        created_by=request.user if request.user.is_authenticated else None,
+    )
+
+
+def _synchronize_requested_fixed_lesson(request):
+    fixed_lesson_id = (request.GET.get("fixed_lesson_id") or "").strip()
+    if not fixed_lesson_id:
+        return
+    fixed_lesson = FixedLesson.objects.filter(
+        pk=fixed_lesson_id,
+        is_active=True,
+    ).first()
+    if fixed_lesson is None:
+        return
+    synchronize_fixed_lesson_membership(
+        fixed_lesson.pk,
+        created_by=request.user if request.user.is_authenticated else None,
+    )
 
 
 def _improve_lesson_calendar(html):
@@ -173,14 +172,29 @@ def _improve_lesson_calendar(html):
         r'</div>',
         re.DOTALL,
     )
-    html = notice_pattern.sub(replacement_notice, html, count=1)
-
-    return html
+    return notice_pattern.sub(replacement_notice, html, count=1)
 
 
 def lesson_calendar_view(request):
+    try:
+        if request.method == "POST" and request.user.is_authenticated:
+            _synchronize_posted_fixed_lesson(request)
+    except Exception as exc:
+        messages.error(request, f"固定レッスンの予約整合性を確認できませんでした: {exc}")
+        return redirect("club:reservation_list")
+
     response = views.lesson_calendar_view(request)
     return _replace_html(response, _improve_lesson_calendar)
+
+
+@login_required
+def lesson_reservation_confirm(request):
+    try:
+        _synchronize_requested_fixed_lesson(request)
+    except Exception as exc:
+        messages.error(request, f"固定レッスンの予約整合性を確認できませんでした: {exc}")
+        return redirect("club:reservation_list")
+    return views.lesson_reservation_confirm(request)
 
 
 @login_required
@@ -194,6 +208,10 @@ def reservation_list(request):
     if getattr(request.user, "role", "") != "member":
         return HttpResponseForbidden("予約確認は会員専用です。")
 
-    _sync_missing_fixed_reservations_for_member(request.user)
+    try:
+        _synchronize_member_fixed_lessons(request.user)
+    except Exception as exc:
+        messages.error(request, f"固定レッスンの予約整合性を確認できませんでした: {exc}")
+
     response = reservation_cancel_override.reservation_list(request)
     return _replace_html(response, _simplify_reservation_page)
