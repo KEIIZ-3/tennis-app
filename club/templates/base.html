@@ -949,7 +949,6 @@
             <nav class="nav">
               <a href="{% url 'club:home' %}" class="nav-primary">ホーム</a>
               <a href="{% url 'club:lesson_calendar' %}">レッスンカレンダー</a>
-              <a href="{% url 'club:reservation_list' %}">予約確認</a>
               <a href="{% url 'club:terms' %}">利用規約</a>
               <form method="post" action="{% url 'club:logout' %}" class="logout-form">
                 {% csrf_token %}
@@ -988,7 +987,7 @@
                 <div class="coach-tabs">
                   <a href="{% url 'club:admin_dashboard' %}" class="coach-tab {% if request.resolver_match.url_name == 'admin_dashboard' %}active{% endif %}">かんたん管理</a>
                   <a href="{% url 'club:coach_today_lessons' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_today_lessons' %}active{% endif %}">本日の受付・精算</a>
-                  <a href="{% url 'club:reservation_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'reservation_list' %}active{% endif %}">
+                  <a href="{% url 'club:coach_availability_list' %}" class="coach-tab {% if request.resolver_match.url_name == 'coach_availability_list' %}active{% endif %}">
                     予約・承認
                     {% if nav_pending_count %}
                       <span class="nav-count-badge">{{ nav_pending_count }}</span>
@@ -1009,9 +1008,6 @@
                 <div class="coach-tabs">
                   <a href="{% url 'club:lesson_calendar' %}" class="coach-tab {% if request.resolver_match.url_name == 'lesson_calendar' %}active{% endif %}">レッスンカレンダー</a>
                   <a href="{% url 'club:family_member_manage' %}" class="coach-tab {% if request.resolver_match.url_name == 'family_member_manage' %}active{% endif %}">家族</a>
-                  {% if user.role == "contractor_coach" %}
-                    <a href="{% url 'club:reservation_list' %}" class="coach-tab">自分の受講予約</a>
-                  {% endif %}
                 </div>
               </section>
 
@@ -1043,7 +1039,7 @@
         <a href="{% url 'club:home' %}" class="{% if request.resolver_match.url_name == 'home' %}is-active{% endif %}">
           <span class="bottom-icon">🏠</span><span>ホーム</span>
         </a>
-        <a href="{% url 'club:reservation_list' %}" class="{% if request.resolver_match.url_name == 'reservation_list' %}is-active{% endif %}">
+        <a href="{% url 'club:coach_availability_list' %}" class="{% if request.resolver_match.url_name == 'coach_availability_list' %}is-active{% endif %}">
           <span class="bottom-icon">✅</span>
           <span class="bottom-nav-wrap">
             予約承認
@@ -1082,6 +1078,15 @@
             {% endif %}
           </span>
         </a>
+        <a href="{% url 'club:reservation_list' %}" class="{% if request.resolver_match.url_name == 'reservation_list' or request.resolver_match.url_name == 'reservation_detail' %}is-active{% endif %}">
+          <span class="bottom-icon">📋</span>
+          <span class="bottom-nav-wrap">
+            予約確認
+            {% if nav_member_upcoming_count %}
+              <span class="bottom-nav-badge">{{ nav_member_upcoming_count }}</span>
+            {% endif %}
+          </span>
+        </a>
         <a href="{% url 'club:tickets' %}" class="{% if request.resolver_match.url_name == 'tickets' %}is-active{% endif %}">
           <span class="bottom-icon">🎫</span>
           <span class="bottom-nav-wrap">
@@ -1090,9 +1095,6 @@
               <span class="bottom-nav-badge">!</span>
             {% endif %}
           </span>
-        </a>
-        <a href="{% url 'club:shop_estimate' %}" class="{% if request.resolver_match.url_name == 'shop_estimate' or request.resolver_match.url_name == 'stringing_order_create' %}is-active{% endif %}">
-          <span class="bottom-icon">🛒</span><span>Shop</span>
         </a>
         <a href="{% url 'club:help' %}" class="{% if request.resolver_match.url_name == 'help' or request.resolver_match.url_name == 'line_connect' or request.resolver_match.url_name == 'terms' %}is-active{% endif %}">
           <span class="bottom-icon">☰</span><span>メニュー</span>
