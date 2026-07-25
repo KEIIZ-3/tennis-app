@@ -182,6 +182,11 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
 
         self.assertEqual(policy["expense_total"], 7800)
         self.assertEqual(policy["burden_by_coach"], {1: 2600, 2: 2600, 3: 2600})
+        self.assertEqual(policy["ball_burden_by_coach"], {})
+        self.assertEqual(
+            policy["other_burden_by_coach"],
+            {1: 2600, 2: 2600, 3: 2600},
+        )
         self.assertEqual(policy["reimbursement_by_coach"], {})
         self.assertEqual([row["expense_id"] for row in policy["detail_rows"]], [21])
 
@@ -205,6 +210,11 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         )
 
         self.assertEqual(policy["burden_by_coach"], {1: 3901, 2: 2600, 3: 1300})
+        self.assertEqual(
+            policy["ball_burden_by_coach"],
+            {1: 3901, 2: 2600, 3: 1300},
+        )
+        self.assertEqual(policy["other_burden_by_coach"], {})
         self.assertEqual(sum(policy["burden_by_coach"].values()), 7801)
         self.assertEqual(
             policy["detail_rows"][0]["burden_rule"],
@@ -356,6 +366,8 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         }
         other_expense_policy_mock.return_value = {
             "burden_by_coach": {coach.pk: 7800},
+            "ball_burden_by_coach": {coach.pk: 3000},
+            "other_burden_by_coach": {coach.pk: 4800},
             "reimbursement_by_coach": {},
             "expense_total": 7800,
         }
@@ -388,6 +400,8 @@ class SettlementWalletCourtCostTests(SimpleTestCase):
         row = updated["coach_rows"][0]
 
         self.assertEqual(row["wallet_earned_amount"], 26000)
+        self.assertEqual(row["ball_expense_burden"], 3000)
+        self.assertEqual(row["other_expense_burden"], 4800)
         self.assertEqual(row["common_expense_share"], 7800)
         self.assertEqual(row["wallet_balance_adjustment"], 0)
         self.assertEqual(row["negative_carry_in"], 2080)

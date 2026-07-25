@@ -764,6 +764,8 @@ def _build_other_expense_policy(
     expenses = _approved_monthly_expenses(month_start, next_month)
 
     burden_by_coach = defaultdict(int)
+    ball_burden_by_coach = defaultdict(int)
+    other_burden_by_coach = defaultdict(int)
     reimbursement_by_coach = defaultdict(int)
     detail_rows = []
 
@@ -794,6 +796,10 @@ def _build_other_expense_policy(
 
         for coach_id, allocated in allocations.items():
             burden_by_coach[coach_id] += allocated
+            if getattr(row["expense"], "category", "") == "ball":
+                ball_burden_by_coach[coach_id] += allocated
+            else:
+                other_burden_by_coach[coach_id] += allocated
 
         detail_rows.append(
             {
@@ -807,6 +813,8 @@ def _build_other_expense_policy(
 
     return {
         "burden_by_coach": dict(burden_by_coach),
+        "ball_burden_by_coach": dict(ball_burden_by_coach),
+        "other_burden_by_coach": dict(other_burden_by_coach),
         "reimbursement_by_coach": dict(reimbursement_by_coach),
         "detail_rows": detail_rows,
         "expense_total": sum(row["amount"] for row in detail_rows),
@@ -976,8 +984,14 @@ def _apply_wallet_policy(result, year, month):
         court_burden = _money(
             court_policy["burden_by_coach"].get(coach_id)
         )
+        ball_expense_burden = _money(
+            other_expense_policy.get("ball_burden_by_coach", {}).get(coach_id)
+        )
         other_expense_burden = _money(
-            other_expense_policy["burden_by_coach"].get(coach_id)
+            other_expense_policy.get(
+                "other_burden_by_coach",
+                other_expense_policy["burden_by_coach"],
+            ).get(coach_id)
         )
         contractor_burden = _money(
             contractor_share_by_main.get(coach_id)
@@ -1009,6 +1023,7 @@ def _apply_wallet_policy(result, year, month):
             earned_amount = lesson_revenue + stringing_revenue
             burden_total = (
                 court_burden
+                + ball_expense_burden
                 + other_expense_burden
                 + contractor_burden
             )
@@ -1028,6 +1043,7 @@ def _apply_wallet_policy(result, year, month):
                     lesson_revenue + stringing_revenue
                 ),
                 "court_cost_burden": court_burden,
+                "ball_expense_burden": ball_expense_burden,
                 "other_expense_burden": other_expense_burden,
                 "contractor_cost_burden": contractor_burden,
                 "total_cost_burden": burden_total,
@@ -1114,6 +1130,9 @@ def _apply_wallet_policy(result, year, month):
                     ),
                     "court_cost_burden": _money(
                         row.get("court_cost_burden")
+                    ),
+                    "ball_expense_burden": _money(
+                        row.get("ball_expense_burden")
                     ),
                     "other_expense_burden": _money(
                         row.get("other_expense_burden")
