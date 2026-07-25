@@ -1,5 +1,5 @@
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 
 from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation
