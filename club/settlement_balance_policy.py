@@ -879,15 +879,9 @@ def _build_other_expense_policy(
 
         amount = row["amount"]
         payer_id = row["payer_id"]
-        if payer_id:
-            reimbursement_by_coach[payer_id] += amount
-            if getattr(row["expense"], "category", "") == "ball":
-                ball_reimbursement_by_coach[payer_id] += amount
-            else:
-                other_reimbursement_by_coach[payer_id] += amount
-
         target_ids = list(main_coach_ids)
-        if getattr(row["expense"], "category", "") == "ball":
+        is_ball_expense = getattr(row["expense"], "category", "") == "ball"
+        if is_ball_expense:
             allocations = _split_amount_by_lesson_count(
                 amount,
                 target_ids,
@@ -898,9 +892,23 @@ def _build_other_expense_policy(
             allocations = _split_amount(amount, target_ids)
             rule = "メインコーチ3人均等負担"
 
+        if payer_id:
+            if is_ball_expense:
+                # 立替者自身の按分額は本人負担として残し、他コーチから
+                # 控除する分だけを立替者への付与として計上する。
+                reimbursement_amount = max(
+                    amount - _money(allocations.get(payer_id)),
+                    0,
+                )
+                ball_reimbursement_by_coach[payer_id] += reimbursement_amount
+            else:
+                reimbursement_amount = amount
+                other_reimbursement_by_coach[payer_id] += reimbursement_amount
+            reimbursement_by_coach[payer_id] += reimbursement_amount
+
         for coach_id, allocated in allocations.items():
             burden_by_coach[coach_id] += allocated
-            if getattr(row["expense"], "category", "") == "ball":
+            if is_ball_expense:
                 ball_burden_by_coach[coach_id] += allocated
             else:
                 other_burden_by_coach[coach_id] += allocated
@@ -1447,6 +1455,10 @@ def _apply_wallet_policy(result, year, month):
             "wallet_revenue_total": total_company_revenue,
             "wallet_remaining_payable": settlement.closing_balance,
             "negative_carry_total": negative_carry_total,
+            "rain_refund_pending_rows": rain_refund_policy["pending_rows"],
+            "rain_refund_pending_total": rain_refund_policy["pending_total"],
+            "rain_refunded_rows": rain_refund_policy["refunded_rows"],
+            "rain_refunded_total": rain_refund_policy["refunded_total"],
         }
     )
     return result
