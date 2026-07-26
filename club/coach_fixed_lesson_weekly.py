@@ -7,7 +7,7 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
-from . import views as legacy
+from . import views
 from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation
 
 
@@ -15,7 +15,7 @@ from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation
 @require_GET
 def coach_fixed_lesson_weekly(request):
     """固定レッスン週間一覧を、正式な開催日と有効予約だけで集計する。"""
-    if not (legacy._is_coach_user(request.user) or legacy._is_staff_like(request.user)):
+    if not (views._is_coach_user(request.user) or views._is_staff_like(request.user)):
         return HttpResponse("Forbidden", status=403)
 
     User = get_user_model()
@@ -24,7 +24,7 @@ def coach_fixed_lesson_weekly(request):
         role__in=("coach", "contractor_coach")
     ).order_by("full_name", "username", "id")
 
-    if legacy._is_coach_user(request.user):
+    if views._is_coach_user(request.user):
         selected_coach = request.user
         selected_coach_id = str(request.user.pk)
         is_staff_mode = False
@@ -71,7 +71,7 @@ def coach_fixed_lesson_weekly(request):
             )
 
             if selected_coach is not None and not (
-                legacy._fixed_lesson_includes_coach(fixed, selected_coach)
+                views._fixed_lesson_includes_coach(fixed, selected_coach)
                 or (
                     availability
                     and availability.substitute_coach_id == selected_coach.pk
@@ -114,10 +114,10 @@ def coach_fixed_lesson_weekly(request):
                     "target_date": target_date,
                     "start_at": start_at,
                     "end_at": end_at,
-                    "assigned_coach_name": legacy._display_name(assigned_coach),
-                    "normal_coach_name": legacy._fixed_lesson_coach_names(fixed),
+                    "assigned_coach_name": views._display_name(assigned_coach),
+                    "normal_coach_name": views._fixed_lesson_coach_names(fixed),
                     "substitute_coach_name": (
-                        legacy._display_name(availability.substitute_coach)
+                        views._display_name(availability.substitute_coach)
                         if availability and availability.substitute_coach
                         else ""
                     ),

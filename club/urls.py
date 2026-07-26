@@ -1,7 +1,7 @@
 from django.urls import path
 from . import views
 from . import lesson_member_list
-from . import coach_fixed_lesson_weekly_v2
+from . import coach_fixed_lesson_weekly
 from . import admin_dashboard
 from . import court_number_line_notice
 from . import family_members
@@ -56,7 +56,7 @@ urlpatterns = [
     path("coach/availability/<int:pk>/delete/", views.coach_availability_delete, name="coach_availability_delete"),
     path("coach/requests/<int:pk>/approve/", views.coach_request_approve, name="coach_request_approve"),
     path("coach/requests/<int:pk>/reject/", views.coach_request_reject, name="coach_request_reject"),
-    path("coach/fixed-lessons/", coach_fixed_lesson_weekly_v2.coach_fixed_lesson_weekly, name="coach_fixed_lesson_weekly"),
+    path("coach/fixed-lessons/", coach_fixed_lesson_weekly.coach_fixed_lesson_weekly, name="coach_fixed_lesson_weekly"),
     path("coach/ticket-summary/", views.coach_ticket_summary, name="coach_ticket_summary"),
     path("coach/payroll-summary/", settlement_views.coach_payroll_summary, name="coach_payroll_summary"),
     path("coach/revenue-summary/", views.coach_revenue_summary, name="coach_revenue_summary"),
