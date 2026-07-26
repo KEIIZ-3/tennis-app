@@ -8,7 +8,7 @@ from django.http import HttpResponseForbidden
 from django.shortcuts import redirect
 from django.utils import timezone
 
-from . import reservation_cancel_override, views
+from . import views
 from .fixed_lesson_sync_facade import synchronize_fixed_lesson_membership
 from .fixed_occurrence_participants import active_count_map_for_month
 from .models import FixedLesson
@@ -81,25 +81,6 @@ def _improve_ticket_page(html):
     )
     html = html.replace(">使用中<", ">差し引き済み<")
     return html
-
-
-def _simplify_reservation_page(html):
-    html = html.replace(
-        "今後の予約、キャンセル待ち、過去の履歴をまとめて確認できます。家族で予約した場合も、実際に参加する受講者名を確認できます。",
-        "今後の予約、キャンセル待ち、参加済みの履歴を確認できます。キャンセル済みの予約は一覧に表示しません。",
-    )
-    html = html.replace(
-        "<div>消費チケット：{{ reservation.tickets_used }}枚</div>",
-        "<div>予約時に差し引き済み：{{ reservation.tickets_used }}枚</div>",
-    )
-
-    canceled_section_pattern = re.compile(
-        r'<section class="section-card">\s*'
-        r'<h2 class="section-title"><span>キャンセル済み・処理済み</span>.*?'
-        r'</section>',
-        re.DOTALL,
-    )
-    return canceled_section_pattern.sub("", html)
 
 
 def _member_fixed_lessons(user):
@@ -277,5 +258,4 @@ def reservation_list(request):
     except Exception as exc:
         messages.error(request, f"固定レッスンの予約整合性を確認できませんでした: {exc}")
 
-    response = reservation_cancel_override.reservation_list(request)
-    return _replace_html(response, _simplify_reservation_page)
+    return views.reservation_list(request)
