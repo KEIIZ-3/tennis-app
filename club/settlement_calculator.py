@@ -138,3 +138,66 @@ def aggregate_reservations(
                     row["preopen_unpaid_amount"] += split_amount
 
     return active_regular_coach_ids, active_coach_ids
+
+
+def aggregate_stringing_orders(*, stringing_orders, coach_map, money):
+    stringing_total = 0
+
+    for order in stringing_orders:
+        if stringing_is_cancelled(order):
+            continue
+
+        amount = money(order.total_price())
+        stringing_total += amount
+
+        assigned_coach_id = getattr(order, "assigned_coach_id", None)
+        if assigned_coach_id in coach_map:
+            coach_map[assigned_coach_id]["stringing_amount"] += amount
+
+    return stringing_total
+
+
+def classify_expense_rows(
+    *,
+    all_expense_meta_rows,
+    month_start,
+    next_month,
+    expense_type_common,
+    expense_type_personal,
+    approval_approved,
+    approval_submitted,
+):
+    monthly_expense_meta_rows = [
+        row
+        for row in all_expense_meta_rows
+        if month_start <= row["expense"].expense_date < next_month
+    ]
+    approved_common_expense_rows = [
+        row
+        for row in monthly_expense_meta_rows
+        if not row["is_payout"]
+        and row["approval_status"] == approval_approved
+        and row["expense_type"] == expense_type_common
+    ]
+    approved_personal_expense_rows = [
+        row
+        for row in all_expense_meta_rows
+        if not row["is_payout"]
+        and row["approval_status"] == approval_approved
+        and row["expense_type"] == expense_type_personal
+    ]
+    submitted_personal_expense_rows = [
+        row
+        for row in all_expense_meta_rows
+        if not row["is_payout"]
+        and row["expense_type"] == expense_type_personal
+        and row["approval_status"]
+        in (approval_submitted, approval_approved)
+    ]
+
+    return {
+        "monthly_expense_meta_rows": monthly_expense_meta_rows,
+        "approved_common_expense_rows": approved_common_expense_rows,
+        "approved_personal_expense_rows": approved_personal_expense_rows,
+        "submitted_personal_expense_rows": submitted_personal_expense_rows,
+    }
