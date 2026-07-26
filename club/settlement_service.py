@@ -1,4 +1,3 @@
-import json
 from datetime import date, datetime, time, timedelta
 
 from django.contrib.auth import get_user_model
@@ -6,6 +5,15 @@ from django.db import transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
 
+from .expense_metadata import (
+    EXPENSE_APPROVAL_APPROVED,
+    EXPENSE_APPROVAL_SUBMITTED,
+    EXPENSE_TYPE_COMMON,
+    EXPENSE_TYPE_PERSONAL,
+    EXPENSE_TYPE_REIMBURSEMENT_PAYOUT,
+    EXPENSE_TYPE_SALARY_PAYOUT,
+    expense_meta_row,
+)
 from .models import (
     CoachExpense,
     Reservation,
@@ -20,17 +28,6 @@ from .settlement_models import (
     MonthlySettlement,
     SettlementPayment,
 )
-
-
-EXPENSE_TYPE_PERSONAL = "personal"
-EXPENSE_TYPE_COMMON = "common"
-EXPENSE_TYPE_SALARY_PAYOUT = "salary_payout"
-EXPENSE_TYPE_REIMBURSEMENT_PAYOUT = "reimbursement_payout"
-
-EXPENSE_APPROVAL_SUBMITTED = "submitted"
-EXPENSE_APPROVAL_APPROVED = "approved"
-
-EXPENSE_NOTE_META_PREFIX = "__EXPENSE_META__"
 
 
 def money(value):
@@ -63,67 +60,6 @@ def aware_month_range(year, month):
     start_at = timezone.make_aware(datetime.combine(month_start, time.min))
     end_at = timezone.make_aware(datetime.combine(next_month, time.min))
     return month_start, next_month, start_at, end_at
-
-
-def parse_expense_note(stored_note):
-    default_meta = {
-        "expense_type": EXPENSE_TYPE_COMMON,
-        "receipt_status": "none",
-        "receipt_check_status": "unchecked",
-        "approval_status": EXPENSE_APPROVAL_APPROVED,
-    }
-    text = stored_note or ""
-    if not text.startswith(EXPENSE_NOTE_META_PREFIX):
-        return {
-            **default_meta,
-            "plain_note": text.strip(),
-        }
-
-    try:
-        first_line, plain_note = text.split("\n", 1)
-    except ValueError:
-        first_line = text
-        plain_note = ""
-
-    meta_text = first_line[len(EXPENSE_NOTE_META_PREFIX):].strip()
-    try:
-        parsed = json.loads(meta_text or "{}")
-    except Exception:
-        parsed = {}
-
-    return {
-        **default_meta,
-        **parsed,
-        "plain_note": (plain_note or "").strip(),
-    }
-
-
-def expense_meta_row(expense):
-    meta = parse_expense_note(expense.note)
-    expense_type = str(meta.get("expense_type") or EXPENSE_TYPE_COMMON)
-    approval_status = str(meta.get("approval_status") or EXPENSE_APPROVAL_APPROVED)
-    is_payout = (
-        str(meta.get("record_kind") or "") == "coach_payout"
-        or expense_type in {
-            EXPENSE_TYPE_SALARY_PAYOUT,
-            EXPENSE_TYPE_REIMBURSEMENT_PAYOUT,
-        }
-    )
-    type_labels = {
-        EXPENSE_TYPE_PERSONAL: "個人経費（給与計算対象外）",
-        EXPENSE_TYPE_COMMON: "共通経費",
-        EXPENSE_TYPE_SALARY_PAYOUT: "給与支払い",
-        EXPENSE_TYPE_REIMBURSEMENT_PAYOUT: "本人立替精算支払い",
-    }
-    return {
-        "expense": expense,
-        "meta": meta,
-        "plain_note": meta.get("plain_note", ""),
-        "expense_type": expense_type,
-        "expense_type_label": type_labels.get(expense_type, expense_type),
-        "approval_status": approval_status,
-        "is_payout": is_payout,
-    }
 
 
 def reservation_coaches_for_split(reservation):
