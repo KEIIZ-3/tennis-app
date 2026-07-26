@@ -478,10 +478,10 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
         ).select_related("assigned_coach", "user")
     )
     stringing_total = aggregate_stringing_orders(
-    stringing_orders=stringing_orders,
-    coach_map=coach_map,
-    money=money,
-)
+        stringing_orders=stringing_orders,
+        coach_map=coach_map,
+        money=money,
+    )
 
     all_expenses = list(
         CoachExpense.objects.filter(expense_date__lt=next_month)
