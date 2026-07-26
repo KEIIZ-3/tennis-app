@@ -14,7 +14,7 @@ from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation
 @login_required
 @require_GET
 def coach_fixed_lesson_weekly(request):
-    """固定レッスン週間一覧を開催回の有効予約だけで集計する。"""
+    """固定レッスン週間一覧を、正式な開催日と有効予約だけで集計する。"""
     if not (legacy._is_coach_user(request.user) or legacy._is_staff_like(request.user)):
         return HttpResponse("Forbidden", status=403)
 
@@ -39,7 +39,6 @@ def coach_fixed_lesson_weekly(request):
         is_staff_mode = True
 
     display_weeks = 12
-    _week_start, _week_end = legacy._week_range_for_display(today)
     display_until = today + timedelta(days=display_weeks * 7)
 
     rows = []
@@ -51,24 +50,21 @@ def coach_fixed_lesson_weekly(request):
     weekday_labels = dict(FixedLesson.WEEKDAY_CHOICES)
 
     for fixed in fixed_queryset:
-        repeat_start = getattr(fixed, "start_date", None) or today
-        if repeat_start < today:
-            repeat_start = today
-        initial_offset = (int(fixed.weekday) - repeat_start.weekday()) % 7
+        occurrence_dates = [
+            target_date
+            for target_date in fixed.scheduled_occurrence_dates()
+            if today <= target_date <= display_until
+        ]
 
-        for index in range(max(int(getattr(fixed, "weeks_ahead", 8) or 8), 1)):
-            target_date = repeat_start + timedelta(days=initial_offset + (7 * index))
-            if target_date > display_until:
-                break
-
+        for target_date in occurrence_dates:
             start_at, end_at = fixed._build_datetimes_for_date(target_date)
             availability = (
                 CoachAvailability.objects.filter(
                     lesson_type=fixed.lesson_type,
                     start_at=start_at,
                     end_at=end_at,
+                    court=fixed.court,
                 )
-                .filter(court=fixed.court)
                 .select_related("coach", "substitute_coach", "court")
                 .order_by("id")
                 .first()
@@ -128,7 +124,6 @@ def coach_fixed_lesson_weekly(request):
                     "has_substitute": bool(
                         availability and availability.substitute_coach
                     ),
-                    # 固定メンバー設定人数ではなく、開催回の有効予約数を表示する。
                     "member_count": len(reservations),
                     "member_names": reservation_names,
                     "reservation_count": len(reservations),
@@ -143,7 +138,13 @@ def coach_fixed_lesson_weekly(request):
                 }
             )
 
-    rows.sort(key=lambda row: (row["target_date"], row["start_at"], row["fixed_lesson"].id))
+    rows.sort(
+        key=lambda row: (
+            row["target_date"],
+            row["start_at"],
+            row["fixed_lesson"].id,
+        )
+    )
 
     return render(
         request,
