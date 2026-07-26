@@ -1,0 +1,53 @@
+name: Apply settlement calculator refactor
+
+on:
+  push:
+    branches:
+      - agent/use-settlement-calculator
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/use-settlement-calculator
+      - name: Refactor settlement service
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('club/settlement_service.py')
+          text = path.read_text(encoding='utf-8')
+
+          import_anchor = 'from .models import (\n'
+          calculator_import = '''from .settlement_calculator import (\n    reservation_coaches_for_split,\n    reservation_duration_minutes,\n    reservation_slot_key,\n    stringing_is_cancelled,\n)\n'''
+          if calculator_import not in text:
+              if import_anchor not in text:
+                  raise SystemExit('models import anchor not found')
+              text = text.replace(import_anchor, calculator_import + import_anchor, 1)
+
+          start_marker = 'def reservation_coaches_for_split(reservation):\n'
+          end_marker = 'def expense_allocated_total(expense, *, through_date=None):\n'
+          if start_marker in text:
+              start = text.index(start_marker)
+              if end_marker not in text[start:]:
+                  raise SystemExit('expense_allocated_total marker not found')
+              end = text.index(end_marker, start)
+              text = text[:start] + text[end:]
+
+          path.write_text(text, encoding='utf-8')
+          PY
+          python -m py_compile club/settlement_service.py club/settlement_calculator.py
+          rm .github/workflows/apply-settlement-calculator-refactor.yml
+      - name: Commit refactor
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add club/settlement_service.py .github/workflows/apply-settlement-calculator-refactor.yml
+          git commit -m "月次精算ヘルパーを共通モジュールへ切り替え"
+          git push origin HEAD:agent/use-settlement-calculator
