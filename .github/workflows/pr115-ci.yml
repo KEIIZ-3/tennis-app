@@ -1,0 +1,15 @@
+name: PR115 compile check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - club/settlement_service.py
+      - club/settlement_calculator.py
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python -m py_compile club/settlement_service.py club/settlement_calculator.py
