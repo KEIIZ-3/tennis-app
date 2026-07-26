@@ -1,4 +1,3 @@
-import json
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
@@ -10,6 +9,13 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods
 
+from .expense_metadata import (
+    EXPENSE_APPROVAL_APPROVED,
+    EXPENSE_TYPE_COURT_TRANSFER,
+    build_expense_note,
+    expense_plain_note,
+    parse_expense_note,
+)
 from .models import (
     CoachAvailability,
     CoachExpense,
@@ -18,9 +24,8 @@ from .models import (
 )
 from .settlement_balance_policy import main_coaches
 
-EXPENSE_NOTE_META_PREFIX = "__EXPENSE_META__"
 RECORD_KIND = "court_transfer"
-APPROVAL_APPROVED = "approved"
+APPROVAL_APPROVED = EXPENSE_APPROVAL_APPROVED
 APPROVAL_REFUND_PENDING = "refund_pending"
 APPROVAL_REFUNDED = "refunded"
 
@@ -48,26 +53,6 @@ def _local(value):
     return value
 
 
-def _parse_note(note):
-    text = str(note or "")
-    if not text.startswith(EXPENSE_NOTE_META_PREFIX):
-        return {}
-    first_line = text.split("\n", 1)[0]
-    raw = first_line[len(EXPENSE_NOTE_META_PREFIX):].strip()
-    try:
-        return json.loads(raw or "{}")
-    except Exception:
-        return {}
-
-
-def _build_note(meta, plain_note=""):
-    return (
-        f"{EXPENSE_NOTE_META_PREFIX}"
-        f"{json.dumps(meta, ensure_ascii=False)}\n"
-        f"{str(plain_note or '').strip()}"
-    )
-
-
 def _existing_transfer_for_availability(availability_id, *, for_update=True):
     expenses = CoachExpense.objects.filter(
         category=CoachExpense.CATEGORY_COURT,
@@ -75,7 +60,7 @@ def _existing_transfer_for_availability(availability_id, *, for_update=True):
     if for_update:
         expenses = expenses.select_for_update()
     for expense in expenses:
-        meta = _parse_note(expense.note)
+        meta = parse_expense_note(expense.note)
         if meta.get("record_kind") != RECORD_KIND:
             continue
         try:
@@ -99,7 +84,7 @@ def court_transfer_summary_for_availability(availability):
             "amount": None,
             "payer_name": "",
         }
-    meta = _parse_note(expense.note)
+    meta = parse_expense_note(expense.note)
     if meta.get("court_cost_not_required"):
         return {
             "status": "not_required",
@@ -229,7 +214,6 @@ def _using_coaches(availability):
     return coaches
 
 
-
 @login_required
 @require_http_methods(["GET", "POST"])
 def coach_expense_manage(request):
@@ -243,7 +227,6 @@ def coach_expense_manage(request):
     ).strip()
     action = (request.POST.get("action") or "").strip()
 
-    # 通常の経費管理は既存画面へ委譲します。
     if not availability_id and action != "create_court_transfer":
         from . import views
         return views.coach_expense_manage(request)
@@ -258,8 +241,6 @@ def coach_expense_manage(request):
     if not is_full_admin and request.user.pk not in using_coach_ids:
         return HttpResponse("Forbidden", status=403)
 
-    # 支払者候補はログイン可否ではなく、会計上のメインコーチ区分で決める。
-    # 休止中のアカウントでも過去・当月の立替払いは登録できる必要がある。
     payer_options = main_coaches()
     payer_by_id = {str(coach.pk): coach for coach in payer_options}
     existing_expense = _existing_transfer_for_availability(
@@ -267,7 +248,7 @@ def coach_expense_manage(request):
         for_update=False,
     )
     existing_meta = (
-        _parse_note(existing_expense.note)
+        parse_expense_note(existing_expense.note)
         if existing_expense is not None
         else {}
     )
@@ -297,7 +278,7 @@ def coach_expense_manage(request):
                 messages.error(request, exc.messages[0])
                 return redirect("club:coach_admin_settlement")
             meta = {
-                "expense_type": "court_transfer",
+                "expense_type": EXPENSE_TYPE_COURT_TRANSFER,
                 "receipt_status": "none",
                 "receipt_check_status": "checked",
                 "approval_status": APPROVAL_APPROVED,
@@ -323,7 +304,7 @@ def coach_expense_manage(request):
                     )
                 expense.expense_date = start.date()
                 expense.amount = amount
-                expense.note = _build_note(meta, plain_note)
+                expense.note = build_expense_note(meta, plain_note)
                 expense.created_by = payer
                 expense.full_clean()
                 expense.save()
@@ -359,7 +340,7 @@ def coach_expense_manage(request):
                 existing_meta.get("payer_coach_id") or ""
             ),
             "existing_note": (
-                str(existing_expense.note or "").split("\n", 1)[-1].strip()
+                expense_plain_note(existing_expense.note)
                 if existing_expense is not None
                 else ""
             ),
