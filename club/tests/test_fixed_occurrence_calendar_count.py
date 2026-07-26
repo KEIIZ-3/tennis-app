@@ -1,7 +1,7 @@
 from django.test import TestCase
 from django.utils import timezone
 
-from club.customer_calendar_consistency import _replace_fixed_occurrence_counts
+from club.customer_ui import _replace_fixed_occurrence_counts
 from club.fixed_occurrence_participants import active_count_for_occurrence
 from club.models import Court, FixedLesson, Reservation, User
 

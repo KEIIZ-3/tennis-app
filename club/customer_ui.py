@@ -1,13 +1,26 @@
+import html as html_module
 import re
+from urllib.parse import parse_qs, urlparse
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseForbidden
 from django.shortcuts import redirect
+from django.utils import timezone
 
 from . import reservation_cancel_override, views
 from .fixed_lesson_sync_facade import synchronize_fixed_lesson_membership
+from .fixed_occurrence_participants import active_count_map_for_month
 from .models import FixedLesson
+
+
+CALENDAR_ANCHOR_PATTERN = re.compile(
+    r'(<a\b[^>]*data-member-list-url="(?P<url>[^"]+)"[^>]*>)(?P<body>.*?)(</a>)',
+    re.DOTALL,
+)
+CALENDAR_COUNT_PATTERN = re.compile(
+    r'(<div class="event-meta">)\s*\d+\s*/\s*(?P<capacity>\d+)名(</div>)'
+)
 
 
 def _replace_html(response, transform):
@@ -141,7 +154,48 @@ def _synchronize_requested_fixed_lesson(request):
     )
 
 
-def _improve_lesson_calendar(html):
+def _calendar_target_month(request):
+    today = timezone.localdate()
+    try:
+        year = int(request.GET.get("year") or today.year)
+    except (TypeError, ValueError):
+        year = today.year
+    try:
+        month = int(request.GET.get("month") or today.month)
+    except (TypeError, ValueError):
+        month = today.month
+    if month < 1 or month > 12:
+        month = today.month
+    return year, month
+
+
+def _replace_fixed_occurrence_counts(document, count_map):
+    """固定開催回カードの人数を、その開催回に紐づく有効予約数へ統一する。"""
+
+    def replace_anchor(match):
+        raw_url = html_module.unescape(match.group("url"))
+        query = parse_qs(urlparse(raw_url).query)
+        fixed_lesson_id = (query.get("fixed_lesson_id") or [""])[0]
+        lesson_date = (query.get("lesson_date") or [""])[0]
+        count = count_map.get((str(fixed_lesson_id), lesson_date))
+        if count is None:
+            return match.group(0)
+
+        body = match.group("body")
+        body = CALENDAR_COUNT_PATTERN.sub(
+            lambda count_match: (
+                f'{count_match.group(1)}{int(count)}/'
+                f'{count_match.group("capacity")}名{count_match.group(3)}'
+            ),
+            body,
+            count=1,
+        )
+        return match.group(1) + body + match.group(4)
+
+    return CALENDAR_ANCHOR_PATTERN.sub(replace_anchor, document)
+
+
+def _improve_lesson_calendar(html, count_map=None):
     replacement_notice = """
 <div class="ticket-notice" style="border-color:#60a5fa; background:#eff6ff; color:#1e3a8a;">
   <span class="ticket-notice-icon" style="background:#2563eb;">i</span>
@@ -171,7 +225,10 @@ def _improve_lesson_calendar(html):
         r'</div>',
         re.DOTALL,
     )
-    return notice_pattern.sub(replacement_notice, html, count=1)
+    html = notice_pattern.sub(replacement_notice, html, count=1)
+    if count_map:
+        html = _replace_fixed_occurrence_counts(html, count_map)
+    return html
 
 
 def lesson_calendar_view(request):
@@ -182,8 +239,16 @@ def lesson_calendar_view(request):
         messages.error(request, f"固定レッスンの予約整合性を確認できませんでした: {exc}")
         return redirect("club:reservation_list")
 
+    year, month = _calendar_target_month(request)
+    count_map = active_count_map_for_month(year, month)
     response = views.lesson_calendar_view(request)
-    return _replace_html(response, _improve_lesson_calendar)
+    response = _replace_html(
+        response,
+        lambda document: _improve_lesson_calendar(document, count_map=count_map),
+    )
+    response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response["Pragma"] = "no-cache"
+    return response
 
 
 @login_required
