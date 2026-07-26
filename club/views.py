@@ -1527,15 +1527,9 @@ def lesson_calendar_view(request):
                 end_at=availability.end_at,
                 status=Reservation.STATUS_ACTIVE,
             ).count()
-            # 固定レッスンの固定参加メンバーは、予約レコードが未生成・未同期の場合でも
-            # レッスン枠の参加人数として扱う。これにより、固定参加メンバーだけで満員の場合も
-            # 会員側からキャンセル待ち登録できる。
-            if fixed_lesson is not None:
-                try:
-                    fixed_member_count = fixed_lesson.members.count()
-                except Exception:
-                    fixed_member_count = 0
-                active_count = max(int(active_count or 0), int(fixed_member_count or 0))
+            # 開催回ごとの参加人数は、有効な予約レコードだけを正本とする。
+            # 固定メンバー設定そのものは、個別開催回のキャンセル後も維持されるため、
+            # members.count() を人数へ加えるとキャンセル済み会員を再計上してしまう。
             capacity = _capacity_for_availability(availability)
 
             existing_waitlist = LessonWaitlist.objects.filter(
@@ -1576,11 +1570,7 @@ def lesson_calendar_view(request):
                             end_at=availability.end_at,
                             status=Reservation.STATUS_ACTIVE,
                         ).count()
-                        if fixed_lesson is not None:
-                            locked_active_count = max(
-                                locked_active_count,
-                                fixed_lesson.members.count(),
-                            )
+                        # 固定参加を含め、満員判定は開催回の有効予約だけで行う。
                         if locked_active_count < _capacity_for_availability(availability):
                             raise ValidationError(
                                 "このレッスンに空きが出ました。予約画面から予約してください。"
@@ -1664,11 +1654,7 @@ def lesson_calendar_view(request):
                     end_at=availability.end_at,
                     status=Reservation.STATUS_ACTIVE,
                 ).count()
-                if fixed_lesson is not None:
-                    locked_active_count = max(
-                        locked_active_count,
-                        fixed_lesson.members.count(),
-                    )
+                # 固定参加を含め、満員判定は開催回の有効予約だけで行う。
                 if locked_active_count >= _capacity_for_availability(availability):
                     raise ValidationError(
                         "このレッスンは直前に満員になりました。キャンセル待ちをご利用ください。"
@@ -2221,12 +2207,11 @@ def lesson_calendar_view(request):
                 )
 
             fixed_member_list = list(fixed_lesson.members.all())
-            fixed_member_count = len(fixed_member_list)
             fixed_key = (str(fixed_lesson.pk), cursor_date.isoformat())
+            # 固定メンバー設定ではなく、この開催回に存在する有効予約だけを表示人数とする。
             member_count = max(
                 int(active_slot_counts.get(slot_key, 0)),
                 int(fixed_lesson_active_counts.get(fixed_key, 0)),
-                fixed_member_count,
             )
             pending_count = max(
                 int(pending_slot_counts.get(slot_key, 0)),
@@ -2235,12 +2220,8 @@ def lesson_calendar_view(request):
             fixed_user_status = user_fixed_lesson_status_map.get(fixed_key, "")
             fixed_user_waitlist_id = user_fixed_lesson_waitlist_map.get(fixed_key, "")
 
-            if (
-                not fixed_user_status
-                and request.user.is_authenticated
-                and request.user.pk in {member.pk for member in fixed_member_list}
-            ):
-                fixed_user_status = Reservation.STATUS_ACTIVE
+            # 固定メンバーであっても、個別開催回をキャンセルした場合は
+            # 有効予約がないため「予約済み」へ強制変換しない。
 
             coach_names = _fixed_lesson_coach_names(fixed_lesson)
 
@@ -2568,12 +2549,7 @@ def lesson_reservation_confirm(request):
             status=Reservation.STATUS_ACTIVE,
         ).count()
 
-        if fixed_lesson is not None:
-            try:
-                fixed_member_count = fixed_lesson.members.count()
-            except Exception:
-                fixed_member_count = 0
-            active_count = max(int(active_count or 0), int(fixed_member_count or 0))
+        # 予約確認画面の参加人数も、開催回の有効予約だけを正本とする。
 
         waitlist_count = LessonWaitlist.objects.filter(
             coach=coach,
