@@ -198,6 +198,13 @@
                     <button type="submit" class="btn btn-primary">有効にする</button>
                   {% endif %}
                 </form>
+
+                <form method="post">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="delete">
+                  <input type="hidden" name="member_id" value="{{ member.id }}">
+                  <button type="submit" class="btn-danger" onclick="return confirm('この家族受講者を削除しますか？過去の予約履歴に保存された参加者名は残ります。');">削除する</button>
+                </form>
               </div>
             </div>
           {% endfor %}
