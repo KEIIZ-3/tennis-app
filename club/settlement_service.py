@@ -16,7 +16,8 @@ from .expense_metadata import (
 )
 from .settlement_calculator import (
     aggregate_reservations,
-    stringing_is_cancelled,
+    aggregate_stringing_orders,
+    classify_expense_rows,
 )
 from .models import (
     CoachExpense,
@@ -476,14 +477,11 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
             created_at__date__lt=next_month,
         ).select_related("assigned_coach", "user")
     )
-    stringing_total = 0
-    for order in stringing_orders:
-        if stringing_is_cancelled(order):
-            continue
-        amount = money(order.total_price())
-        stringing_total += amount
-        if getattr(order, "assigned_coach_id", None) in coach_map:
-            coach_map[order.assigned_coach_id]["stringing_amount"] += amount
+    stringing_total = aggregate_stringing_orders(
+    stringing_orders=stringing_orders,
+    coach_map=coach_map,
+    money=money,
+)
 
     all_expenses = list(
         CoachExpense.objects.filter(expense_date__lt=next_month)
@@ -492,32 +490,23 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
     )
     all_expense_meta_rows = [expense_meta_row(expense) for expense in all_expenses]
 
-    monthly_expense_meta_rows = [
-        row
-        for row in all_expense_meta_rows
-        if month_start <= row["expense"].expense_date < next_month
+    expense_row_groups = classify_expense_rows(
+        all_expense_meta_rows=all_expense_meta_rows,
+        month_start=month_start,
+        next_month=next_month,
+        expense_type_common=EXPENSE_TYPE_COMMON,
+        expense_type_personal=EXPENSE_TYPE_PERSONAL,
+        approval_approved=EXPENSE_APPROVAL_APPROVED,
+        approval_submitted=EXPENSE_APPROVAL_SUBMITTED,
+    )
+    approved_common_expense_rows = expense_row_groups[
+        "approved_common_expense_rows"
     ]
-    approved_common_expense_rows = [
-        row
-        for row in monthly_expense_meta_rows
-        if not row["is_payout"]
-        and row["approval_status"] == EXPENSE_APPROVAL_APPROVED
-        and row["expense_type"] == EXPENSE_TYPE_COMMON
+    approved_personal_expense_rows = expense_row_groups[
+        "approved_personal_expense_rows"
     ]
-    approved_personal_expense_rows = [
-        row
-        for row in all_expense_meta_rows
-        if not row["is_payout"]
-        and row["approval_status"] == EXPENSE_APPROVAL_APPROVED
-        and row["expense_type"] == EXPENSE_TYPE_PERSONAL
-    ]
-    submitted_personal_expense_rows = [
-        row
-        for row in all_expense_meta_rows
-        if not row["is_payout"]
-        and row["expense_type"] == EXPENSE_TYPE_PERSONAL
-        and row["approval_status"]
-        in (EXPENSE_APPROVAL_SUBMITTED, EXPENSE_APPROVAL_APPROVED)
+    submitted_personal_expense_rows = expense_row_groups[
+        "submitted_personal_expense_rows"
     ]
 
     approved_common_expense_total = sum(
