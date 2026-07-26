@@ -33,6 +33,7 @@ from .settlement_models import (
 )
 from .settlement_loader import load_monthly_settlement_data
 from .settlement_persistence import persist_monthly_settlement
+from .settlement_result import MonthlySettlementResult
 
 
 def money(value):
@@ -381,25 +382,27 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
                 {},
             )
         )
-        return {
-            "settlement": settlement,
-            "coach_rows": coach_rows,
-            "is_closed": True,
-            "rain_refund_pending_rows": rain_refund_policy.get(
-                "pending_rows",
-                [],
-            ),
-            "rain_refund_pending_total": money(
-                rain_refund_policy.get("pending_total")
-            ),
-            "rain_refunded_rows": rain_refund_policy.get(
-                "refunded_rows",
-                [],
-            ),
-            "rain_refunded_total": money(
-                rain_refund_policy.get("refunded_total")
-            ),
-        }
+        return MonthlySettlementResult.from_mapping(
+            {
+                "settlement": settlement,
+                "coach_rows": coach_rows,
+                "is_closed": True,
+                "rain_refund_pending_rows": rain_refund_policy.get(
+                    "pending_rows",
+                    [],
+                ),
+                "rain_refund_pending_total": money(
+                    rain_refund_policy.get("pending_total")
+                ),
+                "rain_refunded_rows": rain_refund_policy.get(
+                    "refunded_rows",
+                    [],
+                ),
+                "rain_refunded_total": money(
+                    rain_refund_policy.get("refunded_total")
+                ),
+            }
+        )
 
     monthly_data = load_monthly_settlement_data(
         month_start=month_start,
@@ -569,39 +572,41 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
         if row["approval_status"] == EXPENSE_APPROVAL_SUBMITTED
     )
 
-    return {
-        "settlement": settlement,
-        "coach_rows": coach_rows,
-        "is_closed": settlement.is_closed,
-        "approved_common_expense_rows": approved_common_expense_rows,
-        "approved_personal_expense_rows": approved_personal_expense_rows,
-        "submitted_personal_expense_rows": submitted_personal_expense_rows,
-        "preopen_paid_total": preopen_paid_total,
-        "preopen_unpaid_total": preopen_unpaid_total,
-        "ticket_amount_total": ticket_amount_total,
-        "ticket_purchase_total": ticket_purchase_total,
-        "stringing_total": stringing_total,
-        "cash_in_total": cash_in_total,
-        "approved_common_expense_total": approved_common_expense_total,
-        "contractor_hourly_pay_total": contractor_hourly_pay_total,
-        "common_expense_base_total": common_expense_base_total,
-        "common_expense_participant_count": common_expense_participant_count,
-        "salary_due_total": salary_due_total,
-        "reimbursement_due_total": reimbursement_due_total,
-        "salary_paid_total": salary_paid_total,
-        "reimbursement_paid_total": reimbursement_paid_total,
-        "unpaid_salary_total": unpaid_salary_total,
-        "unpaid_reimbursement_total": unpaid_reimbursement_total,
-        "pending_personal_reimbursement_total": (
-            pending_personal_reimbursement_total
-        ),
-        "cash_out_total": cash_out_total,
-        "company_balance": settlement.closing_balance,
-        "opening_balance": settlement.opening_balance,
-        "active_coach_count": len(active_coach_ids),
-        "per_coach_common_expense": per_coach_common_expense,
-        "payout_history_rows": payment_history_rows(settlement),
-    }
+    return MonthlySettlementResult.from_mapping(
+        {
+            "settlement": settlement,
+            "coach_rows": coach_rows,
+            "is_closed": settlement.is_closed,
+            "approved_common_expense_rows": approved_common_expense_rows,
+            "approved_personal_expense_rows": approved_personal_expense_rows,
+            "submitted_personal_expense_rows": submitted_personal_expense_rows,
+            "preopen_paid_total": preopen_paid_total,
+            "preopen_unpaid_total": preopen_unpaid_total,
+            "ticket_amount_total": ticket_amount_total,
+            "ticket_purchase_total": ticket_purchase_total,
+            "stringing_total": stringing_total,
+            "cash_in_total": cash_in_total,
+            "approved_common_expense_total": approved_common_expense_total,
+            "contractor_hourly_pay_total": contractor_hourly_pay_total,
+            "common_expense_base_total": common_expense_base_total,
+            "common_expense_participant_count": common_expense_participant_count,
+            "salary_due_total": salary_due_total,
+            "reimbursement_due_total": reimbursement_due_total,
+            "salary_paid_total": salary_paid_total,
+            "reimbursement_paid_total": reimbursement_paid_total,
+            "unpaid_salary_total": unpaid_salary_total,
+            "unpaid_reimbursement_total": unpaid_reimbursement_total,
+            "pending_personal_reimbursement_total": (
+                pending_personal_reimbursement_total
+            ),
+            "cash_out_total": cash_out_total,
+            "company_balance": settlement.closing_balance,
+            "opening_balance": settlement.opening_balance,
+            "active_coach_count": len(active_coach_ids),
+            "per_coach_common_expense": per_coach_common_expense,
+            "payout_history_rows": payment_history_rows(settlement),
+        }
+    )
 
 
 def calculate_monthly_settlement(year, month, *, force=False):
@@ -613,4 +618,6 @@ def calculate_monthly_settlement(year, month, *, force=False):
         month,
         force=force,
     )
-    return _apply_wallet_policy(result, year, month)
+    return MonthlySettlementResult.from_mapping(
+        _apply_wallet_policy(result, year, month)
+    )
