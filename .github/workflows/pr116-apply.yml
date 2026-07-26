@@ -1,0 +1,195 @@
+name: PR116 apply refactor
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/extract-coach-settlement-calculation' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/extract-coach-settlement-calculation
+      - name: Extract coach settlement calculation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          calculator_path = Path('club/settlement_calculator.py')
+          service_path = Path('club/settlement_service.py')
+
+          calculator = calculator_path.read_text()
+          function = r'''
+
+
+def calculate_coach_rows(
+    *,
+    coach_map,
+    active_regular_coach_ids,
+    approved_common_expense_total,
+    settlement,
+    current_payment_totals,
+):
+    for row in coach_map.values():
+        if row["is_contractor_coach"]:
+            row["contractor_hourly_pay_amount"] = int(
+                row["contractor_work_minutes"]
+                * row["contractor_hourly_wage"]
+                / 60
+            )
+        row["contractor_work_hours_text"] = (
+            f"{row['contractor_work_minutes'] // 60}時間"
+            f"{row['contractor_work_minutes'] % 60:02d}分"
+        )
+
+    contractor_hourly_pay_total = sum(
+        row["contractor_hourly_pay_amount"] for row in coach_map.values()
+    )
+    common_expense_base_total = (
+        approved_common_expense_total + contractor_hourly_pay_total
+    )
+    common_expense_participant_count = len(active_regular_coach_ids)
+    per_coach_common_expense = (
+        int(common_expense_base_total / common_expense_participant_count)
+        if common_expense_participant_count > 0
+        else 0
+    )
+
+    coach_rows = []
+    for row in coach_map.values():
+        if (
+            not row["is_contractor_coach"]
+            and row["coach"].pk in active_regular_coach_ids
+        ):
+            row["common_expense_share"] = per_coach_common_expense
+        else:
+            row["common_expense_share"] = 0
+
+        lesson_revenue_amount = (
+            row["ticket_amount"] + row["preopen_paid_amount"]
+        )
+        if row["is_contractor_coach"]:
+            lesson_compensation_amount = row["contractor_hourly_pay_amount"]
+        else:
+            lesson_compensation_amount = lesson_revenue_amount
+
+        row["lesson_compensation_amount"] = lesson_compensation_amount
+        lesson_and_work_amount = (
+            lesson_compensation_amount + row["stringing_amount"]
+        )
+        salary_due = max(
+            lesson_and_work_amount - row["common_expense_share"],
+            0,
+        )
+
+        reimbursement_due = (
+            row["reimbursement_carry_in"]
+            + row["reimbursement_current_month"]
+        )
+        salary_paid, reimbursement_paid = current_payment_totals(
+            settlement,
+            row["coach"],
+        )
+        unpaid_salary = max(salary_due - salary_paid, 0)
+        unpaid_reimbursement = reimbursement_due
+
+        row.update(
+            {
+                "lesson_revenue_amount": lesson_revenue_amount,
+                "lesson_and_work_amount": lesson_and_work_amount,
+                "salary_due": salary_due,
+                "salary_paid": salary_paid,
+                "unpaid_salary": unpaid_salary,
+                "personal_reimbursement_due": reimbursement_due,
+                "reimbursement_due": reimbursement_due,
+                "reimbursement_paid": reimbursement_paid,
+                "unpaid_reimbursement": unpaid_reimbursement,
+                "total_unpaid": unpaid_salary + unpaid_reimbursement,
+                "total_paid": salary_paid + reimbursement_paid,
+            }
+        )
+        row.pop("_lesson_slot_keys", None)
+        coach_rows.append(row)
+
+    coach_rows.sort(key=lambda row: row["coach_name"])
+
+    return {
+        "coach_rows": coach_rows,
+        "contractor_hourly_pay_total": contractor_hourly_pay_total,
+        "common_expense_base_total": common_expense_base_total,
+        "common_expense_participant_count": common_expense_participant_count,
+        "per_coach_common_expense": per_coach_common_expense,
+    }
+'''
+          if 'def calculate_coach_rows(' not in calculator:
+              calculator = calculator.rstrip() + function + '\n'
+          calculator_path.write_text(calculator)
+
+          service = service_path.read_text()
+          old_import = '''from .settlement_calculator import (
+    aggregate_reservations,
+    aggregate_stringing_orders,
+    classify_expense_rows,
+)'''
+          new_import = '''from .settlement_calculator import (
+    aggregate_reservations,
+    aggregate_stringing_orders,
+    calculate_coach_rows,
+    classify_expense_rows,
+)'''
+          if old_import not in service:
+              raise SystemExit('settlement_calculator import block not found')
+          service = service.replace(old_import, new_import, 1)
+
+          start_marker = '''    for row in coach_map.values():
+        if row["is_contractor_coach"]:
+            row["contractor_hourly_pay_amount"] = int('''
+          end_marker = '''    coach_rows.sort(key=lambda row: row["coach_name"])
+'''
+          start = service.find(start_marker)
+          if start < 0:
+              raise SystemExit('coach calculation start not found')
+          end = service.find(end_marker, start)
+          if end < 0:
+              raise SystemExit('coach calculation end not found')
+          end += len(end_marker)
+          replacement = '''    coach_calculation = calculate_coach_rows(
+        coach_map=coach_map,
+        active_regular_coach_ids=active_regular_coach_ids,
+        approved_common_expense_total=approved_common_expense_total,
+        settlement=settlement,
+        current_payment_totals=_current_payment_totals,
+    )
+    coach_rows = coach_calculation["coach_rows"]
+    contractor_hourly_pay_total = coach_calculation[
+        "contractor_hourly_pay_total"
+    ]
+    common_expense_base_total = coach_calculation[
+        "common_expense_base_total"
+    ]
+    common_expense_participant_count = coach_calculation[
+        "common_expense_participant_count"
+    ]
+    per_coach_common_expense = coach_calculation[
+        "per_coach_common_expense"
+    ]
+'''
+          service = service[:start] + replacement + service[end:]
+          service_path.write_text(service)
+          PY
+      - name: Compile check
+        run: python -m py_compile club/settlement_service.py club/settlement_calculator.py
+      - name: Remove branch temporary files and commit
+        run: |
+          rm -f .github/workflows/pr116-apply.yml .github/pr116-trigger
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add club/settlement_service.py club/settlement_calculator.py .github/workflows/pr116-apply.yml .github/pr116-trigger
+          git commit -m "Extract coach settlement calculation"
+          git push
