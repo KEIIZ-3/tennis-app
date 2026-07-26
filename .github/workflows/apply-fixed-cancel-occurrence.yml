@@ -1,0 +1,77 @@
+name: Apply fixed cancel occurrence patch
+
+on:
+  push:
+    branches:
+      - agent/fix-fixed-cancel-occurrence
+    paths:
+      - .github/workflows/apply-fixed-cancel-occurrence.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-fixed-cancel-occurrence
+      - name: Patch occurrence-based counts
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('club/views.py')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  '''            # 固定レッスンの固定参加メンバーは、予約レコードが未生成・未同期の場合でも\n            # レッスン枠の参加人数として扱う。これにより、固定参加メンバーだけで満員の場合も\n            # 会員側からキャンセル待ち登録できる。\n            if fixed_lesson is not None:\n                try:\n                    fixed_member_count = fixed_lesson.members.count()\n                except Exception:\n                    fixed_member_count = 0\n                active_count = max(int(active_count or 0), int(fixed_member_count or 0))\n''',
+                  '''            # 開催回ごとの参加人数は、有効な予約レコードだけを正本とする。\n            # 固定メンバー設定そのものは、個別開催回のキャンセル後も維持されるため、\n            # members.count() を人数へ加えるとキャンセル済み会員を再計上してしまう。\n''',
+              ),
+              (
+                  '''                        if fixed_lesson is not None:\n                            locked_active_count = max(\n                                locked_active_count,\n                                fixed_lesson.members.count(),\n                            )\n''',
+                  '''                        # 固定参加を含め、満員判定は開催回の有効予約だけで行う。\n''',
+              ),
+              (
+                  '''                if fixed_lesson is not None:\n                    locked_active_count = max(\n                        locked_active_count,\n                        fixed_lesson.members.count(),\n                    )\n''',
+                  '''                # 固定参加を含め、満員判定は開催回の有効予約だけで行う。\n''',
+              ),
+              (
+                  '''            fixed_member_list = list(fixed_lesson.members.all())\n            fixed_member_count = len(fixed_member_list)\n            fixed_key = (str(fixed_lesson.pk), cursor_date.isoformat())\n            member_count = max(\n                int(active_slot_counts.get(slot_key, 0)),\n                int(fixed_lesson_active_counts.get(fixed_key, 0)),\n                fixed_member_count,\n            )\n''',
+                  '''            fixed_member_list = list(fixed_lesson.members.all())\n            fixed_key = (str(fixed_lesson.pk), cursor_date.isoformat())\n            # 固定メンバー設定ではなく、この開催回に存在する有効予約だけを表示人数とする。\n            member_count = max(\n                int(active_slot_counts.get(slot_key, 0)),\n                int(fixed_lesson_active_counts.get(fixed_key, 0)),\n            )\n''',
+              ),
+              (
+                  '''            if (\n                not fixed_user_status\n                and request.user.is_authenticated\n                and request.user.pk in {member.pk for member in fixed_member_list}\n            ):\n                fixed_user_status = Reservation.STATUS_ACTIVE\n\n''',
+                  '''            # 固定メンバーであっても、個別開催回をキャンセルした場合は\n            # 有効予約がないため「予約済み」へ強制変換しない。\n\n''',
+              ),
+              (
+                  '''        if fixed_lesson is not None:\n            try:\n                fixed_member_count = fixed_lesson.members.count()\n            except Exception:\n                fixed_member_count = 0\n            active_count = max(int(active_count or 0), int(fixed_member_count or 0))\n\n''',
+                  '''        # 予約確認画面の参加人数も、開催回の有効予約だけを正本とする。\n\n''',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected exactly one match, found {count}: {old[:80]!r}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+
+          test_path = Path('club/tests/test_fixed_lesson_occurrence_cancel_calendar.py')
+          test_path.write_text('''from datetime import timedelta\n\nfrom django.test import TestCase\nfrom django.urls import reverse\nfrom django.utils import timezone\n\nfrom club.fixed_lesson_sync_facade import synchronize_fixed_lesson_membership\nfrom club.models import FixedLesson, Reservation, User\n\n\nclass FixedLessonOccurrenceCancelCalendarTests(TestCase):\n    def setUp(self):\n        self.today = timezone.localdate()\n        self.coach = User.objects.create_user(\n            username="occurrence-cancel-coach",\n            password="test-password",\n            role=User.ROLE_COACH,\n            full_name="開催回キャンセル担当",\n            member_level=User.LEVEL_ADVANCED,\n        )\n        self.member = User.objects.create_user(\n            username="occurrence-cancel-member",\n            password="test-password",\n            role=User.ROLE_MEMBER,\n            full_name="開催回キャンセル会員",\n            member_level=User.LEVEL_BEGINNER,\n            ticket_balance=4,\n            is_profile_completed=True,\n            phone_number="08000000000",\n            email="occurrence@example.com",\n        )\n        target_weekday = (self.today.weekday() + 1) % 7\n        self.fixed_lesson = FixedLesson.objects.create(\n            title="開催回キャンセル検証",\n            coach=self.coach,\n            lesson_type=FixedLesson.LESSON_GENERAL,\n            target_level=User.LEVEL_BEGINNER,\n            start_date=self.today,\n            weekday=target_weekday,\n            start_hour=19,\n            capacity=1,\n            coach_count=1,\n            court_count=1,\n            weeks_ahead=2,\n            is_active=True,\n        )\n        self.fixed_lesson.members.add(self.member)\n        synchronize_fixed_lesson_membership(self.fixed_lesson.pk)\n        self.client.force_login(self.member)\n\n    def test_cancelled_occurrence_is_not_counted_or_forced_reserved(self):\n        reservations = list(\n            Reservation.objects.filter(\n                user=self.member,\n                fixed_lesson=self.fixed_lesson,\n                is_fixed_entry=True,\n                status=Reservation.STATUS_ACTIVE,\n            ).order_by("start_at")\n        )\n        self.assertEqual(len(reservations), 2)\n\n        cancelled = reservations[0]\n        future = reservations[1]\n        cancelled.cancel(\n            created_by=self.member,\n            reason="会員が予約確認画面からキャンセル",\n        )\n\n        response = self.client.get(\n            reverse("club:lesson_calendar"),\n            {\n                "year": timezone.localtime(cancelled.start_at).year,\n                "month": timezone.localtime(cancelled.start_at).month,\n            },\n        )\n        self.assertEqual(response.status_code, 200)\n\n        cancelled_date = timezone.localtime(cancelled.start_at).date().isoformat()\n        future_date = timezone.localtime(future.start_at).date().isoformat()\n        rows = response.context["schedule_rows"]\n        cancelled_row = next(row for row in rows if row.get("lesson_date") == cancelled_date)\n        future_row = next(row for row in rows if row.get("lesson_date") == future_date)\n\n        self.assertEqual(cancelled_row["member_count"], 0)\n        self.assertFalse(cancelled_row["is_reserved_by_user"] )\n        self.assertTrue(cancelled_row["can_book"] )\n        self.assertFalse(cancelled_row["can_join_waitlist"] )\n\n        self.assertEqual(future_row["member_count"], 1)\n        self.assertTrue(future_row["is_reserved_by_user"] )\n\n        self.fixed_lesson.refresh_from_db()\n        self.assertTrue(self.fixed_lesson.members.filter(pk=self.member.pk).exists())\n''', encoding='utf-8')
+
+          workflow = Path('.github/workflows/apply-fixed-cancel-occurrence.yml')
+          workflow.unlink()
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add club/views.py club/tests/test_fixed_lesson_occurrence_cancel_calendar.py .github/workflows/apply-fixed-cancel-occurrence.yml
+          git commit -m "固定参加キャンセルを開催回単位で反映"
+          git push origin HEAD:agent/fix-fixed-cancel-occurrence
