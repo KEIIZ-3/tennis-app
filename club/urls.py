@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 from . import lesson_member_list_v2
 from . import coach_fixed_lesson_weekly_v2
+from . import customer_calendar_consistency
 from . import admin_dashboard
 from . import court_number_line_notice
 from . import family_members
@@ -26,7 +27,7 @@ urlpatterns = [
     path("healthz/", views.healthz, name="healthz"),
     path("admin-dashboard/", admin_dashboard.admin_dashboard, name="admin_dashboard"),
     path("analytics/", analytics_dashboard.analytics_dashboard, name="analytics_dashboard"),
-    path("lesson-calendar/", customer_ui.lesson_calendar_view, name="lesson_calendar"),
+    path("lesson-calendar/", customer_calendar_consistency.lesson_calendar_view, name="lesson_calendar"),
     path("lesson-calendar/confirm/", customer_ui.lesson_reservation_confirm, name="lesson_reservation_confirm"),
     path("lesson-calendar/members/", lesson_member_list_v2.lesson_calendar_member_list, name="lesson_calendar_member_list"),
     path("calendar/events/", views.calendar_events, name="calendar_events"),
