@@ -1,0 +1,55 @@
+name: Fix PR115 formatting
+
+on:
+  push:
+    branches:
+      - agent/extract-stringing-expense-aggregation
+    paths:
+      - .github/workflows/fix-pr115-formatting.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/extract-stringing-expense-aggregation
+          fetch-depth: 0
+
+      - name: Fix indentation and compile
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("club/settlement_service.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''    stringing_total = aggregate_stringing_orders(
+              stringing_orders=stringing_orders,
+              coach_map=coach_map,
+              money=money,
+          )
+          '''
+          new = '''    stringing_total = aggregate_stringing_orders(
+                  stringing_orders=stringing_orders,
+                  coach_map=coach_map,
+                  money=money,
+              )
+          '''
+          if old not in text:
+              raise SystemExit("formatting target not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          Path(".github/workflows/fix-pr115-formatting.yml").unlink()
+
+      - name: Compile changed Python files
+        run: python -m py_compile club/settlement_service.py club/settlement_calculator.py
+
+      - name: Commit formatting fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add club/settlement_service.py .github/workflows/fix-pr115-formatting.yml
+          git commit -m "Fix settlement aggregation call formatting"
+          git push origin HEAD:agent/extract-stringing-expense-aggregation
