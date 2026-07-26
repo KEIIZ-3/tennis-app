@@ -3,8 +3,8 @@ from datetime import timedelta
 from django.test import TestCase
 from django.utils import timezone
 
-from club.fixed_lesson_membership_service import (
-    _rolling_target_dates,
+from club.fixed_lesson_sync_facade import (
+    configured_future_dates,
     synchronize_fixed_lesson_membership,
 )
 from club.models import Court, FixedLesson, Reservation, User
@@ -17,65 +17,70 @@ class FixedLessonRollingOccurrenceTests(TestCase):
             username="rolling-coach",
             password="test-password",
             role=User.ROLE_COACH,
-            full_name="ローリング担当コーチ",
+            full_name="開催範囲担当コーチ",
             member_level=User.LEVEL_ADVANCED,
         )
         self.member = User.objects.create_user(
             username="rolling-member",
             password="test-password",
             role=User.ROLE_MEMBER,
-            full_name="ローリング固定会員",
+            full_name="開催範囲固定会員",
             member_level=User.LEVEL_ADVANCED,
             ticket_balance=0,
         )
         self.court = Court.objects.create(
-            name="ローリング固定レッスンテストコート",
+            name="固定レッスン開催範囲テストコート",
             court_type=Court.COURT_OTHER,
         )
 
-        target_weekday = (self.today.weekday() + 1) % 7
-        self.fixed_lesson = FixedLesson.objects.create(
-            title="過去開始日の固定レッスン",
+    def _create_fixed_lesson(self, start_date, weeks_ahead=3):
+        return FixedLesson.objects.create(
+            title="開催範囲を管理画面設定へ合わせる固定レッスン",
             coach=self.coach,
             court=self.court,
             lesson_type=FixedLesson.LESSON_GENERAL,
             target_level=User.LEVEL_BEGINNER,
-            start_date=self.today - timedelta(days=70),
-            weekday=target_weekday,
+            start_date=start_date,
+            weekday=start_date.weekday(),
             start_hour=19,
             capacity=6,
             coach_count=1,
             court_count=1,
-            weeks_ahead=3,
+            weeks_ahead=weeks_ahead,
             is_active=True,
         )
 
-    def test_rolling_target_dates_start_from_today_or_later(self):
-        target_dates = _rolling_target_dates(self.fixed_lesson, self.today)
+    def test_future_dates_are_limited_to_configured_occurrences(self):
+        start_date = self.today + timedelta(days=1)
+        fixed_lesson = self._create_fixed_lesson(start_date, weeks_ahead=3)
 
-        self.assertEqual(len(target_dates), 3)
-        self.assertTrue(all(target_date >= self.today for target_date in target_dates))
-        self.assertTrue(
-            all(target_date.weekday() == self.fixed_lesson.weekday for target_date in target_dates)
-        )
-        self.assertEqual(target_dates[1] - target_dates[0], timedelta(days=7))
-        self.assertEqual(target_dates[2] - target_dates[1], timedelta(days=7))
+        target_dates = configured_future_dates(fixed_lesson, self.today)
 
-    def test_past_start_date_still_creates_future_fixed_reservations(self):
-        self.fixed_lesson.members.add(self.member)
-        synchronize_fixed_lesson_membership(self.fixed_lesson.pk)
-
-        target_dates = _rolling_target_dates(self.fixed_lesson, self.today)
-        reservations = Reservation.objects.filter(
-            user=self.member,
-            fixed_lesson=self.fixed_lesson,
-            is_fixed_entry=True,
-            status=Reservation.STATUS_ACTIVE,
-        ).order_by("start_at")
-
-        self.assertEqual(reservations.count(), 3)
         self.assertEqual(
-            [timezone.localtime(item.start_at).date() for item in reservations],
             target_dates,
+            [
+                start_date,
+                start_date + timedelta(days=7),
+                start_date + timedelta(days=14),
+            ],
         )
-        self.assertTrue(all(item.ticket_consumed_at is None for item in reservations))
+        self.assertNotIn(start_date + timedelta(days=21), target_dates)
+
+    def test_expired_configured_series_does_not_create_new_rolling_reservations(self):
+        fixed_lesson = self._create_fixed_lesson(
+            self.today - timedelta(days=70),
+            weeks_ahead=3,
+        )
+        fixed_lesson.members.add(self.member)
+
+        synchronize_fixed_lesson_membership(fixed_lesson.pk)
+
+        self.assertEqual(configured_future_dates(fixed_lesson, self.today), [])
+        self.assertFalse(
+            Reservation.objects.filter(
+                user=self.member,
+                fixed_lesson=fixed_lesson,
+                is_fixed_entry=True,
+                status=Reservation.STATUS_ACTIVE,
+            ).exists()
+        )
