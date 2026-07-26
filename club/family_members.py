@@ -1,8 +1,8 @@
 from datetime import date
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
 from django.contrib.auth import get_user_model
+from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -48,13 +48,26 @@ def _date_or_none(value):
 
 def _family_member_rows(parent):
     level_choices = _level_choices()
-    return [{
-        "id": member.pk, "full_name": member.full_name, "kana": member.kana,
-        "relationship": member.relationship, "relationship_label": member.get_relationship_display(),
-        "birth_date": member.birth_date, "birth_date_value": member.birth_date.isoformat() if member.birth_date else "",
-        "member_level": member.member_level, "member_level_label": _choice_label(level_choices, member.member_level),
-        "note": member.note, "is_active": member.is_active, "created_at": member.created_at, "updated_at": member.updated_at,
-    } for member in FamilyMember.objects.filter(parent=parent).order_by("-is_active", "full_name", "id")]
+    return [
+        {
+            "id": member.pk,
+            "full_name": member.full_name,
+            "kana": member.kana,
+            "relationship": member.relationship,
+            "relationship_label": member.get_relationship_display(),
+            "birth_date": member.birth_date,
+            "birth_date_value": member.birth_date.isoformat() if member.birth_date else "",
+            "member_level": member.member_level,
+            "member_level_label": _choice_label(level_choices, member.member_level),
+            "note": member.note,
+            "is_active": member.is_active,
+            "created_at": member.created_at,
+            "updated_at": member.updated_at,
+        }
+        for member in FamilyMember.objects.filter(parent=parent).order_by(
+            "-is_active", "full_name", "id"
+        )
+    ]
 
 
 def _get_family_member(parent, member_id):
@@ -108,7 +121,8 @@ def _validate_payload(request):
 @require_http_methods(["GET", "POST"])
 def family_member_manage(request):
     if getattr(request.user, "role", "") not in ("member", "contractor_coach") and not (
-        getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False)
+        getattr(request.user, "is_staff", False)
+        or getattr(request.user, "is_superuser", False)
     ):
         messages.error(request, "受講者プロフィール管理は会員アカウントで利用してください。")
         return redirect("club:home")
@@ -150,7 +164,26 @@ def family_member_manage(request):
             member.is_active = next_active
             member.updated_at = timezone.now()
             member.save(update_fields=["is_active", "updated_at"])
-            messages.success(request, "受講者プロフィールを有効にしました。" if next_active else "受講者プロフィールを無効にしました。")
+            messages.success(
+                request,
+                "受講者プロフィールを有効にしました。"
+                if next_active
+                else "受講者プロフィールを無効にしました。",
+            )
+            return redirect("club:family_member_manage")
+
+        if action == "delete":
+            member = _get_family_member(request.user, request.POST.get("member_id"))
+            if not member:
+                messages.error(request, "対象の家族受講者プロフィールが見つかりません。")
+                return redirect("club:family_member_manage")
+
+            member_name = member.full_name
+            member.delete()
+            messages.success(
+                request,
+                f"{member_name}さんの家族受講者プロフィールを削除しました。",
+            )
             return redirect("club:family_member_manage")
 
         messages.error(request, "操作内容が不正です。")
