@@ -2,11 +2,11 @@ from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.utils import timezone
 
+from . import fixed_lesson_membership_service as membership_service
 from .fixed_lesson_membership_service import (
     MEMBER_REMOVED_REASON,
     OCCURRENCE_REMOVED_REASON,
     _canonical_availability,
-    _create_or_update_reservation,
     _is_intentionally_canceled,
     _rolling_target_dates,
 )
@@ -18,8 +18,6 @@ UNASSIGNED_COURT_NAME = "コート未定（後日決定）"
 
 def _ensure_booking_court(fixed_lesson_id):
     """コート未定の固定レッスンにも、予約を表現できる正式な仮コートを割り当てる。"""
-    # PostgreSQLでは、NULL許容FKをselect_relatedしたクエリへFOR UPDATEを
-    # 適用できない。固定レッスン本体だけを取得・ロックし、関連先は後から読む。
     fixed_lesson = FixedLesson.objects.select_for_update().get(pk=fixed_lesson_id)
     if fixed_lesson.court_id:
         return fixed_lesson.court
@@ -44,6 +42,53 @@ def _ensure_booking_court(fixed_lesson_id):
     fixed_lesson.court = placeholder_court
     fixed_lesson.save(update_fields=["court"])
     return placeholder_court
+
+
+def _locked_active_occurrence_reservations(
+    fixed_lesson,
+    member,
+    availability,
+    start_at,
+    end_at,
+):
+    """重複候補のID抽出と行ロックを別SQLに分ける。
+
+    参加者スナップショットとのJOINは同一Reservationを複数行に展開し得るため、
+    候補IDの抽出ではDISTINCTが必要になる。一方PostgreSQLはDISTINCT付きSQLへの
+    FOR UPDATEを禁止するため、最初にIDだけを確定し、その後Reservation本体だけを
+    select_for_updateでロックする。
+    """
+    candidate_ids = list(
+        Reservation.objects.filter(
+            user=member,
+            lesson_type=fixed_lesson.lesson_type,
+            start_at=start_at,
+            end_at=end_at,
+            status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+        )
+        .filter(
+            models.Q(participant_snapshot__participant_type="self")
+            | models.Q(participant_snapshot__isnull=True)
+        )
+        .filter(
+            models.Q(fixed_lesson=fixed_lesson)
+            | models.Q(availability=availability)
+            | models.Q(
+                coach=fixed_lesson.primary_coach(),
+                court=fixed_lesson.court,
+            )
+        )
+        .values_list("pk", flat=True)
+        .distinct()
+    )
+    if not candidate_ids:
+        return []
+
+    return list(
+        Reservation.objects.select_for_update()
+        .filter(pk__in=candidate_ids)
+        .order_by("-is_fixed_entry", "id")
+    )
 
 
 def _synchronize_locked_fixed_lesson(fixed_lesson_id, created_by=None):
@@ -139,7 +184,7 @@ def _synchronize_locked_fixed_lesson(fixed_lesson_id, created_by=None):
                     status=Reservation.STATUS_ACTIVE,
                 ).values_list("pk", flat=True)
             )
-            reservation = _create_or_update_reservation(
+            reservation = membership_service._create_or_update_reservation(
                 fixed_lesson,
                 member,
                 availability,
@@ -197,7 +242,12 @@ def synchronize_fixed_lesson_membership(fixed_lesson_id, created_by=None):
     """固定メンバー同期の全入口。"""
     with transaction.atomic():
         _ensure_booking_court(fixed_lesson_id)
-        return _synchronize_locked_fixed_lesson(
-            fixed_lesson_id,
-            created_by=created_by,
-        )
+        original_loader = membership_service._active_occurrence_reservations
+        membership_service._active_occurrence_reservations = _locked_active_occurrence_reservations
+        try:
+            return _synchronize_locked_fixed_lesson(
+                fixed_lesson_id,
+                created_by=created_by,
+            )
+        finally:
+            membership_service._active_occurrence_reservations = original_loader
