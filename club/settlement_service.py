@@ -1,6 +1,5 @@
 from datetime import date, datetime, time, timedelta
 
-from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
@@ -23,8 +22,6 @@ from .settlement_calculator import (
 from .models import (
     CoachExpense,
     Reservation,
-    StringingOrder,
-    TicketPurchase,
     PREOPEN_CASH_PRICE,
     is_preopen_cash_lesson_date,
 )
@@ -34,6 +31,7 @@ from .settlement_models import (
     MonthlySettlement,
     SettlementPayment,
 )
+from .settlement_loader import load_monthly_settlement_data
 from .settlement_persistence import persist_monthly_settlement
 
 
@@ -277,7 +275,6 @@ def _current_payment_totals(settlement, coach):
 
 
 def _calculate_monthly_settlement_base(year, month, *, force=False):
-    User = get_user_model()
     month_start, next_month, _start_at, _end_at = aware_month_range(year, month)
 
     sync_legacy_payouts_through(next_month)
@@ -404,13 +401,11 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
             ),
         }
 
-    coaches = list(
-        User.objects.filter(role__in=("coach", "contractor_coach")).order_by(
-            "full_name",
-            "username",
-            "id",
-        )
+    monthly_data = load_monthly_settlement_data(
+        month_start=month_start,
+        next_month=next_month,
     )
+    coaches = monthly_data["coaches"]
     coach_map = {}
     for coach in coaches:
         coach_map[coach.pk] = {
@@ -439,30 +434,7 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
             "reservation_count": 0,
         }
 
-    reservations = list(
-        Reservation.objects.filter(
-            start_at__date__gte=month_start,
-            start_at__date__lt=next_month,
-            status=Reservation.STATUS_ACTIVE,
-        )
-        .exclude(
-            fixed_lesson__isnull=True,
-            availability__note__startswith="固定レッスン:",
-        )
-        .select_related(
-            "user",
-            "coach",
-            "substitute_coach",
-            "court",
-            "availability",
-            "fixed_lesson",
-            "fixed_lesson__coach",
-            "fixed_lesson__coach_2",
-            "fixed_lesson__coach_3",
-        )
-        .prefetch_related("ticket_consumptions__purchase")
-        .order_by("start_at", "id")
-    )
+    reservations = monthly_data["reservations"]
 
     active_regular_coach_ids, active_coach_ids = aggregate_reservations(
         reservations=reservations,
@@ -473,23 +445,14 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
         money=money,
     )
 
-    stringing_orders = list(
-        StringingOrder.objects.filter(
-            created_at__date__gte=month_start,
-            created_at__date__lt=next_month,
-        ).select_related("assigned_coach", "user")
-    )
+    stringing_orders = monthly_data["stringing_orders"]
     stringing_total = aggregate_stringing_orders(
         stringing_orders=stringing_orders,
         coach_map=coach_map,
         money=money,
     )
 
-    all_expenses = list(
-        CoachExpense.objects.filter(expense_date__lt=next_month)
-        .select_related("created_by")
-        .order_by("expense_date", "id")
-    )
+    all_expenses = monthly_data["all_expenses"]
     all_expense_meta_rows = [expense_meta_row(expense) for expense in all_expenses]
 
     expense_row_groups = classify_expense_rows(
@@ -553,10 +516,7 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
 
     ticket_purchase_total = sum(
         money(purchase.total_tickets) * money(purchase.unit_price)
-        for purchase in TicketPurchase.objects.filter(
-            purchased_at__date__gte=month_start,
-            purchased_at__date__lt=next_month,
-        )
+        for purchase in monthly_data["ticket_purchases"]
     )
 
     salary_due_total = sum(row["salary_due"] for row in coach_rows)
