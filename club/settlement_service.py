@@ -17,6 +17,7 @@ from .expense_metadata import (
 from .settlement_calculator import (
     aggregate_reservations,
     aggregate_stringing_orders,
+    calculate_coach_rows,
     classify_expense_rows,
 )
 from .models import (
@@ -524,88 +525,26 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
         else:
             coach_map[coach_id]["reimbursement_current_month"] += unpaid
 
-    for row in coach_map.values():
-        if row["is_contractor_coach"]:
-            row["contractor_hourly_pay_amount"] = int(
-                row["contractor_work_minutes"]
-                * row["contractor_hourly_wage"]
-                / 60
-            )
-        row["contractor_work_hours_text"] = (
-            f"{row['contractor_work_minutes'] // 60}時間"
-            f"{row['contractor_work_minutes'] % 60:02d}分"
-        )
-
-    contractor_hourly_pay_total = sum(
-        row["contractor_hourly_pay_amount"] for row in coach_map.values()
+    coach_calculation = calculate_coach_rows(
+        coach_map=coach_map,
+        active_regular_coach_ids=active_regular_coach_ids,
+        approved_common_expense_total=approved_common_expense_total,
+        settlement=settlement,
+        current_payment_totals=_current_payment_totals,
     )
-    common_expense_base_total = (
-        approved_common_expense_total + contractor_hourly_pay_total
-    )
-    common_expense_participant_count = len(active_regular_coach_ids)
-    per_coach_common_expense = (
-        int(common_expense_base_total / common_expense_participant_count)
-        if common_expense_participant_count > 0
-        else 0
-    )
-
-    coach_rows = []
-    for row in coach_map.values():
-        if (
-            not row["is_contractor_coach"]
-            and row["coach"].pk in active_regular_coach_ids
-        ):
-            row["common_expense_share"] = per_coach_common_expense
-        else:
-            row["common_expense_share"] = 0
-
-        lesson_revenue_amount = (
-            row["ticket_amount"] + row["preopen_paid_amount"]
-        )
-        if row["is_contractor_coach"]:
-            lesson_compensation_amount = row["contractor_hourly_pay_amount"]
-        else:
-            lesson_compensation_amount = lesson_revenue_amount
-
-        row["lesson_compensation_amount"] = lesson_compensation_amount
-        lesson_and_work_amount = (
-            lesson_compensation_amount + row["stringing_amount"]
-        )
-        salary_due = max(
-            lesson_and_work_amount - row["common_expense_share"],
-            0,
-        )
-
-        reimbursement_due = (
-            row["reimbursement_carry_in"]
-            + row["reimbursement_current_month"]
-        )
-        salary_paid, reimbursement_paid = _current_payment_totals(
-            settlement,
-            row["coach"],
-        )
-        unpaid_salary = max(salary_due - salary_paid, 0)
-        unpaid_reimbursement = reimbursement_due
-
-        row.update(
-            {
-                "lesson_revenue_amount": lesson_revenue_amount,
-                "lesson_and_work_amount": lesson_and_work_amount,
-                "salary_due": salary_due,
-                "salary_paid": salary_paid,
-                "unpaid_salary": unpaid_salary,
-                "personal_reimbursement_due": reimbursement_due,
-                "reimbursement_due": reimbursement_due,
-                "reimbursement_paid": reimbursement_paid,
-                "unpaid_reimbursement": unpaid_reimbursement,
-                "total_unpaid": unpaid_salary + unpaid_reimbursement,
-                "total_paid": salary_paid + reimbursement_paid,
-            }
-        )
-        row.pop("_lesson_slot_keys", None)
-        coach_rows.append(row)
-
-    coach_rows.sort(key=lambda row: row["coach_name"])
+    coach_rows = coach_calculation["coach_rows"]
+    contractor_hourly_pay_total = coach_calculation[
+        "contractor_hourly_pay_total"
+    ]
+    common_expense_base_total = coach_calculation[
+        "common_expense_base_total"
+    ]
+    common_expense_participant_count = coach_calculation[
+        "common_expense_participant_count"
+    ]
+    per_coach_common_expense = coach_calculation[
+        "per_coach_common_expense"
+    ]
 
     preopen_paid_total = sum(row["preopen_paid_amount"] for row in coach_rows)
     preopen_unpaid_total = sum(row["preopen_unpaid_amount"] for row in coach_rows)
