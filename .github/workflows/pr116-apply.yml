@@ -1,9 +1,9 @@
 name: PR116 apply refactor
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/extract-coach-settlement-calculation
+      - main
 
 permissions:
   contents: write
@@ -185,11 +185,12 @@ def calculate_coach_rows(
           PY
       - name: Compile check
         run: python -m py_compile club/settlement_service.py club/settlement_calculator.py
-      - name: Remove temporary workflow and commit
+      - name: Remove temporary files and commit
         run: |
           rm .github/workflows/pr116-apply.yml
+          rm -f .github/pr116-trigger
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add club/settlement_service.py club/settlement_calculator.py .github/workflows/pr116-apply.yml
+          git add club/settlement_service.py club/settlement_calculator.py .github/workflows/pr116-apply.yml .github/pr116-trigger
           git commit -m "Extract coach settlement calculation"
           git push
