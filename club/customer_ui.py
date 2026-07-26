@@ -2,16 +2,12 @@ import html as html_module
 import re
 from urllib.parse import parse_qs, urlparse
 
-from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseForbidden
-from django.shortcuts import redirect
 from django.utils import timezone
 
 from . import views
-from .fixed_lesson_sync_facade import synchronize_fixed_lesson_membership
 from .fixed_occurrence_participants import active_count_map_for_month
-from .models import FixedLesson
 
 
 CALENDAR_ANCHOR_PATTERN = re.compile(
@@ -81,58 +77,6 @@ def _improve_ticket_page(html):
     )
     html = html.replace(">使用中<", ">差し引き済み<")
     return html
-
-
-def _member_fixed_lessons(user):
-    return (
-        FixedLesson.objects.filter(
-            is_active=True,
-            members=user,
-        )
-        .select_related("coach", "coach_2", "coach_3", "court")
-        .distinct()
-    )
-
-
-def _synchronize_member_fixed_lessons(user):
-    """固定メンバー設定と開催日別予約を同じ同期サービスで検証する。"""
-    for fixed_lesson in _member_fixed_lessons(user):
-        synchronize_fixed_lesson_membership(
-            fixed_lesson.pk,
-            created_by=user,
-        )
-
-
-def _synchronize_posted_fixed_lesson(request):
-    fixed_lesson_id = (request.POST.get("fixed_lesson_id") or "").strip()
-    if not fixed_lesson_id:
-        return
-    fixed_lesson = FixedLesson.objects.filter(
-        pk=fixed_lesson_id,
-        is_active=True,
-    ).first()
-    if fixed_lesson is None:
-        return
-    synchronize_fixed_lesson_membership(
-        fixed_lesson.pk,
-        created_by=request.user if request.user.is_authenticated else None,
-    )
-
-
-def _synchronize_requested_fixed_lesson(request):
-    fixed_lesson_id = (request.GET.get("fixed_lesson_id") or "").strip()
-    if not fixed_lesson_id:
-        return
-    fixed_lesson = FixedLesson.objects.filter(
-        pk=fixed_lesson_id,
-        is_active=True,
-    ).first()
-    if fixed_lesson is None:
-        return
-    synchronize_fixed_lesson_membership(
-        fixed_lesson.pk,
-        created_by=request.user if request.user.is_authenticated else None,
-    )
 
 
 def _calendar_target_month(request):
@@ -213,13 +157,6 @@ def _improve_lesson_calendar(html, count_map=None):
 
 
 def lesson_calendar_view(request):
-    try:
-        if request.method == "POST" and request.user.is_authenticated:
-            _synchronize_posted_fixed_lesson(request)
-    except Exception as exc:
-        messages.error(request, f"固定レッスンの予約整合性を確認できませんでした: {exc}")
-        return redirect("club:reservation_list")
-
     year, month = _calendar_target_month(request)
     count_map = active_count_map_for_month(year, month)
     response = views.lesson_calendar_view(request)
@@ -234,11 +171,6 @@ def lesson_calendar_view(request):
 
 @login_required
 def lesson_reservation_confirm(request):
-    try:
-        _synchronize_requested_fixed_lesson(request)
-    except Exception as exc:
-        messages.error(request, f"固定レッスンの予約整合性を確認できませんでした: {exc}")
-        return redirect("club:reservation_list")
     return views.lesson_reservation_confirm(request)
 
 
@@ -252,10 +184,5 @@ def tickets_view(request):
 def reservation_list(request):
     if getattr(request.user, "role", "") != "member":
         return HttpResponseForbidden("予約確認は会員専用です。")
-
-    try:
-        _synchronize_member_fixed_lessons(request.user)
-    except Exception as exc:
-        messages.error(request, f"固定レッスンの予約整合性を確認できませんでした: {exc}")
 
     return views.reservation_list(request)
