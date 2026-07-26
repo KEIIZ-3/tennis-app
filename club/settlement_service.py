@@ -15,9 +15,7 @@ from .expense_metadata import (
     expense_meta_row,
 )
 from .settlement_calculator import (
-    reservation_coaches_for_split,
-    reservation_duration_minutes,
-    reservation_slot_key,
+    aggregate_reservations,
     stringing_is_cancelled,
 )
 from .models import (
@@ -463,61 +461,14 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
         .order_by("start_at", "id")
     )
 
-    active_regular_coach_ids = set()
-    active_coach_ids = set()
-
-    for reservation in reservations:
-        split_coaches = reservation_coaches_for_split(reservation)
-        if not split_coaches:
-            continue
-
-        denominator = max(len(split_coaches), 1)
-        ticket_total = sum(
-            money(consumption.unit_price_snapshot)
-            * money(consumption.tickets_used)
-            for consumption in reservation.ticket_consumptions.filter(
-                refunded_at__isnull=True
-            )
-        )
-        payment_amount = money(
-            getattr(reservation, "payment_amount", 0) or PREOPEN_CASH_PRICE
-        )
-        is_preopen = (
-            reservation.lesson_type == Reservation.LESSON_GENERAL
-            and is_preopen_cash_lesson_date(reservation.start_at)
-            and reservation.is_payment_tracking_required()
-        )
-
-        for coach in split_coaches:
-            row = coach_map.get(coach.pk)
-            if not row:
-                continue
-
-            active_coach_ids.add(coach.pk)
-            if not row["is_contractor_coach"]:
-                active_regular_coach_ids.add(coach.pk)
-
-            slot_key = reservation_slot_key(reservation, coach)
-            if slot_key not in row["_lesson_slot_keys"]:
-                row["_lesson_slot_keys"].add(slot_key)
-                row["reservation_count"] += 1
-                if row["is_contractor_coach"]:
-                    row["contractor_work_slot_count"] += 1
-                    row["contractor_work_minutes"] += reservation_duration_minutes(
-                        reservation
-                    )
-
-            if ticket_total > 0:
-                row["ticket_amount"] += int(ticket_total / denominator)
-
-            if is_preopen:
-                split_amount = int(payment_amount / denominator)
-                if reservation.payment_status == Reservation.PAYMENT_STATUS_PAID:
-                    row["preopen_paid_amount"] += split_amount
-                elif reservation.payment_status == Reservation.PAYMENT_STATUS_WAIVED:
-                    row["preopen_waived_amount"] += split_amount
-                else:
-                    row["preopen_unpaid_amount"] += split_amount
+    active_regular_coach_ids, active_coach_ids = aggregate_reservations(
+        reservations=reservations,
+        coach_map=coach_map,
+        reservation_model=Reservation,
+        preopen_cash_price=PREOPEN_CASH_PRICE,
+        is_preopen_cash_lesson_date=is_preopen_cash_lesson_date,
+        money=money,
+    )
 
     stringing_orders = list(
         StringingOrder.objects.filter(
