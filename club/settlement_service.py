@@ -34,6 +34,7 @@ from .settlement_models import (
 )
 from .settlement_loader import load_monthly_settlement_data
 from .settlement_persistence import persist_monthly_settlement
+from .settlement_reimbursement import apply_reimbursement_amounts
 from .settlement_result import MonthlySettlementResult
 from .settlement_totals import calculate_settlement_totals
 
@@ -461,16 +462,13 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
         money(row["expense"].amount) for row in approved_common_expense_rows
     )
 
-    for row in approved_personal_expense_rows:
-        expense = row["expense"]
-        coach_id = getattr(expense, "created_by_id", None)
-        if coach_id not in coach_map:
-            continue
-        unpaid = expense_unpaid_amount(expense, through_date=next_month - timedelta(days=1))
-        if expense.expense_date < month_start:
-            coach_map[coach_id]["reimbursement_carry_in"] += unpaid
-        else:
-            coach_map[coach_id]["reimbursement_current_month"] += unpaid
+    apply_reimbursement_amounts(
+        approved_personal_expense_rows=approved_personal_expense_rows,
+        coach_map=coach_map,
+        month_start=month_start,
+        next_month=next_month,
+        expense_unpaid_amount=expense_unpaid_amount,
+    )
 
     coach_calculation = calculate_coach_rows(
         coach_map=coach_map,
