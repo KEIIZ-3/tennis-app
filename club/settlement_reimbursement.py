@@ -1,3 +1,6 @@
+from datetime import timedelta
+
+
 def apply_reimbursement_amounts(
     *,
     approved_personal_expense_rows,
@@ -6,7 +9,7 @@ def apply_reimbursement_amounts(
     next_month,
     expense_unpaid_amount,
 ):
-    through_date = next_month - __import__("datetime").timedelta(days=1)
+    through_date = next_month - timedelta(days=1)
 
     for row in approved_personal_expense_rows:
         expense = row["expense"]
