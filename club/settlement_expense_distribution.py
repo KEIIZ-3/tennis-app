@@ -10,6 +10,11 @@ def build_expense_distribution_policies(
     held_participant_count_by_coach,
     build_rain_refund_policy,
 ):
+    participant_count_by_coach = held_participant_count_by_coach(
+        year,
+        month,
+        main_coach_ids,
+    )
     court_policy = build_court_cost_policy(
         year,
         month,
@@ -21,7 +26,7 @@ def build_expense_distribution_policies(
         year,
         month,
         main_coach_ids,
-        held_participant_count_by_coach(year, month, main_coach_ids),
+        participant_count_by_coach,
     )
     rain_refund_policy = build_rain_refund_policy(
         year,
