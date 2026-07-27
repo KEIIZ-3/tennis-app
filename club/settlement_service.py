@@ -35,6 +35,7 @@ from .settlement_models import (
 from .settlement_loader import load_monthly_settlement_data
 from .settlement_persistence import persist_monthly_settlement
 from .settlement_result import MonthlySettlementResult
+from .settlement_totals import calculate_settlement_totals
 
 
 def money(value):
@@ -492,36 +493,30 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
         "per_coach_common_expense"
     ]
 
-    preopen_paid_total = sum(row["preopen_paid_amount"] for row in coach_rows)
-    preopen_unpaid_total = sum(row["preopen_unpaid_amount"] for row in coach_rows)
-    ticket_amount_total = sum(row["ticket_amount"] for row in coach_rows)
-
-    ticket_purchase_total = sum(
-        money(purchase.total_tickets) * money(purchase.unit_price)
-        for purchase in monthly_data["ticket_purchases"]
+    totals = calculate_settlement_totals(
+        coach_rows=coach_rows,
+        ticket_purchases=monthly_data["ticket_purchases"],
+        stringing_total=stringing_total,
+        approved_common_expense_total=approved_common_expense_total,
+        submitted_personal_expense_rows=submitted_personal_expense_rows,
+        expense_approval_submitted=EXPENSE_APPROVAL_SUBMITTED,
+        money=money,
     )
-
-    salary_due_total = sum(row["salary_due"] for row in coach_rows)
-    reimbursement_due_total = sum(
-        row["reimbursement_due"] for row in coach_rows
-    )
-    salary_paid_total = sum(row["salary_paid"] for row in coach_rows)
-    reimbursement_paid_total = sum(
-        row["reimbursement_paid"] for row in coach_rows
-    )
-    unpaid_salary_total = sum(row["unpaid_salary"] for row in coach_rows)
-    unpaid_reimbursement_total = sum(
-        row["unpaid_reimbursement"] for row in coach_rows
-    )
-
-    cash_in_total = (
-        preopen_paid_total + ticket_purchase_total + stringing_total
-    )
-    cash_out_total = (
-        salary_paid_total
-        + reimbursement_paid_total
-        + approved_common_expense_total
-    )
+    preopen_paid_total = totals["preopen_paid_total"]
+    preopen_unpaid_total = totals["preopen_unpaid_total"]
+    ticket_amount_total = totals["ticket_amount_total"]
+    ticket_purchase_total = totals["ticket_purchase_total"]
+    salary_due_total = totals["salary_due_total"]
+    reimbursement_due_total = totals["reimbursement_due_total"]
+    salary_paid_total = totals["salary_paid_total"]
+    reimbursement_paid_total = totals["reimbursement_paid_total"]
+    unpaid_salary_total = totals["unpaid_salary_total"]
+    unpaid_reimbursement_total = totals["unpaid_reimbursement_total"]
+    pending_personal_reimbursement_total = totals[
+        "pending_personal_reimbursement_total"
+    ]
+    cash_in_total = totals["cash_in_total"]
+    cash_out_total = totals["cash_out_total"]
 
     persist_monthly_settlement(
         settlement=settlement,
@@ -543,12 +538,6 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
         common_expense_participant_count=common_expense_participant_count,
         per_coach_common_expense=per_coach_common_expense,
         common_expense_base_total=common_expense_base_total,
-    )
-
-    pending_personal_reimbursement_total = sum(
-        money(row["expense"].amount)
-        for row in submitted_personal_expense_rows
-        if row["approval_status"] == EXPENSE_APPROVAL_SUBMITTED
     )
 
     return MonthlySettlementResult.from_mapping(
