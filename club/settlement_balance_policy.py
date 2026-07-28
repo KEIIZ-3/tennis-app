@@ -6,6 +6,7 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import MAIN_COACH_NAMES
+from .settlement_expense_distribution import build_expense_distribution_policies
 
 WEEKDAY_COURT_RATE_PER_HOUR = 900
 WEEKEND_HOLIDAY_COURT_RATE_PER_HOUR = 1200
@@ -1077,29 +1078,25 @@ def _apply_wallet_policy(result, year, month):
         eligible_coach_ids,
     )
 
-    court_policy = _build_court_cost_policy(
-        year,
-        month,
-        main_coach_ids,
-        eligible_coach_ids,
-        [
+    expense_policies = build_expense_distribution_policies(
+        year=year,
+        month=month,
+        main_coach_ids=main_coach_ids,
+        eligible_coach_ids=eligible_coach_ids,
+        contractor_coach_ids=[
             getattr(row.get("coach"), "pk", None)
             for row in coach_rows
             if row.get("is_contractor_coach")
             and getattr(row.get("coach"), "pk", None) is not None
         ],
+        build_court_cost_policy=_build_court_cost_policy,
+        build_other_expense_policy=_build_other_expense_policy,
+        held_participant_count_by_coach=_held_participant_count_by_coach,
+        build_rain_refund_policy=_rain_refund_policy,
     )
-    other_expense_policy = _build_other_expense_policy(
-        year,
-        month,
-        main_coach_ids,
-        _held_participant_count_by_coach(year, month, main_coach_ids),
-    )
-    rain_refund_policy = _rain_refund_policy(
-        year,
-        month,
-        main_coach_ids,
-    )
+    court_policy = expense_policies["court_policy"]
+    other_expense_policy = expense_policies["other_expense_policy"]
+    rain_refund_policy = expense_policies["rain_refund_policy"]
 
     contractor_pay_total = sum(
         _money(row.get("contractor_hourly_pay_amount"))
