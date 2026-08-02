@@ -1,0 +1,36 @@
+{% if expense_rows %}
+  <section class="panel">
+    <div class="section-head">
+      <div>
+        <h2 class="section-title">共通経費の履歴</h2>
+        <p class="help">
+          精算へ反映した共通経費を登録単位で表示します。
+          {% if includes_history_through %}2026年7月は過去分を含む集約表示です。{% endif %}
+        </p>
+      </div>
+      <strong style="font-size:18px;color:#0f172a;">合計 {{ expense_total }}円</strong>
+    </div>
+
+    <div style="display:grid;gap:8px;margin-top:12px;">
+      {% for item in expense_rows %}
+        <div style="padding:11px 12px;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc;">
+          <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+            <div>
+              <div style="font-weight:1000;color:#0f172a;">
+                {{ item.expense_label }}
+                {% if item.is_history %}<span style="display:inline-flex;margin-left:5px;padding:2px 7px;border-radius:999px;background:#fff7ed;color:#c2410c;font-size:10px;">過去分</span>{% endif %}
+              </div>
+              <div style="margin-top:3px;color:#64748b;font-size:11px;line-height:1.55;">
+                登録日 {{ item.date_label }} / 精算対象 {{ item.source_month_label }} / {{ item.category_label }} / 立替者 {{ item.payer_name }}
+              </div>
+              <div style="margin-top:3px;color:#64748b;font-size:11px;line-height:1.55;">
+                {{ item.burden_rule }}
+              </div>
+            </div>
+            <strong style="white-space:nowrap;color:#b91c1c;font-size:15px;">{{ item.amount }}円</strong>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
