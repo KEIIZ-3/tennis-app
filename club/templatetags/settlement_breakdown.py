@@ -49,6 +49,35 @@ def _date_label(value):
         return text[:10] or "日付不明"
 
 
+def _expense_label(expense):
+    if expense is None:
+        return "経費情報なし"
+
+    for field_name in ("description", "title", "name", "memo"):
+        value = str(getattr(expense, field_name, "") or "").strip()
+        if value:
+            return value
+
+    try:
+        category_label = expense.get_category_display()
+    except Exception:
+        category_label = ""
+    return category_label or f"経費 #{expense.pk}"
+
+
+def _expense_category_label(expense):
+    if expense is None:
+        return "その他"
+    try:
+        label = expense.get_category_display()
+    except Exception:
+        label = ""
+    if label:
+        return label
+    category = str(getattr(expense, "category", "") or "").strip()
+    return "ボール代" if category == "ball" else (category or "その他")
+
+
 @register.inclusion_tag("coach/_court_cost_breakdown.html")
 def court_cost_breakdown(settlement, row):
     coach = row.get("coach") if isinstance(row, dict) else None
@@ -190,4 +219,83 @@ def court_cost_breakdown(settlement, row):
         "court_total": sum(item["own_amount"] for item in court_rows),
         "rain_refunded_total": rain_refunded_total,
         "rain_pending_total": rain_pending_total,
+    }
+
+
+@register.inclusion_tag("coach/_common_expense_breakdown.html")
+def common_expense_breakdown(settlement):
+    if settlement is None:
+        return {"expense_rows": [], "expense_total": 0}
+
+    snapshot = dict(getattr(settlement, "calculation_snapshot", None) or {})
+    policy = dict(snapshot.get("other_expense_policy") or {})
+    detail_rows = list(policy.get("detail_rows") or [])
+
+    expense_ids = {
+        _money(detail.get("expense_id"))
+        for detail in detail_rows
+        if _money(detail.get("expense_id")) > 0
+    }
+    expense_map = {
+        expense.pk: expense
+        for expense in CoachExpense.objects.filter(pk__in=expense_ids).select_related(
+            "created_by"
+        )
+    }
+
+    rows = []
+    for detail in detail_rows:
+        expense_id = _money(detail.get("expense_id"))
+        amount = max(_money(detail.get("amount")), 0)
+        if expense_id <= 0 or amount <= 0:
+            continue
+
+        expense = expense_map.get(expense_id)
+        source_year = _money(detail.get("source_year"))
+        source_month = _money(detail.get("source_month"))
+        if not source_year and expense is not None:
+            expense_date = getattr(expense, "expense_date", None)
+            source_year = getattr(expense_date, "year", 0)
+            source_month = getattr(expense_date, "month", 0)
+
+        target_ids = [
+            _money(value)
+            for value in detail.get("burden_target_ids") or []
+            if _money(value) > 0
+        ]
+        allocations = _split_amount(amount, target_ids)
+
+        rows.append(
+            {
+                "expense_id": expense_id,
+                "date_label": _date_label(getattr(expense, "expense_date", None)),
+                "source_month_label": (
+                    f"{source_year}年{source_month}月"
+                    if source_year and source_month
+                    else "対象月不明"
+                ),
+                "is_history": bool(detail.get("is_july_history")),
+                "category_label": _expense_category_label(expense),
+                "expense_label": _expense_label(expense),
+                "payer_name": _display_name(getattr(expense, "created_by", None)),
+                "amount": amount,
+                "burden_rule": detail.get("burden_rule") or "メインコーチ3人で負担",
+                "allocation_text": " / ".join(
+                    f"ID {coach_id}: {allocated}円"
+                    for coach_id, allocated in allocations.items()
+                ),
+            }
+        )
+
+    rows.sort(
+        key=lambda item: (
+            item["source_month_label"],
+            item["date_label"],
+            item["expense_id"],
+        )
+    )
+    return {
+        "expense_rows": rows,
+        "expense_total": sum(item["amount"] for item in rows),
+        "includes_history_through": policy.get("includes_history_through") or "",
     }
