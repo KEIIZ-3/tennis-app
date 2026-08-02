@@ -1,3 +1,6 @@
+from .court_policy_reconciliation import reconcile_court_policy
+
+
 def build_expense_distribution_policies(
     *,
     year,
@@ -21,6 +24,12 @@ def build_expense_distribution_policies(
         main_coach_ids,
         eligible_coach_ids,
         contractor_coach_ids,
+    )
+    court_policy = reconcile_court_policy(
+        court_policy,
+        main_coach_ids=main_coach_ids,
+        eligible_coach_ids=eligible_coach_ids,
+        contractor_coach_ids=contractor_coach_ids,
     )
     other_expense_policy = build_other_expense_policy(
         year,
