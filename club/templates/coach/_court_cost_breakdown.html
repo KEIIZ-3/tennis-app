@@ -1,7 +1,7 @@
-{% if court_rows or rain_rows %}
+{% if court_rows or rain_rows or common_rows %}
   <details style="margin:8px 0 4px;border:1px solid #dbe3ee;border-radius:12px;background:#f8fafc;overflow:hidden;">
     <summary style="cursor:pointer;padding:10px 12px;color:#334155;font-size:12px;font-weight:900;list-style-position:inside;">
-      コート代・雨天返金の内訳を見る
+      コート代・共通経費・雨天返金の内訳を見る
     </summary>
     <div style="padding:0 12px 10px;display:grid;gap:8px;">
       {% if court_rows %}
@@ -18,6 +18,32 @@
               </div>
               <div style="margin-top:3px;color:#64748b;">
                 コート代合計 {{ item.total_amount }}円 / {{ item.burden_rule }} / 支払者 {{ item.payer_name }}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      {% if common_rows %}
+        <div style="padding-top:8px;border-top:1px solid #e2e8f0;">
+          <div style="display:flex;justify-content:space-between;gap:8px;color:#475569;font-size:12px;font-weight:900;">
+            <span>共通経費の登録履歴{% if includes_history_through %}（過去分含む）{% endif %}</span>
+            <strong style="color:#b91c1c;">-{{ common_total }}円</strong>
+          </div>
+          {% for item in common_rows %}
+            <div style="margin-top:7px;padding:8px;border-radius:9px;background:#fff;border:1px solid #e2e8f0;font-size:11px;line-height:1.55;">
+              <div style="display:flex;justify-content:space-between;gap:8px;font-weight:900;color:#0f172a;">
+                <span>
+                  {{ item.expense_label }}
+                  {% if item.is_history %}<span style="margin-left:4px;padding:1px 5px;border-radius:999px;background:#fff7ed;color:#c2410c;font-size:9px;">過去分</span>{% endif %}
+                </span>
+                <strong style="color:#b91c1c;">-{{ item.own_amount }}円</strong>
+              </div>
+              <div style="margin-top:3px;color:#64748b;">
+                登録日 {{ item.date_label }} / 精算対象 {{ item.source_month_label }} / {{ item.category_label }}
+              </div>
+              <div style="margin-top:3px;color:#64748b;">
+                経費総額 {{ item.amount }}円 / 立替者 {{ item.payer_name }} / {{ item.burden_rule }}
               </div>
             </div>
           {% endfor %}
