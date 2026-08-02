@@ -720,6 +720,18 @@ def lesson_calendar_member_list(request):
         reservation.user_id
         for reservation in pending_reservations
     }
+    cancelled_user_ids = set(
+        Reservation.objects.filter(
+            reservation_filter,
+            status__in=(
+                Reservation.STATUS_CANCELED,
+                Reservation.STATUS_RAIN_CANCELED,
+            ),
+        ).values_list(
+            "user_id",
+            flat=True,
+        )
+    )
 
     fixed_member_rows = []
 
@@ -736,6 +748,7 @@ def lesson_calendar_member_list(request):
                 if (
                     member.pk in active_user_ids
                     or member.pk in pending_user_ids
+                    or member.pk in cancelled_user_ids
                 ):
                     continue
 
