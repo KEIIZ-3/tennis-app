@@ -35,6 +35,54 @@ def _saved_using_coach_ids(meta, eligible_id_set):
     return result
 
 
+def _fixed_occurrence_coach_ids(availability, eligible_id_set):
+    """対象開催回の固定レッスンに設定された担当コーチを返す。"""
+    if availability is None:
+        return []
+
+    reservations = (
+        Reservation.objects.filter(
+            availability=availability,
+            start_at=availability.start_at,
+            end_at=availability.end_at,
+            status__in=(Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING),
+            fixed_lesson_id__isnull=False,
+        )
+        .select_related(
+            "fixed_lesson",
+            "fixed_lesson__coach",
+            "fixed_lesson__coach_2",
+            "fixed_lesson__coach_3",
+        )
+        .order_by("id")
+    )
+
+    result = []
+    seen_fixed_lesson_ids = set()
+    for reservation in reservations:
+        fixed_lesson = getattr(reservation, "fixed_lesson", None)
+        fixed_lesson_id = getattr(reservation, "fixed_lesson_id", None)
+        if fixed_lesson is None or fixed_lesson_id in seen_fixed_lesson_ids:
+            continue
+        seen_fixed_lesson_ids.add(fixed_lesson_id)
+
+        try:
+            coaches = fixed_lesson.all_coaches()
+        except Exception:
+            coaches = (
+                getattr(fixed_lesson, "coach", None),
+                getattr(fixed_lesson, "coach_2", None),
+                getattr(fixed_lesson, "coach_3", None),
+            )
+
+        for coach in coaches:
+            coach_id = getattr(coach, "pk", None)
+            if coach_id in eligible_id_set and coach_id not in result:
+                result.append(coach_id)
+
+    return result
+
+
 def _reservation_coach_ids(availability, eligible_id_set):
     if availability is None:
         return []
@@ -81,11 +129,11 @@ def reconcile_court_policy(
     contractor_coach_ids,
 ):
     """
-    開催枠に保存された担当者を、開催回の担当履歴の正本として再配賦する。
+    固定レッスン開催回の担当を最優先に、コート代を再配賦する。
 
-    カレンダー表示は CoachAvailability の coach / substitute_coach を参照するため、
-    過去の予約レコードやコート代登録時メタデータに変更前担当者が残っていても、
-    現在その開催回へ保存されている担当者と精算結果を一致させる。
+    カレンダーの固定開催回は Reservation.fixed_lesson の担当コーチを表示する。
+    CoachAvailability や予約レコード、コート代登録メタデータに変更前担当者が
+    残っていても、固定開催回と月次精算の担当者を一致させる。
     同じ開催回に新旧のコート代記録が重複する場合は、開催回キーごとに
     最新の正規コート代登録だけを採用する。
     """
@@ -187,11 +235,18 @@ def reconcile_court_policy(
         availability_id = transfer["availability_id"]
         availability = availability_map.get(availability_id)
 
-        target_ids = _availability_coach_ids(
+        target_ids = _fixed_occurrence_coach_ids(
             availability,
             eligible_id_set,
         )
-        source_label = "開催枠の担当履歴"
+        source_label = "固定レッスン開催回の担当"
+
+        if not target_ids:
+            target_ids = _availability_coach_ids(
+                availability,
+                eligible_id_set,
+            )
+            source_label = "開催枠の担当履歴"
 
         if not target_ids:
             target_ids = _reservation_coach_ids(
@@ -233,8 +288,8 @@ def reconcile_court_policy(
                     else f"{source_label}で負担"
                 ),
                 "lesson_label": meta.get("court_refund_lesson_label") or "",
-                "reconciled_from_availability_history": bool(
-                    _availability_coach_ids(availability, eligible_id_set)
+                "reconciled_from_fixed_occurrence": bool(
+                    _fixed_occurrence_coach_ids(availability, eligible_id_set)
                 ),
             }
         )
