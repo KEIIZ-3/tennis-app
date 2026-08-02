@@ -19,7 +19,6 @@ def _split_amount(amount, coach_ids):
     unique_ids = list(dict.fromkeys(coach_id for coach_id in coach_ids if coach_id))
     if not unique_ids:
         return {}
-
     total = max(_money(amount), 0)
     base, remainder = divmod(total, len(unique_ids))
     return {
@@ -52,12 +51,10 @@ def _date_label(value):
 def _expense_label(expense):
     if expense is None:
         return "経費情報なし"
-
     for field_name in ("description", "title", "name", "memo"):
         value = str(getattr(expense, field_name, "") or "").strip()
         if value:
             return value
-
     try:
         category_label = expense.get_category_display()
     except Exception:
@@ -78,6 +75,75 @@ def _expense_category_label(expense):
     return "ボール代" if category == "ball" else (category or "その他")
 
 
+def _common_expense_rows(snapshot, coach_id=None):
+    policy = dict(snapshot.get("other_expense_policy") or {})
+    detail_rows = list(policy.get("detail_rows") or [])
+    expense_ids = {
+        _money(detail.get("expense_id"))
+        for detail in detail_rows
+        if _money(detail.get("expense_id")) > 0
+    }
+    expense_map = {
+        expense.pk: expense
+        for expense in CoachExpense.objects.filter(pk__in=expense_ids).select_related(
+            "created_by"
+        )
+    }
+
+    rows = []
+    for detail in detail_rows:
+        expense_id = _money(detail.get("expense_id"))
+        amount = max(_money(detail.get("amount")), 0)
+        if expense_id <= 0 or amount <= 0:
+            continue
+
+        target_ids = [
+            _money(value)
+            for value in detail.get("burden_target_ids") or []
+            if _money(value) > 0
+        ]
+        allocations = _split_amount(amount, target_ids)
+        own_amount = _money(allocations.get(coach_id)) if coach_id else amount
+        if coach_id and own_amount <= 0:
+            continue
+
+        expense = expense_map.get(expense_id)
+        source_year = _money(detail.get("source_year"))
+        source_month = _money(detail.get("source_month"))
+        if not source_year and expense is not None:
+            expense_date = getattr(expense, "expense_date", None)
+            source_year = getattr(expense_date, "year", 0)
+            source_month = getattr(expense_date, "month", 0)
+
+        rows.append(
+            {
+                "expense_id": expense_id,
+                "date_label": _date_label(getattr(expense, "expense_date", None)),
+                "source_month_label": (
+                    f"{source_year}年{source_month}月"
+                    if source_year and source_month
+                    else "対象月不明"
+                ),
+                "is_history": bool(detail.get("is_july_history")),
+                "category_label": _expense_category_label(expense),
+                "expense_label": _expense_label(expense),
+                "payer_name": _display_name(getattr(expense, "created_by", None)),
+                "amount": amount,
+                "own_amount": own_amount,
+                "burden_rule": detail.get("burden_rule") or "メインコーチ3人で負担",
+            }
+        )
+
+    rows.sort(
+        key=lambda item: (
+            item["source_month_label"],
+            item["date_label"],
+            item["expense_id"],
+        )
+    )
+    return rows, policy
+
+
 @register.inclusion_tag("coach/_court_cost_breakdown.html")
 def court_cost_breakdown(settlement, row):
     coach = row.get("coach") if isinstance(row, dict) else None
@@ -86,7 +152,9 @@ def court_cost_breakdown(settlement, row):
         return {
             "court_rows": [],
             "rain_rows": [],
+            "common_rows": [],
             "court_total": 0,
+            "common_total": 0,
             "rain_refunded_total": 0,
             "rain_pending_total": 0,
         }
@@ -105,11 +173,11 @@ def court_cost_breakdown(settlement, row):
         for expense in CoachExpense.objects.filter(pk__in=expense_ids)
     }
 
-    user_ids = set()
-    for detail in detail_rows:
-        payer_id = _money(detail.get("payer_id"))
-        if payer_id:
-            user_ids.add(payer_id)
+    user_ids = {
+        _money(detail.get("payer_id"))
+        for detail in detail_rows
+        if _money(detail.get("payer_id")) > 0
+    }
     user_map = {
         user.pk: user
         for user in get_user_model().objects.filter(pk__in=user_ids)
@@ -133,20 +201,17 @@ def court_cost_breakdown(settlement, row):
         if total_amount <= 0:
             continue
 
-        allocations = _split_amount(total_amount, target_ids)
-        own_amount = _money(allocations.get(coach_id))
+        own_amount = _money(_split_amount(total_amount, target_ids).get(coach_id))
         if own_amount <= 0:
             continue
 
-        expense_id = _money(detail.get("expense_id"))
-        expense = expense_map.get(expense_id)
-        expense_date = getattr(expense, "expense_date", None)
-        start_at = detail.get("start_at")
+        expense = expense_map.get(_money(detail.get("expense_id")))
         payer = user_map.get(_money(detail.get("payer_id")))
-
         court_rows.append(
             {
-                "date_label": _date_label(expense_date or start_at),
+                "date_label": _date_label(
+                    getattr(expense, "expense_date", None) or detail.get("start_at")
+                ),
                 "lesson_label": (
                     "登録済みコート代"
                     if detail.get("is_court_transfer")
@@ -158,7 +223,6 @@ def court_cost_breakdown(settlement, row):
                 "payer_name": _display_name(payer),
             }
         )
-
     court_rows.sort(key=lambda item: item["date_label"])
 
     rain_rows = []
@@ -172,12 +236,10 @@ def court_cost_breakdown(settlement, row):
         .select_related("debit_coach", "payer_coach", "collection_coach")
         .order_by("lesson_date", "id")
     )
-
     for refund in refunds:
         amount = max(_money(refund.amount), 0)
         if amount <= 0:
             continue
-
         is_pending = refund.status == RainRefund.STATUS_PENDING
         status_label = "返金予定・精算未反映" if is_pending else "返金済み・精算反映済み"
 
@@ -213,12 +275,16 @@ def court_cost_breakdown(settlement, row):
                 }
             )
 
+    common_rows, common_policy = _common_expense_rows(snapshot, coach_id=coach_id)
     return {
         "court_rows": court_rows,
         "rain_rows": rain_rows,
+        "common_rows": common_rows,
         "court_total": sum(item["own_amount"] for item in court_rows),
+        "common_total": sum(item["own_amount"] for item in common_rows),
         "rain_refunded_total": rain_refunded_total,
         "rain_pending_total": rain_pending_total,
+        "includes_history_through": common_policy.get("includes_history_through") or "",
     }
 
 
@@ -226,74 +292,8 @@ def court_cost_breakdown(settlement, row):
 def common_expense_breakdown(settlement):
     if settlement is None:
         return {"expense_rows": [], "expense_total": 0}
-
     snapshot = dict(getattr(settlement, "calculation_snapshot", None) or {})
-    policy = dict(snapshot.get("other_expense_policy") or {})
-    detail_rows = list(policy.get("detail_rows") or [])
-
-    expense_ids = {
-        _money(detail.get("expense_id"))
-        for detail in detail_rows
-        if _money(detail.get("expense_id")) > 0
-    }
-    expense_map = {
-        expense.pk: expense
-        for expense in CoachExpense.objects.filter(pk__in=expense_ids).select_related(
-            "created_by"
-        )
-    }
-
-    rows = []
-    for detail in detail_rows:
-        expense_id = _money(detail.get("expense_id"))
-        amount = max(_money(detail.get("amount")), 0)
-        if expense_id <= 0 or amount <= 0:
-            continue
-
-        expense = expense_map.get(expense_id)
-        source_year = _money(detail.get("source_year"))
-        source_month = _money(detail.get("source_month"))
-        if not source_year and expense is not None:
-            expense_date = getattr(expense, "expense_date", None)
-            source_year = getattr(expense_date, "year", 0)
-            source_month = getattr(expense_date, "month", 0)
-
-        target_ids = [
-            _money(value)
-            for value in detail.get("burden_target_ids") or []
-            if _money(value) > 0
-        ]
-        allocations = _split_amount(amount, target_ids)
-
-        rows.append(
-            {
-                "expense_id": expense_id,
-                "date_label": _date_label(getattr(expense, "expense_date", None)),
-                "source_month_label": (
-                    f"{source_year}年{source_month}月"
-                    if source_year and source_month
-                    else "対象月不明"
-                ),
-                "is_history": bool(detail.get("is_july_history")),
-                "category_label": _expense_category_label(expense),
-                "expense_label": _expense_label(expense),
-                "payer_name": _display_name(getattr(expense, "created_by", None)),
-                "amount": amount,
-                "burden_rule": detail.get("burden_rule") or "メインコーチ3人で負担",
-                "allocation_text": " / ".join(
-                    f"ID {coach_id}: {allocated}円"
-                    for coach_id, allocated in allocations.items()
-                ),
-            }
-        )
-
-    rows.sort(
-        key=lambda item: (
-            item["source_month_label"],
-            item["date_label"],
-            item["expense_id"],
-        )
-    )
+    rows, policy = _common_expense_rows(snapshot)
     return {
         "expense_rows": rows,
         "expense_total": sum(item["amount"] for item in rows),
