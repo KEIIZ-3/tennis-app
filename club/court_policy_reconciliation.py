@@ -36,6 +36,9 @@ def _saved_using_coach_ids(meta, eligible_id_set):
 
 
 def _reservation_coach_ids(availability, eligible_id_set):
+    if availability is None:
+        return []
+
     result = []
     reservations = (
         Reservation.objects.filter(
@@ -58,10 +61,6 @@ def _fallback_using_coach_ids(availability, eligible_id_set):
     if availability is None:
         return []
 
-    reservation_ids = _reservation_coach_ids(availability, eligible_id_set)
-    if reservation_ids:
-        return reservation_ids
-
     coach_id = availability.substitute_coach_id or availability.coach_id
     return [coach_id] if coach_id in eligible_id_set else []
 
@@ -82,9 +81,11 @@ def reconcile_court_policy(
     contractor_coach_ids,
 ):
     """
-    コート代登録時に保存した開催回担当者を履歴の正本として再配賦する。
+    開催回の予約レコードに保存された担当者を最優先で再配賦する。
 
-    過去開催分へ現在の固定レッスン設定を遡及適用しない。
+    コート代登録時の using_coach_ids は、担当変更前の情報を保持している場合が
+    あるため、対象開催回の有効予約から担当者を取得できない場合だけ使用する。
+    現在の固定レッスン設定は過去開催分へ遡及適用しない。
     同じ開催回に新旧のコート代記録が重複する場合は、開催回キーごとに
     最新の正規コート代登録だけを採用する。
     """
@@ -186,14 +187,22 @@ def reconcile_court_policy(
         availability_id = transfer["availability_id"]
         availability = availability_map.get(availability_id)
 
-        target_ids = _saved_using_coach_ids(meta, eligible_id_set)
-        source_label = "コート代登録時の担当履歴"
+        target_ids = _reservation_coach_ids(
+            availability,
+            eligible_id_set,
+        )
+        source_label = "開催回予約の担当履歴"
+
+        if not target_ids:
+            target_ids = _saved_using_coach_ids(meta, eligible_id_set)
+            source_label = "コート代登録時の担当履歴"
+
         if not target_ids:
             target_ids = _fallback_using_coach_ids(
                 availability,
                 eligible_id_set,
             )
-            source_label = "開催回予約の担当履歴"
+            source_label = "開催枠の担当履歴"
 
         contractor_only = bool(target_ids) and all(
             coach_id in contractor_id_set for coach_id in target_ids
@@ -224,8 +233,8 @@ def reconcile_court_policy(
                     else f"{source_label}で負担"
                 ),
                 "lesson_label": meta.get("court_refund_lesson_label") or "",
-                "reconciled_from_historical_snapshot": bool(
-                    _saved_using_coach_ids(meta, eligible_id_set)
+                "reconciled_from_reservation_history": bool(
+                    _reservation_coach_ids(availability, eligible_id_set)
                 ),
             }
         )
