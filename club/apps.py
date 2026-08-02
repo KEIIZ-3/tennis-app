@@ -11,6 +11,10 @@ class ClubConfig(AppConfig):
         from . import lesson_calendar_fixes  # noqa: F401
         from . import signals  # noqa: F401
 
+        # 固定レッスンの開催回数変更だけを理由とする自動キャンセルを無効化する。
+        # 会員本人キャンセル、雨天中止、固定メンバー解除は従来どおり有効。
+        from . import fixed_lesson_auto_cancel_guard  # noqa: F401
+
         # 管理サイトの経費編集画面へ、共通経費・個人経費の変更欄を追加する。
         # admin.py の登録完了後にフォームを差し替えるため、ここで明示的に読み込む。
         from . import admin as club_admin  # noqa: F401
