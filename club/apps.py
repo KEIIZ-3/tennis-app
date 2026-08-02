@@ -15,3 +15,7 @@ class ClubConfig(AppConfig):
         # admin.py の登録完了後にフォームを差し替えるため、ここで明示的に読み込む。
         from . import admin as club_admin  # noqa: F401
         from . import expense_admin_type_editor  # noqa: F401
+
+        # 赤木琴江さんの固定予約状況を、本番データを変更せず起動時に一度だけ診断する。
+        # 調査完了後に削除する一時的な読み取り専用ログ。
+        from . import akagi_reservation_diagnostic  # noqa: F401
