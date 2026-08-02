@@ -1,7 +1,14 @@
 from collections import defaultdict
 
+from django.utils import timezone
+
 from .expense_metadata import parse_expense_note
-from .models import CoachAvailability, CoachExpense, Reservation
+from .models import (
+    CoachAvailability,
+    CoachExpense,
+    FixedLesson,
+    Reservation,
+)
 
 
 COURT_TRANSFER_RECORD_KIND = "court_transfer"
@@ -26,6 +33,24 @@ def _split_amount(amount, coach_ids):
     }
 
 
+def _coach_ids_from_fixed_lesson(fixed_lesson, eligible_id_set):
+    result = []
+    try:
+        coaches = fixed_lesson.all_coaches()
+    except Exception:
+        coaches = (
+            getattr(fixed_lesson, "coach", None),
+            getattr(fixed_lesson, "coach_2", None),
+            getattr(fixed_lesson, "coach_3", None),
+        )
+
+    for coach in coaches:
+        coach_id = getattr(coach, "pk", None)
+        if coach_id in eligible_id_set and coach_id not in result:
+            result.append(coach_id)
+    return result
+
+
 def _saved_using_coach_ids(meta, eligible_id_set):
     result = []
     for value in meta.get("using_coach_ids") or []:
@@ -35,8 +60,97 @@ def _saved_using_coach_ids(meta, eligible_id_set):
     return result
 
 
+def _local_datetime(value):
+    if value is None:
+        return None
+    try:
+        if timezone.is_aware(value):
+            return timezone.localtime(value)
+    except Exception:
+        pass
+    return value
+
+
+def _scheduled_fixed_lesson_match(availability, eligible_id_set):
+    """カレンダーと同じ固定レッスン設定から開催回担当を特定する。"""
+    if availability is None or availability.start_at is None:
+        return [], []
+
+    local_start = _local_datetime(availability.start_at)
+    local_end = _local_datetime(availability.end_at)
+    target_date = local_start.date()
+
+    candidates = (
+        FixedLesson.objects.filter(
+            is_active=True,
+            weekday=target_date.weekday(),
+            start_hour=local_start.hour,
+            lesson_type=availability.lesson_type,
+        )
+        .select_related("coach", "coach_2", "coach_3", "court")
+        .order_by("id")
+    )
+
+    exact_matches = []
+    fallback_matches = []
+
+    for fixed_lesson in candidates:
+        try:
+            occurrence_dates = set(fixed_lesson.scheduled_occurrence_dates())
+        except Exception:
+            occurrence_dates = set()
+        if target_date not in occurrence_dates:
+            continue
+
+        try:
+            fixed_start, fixed_end = fixed_lesson._build_datetimes_for_date(
+                target_date
+            )
+        except Exception:
+            fixed_start = None
+            fixed_end = None
+
+        if fixed_start is not None and fixed_end is not None:
+            if (
+                _local_datetime(fixed_start) != local_start
+                or _local_datetime(fixed_end) != local_end
+            ):
+                continue
+
+        availability_court_id = getattr(availability, "court_id", None)
+        fixed_court_id = getattr(fixed_lesson, "court_id", None)
+        court_is_exact = bool(
+            availability_court_id
+            and fixed_court_id
+            and availability_court_id == fixed_court_id
+        )
+        court_is_compatible = (
+            not availability_court_id
+            or not fixed_court_id
+            or availability_court_id == fixed_court_id
+        )
+        if not court_is_compatible:
+            continue
+
+        item = (
+            fixed_lesson,
+            _coach_ids_from_fixed_lesson(fixed_lesson, eligible_id_set),
+        )
+        if court_is_exact:
+            exact_matches.append(item)
+        else:
+            fallback_matches.append(item)
+
+    matches = exact_matches or fallback_matches
+    for fixed_lesson, coach_ids in matches:
+        if coach_ids:
+            return coach_ids, [fixed_lesson.pk]
+
+    return [], [fixed_lesson.pk for fixed_lesson, _coach_ids in matches]
+
+
 def _fixed_occurrence_coach_ids(availability, eligible_id_set):
-    """対象開催回の固定レッスンに設定された担当コーチを返す。"""
+    """予約に固定レッスンが保存されている場合の担当コーチを返す。"""
     if availability is None:
         return []
 
@@ -66,18 +180,11 @@ def _fixed_occurrence_coach_ids(availability, eligible_id_set):
             continue
         seen_fixed_lesson_ids.add(fixed_lesson_id)
 
-        try:
-            coaches = fixed_lesson.all_coaches()
-        except Exception:
-            coaches = (
-                getattr(fixed_lesson, "coach", None),
-                getattr(fixed_lesson, "coach_2", None),
-                getattr(fixed_lesson, "coach_3", None),
-            )
-
-        for coach in coaches:
-            coach_id = getattr(coach, "pk", None)
-            if coach_id in eligible_id_set and coach_id not in result:
+        for coach_id in _coach_ids_from_fixed_lesson(
+            fixed_lesson,
+            eligible_id_set,
+        ):
+            if coach_id not in result:
                 result.append(coach_id)
 
     return result
@@ -129,13 +236,11 @@ def reconcile_court_policy(
     contractor_coach_ids,
 ):
     """
-    固定レッスン開催回の担当を最優先に、コート代を再配賦する。
+    カレンダーと同じ固定レッスン開催設定を最優先にコート代を再配賦する。
 
-    カレンダーの固定開催回は Reservation.fixed_lesson の担当コーチを表示する。
-    CoachAvailability や予約レコード、コート代登録メタデータに変更前担当者が
-    残っていても、固定開催回と月次精算の担当者を一致させる。
-    同じ開催回に新旧のコート代記録が重複する場合は、開催回キーごとに
-    最新の正規コート代登録だけを採用する。
+    固定開催回のカレンダー表示は FixedLesson の開催日・時間・コート・担当設定を
+    基準に生成される。予約や開催枠、コート代登録メタデータに変更前担当者が
+    残っていても、月次精算をカレンダー表示と一致させる。
     """
     policy = dict(court_policy or {})
     detail_rows = [dict(row) for row in policy.get("detail_rows") or []]
@@ -235,28 +340,41 @@ def reconcile_court_policy(
         availability_id = transfer["availability_id"]
         availability = availability_map.get(availability_id)
 
-        target_ids = _fixed_occurrence_coach_ids(
+        scheduled_ids, scheduled_fixed_lesson_ids = _scheduled_fixed_lesson_match(
             availability,
             eligible_id_set,
         )
-        source_label = "固定レッスン開催回の担当"
+        fixed_occurrence_ids = _fixed_occurrence_coach_ids(
+            availability,
+            eligible_id_set,
+        )
+        availability_ids_for_row = _availability_coach_ids(
+            availability,
+            eligible_id_set,
+        )
+        reservation_ids = _reservation_coach_ids(
+            availability,
+            eligible_id_set,
+        )
+        saved_ids = _saved_using_coach_ids(meta, eligible_id_set)
+
+        target_ids = scheduled_ids
+        source_label = "カレンダー固定レッスン設定"
 
         if not target_ids:
-            target_ids = _availability_coach_ids(
-                availability,
-                eligible_id_set,
-            )
+            target_ids = fixed_occurrence_ids
+            source_label = "予約に保存された固定レッスン担当"
+
+        if not target_ids:
+            target_ids = availability_ids_for_row
             source_label = "開催枠の担当履歴"
 
         if not target_ids:
-            target_ids = _reservation_coach_ids(
-                availability,
-                eligible_id_set,
-            )
+            target_ids = reservation_ids
             source_label = "開催回予約の担当履歴"
 
         if not target_ids:
-            target_ids = _saved_using_coach_ids(meta, eligible_id_set)
+            target_ids = saved_ids
             source_label = "コート代登録時の担当履歴"
 
         contractor_only = bool(target_ids) and all(
@@ -288,9 +406,13 @@ def reconcile_court_policy(
                     else f"{source_label}で負担"
                 ),
                 "lesson_label": meta.get("court_refund_lesson_label") or "",
-                "reconciled_from_fixed_occurrence": bool(
-                    _fixed_occurrence_coach_ids(availability, eligible_id_set)
-                ),
+                "reconciliation_source": source_label,
+                "scheduled_fixed_lesson_ids": scheduled_fixed_lesson_ids,
+                "scheduled_fixed_lesson_coach_ids": scheduled_ids,
+                "reservation_fixed_lesson_coach_ids": fixed_occurrence_ids,
+                "availability_coach_ids": availability_ids_for_row,
+                "reservation_coach_ids": reservation_ids,
+                "saved_using_coach_ids": saved_ids,
             }
         )
 
