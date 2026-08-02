@@ -15,3 +15,7 @@ class ClubConfig(AppConfig):
         # admin.py の登録完了後にフォームを差し替えるため、ここで明示的に読み込む。
         from . import admin as club_admin  # noqa: F401
         from . import expense_admin_type_editor  # noqa: F401
+
+        # 管理サイトの予約一覧へ、キャンセル日時・理由・取消元などの確認列を追加する。
+        # 表示専用で、予約・LINE・カレンダー処理には介入しない。
+        from . import reservation_admin_history  # noqa: F401
