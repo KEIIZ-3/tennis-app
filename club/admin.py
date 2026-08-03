@@ -14,6 +14,7 @@ from django.shortcuts import redirect, render
 from django.urls import path, reverse
 from django.utils import timezone
 
+from .expense_admin_type_editor import ExpenseTypeAdminMixin
 from .forms import TicketGrantAdminForm
 from .models import (
     CoachAvailability,
@@ -34,6 +35,8 @@ from .models import (
     User,
     purchase_tickets,
 )
+from .reservation_admin_history import ReservationAdminHistoryMixin
+from .user_admin_ticket_summary import UserAdminTicketSummaryMixin
 
 
 admin.site.site_header = "Play Design Tennis 管理サイト"
@@ -437,17 +440,6 @@ class FixedLessonAdminForm(forms.ModelForm):
                 self.fields[field_name].help_text = help_text
 
 
-class CoachExpenseAdminForm(forms.ModelForm):
-    class Meta:
-        model = CoachExpense
-        fields = "__all__"
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["created_by"].queryset = coach_user_queryset()
-        self.fields["created_by"].required = False
-
-
 class StringingOrderAdminForm(forms.ModelForm):
     class Meta:
         model = StringingOrder
@@ -477,7 +469,7 @@ class CustomUserChangeForm(UserChangeForm):
 
 
 @admin.register(User)
-class UserAdmin(BaseUserAdmin):
+class UserAdmin(UserAdminTicketSummaryMixin, BaseUserAdmin):
     form = CustomUserChangeForm
     add_form = CustomUserCreationForm
 
@@ -490,7 +482,9 @@ class UserAdmin(BaseUserAdmin):
         "role",
         "contractor_hourly_wage_display",
         "member_level",
-        "ticket_balance",
+        "consumed_tickets_admin",
+        "planned_tickets_admin",
+        "current_tickets_admin",
         "is_profile_completed",
         "is_staff",
         "is_superuser",
@@ -1014,7 +1008,7 @@ class FixedLessonAdmin(admin.ModelAdmin):
 
 
 @admin.register(Reservation)
-class ReservationAdmin(admin.ModelAdmin):
+class ReservationAdmin(ReservationAdminHistoryMixin, admin.ModelAdmin):
     form = ReservationAdminForm
     list_display = (
         "id",
@@ -1028,9 +1022,23 @@ class ReservationAdmin(admin.ModelAdmin):
         "start_at",
         "end_at",
         "status",
+        "reservation_kind_admin",
+        "canceled_at_admin",
+        "cancellation_source_admin",
+        "cancellation_reason_admin",
         "is_fixed_entry",
     )
-    list_filter = ("status", "lesson_type", "target_level", "target_level_2", "coach", "substitute_coach", "court", "is_fixed_entry")
+    list_filter = (
+        "status",
+        "lesson_type",
+        "target_level",
+        "target_level_2",
+        "coach",
+        "substitute_coach",
+        "court",
+        "is_fixed_entry",
+        "start_at",
+    )
     @admin.display(description="対象レベル", ordering="target_level")
     def target_level_admin(self, obj):
         if hasattr(obj, "target_level_display_label"):
@@ -1040,6 +1048,7 @@ class ReservationAdmin(admin.ModelAdmin):
     search_fields = (
         "user__username",
         "user__full_name",
+        "fixed_lesson__title",
         "coach__username",
         "coach__full_name",
         "substitute_coach__username",
@@ -1105,9 +1114,17 @@ class TicketConsumptionAdmin(admin.ModelAdmin):
 
 
 @admin.register(CoachExpense)
-class CoachExpenseAdmin(admin.ModelAdmin):
-    form = CoachExpenseAdminForm
-    list_display = ("id", "expense_date", "category", "amount", "note", "created_by", "created_at")
+class CoachExpenseAdmin(ExpenseTypeAdminMixin, admin.ModelAdmin):
+    list_display = (
+        "id",
+        "expense_date",
+        "expense_type_admin",
+        "category",
+        "amount",
+        "note",
+        "created_by",
+        "created_at",
+    )
     list_filter = ("category", "expense_date")
     search_fields = ("note",)
 
