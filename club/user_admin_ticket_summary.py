@@ -1,23 +1,16 @@
 from types import MethodType
 
 from django.contrib import admin
-from django.db.models import Case, F, IntegerField, OuterRef, Q, Subquery, Sum, Value, When
-from django.db.models.functions import Coalesce, Greatest
+from django.db.models import IntegerField, OuterRef, Subquery, Sum, Value
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from .models import Reservation, TicketLedger, User
+from .models import Reservation, User
 
 
 VALID_RESERVATION_STATUSES = (
     Reservation.STATUS_ACTIVE,
     Reservation.STATUS_PENDING,
-)
-
-CONSUMPTION_LEDGER_REASONS = (
-    TicketLedger.REASON_RESERVATION_USE,
-    TicketLedger.REASON_FIXED_USE,
-    TicketLedger.REASON_CANCEL_REFUND,
-    TicketLedger.REASON_RAIN_REFUND,
 )
 
 
@@ -112,38 +105,20 @@ def apply_user_admin_ticket_summary():
         queryset = original_get_queryset(request)
         now = timezone.now()
 
-        # 消費済みは、開始日時を迎えた予約に紐づく台帳だけを集計する。
-        # 予約時点で先にチケット台帳へ消費が記録されるため、未来予約の台帳を
-        # ここへ含めると「消費済み」と「消費予定」の両方へ重複計上される。
-        # 予約に紐づかない旧データは、過去の消費履歴として引き続き対象とする。
+        # 消費済み・消費予定は、通常予約と固定予約で同じ Reservation を正本にする。
+        # TicketLedger は残高変更履歴であり、固定予約では対応する消費台帳が
+        # 作成されない過去データがあるため、レッスン実績の集計元には使用しない。
         consumed_subquery = (
-            TicketLedger.objects.filter(
+            Reservation.objects.filter(
                 user_id=OuterRef("pk"),
-                reason__in=CONSUMPTION_LEDGER_REASONS,
-            )
-            .filter(
-                Q(reservation__isnull=True)
-                | Q(reservation__start_at__lte=now)
+                start_at__lte=now,
+                status__in=VALID_RESERVATION_STATUSES,
             )
             .values("user_id")
-            .annotate(
-                total=Sum(
-                    Case(
-                        When(
-                            reason__in=CONSUMPTION_LEDGER_REASONS,
-                            then=-F("change_amount"),
-                        ),
-                        default=Value(0),
-                        output_field=IntegerField(),
-                    )
-                )
-            )
+            .annotate(total=Sum("tickets_used"))
             .values("total")[:1]
         )
 
-        # 消費予定は、現在より後に開始する有効・承認待ち予約だけを集計する。
-        # TicketLedger は予約作成時点で更新されるため、未来予約については参照せず、
-        # Reservation.tickets_used を正本として扱う。
         planned_subquery = (
             Reservation.objects.filter(
                 user_id=OuterRef("pk"),
@@ -156,11 +131,8 @@ def apply_user_admin_ticket_summary():
         )
 
         return queryset.annotate(
-            _consumed_ticket_count=Greatest(
-                Coalesce(
-                    Subquery(consumed_subquery, output_field=IntegerField()),
-                    Value(0),
-                ),
+            _consumed_ticket_count=Coalesce(
+                Subquery(consumed_subquery, output_field=IntegerField()),
                 Value(0),
             ),
             _planned_ticket_count=Coalesce(
