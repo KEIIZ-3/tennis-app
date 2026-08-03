@@ -23,3 +23,7 @@ class ClubConfig(AppConfig):
         # 管理サイトの予約一覧へ、キャンセル日時・理由・取消元などの確認列を追加する。
         # 表示専用で、予約・LINE・カレンダー処理には介入しない。
         from . import reservation_admin_history  # noqa: F401
+
+        # 管理サイトのユーザー一覧へ、消費済み・消費予定・現在保有の
+        # チケット枚数を表示する。既存データの集計表示のみを行う。
+        from . import user_admin_ticket_summary  # noqa: F401
