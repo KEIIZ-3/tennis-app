@@ -1,1 +1,0 @@
-マージはCodexから実行しません。レビュー承認後にscripts/merge-pr.ps1だけを使用します。同スクリプトはmergeable、ステータスチェック、変更要求、未解決レビューを検証し、Ready化、merge commit、main同期を行います。

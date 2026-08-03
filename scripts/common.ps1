@@ -1,7 +1,7 @@
 ﻿Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-function Set-CodexUtf8Environment {
+function Set-WorkflowUtf8 {
     $env:PYTHONUTF8 = "1"
     $env:PYTHONIOENCODING = "utf-8"
     [Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
@@ -9,7 +9,7 @@ function Set-CodexUtf8Environment {
     $global:OutputEncoding = [Console]::OutputEncoding
 }
 
-function Get-TennisAppRoot {
+function Get-RepositoryRoot {
     return (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 }
 
@@ -40,10 +40,8 @@ function Add-GitHubCliToPath {
 
 function Assert-CommandAvailable {
     param(
-        [Parameter(Mandatory = $true)]
-        [string]$Name,
-        [Parameter(Mandatory = $true)]
-        [string]$InstallMessage
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$InstallMessage
     )
     if ($null -eq (Get-Command $Name -ErrorAction SilentlyContinue)) {
         throw $InstallMessage
@@ -52,11 +50,9 @@ function Assert-CommandAvailable {
 
 function Invoke-NativeChecked {
     param(
-        [Parameter(Mandatory = $true)]
-        [string]$FilePath,
+        [Parameter(Mandatory = $true)][string]$FilePath,
         [string[]]$Arguments = @(),
-        [Parameter(Mandatory = $true)]
-        [string]$FailureMessage,
+        [Parameter(Mandatory = $true)][string]$FailureMessage,
         [switch]$Quiet
     )
 
@@ -75,19 +71,19 @@ function Invoke-NativeChecked {
     }
 }
 
-function Initialize-CodexWorkflow {
+function Initialize-Workflow {
     param([switch]$RequireCodex)
 
-    Set-CodexUtf8Environment
+    Set-WorkflowUtf8
     Add-GitHubCliToPath
     Assert-CommandAvailable -Name "git" -InstallMessage "Gitが見つかりません。インストールとPATHを確認してください。"
     if ($RequireCodex) {
         Assert-CommandAvailable -Name "codex" -InstallMessage "Codex CLIが見つかりません。インストールとPATHを確認してください。"
     }
 
-    $repoRoot = Get-TennisAppRoot
+    $repoRoot = Get-RepositoryRoot
     Set-Location -LiteralPath $repoRoot
-    Invoke-NativeChecked -FilePath "gh" -Arguments @("--version") -FailureMessage "GitHub CLIのバージョン確認に失敗しました。" -Quiet | Out-Null
+    Invoke-NativeChecked -FilePath "gh" -Arguments @("--version") -FailureMessage "GitHub CLIの確認に失敗しました。" -Quiet | Out-Null
     Invoke-NativeChecked -FilePath "gh" -Arguments @("auth", "status") -FailureMessage "GitHub CLIの認証に失敗しました。gh auth loginを実行してください。" -Quiet | Out-Null
     return $repoRoot
 }
@@ -100,14 +96,14 @@ function Assert-CleanWorktree {
 }
 
 function Sync-MainBranch {
-    Invoke-NativeChecked -FilePath "git" -Arguments @("switch", "main") -FailureMessage "mainブランチへの切り替えに失敗しました。" -Quiet | Out-Null
+    Invoke-NativeChecked -FilePath "git" -Arguments @("switch", "main") -FailureMessage "mainへの切り替えに失敗しました。" -Quiet | Out-Null
     Invoke-NativeChecked -FilePath "git" -Arguments @("fetch", "origin", "main") -FailureMessage "origin/mainの取得に失敗しました。" -Quiet | Out-Null
     Invoke-NativeChecked -FilePath "git" -Arguments @("pull", "--ff-only", "origin", "main") -FailureMessage "mainをfast-forward同期できませんでした。" -Quiet | Out-Null
 }
 
 function Get-PromptTemplate {
     param([Parameter(Mandatory = $true)][string]$Name)
-    $path = Join-Path $PSScriptRoot $Name
+    $path = Join-Path (Join-Path $PSScriptRoot "prompts") $Name
     if (-not (Test-Path -LiteralPath $path)) {
         throw "プロンプトテンプレートが見つかりません: $Name"
     }
@@ -117,7 +113,6 @@ function Get-PromptTemplate {
 function Read-ImprovementRequest {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
-
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "Tennis-App 開発"
     $form.StartPosition = "CenterScreen"
@@ -169,6 +164,29 @@ function Read-ImprovementRequest {
         throw "改善内容が入力されていません。"
     }
     return $request.Trim()
+}
+
+function Get-GitHubRepository {
+    $json = Invoke-NativeChecked -FilePath "gh" -Arguments @("repo", "view", "--json", "nameWithOwner") -FailureMessage "GitHubリポジトリ情報を取得できませんでした。" -Quiet
+    return (($json -join [Environment]::NewLine) | ConvertFrom-Json)
+}
+
+function Get-PullRequest {
+    param([Parameter(Mandatory = $true)][int]$Number, [Parameter(Mandatory = $true)][string]$Repository)
+    $json = Invoke-NativeChecked -FilePath "gh" -Arguments @(
+        "pr", "view", [string]$Number, "--repo", $Repository, "--json",
+        "number,url,state,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup"
+    ) -FailureMessage "PR #$Numberを取得できませんでした。" -Quiet
+    return (($json -join [Environment]::NewLine) | ConvertFrom-Json)
+}
+
+function Assert-LocalArtifactsIgnored {
+    foreach ($name in @("report.md", ".pr-body.md", ".codex-prompt.tmp")) {
+        & git check-ignore --quiet -- $name
+        if ($LASTEXITCODE -ne 0) {
+            throw "$name が.gitignoreに登録されていません。"
+        }
+    }
 }
 
 function Write-WorkflowError {

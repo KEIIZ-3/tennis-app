@@ -1,35 +1,35 @@
 ﻿[CmdletBinding()]
-param(
-    [ValidateSet("dev", "hotfix", "refactor", "review")]
-    [string]$TaskType = "dev",
-    [string]$Request
-)
+param([string]$Request)
 
-. (Join-Path $PSScriptRoot "codex-common.ps1")
+. (Join-Path $PSScriptRoot "common.ps1")
 
+$promptPath = $null
 try {
-    $repoRoot = Initialize-CodexWorkflow -RequireCodex
+    $repoRoot = Initialize-Workflow -RequireCodex
     Assert-CleanWorktree
+    Assert-LocalArtifactsIgnored
     Sync-MainBranch
 
     if ([string]::IsNullOrWhiteSpace($Request)) {
         $Request = Read-ImprovementRequest
     }
 
-    $basePrompt = Get-PromptTemplate -Name "prompt-base.txt"
-    $taskPrompt = Get-PromptTemplate -Name "prompt-$TaskType.txt"
-    $prompt = @"
-$basePrompt
+    $template = Get-PromptTemplate -Name "prompt-dev.txt"
+    if (-not $template.Contains("{{IMPROVEMENT}}")) {
+        throw "prompt-dev.txtに{{IMPROVEMENT}}がありません。"
+    }
 
-$taskPrompt
-
-## 今回の改善要求
-
-$($Request.Trim())
-"@
+    $prompt = $template.Replace("{{IMPROVEMENT}}", $Request.Trim())
+    $promptPath = Join-Path $repoRoot ".codex-prompt.tmp"
+    [System.IO.File]::WriteAllText(
+        $promptPath,
+        $prompt,
+        [System.Text.UTF8Encoding]::new($false)
+    )
 
     Write-Host "Codexへ改善要求を送信しました。完了までこの画面を閉じないでください。"
-    $prompt | & codex exec -C $repoRoot --sandbox workspace-write -c 'approval_policy="on-request"' -
+    Get-Content -Raw -Encoding utf8 -LiteralPath $promptPath |
+        & codex exec -C $repoRoot --sandbox workspace-write -c 'approval_policy="on-request"' -
     if ($LASTEXITCODE -ne 0) {
         throw "Codexの自動作業が失敗しました。表示されたログを確認してください。"
     }
@@ -37,4 +37,9 @@ $($Request.Trim())
 catch {
     Write-WorkflowError -ErrorRecord $_
     exit 1
+}
+finally {
+    if ($promptPath -and (Test-Path -LiteralPath $promptPath)) {
+        Remove-Item -LiteralPath $promptPath -Force
+    }
 }

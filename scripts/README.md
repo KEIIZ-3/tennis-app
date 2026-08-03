@@ -2,81 +2,122 @@
 
 ## 概要
 
-改善内容を1回入力するだけで、Codexが調査、実装、テスト、差分確認、コミット、push、Draft PR、ローカルreport.mdまで進めます。レビュー後は「PRマージ」ショートカットから、PR検証、Ready化、merge commit、main同期を実行します。
+デスクトップの「Tennis-App 開発」をダブルクリックし、改善内容だけを1回入力すると、Codexが調査、実装、テスト、差分確認、コミット、push、Draft PR、ローカルreport.md作成まで進めます。
 
-Codexはworkspace-writeで起動し、リポジトリ外やPC全体への書き込み権限を与えません。force push、rebase、reset、ブランチ削除、本番操作は自動化しません。
+レビュー承認後は「PRマージ」をダブルクリックしてPR番号だけを入力すると、PR検証、Ready化、merge commit、main同期まで進みます。
 
-## ファイル構成
+Codexはworkspace-writeで動作します。force push、rebase、reset、ブランチ削除、本番操作は自動化しません。
 
-- codex-common.ps1: UTF-8、CLI検出、GitHub認証、Git同期、入力画面などの共通処理
-- start-codex.ps1: 同期後に通常の対話型Codexを起動
-- codex-auto.ps1: 入力とテンプレートを合成し、Codexを非対話実行
-- new-task.ps1: 通常改善のワンクリック入口
-- merge-pr.ps1: レビュー後の唯一のマージ入口
-- install-shortcuts.ps1: デスクトップショートカットを作成
-- prompt-base.txt: 全作業共通の自律実行・安全ルール
-- prompt-dev.txt: 通常改善
-- prompt-hotfix.txt: 緊急修正
-- prompt-refactor.txt: 挙動維持リファクタリング
-- prompt-review.txt: レビュー
-- prompt-merge.txt: マージ方針
+## 構成
 
-## 初回導入
+- common.ps1: UTF-8、Git、GitHub CLI、認証、main同期、入力、prompt、PR、report関連の共通関数
+- start-codex.ps1: 開発用ショートカットの入口
+- codex-auto.ps1: 改善内容入力、prompt-dev読込、一時prompt生成、Codex自動実行
+- merge-pr.ps1: PR番号入力後の検証、Ready、Merge、main同期
+- install-shortcuts.ps1: デスクトップショートカット作成
+- prompts/prompt-dev.txt: 通常開発
+- prompts/prompt-review.txt: レビュー
+- prompts/prompt-merge.txt: マージ方針
+- prompts/prompt-hotfix.txt: 緊急修正
+- prompts/prompt-refactor.txt: 挙動維持リファクタリング
 
-PowerShellでリポジトリルートへ移動し、一度だけ次を実行します。この操作だけがデスクトップへ書き込みます。
+new-task.ps1は廃止しました。通常開発の入口はstart-codex.ps1へ一本化しています。
 
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\install-shortcuts.ps1
+## セットアップ
 
-次の2つがデスクトップに作成されます。
+前提:
+
+- Windows PowerShell
+- Git
+- GitHub CLI
+- gh認証済み
+- Codex CLI
+
+初回のみリポジトリルートで次を実行します。
+
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-shortcuts.ps1
+
+デスクトップへ次の2つが作成されます。
 
 - Tennis-App 開発
 - PRマージ
 
-## 開発作業
+この導入操作だけがデスクトップへ書き込みます。
+
+## 開発の使い方
 
 1. 「Tennis-App 開発」をダブルクリックします。
-2. 「改善内容を入力してください」と表示された複数行入力画面へ、要件、ログ、コード、スクリーンショットの説明などをまとめて貼り付けます。
+2. 「改善内容を入力してください」と表示された複数行画面へ、改善要求全体を貼り付けます。
 3. 「開始」を押します。
-4. CodexがDraft PRとローカルreport.mdの作成まで進めます。
+4. Draft PR URLとローカルreport.mdが作成されるまで待ちます。
 
-コマンドから直接実行する場合:
+長い運用promptを貼り付ける必要はありません。要件、ログ、コード、箇条書き、スクリーンショットの説明を1回で入力できます。
 
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\new-task.ps1
+PowerShellから直接実行する場合:
 
-用途を指定する場合:
+    .\scripts\start-codex.ps1
 
-    .\\scripts\\codex-auto.ps1 -TaskType hotfix
-    .\\scripts\\codex-auto.ps1 -TaskType refactor
-    .\\scripts\\codex-auto.ps1 -TaskType review
+文字列を引数で渡す場合:
+
+    .\scripts\start-codex.ps1 -Request "改善内容"
+
+## 内部フロー
+
+start-codex.ps1はcodex-auto.ps1を起動します。codex-auto.ps1はcommon.ps1を使用して次を行います。
+
+1. UTF-8設定
+2. GitHub CLI PATH確認
+3. gh認証確認
+4. Git状態確認
+5. mainとorigin/mainのfast-forward同期
+6. 改善内容の1回入力
+7. prompts/prompt-dev.txt読込
+8. {{IMPROVEMENT}}への改善内容埋込
+9. ignore済み.codex-prompt.tmpの一時生成
+10. Codexへpromptをstdin送信
+11. Codex終了後に一時promptを削除
 
 ## PRマージ
 
-レビュー承認後、Codexが作業を終えたブランチのまま「PRマージ」をダブルクリックします。スクリプトは次を自動確認します。
+レビュー承認後:
+
+1. 「PRマージ」をダブルクリックします。
+2. PR番号だけを入力します。
+3. 完了まで待ちます。
+
+スクリプトは次を確認します。
 
 - PRがOPEN
 - mergeableがMERGEABLE
 - merge stateがCLEAN
 - 変更要求がない
-- ステータスチェックに失敗・実行中がない
+- ステータスチェックが成功済み、neutral、skipped、またはチェックなし
 - 未解決レビューコメントがない
 
-確認後、DraftをReadyへ変更し、merge commit方式でマージし、ローカルmainをfast-forward同期します。ブランチは削除しません。
+確認後、DraftをReadyへ変更し、merge commit方式でマージし、ローカルmainをfast-forward同期します。作業ブランチは削除しません。
 
-別ブランチから番号指定で実行する場合:
+直接実行する場合:
 
-    .\\scripts\\merge-pr.ps1 -PrNumber 154
+    .\scripts\merge-pr.ps1
 
-## 通常の対話型Codex
+番号を引数で渡す場合:
 
-    .\\scripts\\start-codex.ps1
+    .\scripts\merge-pr.ps1 -PrNumber 155
+
+## ローカル専用ファイル
+
+次は.gitignoreで除外され、Git管理されません。
+
+- report.md
+- .pr-body.md
+- .codex-prompt.tmp
 
 ## トラブル対応
 
-- 未コミット変更: 変更をコミット、退避、または不要なら手動で整理してから再実行してください。スクリプトはresetや削除を行いません。
-- GitHub認証エラー: gh auth login後にgh auth statusを確認してください。
-- main同期エラー: ローカルとリモートの履歴が分岐しています。スクリプトはrebaseやresetを行わないため、Git履歴を確認してください。
-- Codex CLI未検出: codex --versionが成功するようPATHを設定してください。
-- PRを特定できない: 作業ブランチでmerge-pr.ps1を実行するか、-PrNumberを指定してください。
-- 未解決レビューまたはチェック失敗: GitHubで解消してから再実行してください。
-
-report.mdと.pr-body.mdはローカル専用で、.gitignoreによりGit管理されません。
+- 未コミット変更: コミットまたは手動整理してから再実行してください。スクリプトはresetや削除を行いません。
+- gh認証エラー: gh auth login後にgh auth statusを確認してください。
+- main同期エラー: 履歴が分岐している可能性があります。スクリプトはrebaseやresetを行いません。
+- Codex未検出: codex --versionが成功するようPATHを設定してください。
+- promptテンプレートエラー: prompts/prompt-dev.txtと{{IMPROVEMENT}}を確認してください。
+- PR検証エラー: GitHubでコンフリクト、checks、変更要求、未解決レビューを解消してください。
+- 一時promptが残った: Codex強制終了時に残る場合があります。.codex-prompt.tmpはignore済みで、内容確認後に手動削除できます。

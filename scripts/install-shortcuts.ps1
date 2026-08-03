@@ -1,7 +1,7 @@
 ﻿[CmdletBinding()]
 param()
 
-. (Join-Path $PSScriptRoot "codex-common.ps1")
+. (Join-Path $PSScriptRoot "common.ps1")
 
 try {
     Set-CodexUtf8Environment
@@ -10,7 +10,7 @@ try {
     $shell = New-Object -ComObject WScript.Shell
     $powerShellPath = (Get-Command powershell.exe).Source
     $shortcuts = @(
-        @{ Name = "Tennis-App 開発.lnk"; Script = Join-Path $PSScriptRoot "new-task.ps1" },
+        @{ Name = "Tennis-App 開発.lnk"; Script = Join-Path $PSScriptRoot "start-codex.ps1" },
         @{ Name = "PRマージ.lnk"; Script = Join-Path $PSScriptRoot "merge-pr.ps1" }
     )
     $quote = [char]34

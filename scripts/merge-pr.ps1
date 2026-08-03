@@ -1,20 +1,22 @@
 ﻿[CmdletBinding()]
 param([int]$PrNumber)
 
-. (Join-Path $PSScriptRoot "codex-common.ps1")
+. (Join-Path $PSScriptRoot "common.ps1")
 
 try {
-    $repoRoot = Initialize-CodexWorkflow
+    $repoRoot = Initialize-Workflow
     Assert-CleanWorktree
-    $repoJson = Invoke-NativeChecked -FilePath "gh" -Arguments @("repo", "view", "--json", "nameWithOwner") -FailureMessage "GitHubリポジトリ情報を取得できませんでした。" -Quiet
-    $repository = (($repoJson -join [Environment]::NewLine) | ConvertFrom-Json)
-    $owner, $repo = $repository.nameWithOwner -split "/", 2
 
-    $viewArguments = @("pr", "view")
-    if ($PrNumber -gt 0) { $viewArguments += [string]$PrNumber }
-    $viewArguments += @("--repo", $repository.nameWithOwner, "--json", "number,url,state,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup")
-    $prJson = Invoke-NativeChecked -FilePath "gh" -Arguments $viewArguments -FailureMessage "対象PRを取得できませんでした。作業ブランチで実行するか-PrNumberを指定してください。" -Quiet
-    $pr = (($prJson -join [Environment]::NewLine) | ConvertFrom-Json)
+    if ($PrNumber -le 0) {
+        $rawNumber = Read-Host "PR番号を入力してください"
+        if (-not [int]::TryParse($rawNumber, [ref]$PrNumber) -or $PrNumber -le 0) {
+            throw "正しいPR番号を入力してください。"
+        }
+    }
+
+    $repository = Get-GitHubRepository
+    $owner, $repo = $repository.nameWithOwner -split "/", 2
+    $pr = Get-PullRequest -Number $PrNumber -Repository $repository.nameWithOwner
 
     if ($pr.state -ne "OPEN") { throw "PR #$($pr.number) はOPENではありません。" }
     if ($pr.mergeable -ne "MERGEABLE" -or $pr.mergeStateStatus -ne "CLEAN") {

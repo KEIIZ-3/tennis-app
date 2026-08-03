@@ -1,19 +1,10 @@
 ﻿[CmdletBinding()]
-param()
+param([string]$Request)
 
-. (Join-Path $PSScriptRoot "codex-common.ps1")
+$arguments = @{}
+if (-not [string]::IsNullOrWhiteSpace($Request)) {
+    $arguments.Request = $Request
+}
 
-try {
-    $repoRoot = Initialize-CodexWorkflow -RequireCodex
-    Assert-CleanWorktree
-    Sync-MainBranch
-    Write-Host "Codexを安全なワークスペース書き込みモードで起動します。"
-    & codex --cd $repoRoot --sandbox workspace-write --ask-for-approval on-request
-    if ($LASTEXITCODE -ne 0) {
-        throw "Codexの起動または実行に失敗しました。"
-    }
-}
-catch {
-    Write-WorkflowError -ErrorRecord $_
-    exit 1
-}
+& (Join-Path $PSScriptRoot "codex-auto.ps1") @arguments
+exit $LASTEXITCODE
