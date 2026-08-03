@@ -5,7 +5,7 @@ param()
 
 try {
     Set-WorkflowUtf8
-    $repoRoot = Get-TennisAppRoot
+    $repoRoot = Get-RepositoryRoot
     $desktop = [Environment]::GetFolderPath("Desktop")
     $shell = New-Object -ComObject WScript.Shell
     $powerShellPath = (Get-Command powershell.exe).Source
