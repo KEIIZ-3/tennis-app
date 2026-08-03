@@ -112,13 +112,18 @@ def apply_user_admin_ticket_summary():
         queryset = original_get_queryset(request)
         now = timezone.now()
 
-        # 消費済みはチケット台帳を正本とする。
-        # 消費は負数、キャンセル・雨天返却は正数なので、符号を反転して合算すると
-        # 実際に消費されたままの枚数を算出できる。
+        # 消費済みは、開始日時を迎えた予約に紐づく台帳だけを集計する。
+        # 予約時点で先にチケット台帳へ消費が記録されるため、未来予約の台帳を
+        # ここへ含めると「消費済み」と「消費予定」の両方へ重複計上される。
+        # 予約に紐づかない旧データは、過去の消費履歴として引き続き対象とする。
         consumed_subquery = (
             TicketLedger.objects.filter(
                 user_id=OuterRef("pk"),
                 reason__in=CONSUMPTION_LEDGER_REASONS,
+            )
+            .filter(
+                Q(reservation__isnull=True)
+                | Q(reservation__start_at__lte=now)
             )
             .values("user_id")
             .annotate(
@@ -136,8 +141,9 @@ def apply_user_admin_ticket_summary():
             .values("total")[:1]
         )
 
-        # 消費予定は、チケット消費レコードの有無ではなく未来の有効予約を正本とする。
-        # チケット0枚でも予約できる運用のため、Reservation.tickets_used を直接集計する。
+        # 消費予定は、現在より後に開始する有効・承認待ち予約だけを集計する。
+        # TicketLedger は予約作成時点で更新されるため、未来予約については参照せず、
+        # Reservation.tickets_used を正本として扱う。
         planned_subquery = (
             Reservation.objects.filter(
                 user_id=OuterRef("pk"),
