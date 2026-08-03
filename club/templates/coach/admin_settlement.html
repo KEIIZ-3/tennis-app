@@ -131,22 +131,21 @@
         {% if is_month_closed %}
           <form method="post">{% csrf_token %}<input type="hidden" name="action" value="reopen_month"><input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}"><button type="submit" class="btn danger-button" onclick="return confirm('締めを解除して再計算可能にしますか？');">締めを解除</button></form>
         {% else %}
-          <form method="post">{% csrf_token %}<input type="hidden" name="action" value="close_month"><input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}"><button type="submit" class="btn success-button" onclick="return confirm('{{ month_label }}を締めて最終受取額を確定しますか？');">この月を締める</button></form>
+          <form method="post">{% csrf_token %}<input type="hidden" name="action" value="close_month"><input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}"><button type="submit" class="btn success-button" onclick="return confirm('この月を締めて最終受取額を固定しますか？');">月次締め</button></form>
         {% endif %}
       </div>
     </div>
   </section>
 
   <section class="panel">
-    <div class="section-head"><div><h2 class="section-title">月末一括精算を記録</h2><p class="help">会社経費支払分・コート代負担・共通経費負担を反映した最終受取額を、コーチごとに記録します。個人経費は対象外です。</p></div></div>
-    {% if is_month_closed %}
-      <div class="notice closed">締め済みのため、新しい支払いは登録できません。</div>
-    {% else %}
+    <div class="section-head">
+      <div><h2 class="section-title">一括精算支払いの記録</h2><p class="help">給与支払は最終受取額の未払い分から控除されます。個人経費の返金は経費立替返金として別管理します。</p></div>
+    </div>
+    {% if not is_month_closed %}
       <form method="post" class="form-grid">{% csrf_token %}
-        <input type="hidden" name="action" value="create_payout">
+        <input type="hidden" name="action" value="record_salary_payment">
         <input type="hidden" name="year" value="{{ selected_year }}">
         <input type="hidden" name="month" value="{{ selected_month }}">
-        <input type="hidden" name="payout_type" value="salary_payout">
         <div><label for="coach_id">支払先コーチ</label><select id="coach_id" name="coach_id" required><option value="">選択してください</option>{% for coach in coach_options %}<option value="{{ coach.id }}">{{ coach.display_name }}</option>{% endfor %}</select></div>
         <div><label for="amount">一括精算額</label><input id="amount" name="amount" type="number" min="1" step="1" required></div>
         <div><label for="paid_date">支払日</label><input id="paid_date" name="paid_date" type="date" value="{{ today_value }}" required></div>
@@ -157,7 +156,7 @@
   </section>
 
   <section class="panel">
-    <div class="section-head"><div><h2 class="section-title">コーチ別 最終精算</h2><p class="help">売上貢献、コート代、ボール代、会社経費支払分、その他経費、業務委託負担を分けて表示します。ボール代は対象月の完了済みレッスンで担当した参加人数に比例して負担します。</p></div></div>
+    <div class="section-head"><div><h2 class="section-title">コーチ別 最終精算</h2><p class="help">売上貢献、コート代、共通経費、業務委託負担を分けて表示します。共通経費にはボール代を含み、内訳は折りたたみ内で確認できます。</p></div></div>
     <div class="coach-grid">
       {% for row in coach_rows %}
         <article class="coach-card{% if row.is_contractor_coach %} contractor{% endif %}">
@@ -172,11 +171,9 @@
             {% court_cost_breakdown settlement row %}
             {% if row.rain_refund_burden %}<div class="money-row minus"><span>雨天中止返金負担</span><strong>-{{ row.rain_refund_burden }}円</strong></div>{% endif %}
             {% if row.rain_refund_reimbursement %}<div class="money-row plus"><span>雨天中止返金付与</span><strong>+{{ row.rain_refund_reimbursement }}円</strong></div>{% endif %}
-            <div class="money-row minus"><span>ボール代負担</span><strong>-{{ row.ball_expense_burden|default:0 }}円</strong></div>
-            <div class="money-row plus"><span>ボール代立替付与</span><strong>+{{ row.ball_expense_reimbursement|default:0 }}円</strong></div>
-            <div class="money-row minus"><span>その他経費負担</span><strong>-{{ row.other_expense_burden|default:0 }}円</strong></div>
-            <div class="money-row minus"><span>業務委託費負担</span><strong>-{{ row.contractor_cost_burden|default:0 }}円</strong></div>
+            <div class="money-row minus"><span>共通経費負担</span><strong>-{{ row.ball_expense_burden|default:0|add:row.other_expense_burden|default:0 }}円</strong></div>
             <div class="money-row plus"><span>経費立替付与合計</span><strong>+{{ row.wallet_reimbursement|default:0 }}円</strong></div>
+            <div class="money-row minus"><span>業務委託費負担</span><strong>-{{ row.contractor_cost_burden|default:0 }}円</strong></div>
             {% if row.unpaid_salary_carry_in %}<div class="money-row plus"><span>前月未払い繰越</span><strong>+{{ row.unpaid_salary_carry_in }}円</strong></div>{% endif %}
             {% if row.negative_carry_in %}<div class="money-row minus"><span>前月マイナス繰越</span><strong>-{{ row.negative_carry_in }}円</strong></div>{% endif %}
             {% if row.wallet_balance_adjustment %}<div class="money-row"><span>財布残高調整</span><strong>{{ row.wallet_balance_adjustment }}円</strong></div>{% endif %}
