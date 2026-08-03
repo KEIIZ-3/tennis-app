@@ -57,8 +57,16 @@ function Invoke-NativeChecked {
     )
 
     if ($Quiet) {
-        $output = & $FilePath @Arguments 2>&1
-        if ($LASTEXITCODE -ne 0) {
+        $previousErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "Continue"
+            $output = & $FilePath @Arguments 2>&1
+            $exitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+        if ($exitCode -ne 0) {
             $details = ($output | Out-String).Trim()
             throw "$FailureMessage $details".Trim()
         }
@@ -176,7 +184,7 @@ function Get-PullRequest {
     $json = Invoke-NativeChecked -FilePath "gh" -Arguments @(
         "pr", "view", [string]$Number, "--repo", $Repository, "--json",
         "number,url,state,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup"
-    ) -FailureMessage "PR #function Number() { [native code] }を取得できませんでした。" -Quiet
+    ) -FailureMessage "PR #${Number}を取得できませんでした。" -Quiet
     return (($json -join [Environment]::NewLine) | ConvertFrom-Json)
 }
 
