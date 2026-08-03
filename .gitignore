@@ -16,3 +16,7 @@ staticfiles/
 
 # Windows
 Thumbs.db
+
+# Local Codex workflow artifacts
+report.md
+.pr-body.md
