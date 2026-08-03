@@ -6,6 +6,7 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import MAIN_COACH_NAMES
+from .settlement_coach_calculation import calculate_coach_wallets
 from .settlement_expense_distribution import build_expense_distribution_policies
 
 WEEKDAY_COURT_RATE_PER_HOUR = 900
@@ -1049,8 +1050,6 @@ def _unpaid_salary_carry_in_by_coach(year, month, coach_ids):
 
 
 def _apply_wallet_policy(result, year, month):
-    from .settlement_models import CoachMonthlySettlement
-
     settlement = result.get("settlement")
     if settlement is None or settlement.is_closed:
         return result
@@ -1061,7 +1060,6 @@ def _apply_wallet_policy(result, year, month):
 
     main_coach_list = main_coaches()
     main_coach_ids = [coach.pk for coach in main_coach_list]
-    main_coach_id_set = set(main_coach_ids)
     eligible_coach_ids = [
         getattr(row.get("coach"), "pk", None)
         for row in coach_rows
@@ -1115,280 +1113,33 @@ def _apply_wallet_policy(result, year, month):
         for row in coach_rows
     )
 
-    final_total_before_adjustment = 0
-
-    for row in coach_rows:
-        coach = row.get("coach")
-        coach_id = getattr(coach, "pk", None)
-        is_contractor = bool(row.get("is_contractor_coach"))
-
-        lesson_revenue = (
-            _money(row.get("ticket_amount"))
-            + _money(row.get("preopen_paid_amount"))
-        )
-        stringing_revenue = _money(row.get("stringing_amount"))
-
-        court_burden = _money(
-            court_policy["burden_by_coach"].get(coach_id)
-        )
-        ball_expense_burden = _money(
-            other_expense_policy.get("ball_burden_by_coach", {}).get(coach_id)
-        )
-        other_expense_burden = _money(
-            other_expense_policy.get(
-                "other_burden_by_coach",
-                other_expense_policy["burden_by_coach"],
-            ).get(coach_id)
-        )
-        contractor_burden = _money(
-            contractor_share_by_main.get(coach_id)
-        )
-        rain_refund_burden = _money(
-            rain_refund_policy["burden_by_coach"].get(coach_id)
-        )
-
-        court_reimbursement = _money(
-            court_policy["reimbursement_by_coach"].get(coach_id)
-        )
-        ball_expense_reimbursement = _money(
-            other_expense_policy.get(
-                "ball_reimbursement_by_coach",
-                {},
-            ).get(coach_id)
-        )
-        other_expense_reimbursement = _money(
-            other_expense_policy.get(
-                "other_reimbursement_by_coach",
-                other_expense_policy["reimbursement_by_coach"],
-            ).get(coach_id)
-        )
-        rain_refund_reimbursement = _money(
-            rain_refund_policy["reimbursement_by_coach"].get(coach_id)
-        )
-        reimbursement_total = (
-            court_reimbursement
-            + ball_expense_reimbursement
-            + other_expense_reimbursement
-            + rain_refund_reimbursement
-        )
-        negative_carry_in = _money(
-            negative_carry_in_by_coach.get(coach_id)
-        )
-        unpaid_salary_carry_in = _money(
-            unpaid_salary_carry_in_by_coach.get(coach_id)
-        )
-
-        if is_contractor:
-            earned_amount = (
-                _money(row.get("contractor_hourly_pay_amount"))
-                + stringing_revenue
-            )
-            burden_total = 0
-        else:
-            earned_amount = lesson_revenue + stringing_revenue
-            burden_total = (
-                court_burden
-                + ball_expense_burden
-                + other_expense_burden
-                + contractor_burden
-                + rain_refund_burden
-            )
-
-        final_entitlement = (
-            earned_amount
-            + reimbursement_total
-            + unpaid_salary_carry_in
-            - burden_total
-            - negative_carry_in
-        )
-
-        row.update(
-            {
-                "is_main_coach": coach_id in main_coach_id_set,
-                "company_revenue_contribution": (
-                    lesson_revenue + stringing_revenue
-                ),
-                "court_cost_burden": court_burden,
-                "ball_expense_burden": ball_expense_burden,
-                "other_expense_burden": other_expense_burden,
-                "contractor_cost_burden": contractor_burden,
-                "rain_refund_burden": rain_refund_burden,
-                "total_cost_burden": burden_total,
-                "court_reimbursement": court_reimbursement,
-                "ball_expense_reimbursement": (
-                    ball_expense_reimbursement
-                ),
-                "other_expense_reimbursement": (
-                    other_expense_reimbursement
-                ),
-                "rain_refund_reimbursement": rain_refund_reimbursement,
-                "wallet_reimbursement": reimbursement_total,
-                "wallet_earned_amount": earned_amount,
-                "negative_carry_in": negative_carry_in,
-                "unpaid_salary_carry_in": unpaid_salary_carry_in,
-                "wallet_final_entitlement": final_entitlement,
-                "wallet_balance_adjustment": 0,
-            }
-        )
-        final_total_before_adjustment += final_entitlement
-
-    wallet_difference = total_company_revenue - final_total_before_adjustment
-
-    # 経費の支払者がメインコーチとして特定できない場合、ここで生じる差額は
-    # 会社・外部支払分として給与原資から残す必要がある。売上比率で再配分すると、
-    # 直前に控除した共通経費を給与へ戻してしまうため調整は行わない。
+    coach_calculation = calculate_coach_wallets(
+        coach_rows=coach_rows,
+        settlement=settlement,
+        main_coach_ids=main_coach_ids,
+        court_policy=court_policy,
+        other_expense_policy=other_expense_policy,
+        rain_refund_policy=rain_refund_policy,
+        contractor_share_by_main=contractor_share_by_main,
+        negative_carry_in_by_coach=negative_carry_in_by_coach,
+        unpaid_salary_carry_in_by_coach=unpaid_salary_carry_in_by_coach,
+        total_company_revenue=total_company_revenue,
+        money=_money,
+        active_salary_payment_total=_active_salary_payment_total,
+        active_reimbursement_payment_total=(
+            _active_reimbursement_payment_total
+        ),
+    )
+    coach_rows = coach_calculation["coach_rows"]
+    wallet_difference = coach_calculation["wallet_difference"]
+    salary_due_total = coach_calculation["salary_due_total"]
+    salary_paid_total = coach_calculation["salary_paid_total"]
+    reimbursement_paid_total = coach_calculation[
+        "reimbursement_paid_total"
+    ]
+    unpaid_salary_total = coach_calculation["unpaid_salary_total"]
+    negative_carry_total = coach_calculation["negative_carry_total"]
     adjustment_by_coach = {}
-
-    salary_due_total = 0
-    salary_paid_total = 0
-    reimbursement_paid_total = 0
-    unpaid_salary_total = 0
-    negative_carry_total = 0
-
-    for row in coach_rows:
-        coach = row.get("coach")
-        final_entitlement = _money(row.get("wallet_final_entitlement"))
-        salary_paid = _active_salary_payment_total(settlement, coach)
-        reimbursement_paid = _active_reimbursement_payment_total(
-            settlement,
-            coach,
-        )
-        total_paid = salary_paid + reimbursement_paid
-
-        salary_due = max(final_entitlement, 0)
-        closing_balance = final_entitlement - total_paid
-        unpaid_salary = max(closing_balance, 0)
-        negative_carry = max(-closing_balance, 0)
-
-        row.update(
-            {
-                "salary_due": salary_due,
-                "salary_paid": salary_paid,
-                "unpaid_salary": unpaid_salary,
-                "negative_carry": negative_carry,
-                "closing_compensation_balance": closing_balance,
-                "personal_reimbursement_due": _money(
-                    row.get("wallet_reimbursement")
-                ),
-                "reimbursement_due": _money(
-                    row.get("wallet_reimbursement")
-                ),
-                "reimbursement_paid": reimbursement_paid,
-                "unpaid_reimbursement": 0,
-                "total_unpaid": unpaid_salary,
-                "total_paid": total_paid,
-                "common_expense_share": _money(
-                    row.get("total_cost_burden")
-                ),
-            }
-        )
-
-        saved_row = CoachMonthlySettlement.objects.filter(
-            monthly_settlement=settlement,
-            coach=coach,
-        ).first()
-
-        if saved_row is not None:
-            snapshot = dict(saved_row.calculation_snapshot or {})
-            snapshot.update(
-                {
-                    "wallet_policy": True,
-                    "is_main_coach": bool(
-                        row.get("is_main_coach")
-                    ),
-                    "company_revenue_contribution": _money(
-                        row.get("company_revenue_contribution")
-                    ),
-                    "court_cost_burden": _money(
-                        row.get("court_cost_burden")
-                    ),
-                    "ball_expense_burden": _money(
-                        row.get("ball_expense_burden")
-                    ),
-                    "other_expense_burden": _money(
-                        row.get("other_expense_burden")
-                    ),
-                    "contractor_cost_burden": _money(
-                        row.get("contractor_cost_burden")
-                    ),
-                    "rain_refund_burden": _money(
-                        row.get("rain_refund_burden")
-                    ),
-                    "total_cost_burden": _money(
-                        row.get("total_cost_burden")
-                    ),
-                    "court_reimbursement": _money(
-                        row.get("court_reimbursement")
-                    ),
-                    "ball_expense_reimbursement": _money(
-                        row.get("ball_expense_reimbursement")
-                    ),
-                    "other_expense_reimbursement": _money(
-                        row.get("other_expense_reimbursement")
-                    ),
-                    "rain_refund_reimbursement": _money(
-                        row.get("rain_refund_reimbursement")
-                    ),
-                    "wallet_reimbursement": _money(
-                        row.get("wallet_reimbursement")
-                    ),
-                    "wallet_earned_amount": _money(
-                        row.get("wallet_earned_amount")
-                    ),
-                    "negative_carry_in": _money(
-                        row.get("negative_carry_in")
-                    ),
-                    "unpaid_salary_carry_in": _money(
-                        row.get("unpaid_salary_carry_in")
-                    ),
-                    "wallet_balance_adjustment": _money(
-                        row.get("wallet_balance_adjustment")
-                    ),
-                    "wallet_final_entitlement": final_entitlement,
-                    "closing_compensation_balance": closing_balance,
-                    "negative_carry": negative_carry,
-                }
-            )
-
-            saved_row.common_expense_share = _money(
-                row.get("total_cost_burden")
-            )
-            saved_row.reimbursement_due = _money(
-                row.get("wallet_reimbursement")
-            )
-            saved_row.reimbursement_current_month = _money(
-                row.get("wallet_reimbursement")
-            )
-            saved_row.reimbursement_carry_in = 0
-            saved_row.salary_due = salary_due
-            saved_row.salary_paid = salary_paid
-            saved_row.salary_unpaid = unpaid_salary
-            saved_row.reimbursement_paid = reimbursement_paid
-            saved_row.reimbursement_unpaid = 0
-            saved_row.calculation_snapshot = snapshot
-            saved_row.updated_at = timezone.now()
-            saved_row.save(
-                update_fields=[
-                    "common_expense_share",
-                    "reimbursement_due",
-                    "reimbursement_current_month",
-                    "reimbursement_carry_in",
-                    "salary_due",
-                    "salary_paid",
-                    "salary_unpaid",
-                    "reimbursement_paid",
-                    "reimbursement_unpaid",
-                    "calculation_snapshot",
-                    "updated_at",
-                ]
-            )
-
-        salary_due_total += salary_due
-        salary_paid_total += salary_paid
-        reimbursement_paid_total += reimbursement_paid
-        unpaid_salary_total += unpaid_salary
-        negative_carry_total += negative_carry
-
     company_internal_reserve = max(
         _money(settlement.opening_balance),
         0,
