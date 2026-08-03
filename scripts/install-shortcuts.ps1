@@ -4,7 +4,7 @@ param()
 . (Join-Path $PSScriptRoot "common.ps1")
 
 try {
-    Set-CodexUtf8Environment
+    Set-WorkflowUtf8
     $repoRoot = Get-TennisAppRoot
     $desktop = [Environment]::GetFolderPath("Desktop")
     $shell = New-Object -ComObject WScript.Shell
