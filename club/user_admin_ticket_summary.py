@@ -1,16 +1,23 @@
 from types import MethodType
 
 from django.contrib import admin
-from django.db.models import IntegerField, Q, Sum, Value
-from django.db.models.functions import Coalesce
+from django.db.models import Case, F, IntegerField, OuterRef, Q, Subquery, Sum, Value, When
+from django.db.models.functions import Coalesce, Greatest
 from django.utils import timezone
 
-from .models import Reservation, User
+from .models import Reservation, TicketLedger, User
 
 
 VALID_RESERVATION_STATUSES = (
     Reservation.STATUS_ACTIVE,
     Reservation.STATUS_PENDING,
+)
+
+CONSUMPTION_LEDGER_REASONS = (
+    TicketLedger.REASON_RESERVATION_USE,
+    TicketLedger.REASON_FIXED_USE,
+    TicketLedger.REASON_CANCEL_REFUND,
+    TicketLedger.REASON_RAIN_REFUND,
 )
 
 
@@ -70,15 +77,21 @@ def apply_user_admin_ticket_summary():
     inserted = False
 
     for field_name in current_display:
-        if field_name == "ticket_balance":
-            replacement_display.extend(
-                (
-                    "consumed_tickets_admin",
-                    "planned_tickets_admin",
-                    "current_tickets_admin",
+        if field_name in {
+            "ticket_balance",
+            "consumed_tickets_admin",
+            "planned_tickets_admin",
+            "current_tickets_admin",
+        }:
+            if not inserted:
+                replacement_display.extend(
+                    (
+                        "consumed_tickets_admin",
+                        "planned_tickets_admin",
+                        "current_tickets_admin",
+                    )
                 )
-            )
-            inserted = True
+                inserted = True
             continue
         replacement_display.append(field_name)
 
@@ -99,37 +112,54 @@ def apply_user_admin_ticket_summary():
         queryset = original_get_queryset(request)
         now = timezone.now()
 
-        consumed_filter = Q(
-            ticket_consumptions__refunded_at__isnull=True,
-        ) & (
-            Q(ticket_consumptions__reservation__isnull=True)
-            | Q(
-                ticket_consumptions__reservation__start_at__lte=now,
-                ticket_consumptions__reservation__status__in=VALID_RESERVATION_STATUSES,
+        # 消費済みはチケット台帳を正本とする。
+        # 消費は負数、キャンセル・雨天返却は正数なので、符号を反転して合算すると
+        # 実際に消費されたままの枚数を算出できる。
+        consumed_subquery = (
+            TicketLedger.objects.filter(
+                user_id=OuterRef("pk"),
+                reason__in=CONSUMPTION_LEDGER_REASONS,
             )
+            .values("user_id")
+            .annotate(
+                total=Sum(
+                    Case(
+                        When(
+                            reason__in=CONSUMPTION_LEDGER_REASONS,
+                            then=-F("change_amount"),
+                        ),
+                        default=Value(0),
+                        output_field=IntegerField(),
+                    )
+                )
+            )
+            .values("total")[:1]
         )
-        planned_filter = Q(
-            ticket_consumptions__refunded_at__isnull=True,
-            ticket_consumptions__reservation__start_at__gt=now,
-            ticket_consumptions__reservation__status__in=VALID_RESERVATION_STATUSES,
+
+        # 消費予定は、チケット消費レコードの有無ではなく未来の有効予約を正本とする。
+        # チケット0枚でも予約できる運用のため、Reservation.tickets_used を直接集計する。
+        planned_subquery = (
+            Reservation.objects.filter(
+                user_id=OuterRef("pk"),
+                start_at__gt=now,
+                status__in=VALID_RESERVATION_STATUSES,
+            )
+            .values("user_id")
+            .annotate(total=Sum("tickets_used"))
+            .values("total")[:1]
         )
 
         return queryset.annotate(
-            _consumed_ticket_count=Coalesce(
-                Sum(
-                    "ticket_consumptions__tickets_used",
-                    filter=consumed_filter,
+            _consumed_ticket_count=Greatest(
+                Coalesce(
+                    Subquery(consumed_subquery, output_field=IntegerField()),
+                    Value(0),
                 ),
                 Value(0),
-                output_field=IntegerField(),
             ),
             _planned_ticket_count=Coalesce(
-                Sum(
-                    "ticket_consumptions__tickets_used",
-                    filter=planned_filter,
-                ),
+                Subquery(planned_subquery, output_field=IntegerField()),
                 Value(0),
-                output_field=IntegerField(),
             ),
         )
 
