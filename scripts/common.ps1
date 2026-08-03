@@ -176,7 +176,7 @@ function Get-PullRequest {
     $json = Invoke-NativeChecked -FilePath "gh" -Arguments @(
         "pr", "view", [string]$Number, "--repo", $Repository, "--json",
         "number,url,state,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup"
-    ) -FailureMessage "PR #$Numberを取得できませんでした。" -Quiet
+    ) -FailureMessage "PR #function Number() { [native code] }を取得できませんでした。" -Quiet
     return (($json -join [Environment]::NewLine) | ConvertFrom-Json)
 }
 
