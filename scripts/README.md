@@ -1,45 +1,82 @@
-# Codex作業開始スクリプト
+# Tennis-App Codex自動化
 
-`start-codex.ps1` は、GitHub CLIの認証とGitの状態を確認し、cleanな `main` を `origin/main` へfast-forwardで同期してからCodexを起動します。Codexはリポジトリ内だけを書き込み可能にする `workspace-write` と、危険操作や権限外操作で確認する `on-request` を組み合わせて起動します。PC全体への無制限アクセスは許可しません。
+## 概要
 
-## 起動方法
+改善内容を1回入力するだけで、Codexが調査、実装、テスト、差分確認、コミット、push、Draft PR、ローカルreport.mdまで進めます。レビュー後は「PRマージ」ショートカットから、PR検証、Ready化、merge commit、main同期を実行します。
 
-PowerShellでリポジトリのルートへ移動し、次を実行します。
+Codexはworkspace-writeで起動し、リポジトリ外やPC全体への書き込み権限を与えません。force push、rebase、reset、ブランチ削除、本番操作は自動化しません。
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-codex.ps1
-```
+## ファイル構成
 
-未コミット変更がある場合、スクリプトは `main` への切り替えやpullを行わず、日本語の警告を表示して終了します。GitHub CLIの未導入、未認証、Git同期失敗、Codex CLI未導入の場合も、原因を表示して終了します。
+- codex-common.ps1: UTF-8、CLI検出、GitHub認証、Git同期、入力画面などの共通処理
+- start-codex.ps1: 同期後に通常の対話型Codexを起動
+- codex-auto.ps1: 入力とテンプレートを合成し、Codexを非対話実行
+- new-task.ps1: 通常改善のワンクリック入口
+- merge-pr.ps1: レビュー後の唯一のマージ入口
+- install-shortcuts.ps1: デスクトップショートカットを作成
+- prompt-base.txt: 全作業共通の自律実行・安全ルール
+- prompt-dev.txt: 通常改善
+- prompt-hotfix.txt: 緊急修正
+- prompt-refactor.txt: 挙動維持リファクタリング
+- prompt-review.txt: レビュー
+- prompt-merge.txt: マージ方針
 
-## デスクトップショートカットの作成方法
+## 初回導入
 
-1. デスクトップを右クリックし、［新規作成］→［ショートカット］を選びます。
-2. 項目の場所へ次の形式で入力します。`<tennis-appの絶対パス>` は実際の保存場所へ置き換えてください。
+PowerShellでリポジトリルートへ移動し、一度だけ次を実行します。この操作だけがデスクトップへ書き込みます。
 
-```text
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<tennis-appの絶対パス>\scripts\start-codex.ps1"
-```
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\install-shortcuts.ps1
 
-3. 名前を「Tennis App Codex」などにして完了します。
-4. 必要に応じてショートカットのプロパティを開き、「作業フォルダー」を `tennis-app` の絶対パスに設定します。
+次の2つがデスクトップに作成されます。
 
-## 今後Codexへ送る最短の作業指示
+- Tennis-App 開発
+- PRマージ
 
-```text
-AGENTS.mdに従い、次の改善を実施してください。
-〈改善内容〉
-問題がなければコミット、push、ドラフトPR、ローカルreport.md作成まで進めてください。
-```
+## 開発作業
 
-## レビュー承認後の最短マージ指示
+1. 「Tennis-App 開発」をダブルクリックします。
+2. 「改善内容を入力してください」と表示された複数行入力画面へ、要件、ログ、コード、スクリーンショットの説明などをまとめて貼り付けます。
+3. 「開始」を押します。
+4. CodexがDraft PRとローカルreport.mdの作成まで進めます。
 
-```text
-レビュー承認。PRをマージし、mainを同期してください。
-```
+コマンドから直接実行する場合:
 
-## 安全方針
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\new-task.ps1
 
-force push、rebase、reset、ファイル削除、作業ブランチ削除、本番操作は自動化しません。これらが必要な場合はCodexが停止し、理由と必要な判断を示します。マージもレビュー承認が明示された後の別指示でのみ行います。
+用途を指定する場合:
 
-`report.md` と `.pr-body.md` はローカル作業用です。`.gitignore` に登録されており、コミットやPRには含めません。
+    .\\scripts\\codex-auto.ps1 -TaskType hotfix
+    .\\scripts\\codex-auto.ps1 -TaskType refactor
+    .\\scripts\\codex-auto.ps1 -TaskType review
+
+## PRマージ
+
+レビュー承認後、Codexが作業を終えたブランチのまま「PRマージ」をダブルクリックします。スクリプトは次を自動確認します。
+
+- PRがOPEN
+- mergeableがMERGEABLE
+- merge stateがCLEAN
+- 変更要求がない
+- ステータスチェックに失敗・実行中がない
+- 未解決レビューコメントがない
+
+確認後、DraftをReadyへ変更し、merge commit方式でマージし、ローカルmainをfast-forward同期します。ブランチは削除しません。
+
+別ブランチから番号指定で実行する場合:
+
+    .\\scripts\\merge-pr.ps1 -PrNumber 154
+
+## 通常の対話型Codex
+
+    .\\scripts\\start-codex.ps1
+
+## トラブル対応
+
+- 未コミット変更: 変更をコミット、退避、または不要なら手動で整理してから再実行してください。スクリプトはresetや削除を行いません。
+- GitHub認証エラー: gh auth login後にgh auth statusを確認してください。
+- main同期エラー: ローカルとリモートの履歴が分岐しています。スクリプトはrebaseやresetを行わないため、Git履歴を確認してください。
+- Codex CLI未検出: codex --versionが成功するようPATHを設定してください。
+- PRを特定できない: 作業ブランチでmerge-pr.ps1を実行するか、-PrNumberを指定してください。
+- 未解決レビューまたはチェック失敗: GitHubで解消してから再実行してください。
+
+report.mdと.pr-body.mdはローカル専用で、.gitignoreによりGit管理されません。
