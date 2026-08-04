@@ -1,8 +1,6 @@
 import json
 
 from django import forms
-from django.contrib import admin
-
 from .models import CoachExpense
 
 
@@ -125,32 +123,16 @@ class EditableExpenseTypeAdminForm(forms.ModelForm):
         return instance
 
 
-def _expense_type_admin(obj):
-    expense_type = _parse_note(getattr(obj, "note", "")).get("expense_type")
-    labels = {
-        EXPENSE_TYPE_COMMON: "共通経費",
-        EXPENSE_TYPE_PERSONAL: "個人経費",
-        EXPENSE_TYPE_COURT_TRANSFER: "コート代登録",
-    }
-    return labels.get(expense_type, "共通経費")
+class ExpenseTypeAdminMixin:
+    form = EditableExpenseTypeAdminForm
 
+    def expense_type_admin(self, obj):
+        expense_type = _parse_note(getattr(obj, "note", "")).get("expense_type")
+        labels = {
+            EXPENSE_TYPE_COMMON: "共通経費",
+            EXPENSE_TYPE_PERSONAL: "個人経費",
+            EXPENSE_TYPE_COURT_TRANSFER: "コート代登録",
+        }
+        return labels.get(expense_type, "共通経費")
 
-_expense_type_admin.short_description = "経費区分"
-
-
-def apply_expense_admin_type_editor():
-    model_admin = admin.site._registry.get(CoachExpense)
-    if model_admin is None:
-        return
-
-    model_admin.form = EditableExpenseTypeAdminForm
-    model_admin.expense_type_admin = _expense_type_admin
-
-    list_display = list(model_admin.list_display or ())
-    if "expense_type_admin" not in list_display:
-        insert_at = 2 if len(list_display) >= 2 else len(list_display)
-        list_display.insert(insert_at, "expense_type_admin")
-        model_admin.list_display = tuple(list_display)
-
-
-apply_expense_admin_type_editor()
+    expense_type_admin.short_description = "経費区分"

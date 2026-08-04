@@ -15,15 +15,3 @@ class ClubConfig(AppConfig):
         # 会員本人キャンセル、雨天中止、固定メンバー解除は従来どおり有効。
         from . import fixed_lesson_auto_cancel_guard  # noqa: F401
 
-        # 管理サイトの経費編集画面へ、共通経費・個人経費の変更欄を追加する。
-        # admin.py の登録完了後にフォームを差し替えるため、ここで明示的に読み込む。
-        from . import admin as club_admin  # noqa: F401
-        from . import expense_admin_type_editor  # noqa: F401
-
-        # 管理サイトの予約一覧へ、キャンセル日時・理由・取消元などの確認列を追加する。
-        # 表示専用で、予約・LINE・カレンダー処理には介入しない。
-        from . import reservation_admin_history  # noqa: F401
-
-        # 管理サイトのユーザー一覧へ、消費済み・消費予定・現在保有の
-        # チケット枚数を表示する。既存データの集計表示のみを行う。
-        from . import user_admin_ticket_summary  # noqa: F401
