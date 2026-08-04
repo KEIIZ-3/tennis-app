@@ -120,6 +120,11 @@ try {
     Invoke-NativeChecked -FilePath "git" -Arguments @("push", "-u", "origin", $branch) `
         -FailureMessage "The push failed."
 
+    $commitSha = (& git rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($commitSha)) {
+        throw "The latest commit SHA could not be read."
+    }
+
     [IO.File]::WriteAllText(
         $prBodyPath,
         $handoff.pr_body,
@@ -135,10 +140,12 @@ try {
         throw "The Draft PR URL was not returned."
     }
 
-    $commitSha = (& git rev-parse HEAD).Trim()
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($commitSha)) {
-        throw "The latest commit SHA could not be read."
-    }
+    Invoke-NativeChecked -FilePath "gh" -Arguments @("pr", "ready", $prUrl) `
+        -FailureMessage "The Draft PR could not be marked ready for review."
+    Invoke-NativeChecked -FilePath "gh" -Arguments @(
+        "pr", "merge", $prUrl, "--auto", "--squash", "--match-head-commit", $commitSha
+    ) -FailureMessage "Auto-merge could not be enabled for the PR."
+
     $prNumber = [IO.Path]::GetFileName($prUrl.TrimEnd('/'))
     $reportPath = Join-Path $repoRoot "report.md"
     if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
@@ -149,7 +156,7 @@ try {
         [IO.File]::WriteAllText($reportPath, $report, [Text.UTF8Encoding]::new($false))
     }
 
-    Write-Host "Draft PR: $prUrl" -ForegroundColor Green
+    Write-Host "Auto-merge enabled: $prUrl" -ForegroundColor Green
     if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
         Write-Host ""
         Get-Content -Raw -Encoding utf8 -LiteralPath $reportPath
