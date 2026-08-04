@@ -2072,7 +2072,16 @@ class Reservation(models.Model, LessonTypeMixin):
                 self.substitute_coach = availability.substitute_coach
 
             slot_reservations_qs = self.active_slot_reservations_qs()
-            if slot_reservations_qs.count() >= availability.capacity:
+            is_registered_fixed_member = bool(
+                self.is_fixed_entry
+                and self.fixed_lesson_id
+                and self.user_id
+                and self.fixed_lesson.members.filter(pk=self.user_id).exists()
+            )
+            if (
+                not is_registered_fixed_member
+                and slot_reservations_qs.count() >= availability.capacity
+            ):
                 raise ValidationError("この時間枠は満員です。")
 
         if self.lesson_type == self.LESSON_PRIVATE:

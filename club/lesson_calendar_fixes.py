@@ -6,6 +6,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .models import FixedLesson, LessonWaitlist, Reservation
+from .fixed_occurrence_participants import active_count_for_occurrence
 
 
 def _local_date(value):
@@ -17,35 +18,7 @@ def _local_date(value):
 
 
 def _fixed_lesson_member_count(fixed_lesson, lesson_date):
-    fixed_member_ids = set(fixed_lesson.members.values_list("id", flat=True))
-    count = len(fixed_member_ids)
-
-    start_at, end_at = fixed_lesson._build_datetimes_for_date(lesson_date)
-    reservations = (
-        Reservation.objects.filter(
-            fixed_lesson=fixed_lesson,
-            start_at=start_at,
-            end_at=end_at,
-            status=Reservation.STATUS_ACTIVE,
-        )
-        .select_related("participant_snapshot")
-        .order_by("id")
-    )
-
-    for reservation in reservations:
-        if reservation.user_id not in fixed_member_ids:
-            count += 1
-            continue
-
-        try:
-            participant_type = reservation.participant_snapshot.participant_type
-        except Exception:
-            participant_type = "self"
-
-        if participant_type != "self":
-            count += 1
-
-    return count
+    return active_count_for_occurrence(fixed_lesson, lesson_date)
 
 
 def _update_fixed_lesson_item(item):

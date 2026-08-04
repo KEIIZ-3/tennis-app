@@ -2,7 +2,7 @@ from datetime import date, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from django.test import SimpleTestCase
+from django.test import TestCase
 from django.utils import timezone
 
 from club.settlement_balance_policy import (
@@ -21,7 +21,7 @@ from club.settlement_balance_policy import (
 from club.settlement_views import _matching_active_payment
 
 
-class SettlementWalletCourtCostTests(SimpleTestCase):
+class SettlementWalletCourtCostTests(TestCase):
     def _reservation(self, start_at, end_at, court_count=1):
         return SimpleNamespace(
             start_at=timezone.make_aware(start_at),

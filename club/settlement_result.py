@@ -40,7 +40,7 @@ class MonthlySettlementResult(dict):
     rain_refunded_rows: list
     rain_refunded_total: int
 
-    FIELD_NAMES: ClassVar[frozenset[str]] = frozenset(__annotations__)
+    FIELD_NAMES: ClassVar[frozenset[str]]
 
     def __init__(self, **values):
         super().__init__(values)
@@ -61,3 +61,10 @@ class MonthlySettlementResult(dict):
             self[name] = value
             return
         super().__setattr__(name, value)
+
+
+MonthlySettlementResult.FIELD_NAMES = frozenset(
+    name
+    for name, annotation in MonthlySettlementResult.__annotations__.items()
+    if annotation != ClassVar[frozenset[str]]
+)

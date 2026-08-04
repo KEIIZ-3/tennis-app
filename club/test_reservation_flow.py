@@ -284,6 +284,7 @@ class ReservationFlowSmokeTests(TestCase):
             created_by=self.coach,
             reason="固定レッスンの開催回数変更による自動整理",
         )
+        fixed_lesson.sync_future_reservations(created_by=self.coach)
 
         self.client.force_login(self.member)
         response = self.client.get(reverse("club:reservation_list"))
@@ -451,6 +452,7 @@ class ReservationFlowSmokeTests(TestCase):
         )
         other_lesson = self._create_fixed_lesson(
             coach=self.coach,
+            lesson_date=self.lesson_date + timedelta(days=1),
             title="担当外レッスン",
         )
         own_lesson.members.add(self.member)
@@ -684,17 +686,13 @@ class ReservationFlowSmokeTests(TestCase):
         )
         fixed_lesson.members.add(self.member)
         start_at, end_at = fixed_lesson._build_datetimes_for_date(self.lesson_date)
-        CoachAvailability.objects.create(
+        CoachAvailability.objects.filter(
             coach=self.coach,
-            substitute_coach=self.contractor,
             court=self.court,
             lesson_type=fixed_lesson.lesson_type,
-            target_level=fixed_lesson.target_level,
             start_at=start_at,
             end_at=end_at,
-            capacity=fixed_lesson.capacity,
-            status=CoachAvailability.STATUS_OPEN,
-        )
+        ).update(substitute_coach=self.contractor)
         self.client.force_login(self.contractor)
 
         response = self.client.get(reverse("club:coach_fixed_lesson_weekly"))
@@ -784,7 +782,7 @@ class ReservationFlowSmokeTests(TestCase):
             expense_date=lesson_date,
         )
         self.assertEqual(expense.amount, 0)
-        self.assertIn('"court_cost_not_required": true', expense.note)
+        self.assertIn('"court_cost_not_required":true', expense.note)
 
         updated_response = self.client.get(
             reverse("club:lesson_execution_manage"),
@@ -1896,7 +1894,7 @@ class ReservationFlowSmokeTests(TestCase):
         fixed_lesson = self._create_fixed_lesson(title="満員テストレッスン")
 
         members = []
-        for index in range(6):
+        for index in range(fixed_lesson.effective_capacity()):
             members.append(
                 self._create_user(
                     username=f"full_member_{index}",
@@ -2091,7 +2089,7 @@ class ReservationFlowSmokeTests(TestCase):
                 role=self.User.ROLE_MEMBER,
                 full_name=f"定員 会員{index}",
             )
-            for index in range(6)
+            for index in range(fixed_lesson.effective_capacity())
         ]
         fixed_lesson.members.set(members)
         start_at, end_at = fixed_lesson._build_datetimes_for_date(

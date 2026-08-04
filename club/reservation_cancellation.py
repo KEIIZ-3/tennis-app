@@ -19,13 +19,6 @@ def _can_cancel_reservation(user, reservation):
     if role == "member":
         return reservation.user_id == getattr(user, "pk", None)
 
-    if role in ("coach", "contractor_coach"):
-        return (
-            reservation.coach_id == getattr(user, "pk", None)
-            or getattr(reservation, "substitute_coach_id", None)
-            == getattr(user, "pk", None)
-        )
-
     return False
 
 
