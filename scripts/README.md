@@ -2,17 +2,18 @@
 
 ## 概要
 
-デスクトップの「Tennis-App 開発」をダブルクリックし、改善内容だけを1回入力すると、Codexが調査、実装、テスト、差分確認、コミット、push、Draft PR、ローカルreport.md作成まで進めます。
+デスクトップの「Tennis-App 開発」をダブルクリックし、改善内容だけを1回入力すると、Codexが調査、実装、テスト、差分確認、ローカルreport.mdとhandoff.jsonの作成まで進めます。Codex正常終了後、親PowerShellがhandoff.jsonに基づいてコミット、push、Draft PR作成を行います。
 
 レビュー承認後は「PRマージ」をダブルクリックしてPR番号だけを入力すると、PR検証、Ready化、merge commit、main同期まで進みます。
 
-Codexはworkspace-writeで動作します。force push、rebase、reset、ブランチ削除、本番操作は自動化しません。
+Codexはworkspace-writeで動作し、GitコマンドやGitHub CLIによる公開操作を実行しません。force push、rebase、reset、ブランチ削除、本番操作は自動化しません。
 
 ## 構成
 
 - common.ps1: UTF-8、Git、GitHub CLI、認証、main同期、入力、prompt、PR、report関連の共通関数
-- start-codex.ps1: 開発用ショートカットの入口
+- start-codex.ps1: 開発用ショートカットの入口。Codex正常終了後に公開工程を起動
 - codex-auto.ps1: 改善内容入力、prompt-dev読込、一時prompt生成、Codex自動実行
+- publish-from-handoff.ps1: handoff検証、専用ブランチ作成、対象ファイル限定のcommit、push、Draft PR作成
 - merge-pr.ps1: PR番号入力後の検証、Ready、Merge、main同期
 - install-shortcuts.ps1: デスクトップショートカット作成
 - prompts/prompt-dev.txt: 通常開発
@@ -63,7 +64,7 @@ PowerShellから直接実行する場合:
 
 ## 内部フロー
 
-start-codex.ps1はcodex-auto.ps1を起動します。codex-auto.ps1はcommon.ps1を使用して次を行います。
+start-codex.ps1はcodex-auto.ps1を起動します。Codexが正常終了しhandoff.jsonが存在する場合だけ、start-codex.ps1がpublish-from-handoff.ps1を親PowerShellとして続けて起動します。
 
 1. UTF-8設定
 2. GitHub CLI PATH確認
@@ -75,7 +76,11 @@ start-codex.ps1はcodex-auto.ps1を起動します。codex-auto.ps1はcommon.ps1
 8. {{IMPROVEMENT}}への改善内容埋込
 9. ignore済み.codex-prompt.tmpの一時生成
 10. Codexへpromptをstdin送信
-11. Codex終了後に一時promptを削除
+11. Codexが調査、編集、テスト、差分確認、report.md、handoff.json作成を実施
+12. Codex終了後に一時promptを削除
+13. 正常終了時だけhandoff.jsonを検証
+14. 親PowerShellが専用ブランチ作成、許可ファイルだけのステージ、commit、push、Draft PR作成を実施
+15. report.mdのPR情報を更新し、一時的なhandoff.jsonと.pr-body.mdを削除
 
 ## PRマージ
 
@@ -111,6 +116,8 @@ start-codex.ps1はcodex-auto.ps1を起動します。codex-auto.ps1はcommon.ps1
 - report.md
 - .pr-body.md
 - .codex-prompt.tmp
+
+handoff.jsonもコミット対象外ですが、公開工程への受け渡し後にpublish-from-handoff.ps1が削除します。
 
 ## トラブル対応
 
