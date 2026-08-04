@@ -1519,13 +1519,14 @@ def lesson_calendar_view(request):
                     f"{participant.get('name') or '選択された参加者'}さんは、このレッスンを予約済みです。"
                 )
 
-            active_count = Reservation.objects.filter(
+            active_count = reservations_for_lesson(
+                fixed_lesson=fixed_lesson,
+                availability=availability,
                 coach=availability.coach,
                 court=availability.court,
                 lesson_type=availability.lesson_type,
                 start_at=availability.start_at,
                 end_at=availability.end_at,
-                status=Reservation.STATUS_ACTIVE,
             ).count()
             # 開催回ごとの参加人数は、有効な予約レコードだけを正本とする。
             # 固定メンバー設定そのものは、個別開催回のキャンセル後も維持されるため、
@@ -1562,13 +1563,14 @@ def lesson_calendar_view(request):
                         )
                         if availability.is_recruitment_closed:
                             raise ValidationError("このレッスンは募集を終了しています。")
-                        locked_active_count = Reservation.objects.filter(
+                        locked_active_count = reservations_for_lesson(
+                            fixed_lesson=fixed_lesson,
+                            availability=availability,
                             coach=availability.coach,
                             court=availability.court,
                             lesson_type=availability.lesson_type,
                             start_at=availability.start_at,
                             end_at=availability.end_at,
-                            status=Reservation.STATUS_ACTIVE,
                         ).count()
                         # 固定参加を含め、満員判定は開催回の有効予約だけで行う。
                         if locked_active_count < _capacity_for_availability(availability):
@@ -1646,13 +1648,14 @@ def lesson_calendar_view(request):
                 )
                 if availability.is_recruitment_closed:
                     raise ValidationError("このレッスンは募集を終了しています。")
-                locked_active_count = Reservation.objects.filter(
+                locked_active_count = reservations_for_lesson(
+                    fixed_lesson=fixed_lesson,
+                    availability=availability,
                     coach=availability.coach,
                     court=availability.court,
                     lesson_type=availability.lesson_type,
                     start_at=availability.start_at,
                     end_at=availability.end_at,
-                    status=Reservation.STATUS_ACTIVE,
                 ).count()
                 # 固定参加を含め、満員判定は開催回の有効予約だけで行う。
                 if locked_active_count >= _capacity_for_availability(availability):
