@@ -606,7 +606,7 @@ def _mark_court_expense_refund_pending(
 
 
 def _court_expense_for_availability(expenses, availability):
-    from .court_expense_transfer import _parse_note as _parse_transfer_note
+    from .expense_metadata import parse_expense_note as _parse_transfer_note
     from .views import _court_expense_matches_availability, _expense_parse_note
 
     for expense in expenses:
@@ -628,13 +628,13 @@ def _mark_court_cost_not_required(availability, changed_by):
     from .court_expense_transfer import (
         APPROVAL_APPROVED,
         RECORD_KIND,
-        _build_note,
         _existing_transfer_for_availability,
         _facility_label,
         _lesson_label,
         _slot_key as _court_slot_key,
         _using_coaches,
     )
+    from .expense_metadata import build_expense_note
 
     using_coaches = _using_coaches(availability)
     meta = {
@@ -664,7 +664,7 @@ def _mark_court_cost_not_required(availability, changed_by):
             expense = CoachExpense(category=CoachExpense.CATEGORY_COURT)
         expense.expense_date = _local(availability.start_at).date()
         expense.amount = 0
-        expense.note = _build_note(meta, "コート代なし")
+        expense.note = build_expense_note(meta, "コート代なし")
         expense.created_by = changed_by
         expense.full_clean()
         expense.save()

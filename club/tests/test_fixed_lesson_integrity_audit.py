@@ -95,7 +95,7 @@ class FixedLessonIntegrityAuditTests(TestCase):
         start_at, end_at = self.fixed_lesson._build_datetimes_for_date(
             configured[-1] + timedelta(days=7)
         )
-        extra = Reservation.objects.create(
+        extra = Reservation(
             user=self.member,
             coach=self.coach,
             court=self.court,
@@ -107,6 +107,7 @@ class FixedLessonIntegrityAuditTests(TestCase):
             end_at=end_at,
             status=Reservation.STATUS_ACTIVE,
         )
+        Reservation.objects.bulk_create([extra])
 
         synchronize_fixed_lesson_membership(self.fixed_lesson.pk)
 

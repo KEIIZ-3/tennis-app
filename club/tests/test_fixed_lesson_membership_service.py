@@ -224,6 +224,7 @@ class FixedLessonMembershipServiceTests(TestCase):
             user=self.member,
             fixed_lesson=self.fixed_lesson,
         ).delete()
+        self.fixed_lesson.sync_future_reservations()
 
         self.client.force_login(self.member)
         response = self.client.get(reverse("club:reservation_list"))

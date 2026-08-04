@@ -44,7 +44,7 @@ class FixedOccurrenceCalendarCountTests(TestCase):
             is_active=True,
         )
         start_at, end_at = self.fixed_lesson._build_datetimes_for_date(today)
-        self.reservation = Reservation.objects.create(
+        self.reservation = Reservation(
             user=self.member,
             coach=self.coach,
             court=self.court,
@@ -56,6 +56,7 @@ class FixedOccurrenceCalendarCountTests(TestCase):
             status=Reservation.STATUS_ACTIVE,
             is_fixed_entry=True,
         )
+        Reservation.objects.bulk_create([self.reservation])
 
     def test_cancelled_reservation_is_not_counted(self):
         self.assertEqual(

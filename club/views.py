@@ -6985,11 +6985,7 @@ def reservation_create(request):
                     start_at=start_at,
                     end_at=end_at,
                 ) if court else (0, 0, None, False)
-                try:
-                    fixed_member_count = fixed_lesson.members.count()
-                except Exception:
-                    fixed_member_count = 0
-                member_count = max(int(member_count or 0), int(fixed_member_count or 0))
+                member_count = int(member_count or 0)
                 can_submit = (
                     start_at >= timezone.now()
                     and is_after_repeat_start
