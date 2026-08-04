@@ -5,7 +5,7 @@
 - すべてのパスはtennis-app起点で扱う。
 - このファイルを作業開始時に最後まで読む。
 - ユーザー入力は、長文、ログ、コード、箇条書き、スクリーンショット説明を含め、最後まで1つの改善要求として扱う。
-- 現物コード、ログ、既存テスト、Git履歴に基づいて判断する。
+- 現物コード、ログ、既存テストに基づいて判断する。
 - 不足情報があっても先に調査を進め、本当に実装不能な場合だけ1回質問する。
 
 ## 2. 実装原則
@@ -19,25 +19,28 @@
 
 ## 3. Git運用
 
-- 作業前にmainとorigin/mainをfast-forward同期する。
-- main上で編集しない。
-- 作業ごとにagent/で始まる英小文字kebab-caseの専用ブランチを作る。
-- 対象ファイルだけを明示的にステージする。
-- report.md、.pr-body.md、.codex-prompt.tmpをコミットしない。
-- 問題がなければcommit、push、Draft PR、ローカルreport.mdまで途中確認なしで完了する。
-- .pr-body.mdはDraft PR作成後に削除する。
-- Draft PR作成後は停止する。
+- CodexはGitコマンドとGitHub CLIによる公開操作を実行しない。
+- Codexはgit fetch、git pull、git switch、git add、git commit、git push、gh pr create、およびその他のGit metadata書き込みを行わない。
+- mainとorigin/mainのfast-forward同期は、Codex起動前に親PowerShellが行う。
+- Codexは現物調査、コード編集、テスト、差分相当の確認、report.md作成、handoff.json作成までを行う。
+- handoff.jsonには、agent/で始まる英小文字kebab-caseの専用ブランチ名、公開対象ファイル、コミットメッセージ、PRタイトル、PR本文を記録する。
+- Git公開工程はCodex正常終了後に、scripts/start-codex.ps1がscripts/publish-from-handoff.ps1を親PowerShellとして実行する。
+- publish-from-handoff.ps1はhandoff.jsonの対象ファイルだけを明示的にステージし、commit、push、Draft PR作成を行う。
+- report.md、handoff.json、.pr-body.md、.codex-prompt.tmpはコミットしない。
+- .pr-body.mdとhandoff.jsonの後始末はpublish-from-handoff.ps1が行う。
+- Draft PR作成後は自動化を停止する。
 
 ## 4. 必須確認
 
-- git diff
-- git diff --check
-- git diff --stat
+- 編集したファイルの変更前後の内容比較
+- 末尾空白、競合マーカー、不正な改行などの差分品質確認
+- 変更量と対象範囲の確認
 - 変更ファイル一覧
 - 利用可能な関連テスト
 - PowerShell変更時は変更した全ps1のPowerShell AST解析
 - Python変更時は対象ファイルのpython -m py_compile
-- report.md、.pr-body.md、.codex-prompt.tmpのignore確認
+- report.md、.pr-body.md、.codex-prompt.tmpのignore設定確認
+- handoff.jsonのJSON構文、必須項目、公開対象ファイル一覧の確認
 - 既存業務コードへの影響確認
 
 実行不能な確認は、コマンド、エラー、理由をreport.mdへ記録する。
@@ -45,12 +48,13 @@
 ## 5. 自動化ルール
 
 - 通常開発の入口はscripts/start-codex.ps1とする。
-- start-codex.ps1はscripts/codex-auto.ps1だけを起動する。
+- start-codex.ps1はscripts/codex-auto.ps1を起動し、正常終了かつhandoff.jsonが存在する場合だけscripts/publish-from-handoff.ps1を親PowerShellとして起動する。
 - 共通処理はscripts/common.ps1へ集約し、入口へ重複実装しない。
 - 改善内容の入力は1回だけとし、「改善内容を入力してください」と表示する。
 - scripts/prompts/prompt-dev.txtの{{IMPROVEMENT}}へ入力全体を埋め込み、Codexへ自動送信する。
 - 長い運用promptをユーザーへ要求しない。
 - PRマージはレビュー承認後にscripts/merge-pr.ps1からのみ実行する。
+- CodexへGit metadata書き込み権限を要求しない。
 
 ## 6. 禁止事項
 
@@ -82,3 +86,4 @@
 - PR URL
 - 最新コミットSHA
 - 残リスク
+- handoff.jsonの作成内容

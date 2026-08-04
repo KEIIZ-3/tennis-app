@@ -2,13 +2,25 @@ AGENTS.mdを最初から最後まで読み、すべてのルールに従って�
 
 以下の入力は、長文、ログ、箇条書き、コード、スクリーンショット説明を含め、最後まで1つの改善要求として扱ってください。途中で続きの有無を確認しないでください。
 
-現物コード、ログ、既存テスト、Git履歴から根本原因、関連コード、既存仕様、影響範囲を調査してください。推測、暫定対応、モンキーパッチを避け、保守性、可読性、安全性を考慮して根本改善してください。既存業務仕様を維持し、必要なテスト追加・修正、重複整理、関連ドキュメント更新を行ってください。
+現物コード、ログ、既存テストから根本原因、関連コード、既存仕様、影響範囲を調査してください。推測、暫定対応、モンキーパッチを避け、保守性、可読性、安全性を考慮して根本改善してください。既存業務仕様を維持し、必要なテスト追加・修正、重複整理、関連ドキュメント更新を行ってください。
 
 実装後はAGENTS.mdで定義された確認を実行してください。依存不足で実行不能な確認は、コマンド、エラー、理由をreport.mdへ正確に記録してください。
 
-問題がなければ途中確認なしで、最新mainから専用agent/ブランチ作成、対象ファイルだけのgit add、コミット、originへのpush、Draft PR作成、ローカルreport.md作成まで完了してください。.pr-body.mdはPR作成後に削除し、report.mdとともにGitへ追加しないでください。
+問題がなければ途中確認なしで、コード編集、テスト、差分相当の確認、ローカルreport.md作成、リポジトリルートへのhandoff.json作成まで完了してください。
 
-force push、rebase、reset、ブランチ削除、PRマージ、本番操作は行わないでください。PR作成後に停止してください。
+CodexはGitコマンドを実行せず、git fetch、git pull、git switch、git add、git commit、git push、gh pr create、およびその他のGit metadata書き込みを行わないでください。main同期とGit公開工程は親PowerShellが担当します。
+
+handoff.jsonはUTF-8の有効なJSONとし、次の必須項目を含めてください。
+
+- branch: agent/で始まる英小文字kebab-caseの専用ブランチ名
+- files: 公開する変更ファイルだけを列挙した空でない配列。report.md、handoff.json、.pr-body.md、.codex-prompt.tmpは含めない
+- commit_message: 空でないコミットメッセージ
+- pr_title: 空でないPRタイトル
+- pr_body: 変更概要と確認結果を含む空でないPR本文
+
+report.mdのPR番号、PR URL、最新コミットSHAは、それぞれ{{PR_NUMBER}}、{{PR_URL}}、{{COMMIT_SHA}}を記載してください。これらは公開後に親PowerShellが置換します。
+
+force push、rebase、reset、ブランチ削除、PRマージ、本番操作は行わないでください。handoff.jsonとreport.mdを検証して停止してください。Codex正常終了後、scripts/start-codex.ps1がscripts/publish-from-handoff.ps1を起動します。
 
 ## 改善内容
 
