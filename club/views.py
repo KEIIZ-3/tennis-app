@@ -64,6 +64,7 @@ from .family_reservations import (
     save_waitlist_participant_snapshot,
     validate_participant_can_book_lesson,
 )
+from .lesson_participants import reservations_for_lesson, reservations_for_object
 from .notifications import (
     build_pending_request_for_coach_message,
     build_request_approved_for_member_message,
@@ -1100,13 +1101,12 @@ def _waiting_waitlist_qs_for_slot(*, coach, court, lesson_type, start_at, end_at
 
 
 def _active_reservation_count_for_slot(*, coach, court, lesson_type, start_at, end_at):
-    return Reservation.objects.filter(
+    return reservations_for_lesson(
         coach=coach,
         court=court,
         lesson_type=lesson_type,
         start_at=start_at,
         end_at=end_at,
-        status=Reservation.STATUS_ACTIVE,
     ).count()
 
 
@@ -2540,13 +2540,14 @@ def lesson_reservation_confirm(request):
         if not court:
             raise ValidationError("予約に利用できるコートが登録されていません。")
 
-        active_count = Reservation.objects.filter(
+        active_count = reservations_for_lesson(
+            fixed_lesson=fixed_lesson,
+            availability=availability,
             coach=coach,
             court=court,
             lesson_type=lesson_type,
             start_at=start_at,
             end_at=end_at,
-            status=Reservation.STATUS_ACTIVE,
         ).count()
 
         # 予約確認画面の参加人数も、開催回の有効予約だけを正本とする。
@@ -4445,16 +4446,9 @@ def reservation_detail(request, pk):
     )
 
     same_slot_reservations = list(
-        Reservation.objects.select_related("user", "coach", "substitute_coach", "court")
-        .filter(
-            coach=reservation.coach,
-            court=reservation.court,
-            lesson_type=reservation.lesson_type,
-            start_at=reservation.start_at,
-            end_at=reservation.end_at,
-            status=Reservation.STATUS_ACTIVE,
+        reservations_for_object(reservation).select_related(
+            "user", "coach", "substitute_coach", "court"
         )
-        .order_by("user__full_name", "user__username", "id")
     )
 
     same_slot_waitlists = list(
