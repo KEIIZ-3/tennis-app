@@ -5,6 +5,8 @@ from django.urls import reverse
 from django.utils import timezone
 
 from club.fixed_lesson_sync_facade import synchronize_fixed_lesson_membership
+from club.court_number_line_notice import _slot_participants
+from club.lesson_participants import reservations_for_object
 from club.models import FixedLesson, Reservation, User
 
 
@@ -91,3 +93,28 @@ class FixedLessonOccurrenceCancelCalendarTests(TestCase):
 
         self.fixed_lesson.refresh_from_db()
         self.assertTrue(self.fixed_lesson.members.filter(pk=self.member.pk).exists())
+
+    def test_cancelled_fixed_member_is_excluded_from_all_participant_consumers(self):
+        reservation = Reservation.objects.filter(
+            user=self.member,
+            fixed_lesson=self.fixed_lesson,
+            status=Reservation.STATUS_ACTIVE,
+        ).order_by("start_at").first()
+        reservation.cancel(
+            created_by=self.member,
+            reason="会員が予約確認画面からキャンセル",
+        )
+
+        self.assertEqual(reservations_for_object(reservation).count(), 0)
+        self.assertEqual(_slot_participants(reservation).count(), 0)
+
+        target_date = timezone.localtime(reservation.start_at).date()
+        response = self.client.get(
+            reverse("club:lesson_reservation_confirm"),
+            {
+                "fixed_lesson_id": self.fixed_lesson.pk,
+                "lesson_date": target_date.isoformat(),
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["selected_lesson"]["member_count"], 0)

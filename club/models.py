@@ -1665,14 +1665,8 @@ class Reservation(models.Model, LessonTypeMixin):
         ).first()
 
     def active_slot_reservations_qs(self):
-        qs = Reservation.objects.filter(
-            coach=self.coach,
-            court=self.court,
-            lesson_type=self.lesson_type,
-            start_at=self.start_at,
-            end_at=self.end_at,
-            status=self.STATUS_ACTIVE,
-        )
+        from .lesson_participants import reservations_for_object
+        qs = reservations_for_object(self)
         if self.pk:
             qs = qs.exclude(pk=self.pk)
         return qs
@@ -1934,14 +1928,8 @@ class Reservation(models.Model, LessonTypeMixin):
             return super().save(*args, **kwargs)
 
     def active_count_in_same_slot(self):
-        return Reservation.objects.filter(
-            coach=self.coach,
-            court=self.court,
-            lesson_type=self.lesson_type,
-            start_at=self.start_at,
-            end_at=self.end_at,
-            status=self.STATUS_ACTIVE,
-        ).count()
+        from .lesson_participants import reservations_for_object
+        return reservations_for_object(self).count()
 
     def ticket_consumption_queryset(self):
         return self.ticket_consumptions.select_related("purchase").order_by("created_at", "id")

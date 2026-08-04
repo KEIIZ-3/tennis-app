@@ -2,7 +2,8 @@ from datetime import date
 
 from django.utils import timezone
 
-from .models import FixedLesson, Reservation
+from .lesson_participants import reservations_for_fixed_occurrence
+from .models import FixedLesson
 
 
 def occurrence_key(fixed_lesson_id, target_date):
@@ -18,15 +19,7 @@ def active_reservations_for_occurrence(fixed_lesson, target_date):
     また、同じコーチ・コート・日時という物理枠だけの一致も使わない。
     開催回へ明示的に紐づく有効 Reservation だけを正本とする。
     """
-    if isinstance(target_date, str):
-        target_date = date.fromisoformat(target_date)
-    start_at, end_at = fixed_lesson._build_datetimes_for_date(target_date)
-    return Reservation.objects.filter(
-        fixed_lesson=fixed_lesson,
-        start_at=start_at,
-        end_at=end_at,
-        status=Reservation.STATUS_ACTIVE,
-    )
+    return reservations_for_fixed_occurrence(fixed_lesson, target_date)
 
 
 def active_count_for_occurrence(fixed_lesson, target_date):

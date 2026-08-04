@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
+from .lesson_participants import reservations_for_object
 from .models import Reservation
 from .notifications import notify_user_email_only, notify_user_line_only
 
@@ -87,23 +88,7 @@ def _slots_for_user(user):
 
 
 def _slot_participants(slot):
-    qs = Reservation.objects.filter(
-        status=Reservation.STATUS_ACTIVE,
-        lesson_type=slot.lesson_type,
-        start_at=slot.start_at,
-        end_at=slot.end_at,
-    )
-    if slot.fixed_lesson_id:
-        qs = qs.filter(fixed_lesson_id=slot.fixed_lesson_id)
-    elif slot.availability_id:
-        qs = qs.filter(availability_id=slot.availability_id)
-    else:
-        qs = qs.filter(coach=slot.coach, court=slot.court)
-    return (
-        qs
-        .select_related("user")
-        .order_by("user__full_name", "user__username", "id")
-    )
+    return reservations_for_object(slot).select_related("user")
 
 
 def _selected_slot_for_user(user, slot_id):
