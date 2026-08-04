@@ -25,10 +25,10 @@
 - Codexは現物調査、コード編集、テスト、差分相当の確認、report.md作成、handoff.json作成までを行う。
 - handoff.jsonには、agent/で始まる英小文字kebab-caseの専用ブランチ名、公開対象ファイル、コミットメッセージ、PRタイトル、PR本文を記録する。
 - Git公開工程はCodex正常終了後に、scripts/start-codex.ps1がscripts/publish-from-handoff.ps1を親PowerShellとして実行する。
-- publish-from-handoff.ps1はhandoff.jsonの対象ファイルだけを明示的にステージし、commit、push、Draft PR作成を行う。
+- publish-from-handoff.ps1はhandoff.jsonの対象ファイルだけを明示的にステージし、commit、push、Draft PR作成、Ready化、head commitを固定したsquash auto-merge登録を行う。
 - report.md、handoff.json、.pr-body.md、.codex-prompt.tmpはコミットしない。
 - .pr-body.mdとhandoff.jsonの後始末はpublish-from-handoff.ps1が行う。
-- Draft PR作成後は自動化を停止する。
+- auto-merge登録後は必須チェックtestとRulesetにマージ実行を委ね、自動化を停止する。
 
 ## 4. 必須確認
 
@@ -53,7 +53,7 @@
 - 改善内容の入力は1回だけとし、「改善内容を入力してください」と表示する。
 - scripts/prompts/prompt-dev.txtの{{IMPROVEMENT}}へ入力全体を埋め込み、Codexへ自動送信する。
 - 長い運用promptをユーザーへ要求しない。
-- PRマージはレビュー承認後にscripts/merge-pr.ps1からのみ実行する。
+- 通常開発のPRはpublish-from-handoff.ps1でauto-mergeを登録し、必須チェックtestとRulesetの条件成立後にGitHubへsquash mergeを委ねる。
 - CodexへGit metadata書き込み権限を要求しない。
 
 ## 6. 禁止事項
@@ -62,7 +62,7 @@
 - rebase
 - reset
 - 作業ブランチ削除
-- scripts/merge-pr.ps1以外からのPRマージ
+- publish-from-handoff.ps1によるauto-merge登録とscripts/merge-pr.ps1以外からのPRマージ
 - 本番操作
 - 無制限なPC全体またはリポジトリ外への書き込み
 

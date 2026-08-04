@@ -2,7 +2,7 @@
 
 ## 概要
 
-デスクトップの「Tennis-App 開発」をダブルクリックし、改善内容だけを1回入力すると、Codexが調査、実装、テスト、差分確認、ローカルreport.mdとhandoff.jsonの作成まで進めます。Codex正常終了後、親PowerShellがhandoff.jsonに基づいてコミット、push、Draft PR作成を行います。
+デスクトップの「Tennis-App 開発」をダブルクリックし、改善内容だけを1回入力すると、Codexが調査、実装、テスト、差分確認、ローカルreport.mdとhandoff.jsonの作成まで進めます。Codex正常終了後、親PowerShellがhandoff.jsonに基づいてコミット、push、Draft PR作成、Ready化、squash auto-merge登録を行います。必須チェック`test`とRulesetの条件成立後、GitHubがマージし、Renderがmain更新を自動デプロイします。
 
 レビュー承認後は「PRマージ」をダブルクリックしてPR番号だけを入力すると、PR検証、Ready化、merge commit、main同期まで進みます。
 
@@ -13,7 +13,7 @@ Codexはworkspace-writeで動作し、GitコマンドやGitHub CLIによる公�
 - common.ps1: UTF-8、Git、GitHub CLI、認証、main同期、入力、prompt、PR、report関連の共通関数
 - start-codex.ps1: 開発用ショートカットの入口。Codex正常終了後に公開工程を起動
 - codex-auto.ps1: 改善内容入力、prompt-dev読込、一時prompt生成、Codex自動実行
-- publish-from-handoff.ps1: handoff検証、専用ブランチ作成、対象ファイル限定のcommit、push、Draft PR作成
+- publish-from-handoff.ps1: handoff検証、専用ブランチ作成、対象ファイル限定のcommit、push、Draft PR作成、Ready化、head commit固定のsquash auto-merge登録
 - merge-pr.ps1: PR番号入力後の検証、Ready、Merge、main同期
 - install-shortcuts.ps1: デスクトップショートカット作成
 - prompts/prompt-dev.txt: 通常開発
@@ -50,7 +50,7 @@ new-task.ps1は廃止しました。通常開発の入口はstart-codex.ps1へ�
 1. 「Tennis-App 開発」をダブルクリックします。
 2. 「改善内容を入力してください」と表示された複数行画面へ、改善要求全体を貼り付けます。
 3. 「開始」を押します。
-4. Draft PR URLとローカルreport.mdが作成されるまで待ちます。
+4. PRのauto-merge登録とローカルreport.mdの表示まで待ちます。
 
 長い運用promptを貼り付ける必要はありません。要件、ログ、コード、箇条書き、スクリーンショットの説明を1回で入力できます。
 
@@ -79,8 +79,11 @@ start-codex.ps1はcodex-auto.ps1を起動します。Codexが正常終了しhand
 11. Codexが調査、編集、テスト、差分確認、report.md、handoff.json作成を実施
 12. Codex終了後に一時promptを削除
 13. 正常終了時だけhandoff.jsonを検証
-14. 親PowerShellが専用ブランチ作成、許可ファイルだけのステージ、commit、push、Draft PR作成を実施
-15. report.mdのPR情報を更新し、一時的なhandoff.jsonと.pr-body.mdを削除
+14. 親PowerShellが専用ブランチ作成、許可ファイルだけのステージ、commit、push、Draft PR作成、Ready化を実施
+15. pushしたhead commitを固定してsquash auto-mergeを登録
+16. report.mdのPR情報を更新し、一時的なhandoff.jsonと.pr-body.mdを削除
+
+auto-merge登録後はGitHub Actionsの必須チェック`test`とRuleset「Protect main」がマージ可否を制御します。登録後にhead commitが変わった場合は、`--match-head-commit`により意図しないcommitのマージを防止します。
 
 ## PRマージ
 
