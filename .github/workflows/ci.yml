@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.4"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Determine changed files
+        id: changes
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+            if [[ "$base" =~ ^0+$ ]]; then
+              base="$(git rev-list --max-parents=0 HEAD)"
+            fi
+          fi
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          git diff --name-only "$base" HEAD | tee changed-files.txt
+          if grep -Eq '\.ps1$' changed-files.txt; then
+            echo "powershell=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "powershell=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check diff quality
+        run: git diff --check "${{ steps.changes.outputs.base }}" HEAD
+
+      - name: Check local artifacts are not tracked
+        shell: bash
+        run: |
+          forbidden='^(report\.md|handoff\.json|\.pr-body\.md|\.codex-prompt\.tmp)$'
+          tracked="$(git ls-files | grep -E "$forbidden" || true)"
+          if [[ -n "$tracked" ]]; then
+            printf 'Local artifacts must not be tracked:\n%s\n' "$tracked"
+            exit 1
+          fi
+
+      - name: Scan tracked files for secret patterns
+        shell: bash
+        run: |
+          if git grep -I -n -E \
+            -e '-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----' \
+            -e 'AKIA[0-9A-Z]{16}' \
+            -e 'gh[pousr]_[A-Za-z0-9_]{36,}' \
+            -e 'github_pat_[A-Za-z0-9_]{80,}' \
+            -- ':(exclude).github/workflows/ci.yml'; then
+            echo 'Potential secret material was found.'
+            exit 1
+          fi
+
+      - name: Parse changed PowerShell files
+        if: steps.changes.outputs.powershell == 'true'
+        shell: pwsh
+        run: |
+          $files = Get-Content -LiteralPath changed-files.txt |
+            Where-Object { $_ -match '\.ps1$' -and (Test-Path -LiteralPath $_ -PathType Leaf) }
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [void][Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path -LiteralPath $file),
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "${file}: $($_.Message)" }
+              exit 1
+            }
+          }
+
+      - name: Validate CI workflow contract
+        run: python -m unittest automation_tests.test_ci_workflow
+
+      - name: Django system check
+        run: python manage.py check
+
+      - name: Django tests
+        run: python manage.py test
