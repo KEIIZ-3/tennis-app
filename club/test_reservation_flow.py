@@ -2152,6 +2152,11 @@ class ReservationFlowSmokeTests(TestCase):
             role=self.User.ROLE_MEMBER,
             full_name="別枠 会員",
         )
+        canceled_member = self._create_user(
+            username="line_canceled",
+            role=self.User.ROLE_MEMBER,
+            full_name="取消済 会員",
+        )
         other_fixed_lesson = self._create_fixed_lesson(
             lesson_date=lesson_date,
             title="同時刻の別レッスン",
@@ -2173,6 +2178,9 @@ class ReservationFlowSmokeTests(TestCase):
 
         create_reservation(first_member, fixed_lesson)
         selected_reservation = create_reservation(selected_member, fixed_lesson)
+        canceled_reservation = create_reservation(canceled_member, fixed_lesson)
+        canceled_reservation.status = Reservation.STATUS_CANCELED
+        canceled_reservation.save(update_fields=["status"])
         create_reservation(other_lesson_member, other_fixed_lesson)
 
         self.client.force_login(self.coach)
@@ -2190,6 +2198,7 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertNotContains(response, '<select id="slot_id"')
         self.assertContains(response, "後藤 会員")
         self.assertContains(response, "阿部 会員")
+        self.assertNotContains(response, "取消済 会員")
         self.assertNotContains(response, "別枠 会員")
 
         cache.clear()

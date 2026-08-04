@@ -3581,24 +3581,6 @@ def coach_today_lessons(request):
             "payment_status_options": payment_status_options,
         }
 
-    def _member_person_row(member):
-        return {
-            "user": member,
-            "reservation": None,
-            "name": _display_name(member),
-            "phone": _safe_phone(member),
-            "level": _safe_level(member),
-            "status_label": "固定参加",
-            "detail_url": reverse("club:coach_fixed_lesson_weekly"),
-            "payment_required": False,
-            "payment_status": "",
-            "payment_status_label": "",
-            "payment_amount": 0,
-            "payment_received_at": None,
-            "payment_status_options": [],
-            "is_fixed_member": True,
-        }
-
     def _waitlist_person_row(waitlist):
         return {
             "waitlist": waitlist,
@@ -3608,17 +3590,6 @@ def coach_today_lessons(request):
             "created_at": waitlist.created_at,
             "can_promote": _coach_can_manage_waitlist(request.user, waitlist),
         }
-
-    def _fixed_registered_member_rows(fixed_lesson, reservations):
-        if not fixed_lesson:
-            return []
-        reserved_user_ids = {reservation.user_id for reservation in reservations}
-        rows = []
-        for member in fixed_lesson.members.all().order_by("full_name", "username", "id"):
-            if member.pk in reserved_user_ids:
-                continue
-            rows.append(_member_person_row(member))
-        return rows
 
     def _add_slot(
         *,
@@ -3694,11 +3665,10 @@ def coach_today_lessons(request):
             .distinct()
         )
 
-        registered_member_rows = _fixed_registered_member_rows(fixed_lesson, reservations)
         participant_rows = [
             _reservation_person_row(reservation)
             for reservation in reservations
-        ] + registered_member_rows
+        ]
 
         # 固定レッスンの担当変更後は、予約作成時の旧コーチではなく、
         # レッスンカレンダーと同じ固定レッスン側の担当コーチを優先します。
@@ -4344,10 +4314,6 @@ def coach_fixed_lesson_weekly(request):
             ):
                 continue
 
-            members = list(
-                fixed.members.all().order_by("full_name", "username", "id")
-            )
-
             week_reservations = list(
                 Reservation.objects.filter(
                     fixed_lesson=fixed,
@@ -4370,7 +4336,6 @@ def coach_fixed_lesson_weekly(request):
             except Exception:
                 waitlist_count = 0
 
-            member_names = [member.display_name() for member in members]
             reservation_names = [reservation.user.display_name() for reservation in week_reservations]
             assigned_coach = (
                 slot_availability.substitute_coach
@@ -4391,9 +4356,9 @@ def coach_fixed_lesson_weekly(request):
                     if slot_availability and slot_availability.substitute_coach
                     else "",
                     "has_substitute": bool(slot_availability and slot_availability.substitute_coach),
-                    "member_count": len(member_names),
-                    "member_names": member_names,
-                    "reservation_count": max(len(reservation_names), len(member_names)),
+                    "member_count": len(reservation_names),
+                    "member_names": reservation_names,
+                    "reservation_count": len(reservation_names),
                     "reservation_names": reservation_names,
                     "waitlist_count": waitlist_count,
                     "capacity": fixed.effective_capacity() if hasattr(fixed, "effective_capacity") else fixed.capacity,

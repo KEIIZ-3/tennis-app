@@ -262,29 +262,6 @@ def _member_row_from_reservation(
     }
 
 
-def _member_row_from_fixed_member(user):
-    return {
-        "kind": "fixed_member",
-        "reservation": None,
-        "name": _display_name(user),
-        "phone": _phone_label(user),
-        "level": _level_label(
-            getattr(
-                user,
-                "member_level",
-                "",
-            )
-        ),
-        "guardian_name": "",
-        "relationship_label": "本人",
-        "is_family_participant": False,
-        "status_label": "固定登録",
-        "detail_url": "",
-        "payment_status_label": "",
-        "tickets_used": "-",
-    }
-
-
 def _waitlist_row(waitlist):
     user = waitlist.user
 
@@ -712,54 +689,6 @@ def lesson_calendar_member_list(request):
         .distinct()
     )
 
-    active_user_ids = {
-        reservation.user_id
-        for reservation in active_reservations
-    }
-    pending_user_ids = {
-        reservation.user_id
-        for reservation in pending_reservations
-    }
-    cancelled_user_ids = set(
-        Reservation.objects.filter(
-            reservation_filter,
-            status__in=(
-                Reservation.STATUS_CANCELED,
-                Reservation.STATUS_RAIN_CANCELED,
-            ),
-        ).values_list(
-            "user_id",
-            flat=True,
-        )
-    )
-
-    fixed_member_rows = []
-
-    if fixed_lesson:
-        try:
-            for member in (
-                fixed_lesson.members.all()
-                .order_by(
-                    "full_name",
-                    "username",
-                    "id",
-                )
-            ):
-                if (
-                    member.pk in active_user_ids
-                    or member.pk in pending_user_ids
-                    or member.pk in cancelled_user_ids
-                ):
-                    continue
-
-                fixed_member_rows.append(
-                    _member_row_from_fixed_member(
-                        member
-                    )
-                )
-        except Exception:
-            fixed_member_rows = []
-
     active_rows = [
         _member_row_from_reservation(
             reservation,
@@ -769,8 +698,6 @@ def lesson_calendar_member_list(request):
         )
         for reservation in active_reservations
     ]
-    active_rows.extend(fixed_member_rows)
-
     capacity = _capacity_for_slot(
         availability=availability,
         fixed_lesson=fixed_lesson,
