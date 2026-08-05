@@ -4,6 +4,7 @@ from .models import Reservation
 
 
 ACTIVE_PARTICIPANT_STATUSES = (Reservation.STATUS_ACTIVE,)
+ALL_RESERVATION_STATUSES = tuple(value for value, _label in Reservation.STATUS_CHOICES)
 
 
 def reservations_for_lesson(*, fixed_lesson=None, availability=None, coach=None,

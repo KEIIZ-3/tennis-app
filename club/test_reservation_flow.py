@@ -555,6 +555,55 @@ class ReservationFlowSmokeTests(TestCase):
         )
         self.assertEqual(action_response.status_code, 403)
 
+    def test_lesson_execution_uses_fixed_lesson_reservations_only(self):
+        fixed_lesson = self._create_fixed_lesson(title="実施管理対象")
+        other_lesson = self._create_fixed_lesson(title="同一物理枠の別レッスン")
+        start_at, end_at = fixed_lesson._build_datetimes_for_date(self.lesson_date)
+        availability = lesson_execution._canonical_availability_for_fixed(
+            fixed_lesson,
+            start_at,
+            end_at,
+        )
+        included = Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            availability=availability,
+            fixed_lesson=fixed_lesson,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            status=Reservation.STATUS_ACTIVE,
+        )
+        excluded = Reservation.objects.create(
+            user=self.contractor,
+            coach=self.coach,
+            court=self.court,
+            availability=availability,
+            fixed_lesson=other_lesson,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            status=Reservation.STATUS_ACTIVE,
+        )
+
+        reservation_ids = set(
+            lesson_execution._reservation_queryset(
+                {
+                    "availability": availability,
+                    "fixed_lesson": fixed_lesson,
+                    "lesson_type": Reservation.LESSON_GENERAL,
+                    "start_at": start_at,
+                    "end_at": end_at,
+                }
+            ).values_list("pk", flat=True)
+        )
+
+        self.assertIn(included.pk, reservation_ids)
+        self.assertNotIn(excluded.pk, reservation_ids)
+
     def test_substitute_contractor_can_rain_cancel_assigned_availability(self):
         start_at = timezone.make_aware(
             datetime.combine(self.lesson_date, datetime.min.time()).replace(hour=10)
