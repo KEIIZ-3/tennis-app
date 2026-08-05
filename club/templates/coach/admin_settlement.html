@@ -84,6 +84,15 @@
     <div class="notice info">前月からの準備金 {{ opening_balance|default:0 }}円と、当月のチケット消費売上・回収済み現金売上・ガット張り売上を支払原資として使用します。</div>
   {% endif %}
 
+  {% if unconfirmed_execution_rows %}
+    <section class="panel">
+      <div class="section-head"><div><h2 class="section-title">実施状態が未確定の開催回（{{ unconfirmed_execution_count }}件）</h2><p class="help">終了時刻を過ぎても開催状態が未登録です。月次締めの前に、実施済みまたは雨天中止を登録してください。</p></div></div>
+      {% for lesson in unconfirmed_execution_rows %}
+        <div class="payment-row"><strong>{{ lesson.lesson_date|date:"Y/m/d" }}<br>{{ lesson.time_label }}</strong><div>{{ lesson.lesson_name }}<br><span class="muted">担当：{{ lesson.coach_names|join:" / " }}</span></div><span class="status-badge open">未確定</span><a href="{{ lesson.registration_url }}" class="btn danger-button">実施状態を確認</a></div>
+      {% endfor %}
+    </section>
+  {% endif %}
+
   {% if court_cost_expected_unregistered_total %}
     <div class="notice danger">実施済みレッスンに対する未登録コート代見込が {{ court_cost_expected_unregistered_total }}円あります。月締め前に経費画面で対象レッスンと支払者を登録してください。</div>
   {% endif %}
