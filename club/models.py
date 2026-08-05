@@ -1727,27 +1727,11 @@ class Reservation(models.Model, LessonTypeMixin):
 
         capacity = self._capacity_for_activation()
         active_count = self.active_slot_reservations_qs().count()
-        fixed_member_count = 0
-        if self.fixed_lesson_id:
-            fixed_member_count = self.fixed_lesson.members.count()
 
-        # 固定参加者は FixedLesson.members の人数にすでに含まれている。
-        # その参加者の開催日別 Reservation を同期するときまで
-        # fixed_member_count を満員判定へ使うと、定員ちょうどの固定枠では
-        # 1件も予約レコードを生成できないため、実レコード数だけで判定する。
-        is_registered_fixed_member = bool(
-            self.is_fixed_entry
-            and self.fixed_lesson_id
-            and self.user_id
-            and self.fixed_lesson.members.filter(pk=self.user_id).exists()
-        )
-        occupancy_count = (
-            active_count
-            if is_registered_fixed_member
-            else max(active_count, fixed_member_count)
-        )
-
-        if occupancy_count >= capacity:
+        # FixedLesson.members は将来予約を生成するための設定であり、開催回の
+        # 参加人数ではない。個別キャンセルも反映できる有効 Reservation だけを
+        # 正本として満員判定する。
+        if active_count >= capacity:
             raise ValidationError(
                 f"このレッスンは満員です（定員{capacity}名）。"
                 "キャンセル待ちをご利用ください。"

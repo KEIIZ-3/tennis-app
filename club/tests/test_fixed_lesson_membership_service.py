@@ -158,6 +158,58 @@ class FixedLessonMembershipServiceTests(TestCase):
             ).exists()
         )
 
+    def test_reactivation_restores_future_fixed_reservations(self):
+        self.fixed_lesson.members.add(self.member)
+        self.fixed_lesson.is_active = False
+        self.fixed_lesson.save(update_fields=["is_active"])
+        self.fixed_lesson.sync_future_reservations()
+
+        self.fixed_lesson.is_active = True
+        self.fixed_lesson.save(update_fields=["is_active"])
+        changed_count = self.fixed_lesson.sync_future_reservations()
+
+        self.assertEqual(changed_count, 3)
+        self.assertEqual(
+            Reservation.objects.filter(
+                user=self.member,
+                fixed_lesson=self.fixed_lesson,
+                is_fixed_entry=True,
+                status=Reservation.STATUS_ACTIVE,
+            ).count(),
+            3,
+        )
+
+    def test_changing_fixed_member_cancels_old_and_creates_new_reservations(self):
+        replacement = User.objects.create_user(
+            username="fixed-replacement-member",
+            password="test-password",
+            role=User.ROLE_MEMBER,
+            full_name="固定交代会員",
+            member_level=User.LEVEL_ADVANCED,
+            is_profile_completed=True,
+        )
+        self.fixed_lesson.members.add(self.member)
+
+        self.fixed_lesson.members.set([replacement])
+
+        self.assertEqual(
+            Reservation.objects.filter(
+                user=self.member,
+                fixed_lesson=self.fixed_lesson,
+                status=Reservation.STATUS_CANCELED,
+            ).count(),
+            3,
+        )
+        self.assertEqual(
+            Reservation.objects.filter(
+                user=replacement,
+                fixed_lesson=self.fixed_lesson,
+                is_fixed_entry=True,
+                status=Reservation.STATUS_ACTIVE,
+            ).count(),
+            3,
+        )
+
     def test_old_different_court_availability_is_reused_as_canonical_slot(self):
         old_court = Court.objects.create(
             name="旧コート",
