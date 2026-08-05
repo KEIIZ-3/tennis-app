@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}過去月次精算の整合性診断{% endblock %}
+{% block content %}
+<div class="container">
+  <h1>過去月次精算の整合性診断</h1>
+  <div class="alert alert-warning">
+    この画面は診断専用です。表示された参考差額は自動反映されません。closed月の精算結果は変更されていません。修正が必要な場合は個別確認と承認が必要です。
+  </div>
+  <p><a href="{% url 'club:coach_admin_settlement' %}">月次精算へ戻る</a></p>
+  {% for item in diagnostics %}
+    <section class="card mb-4">
+      <div class="card-body">
+        <h2>{{ item.month_label }}</h2>
+        <p>終了済みscheduled開催回: {{ item.scheduled_count }}件 / 対象ボール代: {{ item.ball_amount }}円</p>
+        <h3>対象開催回</h3>
+        <ul>{% for occurrence in item.occurrences %}<li><a href="{{ occurrence.url }}">{{ occurrence.label }}（実施状態を確認）</a></li>{% endfor %}</ul>
+        <div class="table-responsive"><table class="table">
+          <thead><tr><th>コーチ</th><th>旧担当人数</th><th>現行担当人数</th><th>保存済みボール代負担額</th><th>現行条件の参考負担額</th><th>差額</th></tr></thead>
+          <tbody>{% for coach in item.coach_rows %}<tr>
+            <td>{{ coach.coach_name }}</td><td>{{ coach.old_count }}</td><td>{{ coach.current_count }}</td>
+            <td>{% if coach.saved_burden_registered %}{{ coach.saved_burden }}円{% else %}未登録{% endif %}</td>
+            <td>{{ coach.reference_burden }}円</td><td>{% if coach.difference is not None %}{{ coach.difference }}円{% else %}算出不可{% endif %}</td>
+          </tr>{% endfor %}</tbody>
+        </table></div>
+      </div>
+    </section>
+  {% empty %}
+    <p>影響候補のclosed月はありません。</p>
+  {% endfor %}
+</div>
+{% endblock %}

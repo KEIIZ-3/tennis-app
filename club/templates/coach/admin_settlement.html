@@ -56,6 +56,7 @@
     <div class="hero-head">
       <div>
         <h1 class="title">会社財布・月次精算</h1>
+        <p><a href="{% url 'club:settlement_integrity_diagnostic' %}">過去月次精算の整合性診断</a></p>
         <p class="lead">{{ month_label }} の売上を会社の財布へ集約し、コート代・経費・業務委託費を反映した最終受取額を確定します。</p>
       </div>
       {% if is_month_closed %}<span class="status-badge closed">締め済み</span>{% else %}<span class="status-badge open">編集中</span>{% endif %}

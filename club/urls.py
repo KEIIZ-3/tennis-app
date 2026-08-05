@@ -7,6 +7,7 @@ from . import court_number_line_notice
 from . import family_members
 from . import settlement_views
 from . import settlement_admin_refresh
+from . import settlement_integrity_views
 from . import lesson_execution
 from . import coach_portal
 from . import today_lesson_actions
@@ -62,6 +63,7 @@ urlpatterns = [
     path("coach/payroll-summary/", settlement_views.coach_payroll_summary, name="coach_payroll_summary"),
     path("coach/revenue-summary/", views.coach_revenue_summary, name="coach_revenue_summary"),
     path("coach/admin-settlement/", settlement_admin_refresh.coach_admin_settlement, name="coach_admin_settlement"),
+    path("coach/settlement-integrity/", settlement_integrity_views.settlement_integrity_diagnostic, name="settlement_integrity_diagnostic"),
     path("coach/lesson-execution/", lesson_execution.lesson_execution_manage, name="lesson_execution_manage"),
     path("coach/expenses/", court_expense_transfer.coach_expense_manage, name="coach_expense_manage"),
     path("coach/survey-summary/", views.coach_schedule_survey_summary, name="schedule_survey_summary"),
