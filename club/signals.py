@@ -3,7 +3,10 @@ import logging
 from django.db.models.signals import m2m_changed, post_save, pre_save
 from django.dispatch import receiver
 
-from .fixed_lesson_sync_facade import synchronize_fixed_lesson_membership
+from .fixed_lesson_sync_facade import (
+    membership_signal_is_suppressed,
+    synchronize_fixed_lesson_membership,
+)
 from .models import FixedLesson, Reservation
 from .reservation_notification_service import schedule_reservation_canceled_notification
 
@@ -72,6 +75,8 @@ def reservation_status_notification(sender, instance, created, raw=False, update
 def fixed_lesson_members_changed(sender, instance, action, reverse, pk_set, **kwargs):
     """固定メンバー設定を正本として、どの更新経路でも将来予約を同期する。"""
     if kwargs.get("raw"):
+        return
+    if membership_signal_is_suppressed():
         return
 
     if action == "pre_clear" and reverse:

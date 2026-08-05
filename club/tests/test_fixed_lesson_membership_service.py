@@ -1,5 +1,8 @@
 from datetime import timedelta
+from unittest.mock import patch
 
+from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -12,6 +15,8 @@ from club.models import (
     ReservationParticipant,
     User,
 )
+from club.fixed_lesson_sync_facade import replace_fixed_lesson_members
+from club.admin import FixedLessonAdminForm
 
 
 class FixedLessonMembershipServiceTests(TestCase):
@@ -209,6 +214,99 @@ class FixedLessonMembershipServiceTests(TestCase):
             ).count(),
             3,
         )
+
+    def test_canonical_service_replaces_members_with_one_synchronization(self):
+        replacement = User.objects.create_user(
+            username="canonical-replacement",
+            role=User.ROLE_MEMBER,
+            member_level=User.LEVEL_ADVANCED,
+        )
+        self.fixed_lesson.members.add(self.member)
+
+        from club import fixed_lesson_sync_facade
+
+        original_sync = fixed_lesson_sync_facade.synchronize_fixed_lesson_membership
+        with patch.object(
+            fixed_lesson_sync_facade,
+            "synchronize_fixed_lesson_membership",
+            wraps=original_sync,
+        ) as sync_mock:
+            result = replace_fixed_lesson_members(
+                self.fixed_lesson,
+                [replacement, replacement],
+            )
+
+        self.assertEqual(sync_mock.call_count, 1)
+        self.assertEqual(result["added_ids"], {replacement.pk})
+        self.assertEqual(result["removed_ids"], {self.member.pk})
+        self.assertEqual(
+            set(self.fixed_lesson.members.values_list("pk", flat=True)),
+            {replacement.pk},
+        )
+
+    def test_canonical_service_no_change_still_repairs_once(self):
+        self.fixed_lesson.members.add(self.member)
+        from club import fixed_lesson_sync_facade
+
+        original_sync = fixed_lesson_sync_facade.synchronize_fixed_lesson_membership
+        with patch.object(
+            fixed_lesson_sync_facade,
+            "synchronize_fixed_lesson_membership",
+            wraps=original_sync,
+        ) as sync_mock:
+            result = replace_fixed_lesson_members(self.fixed_lesson, [self.member])
+
+        self.assertEqual(sync_mock.call_count, 1)
+        self.assertEqual(result["added_ids"], set())
+        self.assertEqual(result["removed_ids"], set())
+
+    def test_canonical_service_rolls_back_members_when_sync_fails(self):
+        replacement = User.objects.create_user(
+            username="rollback-replacement",
+            role=User.ROLE_MEMBER,
+            member_level=User.LEVEL_ADVANCED,
+        )
+        self.fixed_lesson.members.add(self.member)
+
+        with patch(
+            "club.fixed_lesson_sync_facade.synchronize_fixed_lesson_membership",
+            side_effect=RuntimeError("sync failed"),
+        ):
+            with self.assertRaises(RuntimeError):
+                with transaction.atomic():
+                    replace_fixed_lesson_members(self.fixed_lesson, [replacement])
+
+        self.assertEqual(
+            set(self.fixed_lesson.members.values_list("pk", flat=True)),
+            {self.member.pk},
+        )
+
+    def test_canonical_service_rejects_non_participant_role(self):
+        with self.assertRaises(ValidationError):
+            replace_fixed_lesson_members(self.fixed_lesson, [self.coach])
+
+    def test_admin_form_routes_membership_through_canonical_service_once(self):
+        form = object.__new__(FixedLessonAdminForm)
+        form.instance = self.fixed_lesson
+        form.cleaned_data = {"members": [self.member]}
+        form.membership_created_by = self.coach
+
+        with patch(
+            "club.fixed_lesson_sync_facade.replace_fixed_lesson_members",
+            return_value={
+                "added_ids": {self.member.pk},
+                "removed_ids": set(),
+                "changed_count": 3,
+            },
+        ) as service_mock:
+            form.save_m2m()
+
+        service_mock.assert_called_once_with(
+            self.fixed_lesson,
+            [self.member],
+            created_by=self.coach,
+        )
+        self.assertEqual(form.membership_sync_result["changed_count"], 3)
 
     def test_old_different_court_availability_is_reused_as_canonical_slot(self):
         old_court = Court.objects.create(
