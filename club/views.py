@@ -2146,7 +2146,6 @@ def lesson_calendar_view(request):
     fixed_lesson_list = list(
         FixedLesson.objects.filter(is_active=True)
         .select_related("coach", "coach_2", "coach_3", "court")
-        .prefetch_related("members")
         .order_by("weekday", "start_hour", "id")
     )
 
@@ -2208,17 +2207,12 @@ def lesson_calendar_view(request):
                     end_at=end_at,
                 )
 
-            fixed_member_list = list(fixed_lesson.members.all())
             fixed_key = (str(fixed_lesson.pk), cursor_date.isoformat())
             # 固定メンバー設定ではなく、この開催回に存在する有効予約だけを表示人数とする。
-            member_count = max(
-                int(active_slot_counts.get(slot_key, 0)),
-                int(fixed_lesson_active_counts.get(fixed_key, 0)),
-            )
-            pending_count = max(
-                int(pending_slot_counts.get(slot_key, 0)),
-                int(fixed_lesson_pending_counts.get(fixed_key, 0)),
-            )
+            # 物理枠の一致を混ぜると、同時刻・同コートの別レッスンまで数えるため、
+            # FixedLesson に明示的に紐づく Reservation のみを使用する。
+            member_count = int(fixed_lesson_active_counts.get(fixed_key, 0))
+            pending_count = int(fixed_lesson_pending_counts.get(fixed_key, 0))
             fixed_user_status = user_fixed_lesson_status_map.get(fixed_key, "")
             fixed_user_waitlist_id = user_fixed_lesson_waitlist_map.get(fixed_key, "")
 
@@ -6812,41 +6806,39 @@ def reservation_create(request):
         else:
             back_url = reverse("club:lesson_calendar")
 
-        def _slot_counts_for_lesson(*, coach, court, lesson_type, start_at, end_at):
-            member_count = Reservation.objects.filter(
-                coach=coach,
-                court=court,
-                lesson_type=lesson_type,
-                start_at=start_at,
-                end_at=end_at,
-                status=Reservation.STATUS_ACTIVE,
-            ).count()
-            waitlist_count = LessonWaitlist.objects.filter(
-                coach=coach,
-                court=court,
+        def _slot_counts_for_lesson(
+            *, availability=None, fixed_lesson=None, coach, court,
+            lesson_type, start_at, end_at,
+        ):
+            reservation_kwargs = {
+                "availability": availability,
+                "fixed_lesson": fixed_lesson,
+                "coach": coach,
+                "court": court,
+                "lesson_type": lesson_type,
+                "start_at": start_at,
+                "end_at": end_at,
+            }
+            member_count = reservations_for_lesson(**reservation_kwargs).count()
+            user_reserved = reservations_for_lesson(
+                **reservation_kwargs,
+                statuses=(Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING),
+            ).filter(user=request.user).exists()
+
+            waitlist_qs = LessonWaitlist.objects.filter(
                 lesson_type=lesson_type,
                 start_at=start_at,
                 end_at=end_at,
                 status=LessonWaitlist.STATUS_WAITING,
-            ).count()
-            user_waitlist = LessonWaitlist.objects.filter(
-                user=request.user,
-                coach=coach,
-                court=court,
-                lesson_type=lesson_type,
-                start_at=start_at,
-                end_at=end_at,
-                status=LessonWaitlist.STATUS_WAITING,
-            ).first()
-            user_reserved = Reservation.objects.filter(
-                user=request.user,
-                coach=coach,
-                court=court,
-                lesson_type=lesson_type,
-                start_at=start_at,
-                end_at=end_at,
-                status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
-            ).exists()
+            )
+            if fixed_lesson is not None:
+                waitlist_qs = waitlist_qs.filter(fixed_lesson=fixed_lesson)
+            elif availability is not None:
+                waitlist_qs = waitlist_qs.filter(availability=availability)
+            else:
+                waitlist_qs = waitlist_qs.filter(coach=coach, court=court)
+            waitlist_count = waitlist_qs.count()
+            user_waitlist = waitlist_qs.filter(user=request.user).first()
             return member_count, waitlist_count, user_waitlist, user_reserved
 
         selected_lesson = None
@@ -6864,6 +6856,7 @@ def reservation_create(request):
                 target_level_label = availability.get_target_level_display()
                 lesson_type_label = availability.get_lesson_type_display()
                 member_count, waitlist_count, user_waitlist, user_reserved = _slot_counts_for_lesson(
+                    availability=availability,
                     coach=availability.coach,
                     court=availability.court,
                     lesson_type=availability.lesson_type,
@@ -6895,7 +6888,7 @@ def reservation_create(request):
                     "fixed_lesson_id": "",
                     "lesson_date": "",
                     "title": "通常レッスン" if availability.lesson_type == Reservation.LESSON_GENERAL else lesson_type_label,
-                    "date_label": start_at.strftime("%Y年%-m月%-d日") if hasattr(start_at, "strftime") else str(start_at),
+                    "date_label": f"{start_at.year}年{start_at.month}月{start_at.day}日",
                     "time_label": f"{start_at:%H:%M}〜{end_at:%H:%M}",
                     "coach_name": coach_name,
                     "court_name": str(availability.court) if availability.court else "未定",
@@ -6940,6 +6933,7 @@ def reservation_create(request):
                 is_after_repeat_start = not repeat_start or target_date >= repeat_start
                 primary_coach = fixed_lesson.primary_coach() if hasattr(fixed_lesson, "primary_coach") else fixed_lesson.coach
                 member_count, waitlist_count, user_waitlist, user_reserved = _slot_counts_for_lesson(
+                    fixed_lesson=fixed_lesson,
                     coach=primary_coach,
                     court=court,
                     lesson_type=fixed_lesson.lesson_type,
@@ -6974,7 +6968,7 @@ def reservation_create(request):
                     "fixed_lesson_id": str(fixed_lesson.pk),
                     "lesson_date": target_date.isoformat(),
                     "title": _lesson_calendar_title(fixed_lesson),
-                    "date_label": start_local.strftime("%Y年%-m月%-d日") if hasattr(start_local, "strftime") else str(target_date),
+                    "date_label": f"{start_local.year}年{start_local.month}月{start_local.day}日",
                     "time_label": f"{start_local:%H:%M}〜{end_local:%H:%M}",
                     "coach_name": _fixed_lesson_coach_names(fixed_lesson),
                     "court_name": str(court) if court else "未定",

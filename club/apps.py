@@ -8,7 +8,6 @@ class ClubConfig(AppConfig):
 
     def ready(self):
         from . import runtime_fixes  # noqa: F401
-        from . import lesson_calendar_fixes  # noqa: F401
         from . import signals  # noqa: F401
 
         # 固定レッスンの開催回数変更だけを理由とする自動キャンセルを無効化する。
