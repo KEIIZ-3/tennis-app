@@ -262,7 +262,7 @@ def verify_line_signature(body, signature):
     return hmac.compare_digest(expected_signature, signature)
 
 
-def _line_push_message(line_user_id, message_text):
+def send_line_to_id(line_user_id, message_text):
     channel_access_token = (getattr(settings, "LINE_CHANNEL_ACCESS_TOKEN", "") or "").strip()
     if not channel_access_token:
         logger.info("LINE_CHANNEL_ACCESS_TOKEN is not configured. Skip LINE push.")
@@ -296,11 +296,7 @@ def _line_push_message(line_user_id, message_text):
             response.read()
         return True
     except urllib.error.HTTPError as e:
-        try:
-            error_body = e.read().decode("utf-8")
-        except Exception:
-            error_body = str(e)
-        logger.warning("LINE push failed: %s", error_body)
+        logger.warning("LINE push failed with HTTP status=%s", getattr(e, "code", "unknown"))
         return False
     except Exception as e:
         logger.warning("LINE push failed: %s", e)
@@ -323,15 +319,11 @@ def notify_line_messaging_api(user, message_text):
         return False
 
     line_user_id = (getattr(line_link, "line_user_id", "") or "").strip()
-    return _line_push_message(line_user_id, message_text)
+    return send_line_to_id(line_user_id, message_text)
 
 
-def notify_email(user, subject, message_text):
-    if not user or not message_text:
-        return False
-
-    email = (getattr(user, "email", "") or "").strip()
-    if not email:
+def send_email_to_address(email, subject, message_text):
+    if not email or not message_text:
         return False
 
     from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "") or None
@@ -346,8 +338,16 @@ def notify_email(user, subject, message_text):
         )
         return True
     except Exception as e:
-        logger.warning("Email notification failed for user=%s: %s", getattr(user, "pk", None), e)
+        logger.warning("Email notification failed: %s", type(e).__name__)
         return False
+
+
+def notify_email(user, subject, message_text):
+    if not user:
+        return False
+    return send_email_to_address(
+        (getattr(user, "email", "") or "").strip(), subject, message_text
+    )
 
 
 def notify_admins(subject, message_text):

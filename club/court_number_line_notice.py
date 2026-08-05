@@ -17,7 +17,7 @@ from .lesson_participants import (
     unique_contact_reservations,
 )
 from .models import Reservation
-from .notifications import notify_user_email_only, notify_user_line_only
+from .notification_service import deliver_to_users
 
 
 def _is_coach_like(user):
@@ -270,24 +270,16 @@ def court_number_line_notice(request):
             participants = unique_contact_reservations(
                 _slot_participants(selected_slot)
             )
-            for reservation in participants:
-                result = notify_user_line_only(
-                    reservation.user,
-                    message_text,
-                    subject="Play Design Tennis コート番号のお知らせ",
-                )
-                if result.get("line"):
-                    line_sent += 1
-                else:
-                    email_result = notify_user_email_only(
-                        reservation.user,
-                        message_text,
-                        subject="Play Design Tennis コート番号のお知らせ",
-                    )
-                    if email_result.get("email"):
-                        email_sent += 1
-                    else:
-                        failed += 1
+            result = deliver_to_users(
+                [reservation.user for reservation in participants],
+                subject="Play Design Tennis コート番号のお知らせ",
+                message=message_text,
+                media=("line", "email"),
+                email_fallback=True,
+            )
+            line_sent = result["line_sent"]
+            email_sent = result["email_sent"]
+            failed = result["failed"] + result["skipped"]
 
             delivered = line_sent + email_sent
             _finish_delivery_lock(delivery_cache_key, delivered)

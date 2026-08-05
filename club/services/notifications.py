@@ -1,100 +1,30 @@
-import base64
-import hashlib
-import hmac
-import json
-import logging
-import os
-from urllib import request
+"""Compatibility facade for the former duplicate notification implementation."""
 
-from django.core.mail import send_mail
-
-logger = logging.getLogger(__name__)
-
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
-LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "")
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@example.com")
+from club.notification_service import deliver_to_users
+from club.notifications import send_email_to_address, send_line_to_id, verify_line_signature
 
 
 def send_email_notification(subject: str, message: str, recipient_list):
-    if not recipient_list:
-        return False
-
-    try:
-        send_mail(
-            subject=subject,
-            message=message,
-            from_email=DEFAULT_FROM_EMAIL,
-            recipient_list=recipient_list,
-            fail_silently=False,
-        )
-        return True
-    except Exception:
-        logger.exception("Email notification failed")
-        return False
+    recipients = list(dict.fromkeys(
+        str(email or "").strip().lower() for email in recipient_list if str(email or "").strip()
+    ))
+    return bool(recipients) and all(
+        send_email_to_address(email, subject, message) for email in recipients
+    )
 
 
 def send_line_push(line_user_id, text):
-    if not LINE_CHANNEL_ACCESS_TOKEN or not line_user_id:
-        return False
-
-    url = "https://api.line.me/v2/bot/message/push"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
-    }
-    payload = {
-        "to": line_user_id,
-        "messages": [
-            {
-                "type": "text",
-                "text": text[:5000],
-            }
-        ],
-    }
-
-    req = request.Request(
-        url=url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers=headers,
-        method="POST",
-    )
-
-    try:
-        with request.urlopen(req, timeout=10) as resp:
-            return 200 <= resp.status < 300
-    except Exception:
-        logger.exception("LINE push failed")
-        return False
-
-
-def verify_line_signature(body, signature):
-    if not LINE_CHANNEL_SECRET or not signature:
-        return False
-
-    digest = hmac.new(
-        LINE_CHANNEL_SECRET.encode("utf-8"),
-        body,
-        hashlib.sha256,
-    ).digest()
-    expected = base64.b64encode(digest).decode("utf-8")
-    return hmac.compare_digest(expected, signature)
+    return send_line_to_id(line_user_id, text)
 
 
 def notify_user(user, subject, message):
-    result = {"line": False, "email": False}
-
-    try:
-        link = getattr(user, "line_link", None)
-        if link and link.is_active:
-            result["line"] = send_line_push(link.line_user_id, message)
-    except Exception:
-        logger.exception("LINE notify failed")
-
-    email = getattr(user, "email", "")
-    if email:
-        result["email"] = send_email_notification(subject, message, [email])
-
-    return result
+    aggregate = deliver_to_users(
+        [user], subject=subject, message=message, media=("line", "email")
+    )
+    return {
+        "line": bool(aggregate["line_sent"]),
+        "email": bool(aggregate["email_sent"]),
+    }
 
 
 def build_reservation_created_message(reservation):
