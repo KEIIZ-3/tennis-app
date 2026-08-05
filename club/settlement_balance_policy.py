@@ -569,11 +569,9 @@ def _held_participant_count_by_coach(year, month, coach_ids):
         if not slot_key:
             continue
         entry = status_map.get(slot_key) or {}
-        # 対象予約は _monthly_execution_reservations_and_status() で
-        # 「終了日時を過ぎた有効予約」に限定済み。実運用では手動の実施済み登録を
-        # 行わない月もあるため、scheduled/未登録も終了済みとして数える。
-        # 雨天中止だけは予約状態との同期漏れに備えて明示的に除外する。
-        if entry.get("status") == "rain_canceled":
+        # 終了日時を過ぎただけの scheduled 予約は、実施済みとは限らない。
+        # 月次精算で確定した held の開催回だけを担当人数へ含める。
+        if entry.get("status") != "held":
             continue
 
         participant_id = getattr(reservation, "user_id", None)

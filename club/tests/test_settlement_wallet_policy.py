@@ -607,7 +607,7 @@ class SettlementWalletCourtCostTests(TestCase):
 
         counts = _held_participant_count_by_coach(2026, 7, [1, 2, 3])
 
-        self.assertEqual(counts, {1: 3, 2: 2})
+        self.assertEqual(counts, {1: 2, 2: 2})
         execution_rows_mock.assert_called_once_with(2026, 7)
 
     @patch("club.settlement_balance_policy._active_salary_payment_total", return_value=0)
