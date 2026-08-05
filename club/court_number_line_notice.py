@@ -11,7 +11,11 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
-from .lesson_participants import reservations_for_object
+from .lesson_participants import (
+    participant_details_by_reservation,
+    reservations_for_object,
+    unique_contact_reservations,
+)
 from .models import Reservation
 from .notifications import notify_user_email_only, notify_user_line_only
 
@@ -89,6 +93,12 @@ def _slots_for_user(user):
 
 def _slot_participants(slot):
     return reservations_for_object(slot).select_related("user")
+
+
+def _participant_name(reservation, details):
+    return details.get(reservation.pk, {}).get("participant_name") or _display_name(
+        reservation.user
+    )
 
 
 def _selected_slot_for_user(user, slot_id):
@@ -217,13 +227,16 @@ def court_number_line_notice(request):
     line_ready_count = 0
 
     if selected_slot:
-        for reservation in _slot_participants(selected_slot):
+        participants = list(_slot_participants(selected_slot))
+        details = participant_details_by_reservation(participants)
+        for reservation in participants:
             ready = _line_ready(reservation.user)
             if ready:
                 line_ready_count += 1
             rows.append(
                 {
-                    "name": _display_name(reservation.user),
+                    "name": _participant_name(reservation, details),
+                    "contact_name": _display_name(reservation.user),
                     "line_ready": ready,
                     "email_ready": _email_ready(reservation.user),
                 }
@@ -254,7 +267,10 @@ def court_number_line_notice(request):
                     f"{reverse('club:court_number_line_notice')}?slot_id={selected_slot.pk}"
                 )
 
-            for reservation in _slot_participants(selected_slot):
+            participants = unique_contact_reservations(
+                _slot_participants(selected_slot)
+            )
+            for reservation in participants:
                 result = notify_user_line_only(
                     reservation.user,
                     message_text,

@@ -71,7 +71,7 @@
     <section class="notice-card">
       <h2 style="margin:0;font-size:19px;">送信対象の参加者</h2>
       {% for row in participant_rows %}
-        <div class="row"><span>{{ row.name }}</span>{% if row.line_ready %}<span class="ok">LINE送信可</span>{% elif row.email_ready %}<span class="mail">メール補完可</span>{% else %}<span class="ng">連絡先なし</span>{% endif %}</div>
+        <div class="row"><span>{{ row.name }}{% if row.contact_name != row.name %}<small>（連絡先：{{ row.contact_name }}）</small>{% endif %}</span>{% if row.line_ready %}<span class="ok">LINE送信可</span>{% elif row.email_ready %}<span class="mail">メール補完可</span>{% else %}<span class="ng">連絡先なし</span>{% endif %}</div>
       {% empty %}<p class="empty">有効な参加者はいません。</p>{% endfor %}
     </section>
     {% if message_preview %}
