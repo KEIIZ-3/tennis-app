@@ -6,6 +6,8 @@ from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.utils import timezone
 
+from .capacity_policy import general_lesson_capacity
+
 BUSINESS_START_HOUR = 9
 BUSINESS_END_HOUR = 21
 TICKET_BALANCE_MIN = -4
@@ -312,7 +314,7 @@ class CoachAvailability(models.Model, LessonTypeMixin):
 
     def effective_capacity(self):
         if self.lesson_type == self.LESSON_GENERAL:
-            return max(int(self.coach_count or 1), 1) * 6
+            return general_lesson_capacity(self.coach_count, self.start_at)
         return int(self.capacity or 0)
 
     def assigned_coach(self):
@@ -585,7 +587,7 @@ class FixedLesson(models.Model, LessonTypeMixin):
 
     def effective_capacity(self):
         if self.lesson_type == self.LESSON_GENERAL:
-            return max(int(self.coach_count or 1), 1) * 6
+            return general_lesson_capacity(self.coach_count, self.start_date)
         return int(self.capacity or 0)
 
     def member_count_for_admin(self):
@@ -1961,10 +1963,6 @@ class Reservation(models.Model, LessonTypeMixin):
                 .order_by("purchased_at", "id")
             )
 
-            total_remaining = sum([purchase.remaining_tickets for purchase in purchases])
-            if total_remaining < self.tickets_used:
-                raise ValidationError("使用可能なチケット在庫が不足しています。")
-
             remaining_to_consume = self.tickets_used
             for purchase in purchases:
                 if remaining_to_consume <= 0:
@@ -2829,7 +2827,8 @@ class ShopEstimateRequest(models.Model):
 
     @staticmethod
     def sale_price_from_list_price(price):
-        return int(int(price or 0) * 0.8)
+        """ショップ販売価格を定価の70%（30%OFF）で計算する。"""
+        return int(int(price or 0) * 0.7)
 
     @property
     def main_sale_price(self):
