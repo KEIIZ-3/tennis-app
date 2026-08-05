@@ -75,6 +75,41 @@ function Invoke-HandoffStaging {
             throw "The index already contains staged changes. Clear them before publishing."
         }
 
+        # A path-scoped git add can stage only one side of a rename. Inspect the
+        # complete working tree through a disposable index so both rename paths
+        # are visible without changing the repository's real index.
+        $temporaryIndex = Join-Path ([IO.Path]::GetTempPath()) (
+            "tennis-handoff-index-{0}" -f [Guid]::NewGuid().ToString("N")
+        )
+        $previousIndex = [Environment]::GetEnvironmentVariable("GIT_INDEX_FILE", "Process")
+        try {
+            [Environment]::SetEnvironmentVariable("GIT_INDEX_FILE", $temporaryIndex, "Process")
+            Invoke-NativeChecked -FilePath "git" -Arguments @("read-tree", "HEAD") `
+                -FailureMessage "The temporary Git index could not be initialized."
+            Invoke-NativeChecked -FilePath "git" -Arguments @("add", "-A", "--", ".") `
+                -FailureMessage "The working tree could not be inspected for renames."
+            $workingTreeChanges = @(& git diff --cached --name-status --find-renames --)
+            if ($LASTEXITCODE -ne 0) {
+                throw "The working tree rename list could not be read."
+            }
+            foreach ($change in $workingTreeChanges) {
+                $fields = @($change -split "`t")
+                if ($fields.Count -eq 3 -and $fields[0].StartsWith("R")) {
+                    $oldListed = $seenFiles.Contains($fields[1])
+                    $newListed = $seenFiles.Contains($fields[2])
+                    if ($oldListed -xor $newListed) {
+                        throw "Both the old and new path of a rename must be listed in handoff files."
+                    }
+                }
+            }
+        }
+        finally {
+            [Environment]::SetEnvironmentVariable("GIT_INDEX_FILE", $previousIndex, "Process")
+            if (Test-Path -LiteralPath $temporaryIndex -PathType Leaf) {
+                Remove-Item -LiteralPath $temporaryIndex -Force
+            }
+        }
+
         if ($BeforeStage) {
             & $BeforeStage
         }
@@ -83,8 +118,8 @@ function Invoke-HandoffStaging {
         Invoke-NativeChecked -FilePath "git" -Arguments $addArguments `
             -FailureMessage "The allowed files could not be staged."
 
-        # --no-renames exposes both sides of a rename so the allowlist must contain
-        # the old and new path. This prevents an unlisted rename source from being staged.
+        # --no-renames keeps the final allowlist comparison path-for-path after
+        # the complete-working-tree rename validation above.
         $stagedFiles = @(& git diff --cached --name-only --no-renames --)
         if ($LASTEXITCODE -ne 0) {
             throw "The staged file list could not be read."

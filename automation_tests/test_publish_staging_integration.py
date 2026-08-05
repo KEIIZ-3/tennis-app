@@ -229,7 +229,7 @@ class PublishStagingIntegrationTests(unittest.TestCase):
                     else:
                         self.assertNotEqual(result.returncode, 0)
                         self.assertIn(
-                            "The staged files do not match the handoff allowlist",
+                            "Both the old and new path of a rename must be listed",
                             result.stdout + result.stderr,
                         )
                         self.assertTrue((repository.root / "handoff.json").is_file())

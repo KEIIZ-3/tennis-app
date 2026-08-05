@@ -52,8 +52,10 @@ class PublishWorkflowTests(unittest.TestCase):
         self.assertIn("The specified tracked file has no working tree change", self.text)
 
     def test_rename_requires_old_and_new_paths(self):
+        self.assertIn('"GIT_INDEX_FILE", $temporaryIndex', self.text)
+        self.assertIn('@("add", "-A", "--", ".")', self.text)
+        self.assertIn("Both the old and new path of a rename must be listed", self.text)
         self.assertIn("git diff --cached --name-only --no-renames --", self.text)
-        self.assertIn("the old and new path", self.text)
 
     def test_local_artifacts_remain_forbidden_and_cleanup_requires_success(self):
         for artifact in ("report.md", "handoff.json", ".pr-body.md", ".codex-prompt.tmp"):
