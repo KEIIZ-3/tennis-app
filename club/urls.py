@@ -14,7 +14,6 @@ from . import today_lesson_actions
 from . import analytics_dashboard
 from . import court_expense_transfer
 from . import reservation_cancellation
-from . import customer_ui
 
 app_name = "club"
 
@@ -27,12 +26,12 @@ urlpatterns = [
     path("healthz/", views.healthz, name="healthz"),
     path("admin-dashboard/", admin_dashboard.admin_dashboard, name="admin_dashboard"),
     path("analytics/", analytics_dashboard.analytics_dashboard, name="analytics_dashboard"),
-    path("lesson-calendar/", customer_ui.lesson_calendar_view, name="lesson_calendar"),
-    path("lesson-calendar/confirm/", customer_ui.lesson_reservation_confirm, name="lesson_reservation_confirm"),
+    path("lesson-calendar/", views.lesson_calendar_view, name="lesson_calendar"),
+    path("lesson-calendar/confirm/", views.lesson_reservation_confirm, name="lesson_reservation_confirm"),
     path("lesson-calendar/members/", lesson_member_list.lesson_calendar_member_list, name="lesson_calendar_member_list"),
     path("calendar/events/", views.calendar_events, name="calendar_events"),
     path("api/calendar/events/", views.calendar_events, name="calendar_events_api"),
-    path("tickets/", customer_ui.tickets_view, name="tickets"),
+    path("tickets/", views.tickets_view, name="tickets"),
     path("family/", family_members.family_member_manage, name="family_member_manage"),
     path("help/", views.help_view, name="help"),
     path("terms/", views.terms_view, name="terms"),
@@ -44,7 +43,7 @@ urlpatterns = [
     path("shop/estimate/complete/<int:pk>/", views.shop_estimate_complete_view, name="shop_estimate_complete"),
     path("survey/", views.schedule_survey_view, name="schedule_survey"),
     path("reservations/new/", views.reservation_create, name="reservation_create"),
-    path("reservations/", customer_ui.reservation_list, name="reservation_list"),
+    path("reservations/", views.reservation_list, name="reservation_list"),
     path("reservations/<int:pk>/", views.reservation_detail, name="reservation_detail"),
     path("reservations/<int:pk>/cancel/", reservation_cancellation.reservation_cancel, name="reservation_cancel"),
     path("waitlists/<int:pk>/cancel/", views.lesson_waitlist_cancel, name="lesson_waitlist_cancel"),

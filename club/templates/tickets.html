@@ -49,7 +49,7 @@
 
   .ticket-stat-grid{
     display:grid;
-    grid-template-columns:repeat(3, minmax(0, 1fr));
+    grid-template-columns:repeat(4, minmax(0, 1fr));
     gap:12px;
   }
 
@@ -318,7 +318,7 @@
     <div>
       <h1 class="ticket-title">チケット</h1>
       <p class="ticket-lead">
-        {{ user.display_name }} さんのチケット残数、保有内訳、消費履歴を確認できます。
+        {{ user.display_name }} さんの現在のチケット残数、予約時に差し引かれた内訳、返却履歴を確認できます。
       </p>
     </div>
     <a href="{% url 'club:reservation_list' %}" class="btn">予約一覧へ</a>
@@ -330,7 +330,7 @@
   <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
     <div>
       <h2 style="margin:0;">チケットで確認すること</h2>
-      <p class="muted" style="margin:6px 0 0;">残数、保有内訳、消費履歴を確認できます。残数が少ない場合は追加購入をご相談ください。</p>
+      <p class="muted" style="margin:6px 0 0;">現在の保有チケットと、今後の予約で使用予定のチケット枚数を確認できます。</p>
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
       <a href="{% url 'club:reservation_create' %}" class="btn btn-primary">予約する</a>
@@ -345,15 +345,28 @@
   <div class="ticket-jump-grid">
     <a href="#ticket-prices" class="ticket-jump-link">料金</a>
     <a href="#ticket-purchases" class="ticket-jump-link">保有内訳</a>
-    <a href="#ticket-consumptions" class="ticket-jump-link">消費内訳</a>
+    <a href="#ticket-consumptions" class="ticket-jump-link">予約分の差し引き</a>
     <a href="#ticket-ledgers" class="ticket-jump-link">履歴</a>
+  </div>
+</div>
+
+<div class="card customer-ticket-explanation">
+  <div class="customer-ticket-explanation-title">予約済みレッスンのチケットについて</div>
+  <div class="customer-ticket-explanation-text">
+    「現在の保有チケット」は、予約成立時に今後の予約分を差し引いた後の枚数です。<br>
+    「消費予定チケット」は、今後の予約中・承認待ちレッスンで使用する予定枚数です。<br>
+    キャンセルまたは雨天中止になった場合は、使用したチケットへ自動で返却されます。
   </div>
 </div>
 
 <div class="ticket-stat-grid">
   <div class="ticket-stat primary">
-    <div class="ticket-stat-label">現在の残数</div>
+    <div class="ticket-stat-label">現在の保有チケット</div>
     <div class="ticket-stat-value">{{ user.ticket_balance }}枚</div>
+  </div>
+  <div class="ticket-stat info">
+    <div class="ticket-stat-label">消費予定チケット</div>
+    <div class="ticket-stat-value">{{ planned_ticket_count }}枚</div>
   </div>
   <div class="ticket-stat info">
     <div class="ticket-stat-label">現在のレベル</div>
@@ -508,7 +521,8 @@
 </div>
 
 <div class="card" id="ticket-consumptions">
-  <h2 style="margin-top:0;">最近のチケット消費内訳</h2>
+  <h2 style="margin-top:0;">予約時に差し引かれたチケット</h2>
+  <p class="muted customer-ticket-consumption-help">今後の予約を含め、予約成立時に差し引かれたチケットを表示しています。</p>
 
   {% if ticket_consumptions %}
     <div class="desktop-table-area">
@@ -551,7 +565,7 @@
                   {% if consumption.refunded_at %}
                     <span class="ticket-chip refunded">返却済み</span>
                   {% else %}
-                    <span class="ticket-chip used">使用中</span>
+                    <span class="ticket-chip used">差し引き済み</span>
                   {% endif %}
                 </td>
               </tr>
@@ -570,7 +584,7 @@
               {% if consumption.refunded_at %}
                 <span class="ticket-chip refunded">返却済み</span>
               {% else %}
-                <span class="ticket-chip used">使用中</span>
+                <span class="ticket-chip used">差し引き済み</span>
               {% endif %}
             </div>
             <div class="mobile-data-sub">{{ consumption.created_at|date:"Y-m-d H:i" }}</div>

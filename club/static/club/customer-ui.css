@@ -1,0 +1,41 @@
+.customer-ticket-notice {
+  border-color: #60a5fa;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.customer-ticket-notice .ticket-notice-icon {
+  background: #2563eb;
+}
+
+.customer-ticket-notice .ticket-notice-title {
+  color: #1e3a8a;
+}
+
+.customer-reservation-notice-title {
+  margin-top: 12px;
+}
+
+.customer-ticket-explanation {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.customer-ticket-explanation-title {
+  margin-bottom: 7px;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.customer-ticket-explanation-text {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.75;
+}
+
+.customer-ticket-consumption-help {
+  margin: -4px 0 14px;
+  font-size: 13px;
+  line-height: 1.7;
+}
