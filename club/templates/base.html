@@ -1,4 +1,4 @@
-{% load dashboard_tags %}
+{% load static dashboard_tags %}
 {% if user.is_authenticated %}
   {% if user.role == "coach" or user.role == "contractor_coach" or user.is_staff or user.is_superuser %}
     {% coach_pending_request_count user as nav_pending_count %}
@@ -15,6 +15,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Play Design Tennis{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'club/operations-responsive.css' %}">
 
   <style>
     :root{

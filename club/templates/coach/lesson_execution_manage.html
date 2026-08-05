@@ -99,7 +99,7 @@
     </div>
     <div class="lesson-list">
       {% for row in rows %}
-        <article class="lesson-card{% if row.needs_attention %} attention{% endif %}" id="lesson-{{ row.availability.id }}">
+        <article class="lesson-card status-{{ row.status_class }}{% if row.needs_attention %} attention{% endif %}" id="lesson-{{ row.availability.id }}">
           <div class="lesson-top">
             <div>
               <div class="lesson-date">{{ row.start_local|date:"Y/m/d" }} {{ row.start_local|date:"H:i" }}〜{{ row.end_local|date:"H:i" }}</div>
@@ -109,9 +109,11 @@
           </div>
 
           <div class="facts">
+            <div class="fact fact-status"><div class="fact-label">実施状態</div><div class="fact-value">{{ row.status_label }}</div></div>
             <div class="fact"><div class="fact-label">有効予約</div><div class="fact-value">{{ row.active_count }}件</div></div>
             <div class="fact"><div class="fact-label">キャンセル済み</div><div class="fact-value">{{ row.canceled_count }}件</div></div>
             <div class="fact"><div class="fact-label">コート数</div><div class="fact-value">{{ row.availability.court_count }}面</div></div>
+            <div class="fact fact-court"><div class="fact-label">コート代</div><div class="fact-value"><span class="court-status {{ row.court_status }}">{{ row.court_status_label }}</span>{% if row.court_status == "registered" or row.status == "refund_pending" or row.status == "refunded" %}<br>{{ row.court_amount }}円{% if row.court_payer_name %}<br><span class="muted">支払者：{{ row.court_payer_name }}</span>{% endif %}{% endif %}</div></div>
           </div>
 
           {% if row.status == "held" %}
