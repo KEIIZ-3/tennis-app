@@ -53,6 +53,14 @@ class PublishWorkflowTests(unittest.TestCase):
 
     def test_rename_requires_old_and_new_paths(self):
         self.assertIn('"GIT_INDEX_FILE", $temporaryIndex', self.text)
+        self.assertIn("Remove-Item Env:GIT_INDEX_FILE", self.text)
+        clear = self.text.index("Remove-Item Env:GIT_INDEX_FILE")
+        stage = self.text.index('$addArguments = @("add", "-A", "--")')
+        restore = self.text.index(
+            'SetEnvironmentVariable("GIT_INDEX_FILE", $previousIndex, "Process")'
+        )
+        self.assertLess(clear, stage)
+        self.assertLess(stage, restore)
         self.assertIn('@("add", "-A", "--", ".")', self.text)
         self.assertIn("Both the old and new path of a rename must be listed", self.text)
         self.assertIn("git diff --cached --name-only --no-renames --", self.text)

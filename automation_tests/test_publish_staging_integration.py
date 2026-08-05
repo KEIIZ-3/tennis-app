@@ -61,7 +61,7 @@ class IsolatedGitRepository:
         result = self.git("diff", "--cached", "--name-status", "--no-renames", "--")
         return [line for line in result.stdout.splitlines() if line]
 
-    def invoke_staging(self, files):
+    def invoke_staging(self, files, environment=None):
         handoff_path = self.root / "handoff.json"
         handoff_path.write_text(
             json.dumps({"files": files}, ensure_ascii=False), encoding="utf-8"
@@ -90,6 +90,7 @@ class IsolatedGitRepository:
             errors="replace",
             capture_output=True,
             check=False,
+            env=environment,
         )
 
 
@@ -157,10 +158,16 @@ class PublishStagingIntegrationTests(unittest.TestCase):
     def test_untracked_file_is_staged_as_an_addition(self):
         self.repository.commit_files({"tracked.txt": "base\n"})
         self.repository.write("new file.txt", "new\n")
+        workspace_index = ROOT / ".git" / "index"
+        index_before = workspace_index.read_bytes()
+        environment = os.environ.copy()
+        environment["GIT_INDEX_FILE"] = str(workspace_index)
 
-        self.assert_staging_succeeds(["new file.txt"])
+        result = self.repository.invoke_staging(["new file.txt"], environment)
 
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.repository.staged(), ["A\tnew file.txt"])
+        self.assertEqual(workspace_index.read_bytes(), index_before)
 
     def test_tracked_deletion_is_staged(self):
         self.repository.commit_files({"deleted file.txt": "base\n"})

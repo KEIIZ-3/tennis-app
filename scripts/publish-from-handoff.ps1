@@ -17,7 +17,12 @@ function Invoke-HandoffStaging {
     $forbiddenArtifacts = @("report.md", "handoff.json", ".pr-body.md", ".codex-prompt.tmp")
     $validatedFiles = New-Object System.Collections.Generic.List[string]
     $seenFiles = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    $previousIndex = [Environment]::GetEnvironmentVariable("GIT_INDEX_FILE", "Process")
 
+    # Never inherit an index belonging to the caller's repository. This is
+    # especially important when tests invoke this function for a temporary
+    # repository from a checked-out GitHub Actions workspace.
+    Remove-Item Env:GIT_INDEX_FILE -ErrorAction SilentlyContinue
     Push-Location -LiteralPath $repoRoot
     try {
         foreach ($file in $Files) {
@@ -81,7 +86,6 @@ function Invoke-HandoffStaging {
         $temporaryIndex = Join-Path ([IO.Path]::GetTempPath()) (
             "tennis-handoff-index-{0}" -f [Guid]::NewGuid().ToString("N")
         )
-        $previousIndex = [Environment]::GetEnvironmentVariable("GIT_INDEX_FILE", "Process")
         try {
             [Environment]::SetEnvironmentVariable("GIT_INDEX_FILE", $temporaryIndex, "Process")
             Invoke-NativeChecked -FilePath "git" -Arguments @("read-tree", "HEAD") `
@@ -104,7 +108,10 @@ function Invoke-HandoffStaging {
             }
         }
         finally {
-            [Environment]::SetEnvironmentVariable("GIT_INDEX_FILE", $previousIndex, "Process")
+            # Removing the variable is required here. Restoring a null value
+            # with SetEnvironmentVariable leaves an empty variable on Unix,
+            # and the following git add then has no writable index path.
+            Remove-Item Env:GIT_INDEX_FILE -ErrorAction SilentlyContinue
             if (Test-Path -LiteralPath $temporaryIndex -PathType Leaf) {
                 Remove-Item -LiteralPath $temporaryIndex -Force
             }
@@ -134,6 +141,12 @@ function Invoke-HandoffStaging {
     }
     finally {
         Pop-Location
+        if ($null -ne $previousIndex) {
+            [Environment]::SetEnvironmentVariable("GIT_INDEX_FILE", $previousIndex, "Process")
+        }
+        else {
+            Remove-Item Env:GIT_INDEX_FILE -ErrorAction SilentlyContinue
+        }
     }
 }
 
