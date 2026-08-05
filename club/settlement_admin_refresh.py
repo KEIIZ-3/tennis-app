@@ -1,4 +1,3 @@
-from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
@@ -38,61 +37,22 @@ def _selected_month(request):
 
 
 def _refresh_closed_month(selected_year, selected_month):
-    """締め状態と監査情報を維持したまま、最新データで精算内容を再計算する。"""
-    with transaction.atomic():
-        settlement = (
-            MonthlySettlement.objects.select_for_update()
-            .filter(year=selected_year, month=selected_month)
-            .first()
-        )
-
-        if settlement is None or not settlement.is_closed:
-            calculate_monthly_settlement(
-                selected_year,
-                selected_month,
-                force=True,
-            )
-            return
-
-        original_closed_at = settlement.closed_at
-        original_closed_by_id = settlement.closed_by_id
-        original_reopened_at = settlement.reopened_at
-        original_reopened_by_id = settlement.reopened_by_id
-
-        # wallet policy は締め済み月を意図的に処理しないため、再計算中だけ
-        # draft として扱う。支払履歴や締め日時などの監査情報は変更しない。
-        settlement.status = MonthlySettlement.STATUS_DRAFT
-        settlement.updated_at = timezone.now()
-        settlement.save(update_fields=["status", "updated_at"])
-
+    """Refresh an open month while preserving a closed month's snapshot."""
+    settlement = MonthlySettlement.objects.filter(
+        year=selected_year,
+        month=selected_month,
+    ).first()
+    if settlement is None or not settlement.is_closed:
         calculate_monthly_settlement(
             selected_year,
             selected_month,
             force=True,
         )
 
-        settlement.refresh_from_db()
-        settlement.status = MonthlySettlement.STATUS_CLOSED
-        settlement.closed_at = original_closed_at
-        settlement.closed_by_id = original_closed_by_id
-        settlement.reopened_at = original_reopened_at
-        settlement.reopened_by_id = original_reopened_by_id
-        settlement.updated_at = timezone.now()
-        settlement.save(
-            update_fields=[
-                "status",
-                "closed_at",
-                "closed_by",
-                "reopened_at",
-                "reopened_by",
-                "updated_at",
-            ]
-        )
-
 
 @require_http_methods(["GET", "POST"])
 def coach_admin_settlement(request):
-    """admin月次精算を表示前に必ず最新データで再計算する。"""
+    """Refresh open settlement data before rendering the admin view."""
     is_admin = bool(
         getattr(request.user, "is_authenticated", False)
         and (

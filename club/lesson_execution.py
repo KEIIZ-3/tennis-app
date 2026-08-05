@@ -151,6 +151,63 @@ def status_by_availability(user, year_month_pairs):
     return result
 
 
+def unconfirmed_execution_rows(year, month, *, now=None):
+    """Return ended lesson occurrences whose execution status is still unset."""
+    settlement = get_or_create_monthly_settlement(year, month)
+    status_map = read_status_map(settlement)
+    current_time = now or timezone.now()
+    rows = []
+
+    for slot in _canonical_slots(year, month):
+        if slot["end_at"] > current_time:
+            continue
+
+        reservations = list(_reservation_queryset(slot))
+        entry = _status_entry(status_map, slot)
+        saved_status = entry.get("status")
+        has_legacy_rain_cancel = any(
+            reservation.status == Reservation.STATUS_RAIN_CANCELED
+            or "雨天中止" in str(reservation.cancellation_reason or "")
+            for reservation in reservations
+        )
+        is_explicitly_canceled = bool(reservations) and all(
+            reservation.status
+            in (Reservation.STATUS_CANCELED, Reservation.STATUS_RAIN_CANCELED)
+            for reservation in reservations
+        )
+        if (
+            saved_status in STATUS_LABELS
+            or has_legacy_rain_cancel
+            or is_explicitly_canceled
+        ):
+            continue
+
+        availability = slot["availability"]
+        start_local = _local(slot["start_at"])
+        end_local = _local(slot["end_at"])
+        fixed_lesson = slot.get("fixed_lesson")
+        lesson_name = (
+            str(getattr(fixed_lesson, "title", "") or "").strip()
+            or availability.get_lesson_type_display()
+        )
+        rows.append(
+            {
+                "availability_id": availability.pk,
+                "lesson_date": start_local.date(),
+                "time_label": f"{start_local:%H:%M}〜{end_local:%H:%M}",
+                "coach_names": slot["coach_names"],
+                "lesson_name": lesson_name,
+                "registration_url": (
+                    f"{reverse('club:lesson_execution_manage')}?"
+                    f"year={int(year)}&month={int(month)}"
+                    f"#lesson-{availability.pk}"
+                ),
+            }
+        )
+
+    return rows
+
+
 def missing_rain_refund_rows(year, month):
     """雨天中止済みだが返金情報が未登録の開催枠を月次画面へ返す。"""
     settlement = get_or_create_monthly_settlement(year, month)

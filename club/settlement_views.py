@@ -102,6 +102,14 @@ def coach_admin_settlement(request):
         selected_month,
     )
 
+    from .lesson_execution import unconfirmed_execution_rows
+
+    unconfirmed_rows = (
+        []
+        if settlement.is_closed
+        else unconfirmed_execution_rows(selected_year, selected_month)
+    )
+
     if request.method == "POST":
         action = (request.POST.get("action") or "").strip()
 
@@ -230,6 +238,16 @@ def coach_admin_settlement(request):
             return redirect(redirect_url)
 
         if action == "close_month":
+            unconfirmed_rows = unconfirmed_execution_rows(
+                selected_year,
+                selected_month,
+            )
+            if unconfirmed_rows:
+                messages.error(
+                    request,
+                    "実施状態が未確定の開催回があるため、月次締めを実行できません。実施管理で状態を確定してください。",
+                )
+                return redirect(redirect_url)
             result = calculate_monthly_settlement(
                 selected_year,
                 selected_month,
@@ -348,6 +366,8 @@ def coach_admin_settlement(request):
         "opening_balance": settlement.opening_balance,
         "closing_balance": settlement.closing_balance,
         "rain_refund_missing_rows": missing_refund_rows,
+        "unconfirmed_execution_rows": unconfirmed_rows,
+        "unconfirmed_execution_count": len(unconfirmed_rows),
     }
 
     if "payout_history_rows" not in context:
