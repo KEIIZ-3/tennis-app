@@ -85,6 +85,10 @@ start-codex.ps1はcodex-auto.ps1を起動します。Codexが正常終了しhand
 
 auto-merge登録後はGitHub Actionsの必須チェック`test`とRuleset「Protect main」がマージ可否を制御します。登録後にhead commitが変わった場合は、`--match-head-commit`により意図しないcommitのマージを防止します。
 
+handoff.jsonの`files`には、新規・変更・削除したパスをリポジトリ相対パスで列挙します。renameはGit内部で削除と追加として表現され得るため、旧パスと新パスの両方を列挙してください。公開処理は各パスに作業ツリーの変更があることを確認し、`git add -A -- <列挙パス>`で列挙対象だけをstageします。存在しないパスは、Gitで追跡済みの削除である場合だけ許可します。stage後はrename検出を無効にした変更パス一覧をallowlistと完全一致させるため、列挙外の変更はcommitされません。
+
+公開処理は新しい`agent/`ブランチと新規PRの作成専用です。同名remoteブランチや既存PRの更新は自動判定しません。既存PRへ追加する必要がある場合は、OPEN状態、base、head、remote履歴を個別に確認する別フローが必要です。履歴の分岐をforce push、rebase、resetで解消することはありません。
+
 ## PRマージ
 
 レビュー承認後:
@@ -120,7 +124,7 @@ auto-merge登録後はGitHub Actionsの必須チェック`test`とRuleset「Prot
 - .pr-body.md
 - .codex-prompt.tmp
 
-handoff.jsonもコミット対象外ですが、公開工程への受け渡し後にpublish-from-handoff.ps1が削除します。
+handoff.jsonもコミット対象外ですが、auto-merge登録まで成功した場合だけpublish-from-handoff.ps1がhandoff.jsonと.pr-body.mdを削除します。途中で失敗した場合は診断と再実行判断のため両方を残します。スクリプトは作成済みブランチやstage済み変更をreset・削除しません。
 
 ## トラブル対応
 

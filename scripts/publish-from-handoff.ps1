@@ -79,16 +79,30 @@ try {
             throw "Local workflow artifacts cannot be published: $file"
         }
 
-        $candidatePath = Join-Path $repoRoot $relativePath
-        if (-not (Test-Path -LiteralPath $candidatePath -PathType Leaf)) {
-            throw "The specified file does not exist: $file"
-        }
-        $resolvedPath = (Resolve-Path -LiteralPath $candidatePath).Path
-        if (-not $resolvedPath.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        $candidatePath = [IO.Path]::GetFullPath((Join-Path $repoRoot $relativePath))
+        if (-not $candidatePath.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)) {
             throw "Files outside the repository are not allowed: $file"
+        }
+        if (Test-Path -LiteralPath $candidatePath -PathType Container) {
+            throw "Directory entries are not allowed: $file"
         }
         if (-not $seenFiles.Add($relativePath)) {
             throw "Duplicate files entry: $file"
+        }
+
+        & git ls-files --error-unmatch -- $relativePath 2>$null
+        $isTracked = $LASTEXITCODE -eq 0
+        if ($isTracked) {
+            & git diff --quiet -- $relativePath
+            if ($LASTEXITCODE -eq 0) {
+                throw "The specified tracked file has no working tree change: $file"
+            }
+            if ($LASTEXITCODE -ne 1) {
+                throw "The working tree change could not be inspected: $file"
+            }
+        }
+        elseif (-not (Test-Path -LiteralPath $candidatePath -PathType Leaf)) {
+            throw "The specified path is neither a file nor a tracked deletion: $file"
         }
         $validatedFiles.Add($relativePath)
     }
@@ -101,11 +115,13 @@ try {
     Invoke-NativeChecked -FilePath "git" -Arguments @("switch", "-c", $branch) `
         -FailureMessage "The work branch could not be created."
 
-    $addArguments = @("add", "--") + $validatedFiles.ToArray()
+    $addArguments = @("add", "-A", "--") + $validatedFiles.ToArray()
     Invoke-NativeChecked -FilePath "git" -Arguments $addArguments `
         -FailureMessage "The allowed files could not be staged."
 
-    $stagedFiles = @(& git diff --cached --name-only --)
+    # --no-renames exposes both sides of a rename so the allowlist must contain
+    # the old and new path. This prevents an unlisted rename source from being staged.
+    $stagedFiles = @(& git diff --cached --name-only --no-renames --)
     if ($LASTEXITCODE -ne 0) {
         throw "The staged file list could not be read."
     }
@@ -168,7 +184,7 @@ catch {
     exit 1
 }
 finally {
-    if ($prBodyPath -and (Test-Path -LiteralPath $prBodyPath)) {
+    if ($published -and $prBodyPath -and (Test-Path -LiteralPath $prBodyPath)) {
         Remove-Item -LiteralPath $prBodyPath -Force
     }
     if ($published -and $handoffPath -and (Test-Path -LiteralPath $handoffPath)) {
