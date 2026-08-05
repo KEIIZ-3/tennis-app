@@ -38,6 +38,9 @@ class CiWorkflowTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertIn(command, self.text)
 
+    def test_ci_runs_all_automation_workflow_tests(self):
+        self.assertIn("python -m unittest discover automation_tests", self.text)
+
 
 if __name__ == "__main__":
     unittest.main()

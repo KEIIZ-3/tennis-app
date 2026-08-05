@@ -87,6 +87,8 @@ auto-merge登録後はGitHub Actionsの必須チェック`test`とRuleset「Prot
 
 handoff.jsonの`files`には、新規・変更・削除したパスをリポジトリ相対パスで列挙します。renameはGit内部で削除と追加として表現され得るため、旧パスと新パスの両方を列挙してください。公開処理は各パスに作業ツリーの変更があることを確認し、`git add -A -- <列挙パス>`で列挙対象だけをstageします。存在しないパスは、Gitで追跡済みの削除である場合だけ許可します。stage後はrename検出を無効にした変更パス一覧をallowlistと完全一致させるため、列挙外の変更はcommitされません。
 
+検証とstageは`Invoke-HandoffStaging`へ集約されています。統合テストは`publish-from-handoff.ps1 -FunctionsOnly`をdot-sourceし、一時Gitリポジトリでこの本番関数だけを呼び出します。GitHub CLI、remote、PR、auto-mergeは統合テストの対象に含めません。
+
 公開処理は新しい`agent/`ブランチと新規PRの作成専用です。同名remoteブランチや既存PRの更新は自動判定しません。既存PRへ追加する必要がある場合は、OPEN状態、base、head、remote履歴を個別に確認する別フローが必要です。履歴の分岐をforce push、rebase、resetで解消することはありません。
 
 ## PRマージ

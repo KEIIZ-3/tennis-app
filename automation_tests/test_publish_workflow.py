@@ -39,11 +39,12 @@ class PublishWorkflowTests(unittest.TestCase):
         self.assertNotIn('@("add", "-A", ".")', self.text)
 
     def test_tracked_deletion_is_allowed_but_missing_unknown_path_is_rejected(self):
-        tracked = self.text.index("git ls-files --error-unmatch -- $relativePath")
+        tracked = self.text.index("git ls-files -- $relativePath")
         missing = self.text.index(
             "The specified path is neither a file nor a tracked deletion"
         )
         self.assertLess(tracked, missing)
+        self.assertNotIn("git ls-files --error-unmatch", self.text)
         self.assertNotIn("The specified file does not exist", self.text)
 
     def test_each_allowlisted_path_must_have_a_worktree_change(self):
@@ -51,8 +52,18 @@ class PublishWorkflowTests(unittest.TestCase):
         self.assertIn("The specified tracked file has no working tree change", self.text)
 
     def test_rename_requires_old_and_new_paths(self):
+        self.assertIn('"GIT_INDEX_FILE", $temporaryIndex', self.text)
+        self.assertIn("Remove-Item Env:GIT_INDEX_FILE", self.text)
+        clear = self.text.index("Remove-Item Env:GIT_INDEX_FILE")
+        stage = self.text.index('$addArguments = @("add", "-A", "--")')
+        restore = self.text.index(
+            'SetEnvironmentVariable("GIT_INDEX_FILE", $previousIndex, "Process")'
+        )
+        self.assertLess(clear, stage)
+        self.assertLess(stage, restore)
+        self.assertIn('@("add", "-A", "--", ".")', self.text)
+        self.assertIn("Both the old and new path of a rename must be listed", self.text)
         self.assertIn("git diff --cached --name-only --no-renames --", self.text)
-        self.assertIn("the old and new path", self.text)
 
     def test_local_artifacts_remain_forbidden_and_cleanup_requires_success(self):
         for artifact in ("report.md", "handoff.json", ".pr-body.md", ".codex-prompt.tmp"):
