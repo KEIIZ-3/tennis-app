@@ -2053,6 +2053,17 @@ def lesson_calendar_view(request):
         else:
             disabled_reason = "受付準備中"
 
+        if is_rain_canceled:
+            customer_status_label = "雨天中止"
+        elif start_at < timezone.now():
+            customer_status_label = "実施済み" if target_date < today else "受付終了"
+        elif is_recruitment_closed:
+            customer_status_label = "募集終了"
+        elif int(member_count or 0) >= int(capacity or 0):
+            customer_status_label = "満員"
+        else:
+            customer_status_label = f"空きあり（残り{remaining_count}名）"
+
         reserve_params = {
             "year": target_year,
             "month": target_month,
@@ -2134,6 +2145,7 @@ def lesson_calendar_view(request):
             "is_reserved_by_user": user_slot_status == Reservation.STATUS_ACTIVE,
             "is_waitlisted_by_user": bool(user_waitlist_id),
             "disabled_reason": disabled_reason,
+            "customer_status_label": customer_status_label,
             "is_recruitment_closed": bool(is_recruitment_closed),
             "color_class": color_class,
             "color_combo_class": color_combo_class,
@@ -4487,6 +4499,14 @@ def reservation_detail(request, pk):
         {
             "reservation": reservation,
             "can_cancel": can_cancel,
+            "can_customer_cancel": reservation.status in (
+                Reservation.STATUS_ACTIVE,
+                Reservation.STATUS_PENDING,
+            ) and (
+                reservation.user_id == request.user.pk
+                or request.user.is_staff
+                or request.user.is_superuser
+            ),
             "cancel_reason": cancel_reason,
             "can_manage_request": can_manage_request,
             "assigned_coach_name": reservation.assigned_coach_display(),
@@ -7146,6 +7166,14 @@ def reservation_list(request):
         return {
             "reservation": reservation,
             "can_cancel": can_cancel,
+            "can_customer_cancel": (
+                reservation.status in (Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING)
+                and (
+                    reservation.user_id == request.user.pk
+                    or request.user.is_staff
+                    or request.user.is_superuser
+                )
+            ),
             "cancel_reason": cancel_reason,
             "assigned_coach_name": reservation.assigned_coach_display(),
             "normal_coach_name": reservation.normal_coach_display(),
