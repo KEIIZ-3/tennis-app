@@ -65,6 +65,7 @@ from .family_reservations import (
     validate_participant_can_book_lesson,
 )
 from .lesson_participants import reservations_for_lesson, reservations_for_object
+from .reservation_service import create_reservation
 from .notifications import (
     build_pending_request_for_coach_message,
     build_request_approved_for_member_message,
@@ -1663,7 +1664,7 @@ def lesson_calendar_view(request):
                         "このレッスンは直前に満員になりました。キャンセル待ちをご利用ください。"
                     )
 
-                reservation = Reservation(
+                reservation = create_reservation(
                     user=request.user,
                     coach=availability.coach,
                     substitute_coach=availability.substitute_coach,
@@ -1679,8 +1680,6 @@ def lesson_calendar_view(request):
                     custom_ticket_price=availability.custom_ticket_price,
                     custom_duration_hours=availability.custom_duration_hours,
                 )
-                reservation.full_clean()
-                reservation.save()
                 save_reservation_participant_snapshot(reservation, participant)
                 if reservation.tickets_used > 0:
                     reservation.consume_tickets(
@@ -7369,7 +7368,7 @@ def lesson_waitlist_promote(request, pk):
                 end_at=waitlist.end_at,
             ).first()
 
-            reservation = Reservation(
+            reservation = create_reservation(
                 user=waitlist.user,
                 coach=waitlist.coach,
                 substitute_coach=waitlist.substitute_coach,
@@ -7385,8 +7384,6 @@ def lesson_waitlist_promote(request, pk):
                 custom_ticket_price=getattr(availability, "custom_ticket_price", 0) if availability else 0,
                 custom_duration_hours=getattr(availability, "custom_duration_hours", 0) if availability else 0,
             )
-            reservation.full_clean()
-            reservation.save()
             copy_waitlist_participant_snapshot(waitlist, reservation)
             reservation.consume_tickets(
                 reason=TicketLedger.REASON_RESERVATION_USE,
