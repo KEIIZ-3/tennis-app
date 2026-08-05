@@ -86,10 +86,10 @@
   {% endif %}
 
   {% if unconfirmed_execution_rows %}
-    <section class="panel">
+    <section class="panel priority-alert" role="alert">
       <div class="section-head"><div><h2 class="section-title">実施状態が未確定の開催回（{{ unconfirmed_execution_count }}件）</h2><p class="help">終了時刻を過ぎても開催状態が未登録です。月次締めの前に、実施済みまたは雨天中止を登録してください。</p></div></div>
       {% for lesson in unconfirmed_execution_rows %}
-        <div class="payment-row"><strong>{{ lesson.lesson_date|date:"Y/m/d" }}<br>{{ lesson.time_label }}</strong><div>{{ lesson.lesson_name }}<br><span class="muted">担当：{{ lesson.coach_names|join:" / " }}</span></div><span class="status-badge open">未確定</span><a href="{{ lesson.registration_url }}" class="btn danger-button">実施状態を確認</a></div>
+        <article class="payment-row operation-record"><span class="status-badge open">未確定</span><strong class="record-date">{{ lesson.lesson_date|date:"Y/m/d" }}<br>{{ lesson.time_label }}</strong><div class="record-main">{{ lesson.lesson_name }}<br><span class="muted">担当：{{ lesson.coach_names|join:" / " }}</span></div><a href="{{ lesson.registration_url }}" class="btn danger-button record-action">実施状態を確認</a></article>
       {% endfor %}
     </section>
   {% endif %}
@@ -106,10 +106,10 @@
     <section class="panel">
       <div class="section-head"><div><h2 class="section-title">雨天中止・返金状況</h2><p class="help">返金待ちは精算へ未反映、返金済みはコーチ別精算の負担・付与へ反映済みです。</p></div></div>
       {% for refund in rain_refund_pending_rows %}
-        <div class="payment-row"><strong>{{ refund.expense_date }}</strong><div>{{ refund.lesson_label|default:"雨天中止レッスン" }}<br><span class="muted">予約アカウント：{{ refund.account_name }} / 回収予定：{{ refund.collection_coach_name }} / コート支払者：{{ refund.payer_coach_name }}</span></div><strong>{{ refund.amount }}円</strong><span class="status-badge open">返金待ち</span></div>
+        <article class="payment-row operation-record rain-record"><span class="status-badge open">返金待ち</span><strong class="record-date">{{ refund.expense_date }}</strong><div class="record-main">{{ refund.lesson_label|default:"雨天中止レッスン" }}<br><span class="muted">予約アカウント：{{ refund.account_name }} / 回収予定：{{ refund.collection_coach_name }} / コート支払者：{{ refund.payer_coach_name }}</span></div><strong class="record-amount">{{ refund.amount }}円</strong></article>
       {% endfor %}
       {% for refund in rain_refunded_rows %}
-        <div class="payment-row"><strong>{{ refund.expense_date }}</strong><div>{{ refund.lesson_label|default:"雨天中止レッスン" }}<br><span class="muted">予約アカウント：{{ refund.account_name }} / 回収担当：{{ refund.collection_coach_name|default:"-" }} / コート支払者：{{ refund.payer_coach_name }}</span></div><strong>{{ refund.amount }}円</strong><span class="status-badge closed">返金済み・精算反映済み</span></div>
+        <article class="payment-row operation-record rain-record"><span class="status-badge closed">返金済み・精算反映済み</span><strong class="record-date">{{ refund.expense_date }}</strong><div class="record-main">{{ refund.lesson_label|default:"雨天中止レッスン" }}<br><span class="muted">予約アカウント：{{ refund.account_name }} / 回収担当：{{ refund.collection_coach_name|default:"-" }} / コート支払者：{{ refund.payer_coach_name }}</span></div><strong class="record-amount">{{ refund.amount }}円</strong></article>
       {% endfor %}
     </section>
   {% endif %}
@@ -118,7 +118,7 @@
     <section class="panel">
       <div class="section-head"><div><h2 class="section-title">雨天中止・返金情報未登録</h2><p class="help">雨天中止は登録済みですが、月次集計に必要な予約アカウントとコート支払者が未登録です。</p></div></div>
       {% for refund in rain_refund_missing_rows %}
-        <div class="payment-row"><strong>{{ refund.lesson_date }}</strong><div>{{ refund.lesson_label }}</div><span class="status-badge open">要入力</span><a href="{{ refund.registration_url }}" class="btn danger-button">コート支払者を入力</a></div>
+        <article class="payment-row operation-record rain-record"><span class="status-badge open">要入力</span><strong class="record-date">{{ refund.lesson_date }}</strong><div class="record-main">{{ refund.lesson_label }}</div><a href="{{ refund.registration_url }}" class="btn danger-button record-action">コート支払者を入力</a></article>
       {% endfor %}
     </section>
   {% endif %}

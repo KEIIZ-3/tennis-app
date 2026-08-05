@@ -1,31 +1,16 @@
 {% extends "base.html" %}
 {% block title %}過去月次精算の整合性診断{% endblock %}
 {% block content %}
-<div class="container">
-  <h1>過去月次精算の整合性診断</h1>
-  <div class="alert alert-warning">
-    この画面は診断専用です。表示された参考差額は自動反映されません。closed月の精算結果は変更されていません。修正が必要な場合は個別確認と承認が必要です。
-  </div>
-  <p><a href="{% url 'club:coach_admin_settlement' %}">月次精算へ戻る</a></p>
+<div class="diagnostic-page">
+  <section class="card diagnostic-hero"><div><span class="status-pill pending">診断専用</span><h1 class="page-title">過去月次精算の整合性診断</h1><p class="page-subtitle">締め済み月の保存値と現行条件による参考値を比較します。</p></div><a class="btn" href="{% url 'club:coach_admin_settlement' %}">月次精算へ戻る</a></section>
+  <div class="diagnostic-warning" role="alert">表示された参考差額は自動反映されません。締め済み月の精算結果も変更されません。修正には個別確認と承認が必要です。</div>
   {% for item in diagnostics %}
-    <section class="card mb-4">
-      <div class="card-body">
-        <h2>{{ item.month_label }}</h2>
-        <p>終了済みscheduled開催回: {{ item.scheduled_count }}件 / 対象ボール代: {{ item.ball_amount }}円</p>
-        <h3>対象開催回</h3>
-        <ul>{% for occurrence in item.occurrences %}<li><a href="{{ occurrence.url }}">{{ occurrence.label }}（実施状態を確認）</a></li>{% endfor %}</ul>
-        <div class="table-responsive"><table class="table">
-          <thead><tr><th>コーチ</th><th>旧担当人数</th><th>現行担当人数</th><th>保存済みボール代負担額</th><th>現行条件の参考負担額</th><th>差額</th></tr></thead>
-          <tbody>{% for coach in item.coach_rows %}<tr>
-            <td>{{ coach.coach_name }}</td><td>{{ coach.old_count }}</td><td>{{ coach.current_count }}</td>
-            <td>{% if coach.saved_burden_registered %}{{ coach.saved_burden }}円{% else %}未登録{% endif %}</td>
-            <td>{{ coach.reference_burden }}円</td><td>{% if coach.difference is not None %}{{ coach.difference }}円{% else %}算出不可{% endif %}</td>
-          </tr>{% endfor %}</tbody>
-        </table></div>
-      </div>
+    <section class="card diagnostic-month">
+      <div class="diagnostic-month-head"><div><span class="status-pill pending">要確認</span><h2>{{ item.month_label }}</h2></div><div class="diagnostic-summary"><span>終了済み・未確定</span><strong>{{ item.scheduled_count }}件</strong><span>対象ボール代</span><strong>{{ item.ball_amount }}円</strong></div></div>
+      <h3>対象開催回</h3><div class="diagnostic-occurrences">{% for occurrence in item.occurrences %}<a class="btn" href="{{ occurrence.url }}">{{ occurrence.label }}<span>実施状態を確認 →</span></a>{% endfor %}</div>
+      <div class="diagnostic-table desktop-only"><table><thead><tr><th>コーチ</th><th>旧担当人数</th><th>現行担当人数</th><th>保存済み負担額</th><th>現行参考額</th><th>差額</th></tr></thead><tbody>{% for coach in item.coach_rows %}<tr><td><strong>{{ coach.coach_name }}</strong></td><td>{{ coach.old_count }}</td><td>{{ coach.current_count }}</td><td>{% if coach.saved_burden_registered %}{{ coach.saved_burden }}円{% else %}未登録{% endif %}</td><td>{{ coach.reference_burden }}円</td><td class="diagnostic-difference{% if coach.difference %} has-difference{% endif %}">{% if coach.difference is not None %}{{ coach.difference }}円{% else %}算出不可{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+      <div class="mobile-card-list diagnostic-coach-list">{% for coach in item.coach_rows %}<article class="mobile-data-card"><div class="mobile-card-head"><div class="mobile-card-title">{{ coach.coach_name }}</div>{% if coach.difference %}<span class="status-pill pending">差額あり</span>{% else %}<span class="status-pill active">差額なし</span>{% endif %}</div><div class="mobile-info-grid"><div class="mobile-info-row"><span class="mobile-info-label">担当人数</span><span class="mobile-info-value">旧 {{ coach.old_count }}名 → 現行 {{ coach.current_count }}名</span></div><div class="mobile-info-row"><span class="mobile-info-label">保存済み</span><strong class="mobile-info-value">{% if coach.saved_burden_registered %}{{ coach.saved_burden }}円{% else %}未登録{% endif %}</strong></div><div class="mobile-info-row"><span class="mobile-info-label">現行参考額</span><strong class="mobile-info-value">{{ coach.reference_burden }}円</strong></div><div class="mobile-info-row difference-row"><span class="mobile-info-label">差額</span><strong class="mobile-info-value">{% if coach.difference is not None %}{{ coach.difference }}円{% else %}算出不可{% endif %}</strong></div></div></article>{% endfor %}</div>
     </section>
-  {% empty %}
-    <p>影響候補のclosed月はありません。</p>
-  {% endfor %}
+  {% empty %}<div class="card diagnostic-empty"><span class="status-pill active">差額なし</span><p>影響候補の締め済み月はありません。</p></div>{% endfor %}
 </div>
 {% endblock %}

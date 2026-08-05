@@ -131,11 +131,12 @@
     {% if today_rows %}
       <div class="lesson-list">
         {% for row in today_rows %}
-          <article class="lesson-card today {% if row.needs_attention %}attention{% endif %}" id="lesson-{{ row.availability.id|default:row.key }}">
+          <article class="lesson-card today status-{{ row.execution_status|default:'scheduled' }} {% if row.needs_attention %}attention{% endif %}" id="lesson-{{ row.availability.id|default:row.key }}">
             <div class="lesson-head">
               <div>
                 <div class="lesson-date">{{ row.date_label }}（{{ row.weekday_label }}） {{ row.time_label }}</div>
                 <div class="lesson-name">{{ row.title }}</div>
+                <div class="status-strip"><span class="count {{ row.execution_status|default:'scheduled' }}">{{ row.execution_status_label|default:'開催予定' }}</span></div>
                 <div class="lesson-meta"><span class="pill dark">{{ row.target_level_label }}</span><span class="pill">{{ row.lesson_type_label }}</span><span class="pill">{{ row.coach_name }}</span><span class="pill">{{ row.court_name }}</span></div>
               </div>
               <div class="counts"><span class="count">参加 {{ row.participant_count }}/{{ row.capacity }}</span>{% if row.waitlist_count %}<span class="count warn">待ち {{ row.waitlist_count }}</span>{% endif %}{% if row.pending_count %}<span class="count warn">承認待ち {{ row.pending_count }}</span>{% endif %}</div>
