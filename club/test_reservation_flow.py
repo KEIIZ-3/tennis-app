@@ -2300,29 +2300,21 @@ class ReservationFlowSmokeTests(TestCase):
             "action": "send",
         }
         with patch(
-            "club.court_number_line_notice.notify_user_line_only",
-            side_effect=[
-                {"line": False, "email": False},
-                {"line": True, "email": False},
-            ],
-        ) as line_notify_mock:
-            with patch(
-                "club.court_number_line_notice.notify_user_email_only",
-                return_value={"line": False, "email": True},
-            ) as email_notify_mock:
-                first_send = self.client.post(
-                    reverse("club:court_number_line_notice"),
-                    data=send_data,
-                )
-                duplicate_send = self.client.post(
-                    reverse("club:court_number_line_notice"),
-                    data=send_data,
-                )
+            "club.court_number_line_notice.deliver_to_users",
+            return_value={"line_sent": 1, "email_sent": 1, "failed": 0, "skipped": 0},
+        ) as deliver_mock:
+            first_send = self.client.post(
+                reverse("club:court_number_line_notice"),
+                data=send_data,
+            )
+            duplicate_send = self.client.post(
+                reverse("club:court_number_line_notice"),
+                data=send_data,
+            )
 
         self.assertEqual(first_send.status_code, 302)
         self.assertEqual(duplicate_send.status_code, 302)
-        self.assertEqual(line_notify_mock.call_count, 2)
-        self.assertEqual(email_notify_mock.call_count, 1)
+        deliver_mock.assert_called_once()
 
     def test_today_lessons_keeps_same_physical_slot_lessons_separate(self):
         first_lesson = self._create_fixed_lesson(title="同時刻レッスンA")
@@ -2428,9 +2420,9 @@ class ReservationFlowSmokeTests(TestCase):
 
         cache.clear()
         with patch(
-            "club.court_number_line_notice.notify_user_line_only",
-            return_value={"line": True, "email": False},
-        ) as line_notify_mock:
+            "club.court_number_line_notice.deliver_to_users",
+            return_value={"line_sent": 1, "email_sent": 0, "failed": 0, "skipped": 0},
+        ) as deliver_mock:
             self.client.post(
                 reverse("club:court_number_line_notice"),
                 data={
@@ -2440,8 +2432,6 @@ class ReservationFlowSmokeTests(TestCase):
                     "action": "send",
                 },
             )
-        line_notify_mock.assert_called_once_with(
-            self.member,
-            line_notify_mock.call_args.args[1],
-            subject="Play Design Tennis コート番号のお知らせ",
-        )
+        deliver_mock.assert_called_once()
+        self.assertEqual(deliver_mock.call_args.kwargs["media"], ("line", "email"))
+        self.assertTrue(deliver_mock.call_args.kwargs["email_fallback"])

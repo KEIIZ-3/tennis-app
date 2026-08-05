@@ -66,7 +66,7 @@ class SignalSafetyTests(TestCase):
         ]
         self.assertEqual(len(matching), 1)
 
-    @patch("club.reservation_notification_service.notify_user_email_only")
+    @patch("club.notification_service.send_email_to_address")
     def test_cancel_notifies_once_after_commit(self, notify_mock):
         with self.captureOnCommitCallbacks(execute=True) as callbacks:
             self.assertTrue(self.reservation.cancel(created_by=self.user))
@@ -74,7 +74,7 @@ class SignalSafetyTests(TestCase):
         self.assertEqual(len(callbacks), 1)
         notify_mock.assert_called_once()
 
-    @patch("club.reservation_notification_service.notify_user_email_only")
+    @patch("club.notification_service.send_email_to_address")
     def test_rollback_does_not_notify(self, notify_mock):
         try:
             with self.captureOnCommitCallbacks(execute=True) as callbacks:
@@ -88,7 +88,7 @@ class SignalSafetyTests(TestCase):
         self.assertEqual(callbacks, [])
         notify_mock.assert_not_called()
 
-    @patch("club.reservation_notification_service.notify_user_email_only")
+    @patch("club.notification_service.send_email_to_address")
     def test_non_status_update_does_not_notify(self, notify_mock):
         self.reservation.cancellation_reason = "metadata only"
         with self.captureOnCommitCallbacks(execute=True) as callbacks:

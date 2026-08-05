@@ -70,6 +70,7 @@ from .lesson_participants import (
     reservations_for_object,
 )
 from .reservation_service import create_reservation
+from .notification_service import deliver_to_users
 from .notifications import (
     build_pending_request_for_coach_message,
     build_request_approved_for_member_message,
@@ -78,8 +79,6 @@ from .notifications import (
     build_stringing_order_created_for_coach_message,
     build_reservation_created_message,
     build_waitlist_registered_for_member_email_message,
-    notify_user_email_only,
-    notify_user_line_only,
     verify_line_signature,
 )
 
@@ -961,11 +960,10 @@ def _send_line_notification_safely(user, message_text, subject="Play Design Tenn
     月200通の無料枠を節約するため、呼び出し箇所は雨天中止とキャンセル待ち空き通知に限定します。
     """
     if not user or not message_text:
-        return
-    try:
-        notify_user_line_only(user, message_text, subject=subject)
-    except Exception:
-        pass
+        return {"line_sent": 0, "email_sent": 0, "failed": 0, "skipped": 1}
+    return deliver_to_users(
+        [user], subject=subject, message=message_text, media=("line",)
+    )
 
 
 def _send_email_notification_safely(user, subject, message_text):
@@ -974,11 +972,10 @@ def _send_email_notification_safely(user, subject, message_text):
     予約完了・予約キャンセル・キャンセル待ち登録・個別レッスン申請系はこちらを使います。
     """
     if not user or not message_text:
-        return
-    try:
-        notify_user_email_only(user, message_text, subject=subject)
-    except Exception:
-        pass
+        return {"line_sent": 0, "email_sent": 0, "failed": 0, "skipped": 1}
+    return deliver_to_users(
+        [user], subject=subject, message=message_text, media=("email",)
+    )
 
 def _lesson_waitlist_lesson_label(waitlist_or_reservation):
     try:
