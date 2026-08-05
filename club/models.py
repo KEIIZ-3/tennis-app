@@ -2135,6 +2135,14 @@ class Reservation(models.Model, LessonTypeMixin):
                 note=f"予約キャンセル返却: {locked_self.start_at:%Y-%m-%d %H:%M}",
             )
 
+            # QuerySet.update() intentionally bypasses model signals. Keep this
+            # business side effect explicit and defer external I/O until commit.
+            from .reservation_notification_service import (
+                schedule_reservation_canceled_notification,
+            )
+
+            schedule_reservation_canceled_notification(locked_self.pk)
+
         self.status = self.STATUS_CANCELED
         self.canceled_at = canceled_at
         self.cancellation_reason = reason or "会員キャンセル"

@@ -5,13 +5,21 @@ from django.dispatch import receiver
 
 from .fixed_lesson_sync_facade import synchronize_fixed_lesson_membership
 from .models import FixedLesson, Reservation
-from .notifications import build_reservation_canceled_message, notify_user_email_only
+from .reservation_notification_service import schedule_reservation_canceled_notification
 
 logger = logging.getLogger(__name__)
 
 
-@receiver(pre_save, sender=Reservation)
-def reservation_store_old_status(sender, instance, **kwargs):
+@receiver(
+    pre_save,
+    sender=Reservation,
+    dispatch_uid="club.reservation_store_old_status",
+    weak=False,
+)
+def reservation_store_old_status(sender, instance, raw=False, update_fields=None, **kwargs):
+    if raw or (update_fields is not None and "status" not in update_fields):
+        instance._old_status = instance.status
+        return
     if not instance.pk:
         instance._old_status = None
         return
@@ -24,12 +32,19 @@ def reservation_store_old_status(sender, instance, **kwargs):
     instance._old_status = old_status
 
 
-@receiver(post_save, sender=Reservation)
-def reservation_status_notification(sender, instance, created, **kwargs):
+@receiver(
+    post_save,
+    sender=Reservation,
+    dispatch_uid="club.reservation_status_notification",
+    weak=False,
+)
+def reservation_status_notification(sender, instance, created, raw=False, update_fields=None, **kwargs):
     """
     LINE無料枠を守るため、通常キャンセルは会員宛メールのみ送信します。
     雨天中止LINE通知とキャンセル待ち空き通知LINEは views.py 側で明示的に送信します。
     """
+    if raw or (update_fields is not None and "status" not in update_fields):
+        return
     try:
         old_status = getattr(instance, "_old_status", None)
         new_status = getattr(instance, "status", None)
@@ -43,20 +58,22 @@ def reservation_status_notification(sender, instance, created, **kwargs):
         if new_status != Reservation.STATUS_CANCELED:
             return
 
-        message = build_reservation_canceled_message(instance)
-
-        notify_user_email_only(
-            instance.user,
-            message,
-            subject="【Play Design Tennis】予約キャンセル通知",
-        )
+        schedule_reservation_canceled_notification(instance.pk)
     except Exception as e:
         logger.warning("reservation_status_notification failed: %s", e)
 
 
-@receiver(m2m_changed, sender=FixedLesson.members.through)
+@receiver(
+    m2m_changed,
+    sender=FixedLesson.members.through,
+    dispatch_uid="club.fixed_lesson_members_changed",
+    weak=False,
+)
 def fixed_lesson_members_changed(sender, instance, action, reverse, pk_set, **kwargs):
     """固定メンバー設定を正本として、どの更新経路でも将来予約を同期する。"""
+    if kwargs.get("raw"):
+        return
+
     if action == "pre_clear" and reverse:
         instance._fixed_lesson_ids_before_clear = list(
             instance.fixed_lessons.values_list("pk", flat=True)
