@@ -389,6 +389,16 @@ class FixedLessonAdminForm(forms.ModelForm):
         model = FixedLesson
         fields = "__all__"
 
+    def save_m2m(self):
+        """adminのメンバー一括変更を正本serviceへ1回だけ渡す。"""
+        from .fixed_lesson_sync_facade import replace_fixed_lesson_members
+
+        self.membership_sync_result = replace_fixed_lesson_members(
+            self.instance,
+            self.cleaned_data.get("members", ()),
+            created_by=getattr(self, "membership_created_by", None),
+        )
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -962,10 +972,10 @@ class FixedLessonAdmin(admin.ModelAdmin):
         return " / ".join(messages_for_admin)
 
     def save_related(self, request, form, formsets, change):
+        form.membership_created_by = request.user
         super().save_related(request, form, formsets, change)
-        fixed_lesson = form.instance
         try:
-            changed_count = fixed_lesson.sync_future_reservations(created_by=request.user)
+            changed_count = form.membership_sync_result["changed_count"]
             self.message_user(
                 request,
                 f"固定レッスンを保存しました。今後の予約への反映件数: {changed_count}件。",
