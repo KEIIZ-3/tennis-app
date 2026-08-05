@@ -810,6 +810,29 @@
     line-height:1.1;
   }
 
+  .lesson-status-label{
+    display:inline-flex;
+    align-items:center;
+    width:max-content;
+    max-width:100%;
+    min-height:24px;
+    padding:3px 8px;
+    border:1px solid #bbf7d0;
+    border-radius:999px;
+    background:#f0fdf4;
+    color:#166534;
+    font-size:11px;
+    font-weight:1000;
+    line-height:1.25;
+    overflow-wrap:anywhere;
+  }
+
+  .lesson-status-label.is-unavailable{
+    border-color:#fed7aa;
+    background:#fff7ed;
+    color:#9a3412;
+  }
+
   @media (max-width:768px){
     .lesson-page{
       gap:10px;
@@ -978,6 +1001,16 @@
       line-height:1.05;
       color:#111827;
       font-weight:900;
+    }
+
+    .calendar-event .lesson-status-label{
+      min-height:0;
+      margin:2px auto 0;
+      padding:1px 2px;
+      border:0;
+      border-radius:3px;
+      font-size:7px;
+      line-height:1.05;
     }
 
     .event-level{
@@ -1298,6 +1331,7 @@
                               <div class="event-time">{{ item.time_label }}</div>
                               <div class="event-court">コート：{{ item.court_name }}</div>
                               <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
+                              <div class="lesson-status-label {% if not item.can_book %}is-unavailable{% endif %}">{{ item.customer_status_label }}</div>
                               {% if item.is_recruitment_closed %}<div class="event-meta recruitment-closed-label">募集終了</div>{% endif %}
                               <div class="event-level">{{ item.target_level_label }}</div>
                               {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
@@ -1320,6 +1354,7 @@
                               <div class="event-time">{{ item.time_label }}</div>
                               <div class="event-court">コート：{{ item.court_name }}</div>
                               <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
+                              <div class="lesson-status-label {% if not item.can_book %}is-unavailable{% endif %}">{{ item.customer_status_label }}</div>
                               {% if item.is_recruitment_closed %}<div class="event-meta recruitment-closed-label">募集終了</div>{% endif %}
                               <div class="event-level">{{ item.target_level_label }}</div>
                               {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
@@ -1342,6 +1377,7 @@
                               <div class="event-time">{{ item.time_label }}</div>
                               <div class="event-court">コート：{{ item.court_name }}</div>
                               <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>
+                              <div class="lesson-status-label {% if not item.can_book %}is-unavailable{% endif %}">{{ item.customer_status_label }}</div>
                               {% if item.is_recruitment_closed %}<div class="event-meta recruitment-closed-label">募集終了</div>{% endif %}
                               <div class="event-level">{{ item.target_level_label }}</div>
                               {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
@@ -1387,6 +1423,7 @@
               <span class="schedule-level">{{ item.target_level_label }}</span>
               <span>参加：{{ item.member_count }}/{{ item.capacity }}名</span>
               <span>定員：{{ item.capacity }}名</span>
+              <span class="lesson-status-label {% if not item.can_book %}is-unavailable{% endif %}">{{ item.customer_status_label }}</span>
               {% if item.is_recruitment_closed %}<span class="waitlist-badge recruitment-closed-label">募集終了</span>{% endif %}
               {% if item.waitlist_count %}<span class="waitlist-badge">キャンセル待ち {{ item.waitlist_count }}名</span>{% endif %}
               {% if item.is_reserved_by_user %}<span class="waitlist-badge">予約済み</span>{% elif item.is_waitlisted_by_user %}<span class="waitlist-badge">キャンセル待ち中</span>{% endif %}
