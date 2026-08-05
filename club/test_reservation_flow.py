@@ -2323,3 +2323,125 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertEqual(duplicate_send.status_code, 302)
         self.assertEqual(line_notify_mock.call_count, 2)
         self.assertEqual(email_notify_mock.call_count, 1)
+
+    def test_today_lessons_keeps_same_physical_slot_lessons_separate(self):
+        first_lesson = self._create_fixed_lesson(title="同時刻レッスンA")
+        second_lesson = self._create_fixed_lesson(title="同時刻レッスンB")
+        start_at, end_at = first_lesson._build_datetimes_for_date(self.lesson_date)
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=6,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        members = [
+            self._create_user(
+                username=f"parallel_lesson_{index}",
+                role=self.User.ROLE_MEMBER,
+                full_name=f"別レッスン会員 {index}",
+            )
+            for index in range(2)
+        ]
+        for member, fixed_lesson in zip(members, (first_lesson, second_lesson)):
+            Reservation.objects.create(
+                user=member,
+                coach=self.coach,
+                court=self.court,
+                availability=availability,
+                fixed_lesson=fixed_lesson,
+                lesson_type=Reservation.LESSON_GENERAL,
+                target_level=self.User.LEVEL_BEGINNER,
+                start_at=start_at,
+                end_at=end_at,
+                status=Reservation.STATUS_ACTIVE,
+            )
+
+        self.client.force_login(self.coach)
+        response = self.client.get(
+            reverse("club:coach_today_lessons"),
+            {"days": 14},
+        )
+
+        matching_rows = [
+            row for row in response.context["lesson_rows"]
+            if row["fixed_lesson"] in (first_lesson, second_lesson)
+        ]
+        self.assertEqual(len(matching_rows), 2)
+        self.assertEqual(
+            {row["fixed_lesson"].pk: row["participant_count"] for row in matching_rows},
+            {first_lesson.pk: 1, second_lesson.pk: 1},
+        )
+        self.assertEqual(
+            {
+                row["fixed_lesson"].pk: row["participant_rows"][0]["name"]
+                for row in matching_rows
+            },
+            {first_lesson.pk: "別レッスン会員 0", second_lesson.pk: "別レッスン会員 1"},
+        )
+
+    def test_family_participants_are_named_and_guardian_contact_is_not_duplicated(self):
+        self.member.ticket_balance = 10
+        self.member.save(update_fields=["ticket_balance"])
+        children = [
+            FamilyMember.objects.create(
+                parent=self.member,
+                full_name=f"通知対象 子供{index}",
+                relationship="child",
+                member_level=self.User.LEVEL_BEGINNER,
+            )
+            for index in range(2)
+        ]
+        fixed_lesson = self._create_fixed_lesson(title="家族通知テスト")
+        start_at, _end_at = fixed_lesson._build_datetimes_for_date(self.lesson_date)
+        self.client.force_login(self.member)
+        for child in children:
+            self.client.post(
+                reverse("club:lesson_calendar"),
+                data={
+                    "action": "reserve",
+                    "fixed_lesson_id": fixed_lesson.pk,
+                    "lesson_date": self.lesson_date.isoformat(),
+                    "year": start_at.year,
+                    "month": start_at.month,
+                    "participant_key": f"family:{child.pk}",
+                },
+            )
+        reservations = list(
+            Reservation.objects.filter(
+                user=self.member,
+                fixed_lesson=fixed_lesson,
+                status=Reservation.STATUS_ACTIVE,
+            ).order_by("id")
+        )
+        self.client.force_login(self.coach)
+        preview = self.client.get(
+            reverse("club:court_number_line_notice"),
+            {"slot_id": reservations[0].pk},
+        )
+        for child in children:
+            self.assertContains(preview, child.full_name)
+        self.assertContains(preview, "連絡先：会員 テスト")
+
+        cache.clear()
+        with patch(
+            "club.court_number_line_notice.notify_user_line_only",
+            return_value={"line": True, "email": False},
+        ) as line_notify_mock:
+            self.client.post(
+                reverse("club:court_number_line_notice"),
+                data={
+                    "slot_id": reservations[0].pk,
+                    "court_number": "1コート",
+                    "confirm_send": "yes",
+                    "action": "send",
+                },
+            )
+        line_notify_mock.assert_called_once_with(
+            self.member,
+            line_notify_mock.call_args.args[1],
+            subject="Play Design Tennis コート番号のお知らせ",
+        )

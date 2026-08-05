@@ -10,8 +10,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from .lesson_participants import reservations_for_lesson
-from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation, ReservationParticipant
+from .lesson_participants import participant_details_by_reservation, reservations_for_lesson
+from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation
 
 
 def _display_name(user):
@@ -180,26 +180,7 @@ def _phone_label(user):
 
 
 def _reservation_participant_snapshot_map(reservations):
-    reservation_ids = [
-        reservation.pk
-        for reservation in reservations
-        if getattr(reservation, "pk", None)
-    ]
-
-    if not reservation_ids:
-        return {}
-
-    result = {}
-    for snapshot in ReservationParticipant.objects.filter(reservation_id__in=reservation_ids):
-        result[snapshot.reservation_id] = {
-            "participant_type": snapshot.participant_type or "self",
-            "participant_name": snapshot.participant_name or "",
-            "participant_level_label": snapshot.participant_level_label or "",
-            "relationship_label": snapshot.relationship_label or "",
-            "parent_id": snapshot.parent_id,
-        }
-
-    return result
+    return participant_details_by_reservation(reservations)
 
 
 def _member_row_from_reservation(

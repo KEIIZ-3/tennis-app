@@ -1,6 +1,6 @@
 from datetime import date
 
-from .models import Reservation
+from .models import Reservation, ReservationParticipant
 
 
 ACTIVE_PARTICIPANT_STATUSES = (Reservation.STATUS_ACTIVE,)
@@ -61,3 +61,38 @@ def reservations_for_fixed_occurrence(fixed_lesson, target_date, *, statuses=ACT
         court=fixed_lesson.court, lesson_type=fixed_lesson.lesson_type,
         start_at=start_at, end_at=end_at, statuses=statuses,
     )
+
+
+def participant_details_by_reservation(reservations):
+    """Return the saved participant identity for Reservation rows in one query."""
+    reservation_ids = [row.pk for row in reservations if getattr(row, "pk", None)]
+    if not reservation_ids:
+        return {}
+    return {
+        snapshot.reservation_id: {
+            "participant_type": snapshot.participant_type or "self",
+            "participant_name": snapshot.participant_name or "",
+            "participant_level_label": snapshot.participant_level_label or "",
+            "relationship_label": snapshot.relationship_label or "",
+            "parent_id": snapshot.parent_id,
+        }
+        for snapshot in ReservationParticipant.objects.filter(
+            reservation_id__in=reservation_ids
+        )
+    }
+
+
+def unique_contact_reservations(reservations):
+    """Keep one active contact row per account while preserving queryset order.
+
+    Family participants remain separately visible, but notifications go to the
+    reservation owner (the existing guardian/contact account) only once.
+    """
+    result = []
+    seen_user_ids = set()
+    for reservation in reservations:
+        if reservation.user_id in seen_user_ids:
+            continue
+        seen_user_ids.add(reservation.user_id)
+        result.append(reservation)
+    return result

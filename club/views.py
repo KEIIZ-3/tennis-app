@@ -64,7 +64,11 @@ from .family_reservations import (
     save_waitlist_participant_snapshot,
     validate_participant_can_book_lesson,
 )
-from .lesson_participants import reservations_for_lesson, reservations_for_object
+from .lesson_participants import (
+    participant_details_by_reservation,
+    reservations_for_lesson,
+    reservations_for_object,
+)
 from .reservation_service import create_reservation
 from .notifications import (
     build_pending_request_for_coach_message,
@@ -3552,8 +3556,16 @@ def coach_today_lessons(request):
 
     slot_map = {}
 
-    def _slot_key_for_row(*, lesson_type, coach_id, court_id, start_at, end_at):
-        return _slot_key(lesson_type, coach_id, court_id, start_at, end_at)
+    def _slot_key_for_row(
+        *, lesson_type, coach_id, court_id, start_at, end_at,
+        fixed_lesson_id=None, availability_id=None,
+    ):
+        physical_key = _slot_key(lesson_type, coach_id, court_id, start_at, end_at)
+        if fixed_lesson_id:
+            return (*physical_key, "fixed_lesson", fixed_lesson_id)
+        if availability_id:
+            return (*physical_key, "availability", availability_id)
+        return (*physical_key, "slot")
 
     def _local(value):
         if timezone.is_aware(value):
@@ -3569,7 +3581,9 @@ def coach_today_lessons(request):
         except Exception:
             return getattr(user, "member_level", "") or "-"
 
-    def _reservation_person_row(reservation):
+    def _reservation_person_row(reservation, participant_details=None):
+        participant_details = participant_details or {}
+        is_family_participant = participant_details.get("participant_type") == "family"
         payment_status_options = [
             (Reservation.PAYMENT_STATUS_UNPAID, "未回収"),
             (Reservation.PAYMENT_STATUS_PAID, "回収済み"),
@@ -3577,9 +3591,12 @@ def coach_today_lessons(request):
         ]
         return {
             "reservation": reservation,
-            "name": _display_name(reservation.user),
+            "name": participant_details.get("participant_name") or _display_name(reservation.user),
+            "guardian_name": _display_name(reservation.user),
+            "relationship_label": participant_details.get("relationship_label") or "本人",
+            "is_family_participant": is_family_participant,
             "phone": _safe_phone(reservation.user),
-            "level": _safe_level(reservation.user),
+            "level": participant_details.get("participant_level_label") or _safe_level(reservation.user),
             "status_label": reservation.get_status_display(),
             "detail_url": reverse("club:reservation_detail", kwargs={"pk": reservation.pk}),
             "payment_required": reservation.is_payment_tracking_required(),
@@ -3617,23 +3634,29 @@ def coach_today_lessons(request):
         if key in slot_map:
             return slot_map[key]
 
-        base_slot_filter = Q(
-            lesson_type=key[0],
-            start_at=start_at,
-            end_at=end_at,
-        )
-        relation_filter = Q(
-            coach_id=key[1] or None,
-            court_id=key[2] or None,
-        )
-        if fixed_lesson is not None:
-            relation_filter |= Q(fixed_lesson=fixed_lesson)
-        if availability is not None:
-            relation_filter |= Q(availability=availability)
-        slot_filter = base_slot_filter & relation_filter
+        reservation_kwargs = {
+            "fixed_lesson": fixed_lesson,
+            "availability": availability,
+            "lesson_type": key[0],
+            "start_at": start_at,
+            "end_at": end_at,
+        }
+        if fixed_lesson is None and availability is None:
+            reservation_source = Reservation.objects.filter(
+                lesson_type=key[0],
+                coach_id=key[1] or None,
+                court_id=key[2] or None,
+                start_at=start_at,
+                end_at=end_at,
+            )
+        else:
+            reservation_source = reservations_for_lesson(
+                **reservation_kwargs,
+                statuses=(Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING),
+            )
 
         reservations = list(
-            Reservation.objects.select_related(
+            reservation_source.filter(status=Reservation.STATUS_ACTIVE).select_related(
                 "user",
                 "coach",
                 "substitute_coach",
@@ -3641,13 +3664,10 @@ def coach_today_lessons(request):
                 "availability",
                 "fixed_lesson",
             )
-            .filter(slot_filter, status=Reservation.STATUS_ACTIVE)
-            .order_by("user__full_name", "user__username", "id")
-            .distinct()
         )
 
         pending_reservations = list(
-            Reservation.objects.select_related(
+            reservation_source.filter(status=Reservation.STATUS_PENDING).select_related(
                 "user",
                 "coach",
                 "substitute_coach",
@@ -3655,10 +3675,16 @@ def coach_today_lessons(request):
                 "availability",
                 "fixed_lesson",
             )
-            .filter(slot_filter, status=Reservation.STATUS_PENDING)
-            .order_by("user__full_name", "user__username", "id")
-            .distinct()
         )
+
+        base_slot_filter = Q(lesson_type=key[0], start_at=start_at, end_at=end_at)
+        if fixed_lesson is not None:
+            relation_filter = Q(fixed_lesson=fixed_lesson)
+        elif availability is not None:
+            relation_filter = Q(availability=availability)
+        else:
+            relation_filter = Q(coach_id=key[1] or None, court_id=key[2] or None)
+        slot_filter = base_slot_filter & relation_filter
 
         waitlists = list(
             LessonWaitlist.objects.select_related(
@@ -3674,8 +3700,11 @@ def coach_today_lessons(request):
             .distinct()
         )
 
+        participant_details = participant_details_by_reservation(
+            reservations + pending_reservations
+        )
         participant_rows = [
-            _reservation_person_row(reservation)
+            _reservation_person_row(reservation, participant_details.get(reservation.pk))
             for reservation in reservations
         ]
 
@@ -3754,7 +3783,7 @@ def coach_today_lessons(request):
             "pending_reservations": pending_reservations,
             "waitlists": waitlists,
             "participant_rows": participant_rows,
-            "pending_rows": [_reservation_person_row(reservation) for reservation in pending_reservations],
+            "pending_rows": [_reservation_person_row(reservation, participant_details.get(reservation.pk)) for reservation in pending_reservations],
             "waitlist_rows": [_waitlist_person_row(waitlist) for waitlist in waitlists],
             "registered_member_rows": [],
             "participant_count": participant_count,
@@ -3964,6 +3993,7 @@ def coach_today_lessons(request):
                 court_id=getattr(court, "pk", None),
                 start_at=start_at,
                 end_at=end_at,
+                fixed_lesson_id=fixed.pk,
             )
 
             _add_slot(
@@ -4027,6 +4057,7 @@ def coach_today_lessons(request):
                 court_id=availability.court_id,
                 start_at=availability.start_at,
                 end_at=availability.end_at,
+                fixed_lesson_id=authoritative_fixed_lesson.pk,
             )
             if key in slot_map:
                 continue
@@ -4073,6 +4104,7 @@ def coach_today_lessons(request):
             court_id=availability.court_id,
             start_at=availability.start_at,
             end_at=availability.end_at,
+            availability_id=availability.pk,
         )
         if key in slot_map:
             continue
