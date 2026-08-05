@@ -95,8 +95,8 @@ jobs:
             }
           }
 
-      - name: Validate CI workflow contract
-        run: python -m unittest automation_tests.test_ci_workflow
+      - name: Run automation workflow tests
+        run: python -m unittest discover automation_tests
 
       - name: Django system check
         run: python manage.py check

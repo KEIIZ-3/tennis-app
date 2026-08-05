@@ -1,7 +1,110 @@
 [CmdletBinding()]
-param()
+param([switch]$FunctionsOnly)
 
 . (Join-Path $PSScriptRoot "common.ps1")
+
+function Invoke-HandoffStaging {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+        [Parameter(Mandatory = $true)][object[]]$Files,
+        [scriptblock]$BeforeStage
+    )
+
+    $repoRoot = (Resolve-Path -LiteralPath $RepositoryRoot).Path
+    $repoPrefix = $repoRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) +
+        [IO.Path]::DirectorySeparatorChar
+    $forbiddenArtifacts = @("report.md", "handoff.json", ".pr-body.md", ".codex-prompt.tmp")
+    $validatedFiles = New-Object System.Collections.Generic.List[string]
+    $seenFiles = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+
+    Push-Location -LiteralPath $repoRoot
+    try {
+        foreach ($file in $Files) {
+            if ($file -isnot [string] -or [string]::IsNullOrWhiteSpace($file)) {
+                throw "Every files entry must be a non-empty string."
+            }
+
+            $relativePath = $file.Trim().Replace('\', '/')
+            if ([IO.Path]::IsPathRooted($relativePath)) {
+                throw "Absolute paths are not allowed: $file"
+            }
+            if (($relativePath -split '/') -contains "..") {
+                throw "Parent path segments are not allowed: $file"
+            }
+            if ($relativePath.StartsWith(":") -or $relativePath.IndexOfAny(@('*', '?', '[')) -ge 0) {
+                throw "Git pathspec syntax is not allowed: $file"
+            }
+            if ($forbiddenArtifacts -contains $relativePath) {
+                throw "Local workflow artifacts cannot be published: $file"
+            }
+
+            $candidatePath = [IO.Path]::GetFullPath((Join-Path $repoRoot $relativePath))
+            if (-not $candidatePath.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+                throw "Files outside the repository are not allowed: $file"
+            }
+            if (Test-Path -LiteralPath $candidatePath -PathType Container) {
+                throw "Directory entries are not allowed: $file"
+            }
+            if (-not $seenFiles.Add($relativePath)) {
+                throw "Duplicate files entry: $file"
+            }
+
+            $trackedPaths = @(& git ls-files -- $relativePath)
+            if ($LASTEXITCODE -ne 0) {
+                throw "The tracked file state could not be inspected: $file"
+            }
+            $isTracked = $trackedPaths.Count -gt 0
+            if ($isTracked) {
+                & git diff --quiet -- $relativePath
+                if ($LASTEXITCODE -eq 0) {
+                    throw "The specified tracked file has no working tree change: $file"
+                }
+                if ($LASTEXITCODE -ne 1) {
+                    throw "The working tree change could not be inspected: $file"
+                }
+            }
+            elseif (-not (Test-Path -LiteralPath $candidatePath -PathType Leaf)) {
+                throw "The specified path is neither a file nor a tracked deletion: $file"
+            }
+            $validatedFiles.Add($relativePath)
+        }
+
+        & git diff --cached --quiet --
+        if ($LASTEXITCODE -ne 0) {
+            throw "The index already contains staged changes. Clear them before publishing."
+        }
+
+        if ($BeforeStage) {
+            & $BeforeStage
+        }
+
+        $addArguments = @("add", "-A", "--") + $validatedFiles.ToArray()
+        Invoke-NativeChecked -FilePath "git" -Arguments $addArguments `
+            -FailureMessage "The allowed files could not be staged."
+
+        # --no-renames exposes both sides of a rename so the allowlist must contain
+        # the old and new path. This prevents an unlisted rename source from being staged.
+        $stagedFiles = @(& git diff --cached --name-only --no-renames --)
+        if ($LASTEXITCODE -ne 0) {
+            throw "The staged file list could not be read."
+        }
+        $expectedFiles = @($validatedFiles | Sort-Object)
+        $actualFiles = @($stagedFiles | ForEach-Object { $_.Replace('\', '/') } | Sort-Object)
+        if (($expectedFiles -join "`n") -cne ($actualFiles -join "`n")) {
+            throw "The staged files do not match the handoff allowlist."
+        }
+
+        return $validatedFiles.ToArray()
+    }
+    finally {
+        Pop-Location
+    }
+}
+
+if ($FunctionsOnly) {
+    return
+}
 
 $handoffPath = $null
 $prBodyPath = $null
@@ -55,81 +158,10 @@ try {
     Invoke-NativeChecked -FilePath "git" -Arguments @("check-ref-format", "--branch", $branch) `
         -FailureMessage "The branch name is not valid for Git."
 
-    $repoPrefix = $repoRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
-    $forbiddenArtifacts = @("report.md", "handoff.json", ".pr-body.md", ".codex-prompt.tmp")
-    $validatedFiles = New-Object System.Collections.Generic.List[string]
-    $seenFiles = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
-
-    foreach ($file in $handoff.files) {
-        if ($file -isnot [string] -or [string]::IsNullOrWhiteSpace($file)) {
-            throw "Every files entry must be a non-empty string."
-        }
-
-        $relativePath = $file.Trim().Replace('\', '/')
-        if ([IO.Path]::IsPathRooted($relativePath)) {
-            throw "Absolute paths are not allowed: $file"
-        }
-        if (($relativePath -split '/') -contains "..") {
-            throw "Parent path segments are not allowed: $file"
-        }
-        if ($relativePath.StartsWith(":") -or $relativePath.IndexOfAny(@('*', '?', '[')) -ge 0) {
-            throw "Git pathspec syntax is not allowed: $file"
-        }
-        if ($forbiddenArtifacts -contains $relativePath) {
-            throw "Local workflow artifacts cannot be published: $file"
-        }
-
-        $candidatePath = [IO.Path]::GetFullPath((Join-Path $repoRoot $relativePath))
-        if (-not $candidatePath.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-            throw "Files outside the repository are not allowed: $file"
-        }
-        if (Test-Path -LiteralPath $candidatePath -PathType Container) {
-            throw "Directory entries are not allowed: $file"
-        }
-        if (-not $seenFiles.Add($relativePath)) {
-            throw "Duplicate files entry: $file"
-        }
-
-        & git ls-files --error-unmatch -- $relativePath 2>$null
-        $isTracked = $LASTEXITCODE -eq 0
-        if ($isTracked) {
-            & git diff --quiet -- $relativePath
-            if ($LASTEXITCODE -eq 0) {
-                throw "The specified tracked file has no working tree change: $file"
-            }
-            if ($LASTEXITCODE -ne 1) {
-                throw "The working tree change could not be inspected: $file"
-            }
-        }
-        elseif (-not (Test-Path -LiteralPath $candidatePath -PathType Leaf)) {
-            throw "The specified path is neither a file nor a tracked deletion: $file"
-        }
-        $validatedFiles.Add($relativePath)
-    }
-
-    & git diff --cached --quiet --
-    if ($LASTEXITCODE -ne 0) {
-        throw "The index already contains staged changes. Clear them before publishing."
-    }
-
-    Invoke-NativeChecked -FilePath "git" -Arguments @("switch", "-c", $branch) `
-        -FailureMessage "The work branch could not be created."
-
-    $addArguments = @("add", "-A", "--") + $validatedFiles.ToArray()
-    Invoke-NativeChecked -FilePath "git" -Arguments $addArguments `
-        -FailureMessage "The allowed files could not be staged."
-
-    # --no-renames exposes both sides of a rename so the allowlist must contain
-    # the old and new path. This prevents an unlisted rename source from being staged.
-    $stagedFiles = @(& git diff --cached --name-only --no-renames --)
-    if ($LASTEXITCODE -ne 0) {
-        throw "The staged file list could not be read."
-    }
-    $expectedFiles = @($validatedFiles | Sort-Object)
-    $actualFiles = @($stagedFiles | ForEach-Object { $_.Replace('\', '/') } | Sort-Object)
-    if (($expectedFiles -join "`n") -cne ($actualFiles -join "`n")) {
-        throw "The staged files do not match the handoff allowlist."
-    }
+    [void](Invoke-HandoffStaging -RepositoryRoot $repoRoot -Files @($handoff.files) -BeforeStage {
+        Invoke-NativeChecked -FilePath "git" -Arguments @("switch", "-c", $branch) `
+            -FailureMessage "The work branch could not be created."
+    })
 
     Invoke-NativeChecked -FilePath "git" -Arguments @("commit", "-m", $handoff.commit_message.Trim()) `
         -FailureMessage "The commit failed."

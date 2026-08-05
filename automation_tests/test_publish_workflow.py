@@ -39,11 +39,12 @@ class PublishWorkflowTests(unittest.TestCase):
         self.assertNotIn('@("add", "-A", ".")', self.text)
 
     def test_tracked_deletion_is_allowed_but_missing_unknown_path_is_rejected(self):
-        tracked = self.text.index("git ls-files --error-unmatch -- $relativePath")
+        tracked = self.text.index("git ls-files -- $relativePath")
         missing = self.text.index(
             "The specified path is neither a file nor a tracked deletion"
         )
         self.assertLess(tracked, missing)
+        self.assertNotIn("git ls-files --error-unmatch", self.text)
         self.assertNotIn("The specified file does not exist", self.text)
 
     def test_each_allowlisted_path_must_have_a_worktree_change(self):
