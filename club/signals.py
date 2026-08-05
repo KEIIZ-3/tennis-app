@@ -57,11 +57,22 @@ def reservation_status_notification(sender, instance, created, **kwargs):
 @receiver(m2m_changed, sender=FixedLesson.members.through)
 def fixed_lesson_members_changed(sender, instance, action, reverse, pk_set, **kwargs):
     """固定メンバー設定を正本として、どの更新経路でも将来予約を同期する。"""
+    if action == "pre_clear" and reverse:
+        instance._fixed_lesson_ids_before_clear = list(
+            instance.fixed_lessons.values_list("pk", flat=True)
+        )
+        return
+
     if action not in {"post_add", "post_remove", "post_clear"}:
         return
 
     if reverse:
-        fixed_lesson_ids = set(pk_set or [])
+        fixed_lesson_ids = set(
+            pk_set
+            or getattr(instance, "_fixed_lesson_ids_before_clear", [])
+        )
+        if action == "post_clear" and hasattr(instance, "_fixed_lesson_ids_before_clear"):
+            del instance._fixed_lesson_ids_before_clear
     else:
         fixed_lesson_ids = {instance.pk}
 

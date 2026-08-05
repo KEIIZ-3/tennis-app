@@ -977,6 +977,7 @@ class FixedLessonAdmin(admin.ModelAdmin):
                 f"固定レッスンの今後予約への反映に失敗しました: {e}",
                 level=messages.ERROR,
             )
+            raise
 
     @admin.action(description="選択した固定レッスンの今後予約を生成・再同期する")
     def sync_selected_fixed_lessons(self, request, queryset):
@@ -991,11 +992,15 @@ class FixedLessonAdmin(admin.ModelAdmin):
     @admin.action(description="選択した固定レッスンを有効にする")
     def activate_selected_fixed_lessons(self, request, queryset):
         updated = queryset.update(is_active=True)
+        for fixed_lesson in queryset.order_by("pk"):
+            fixed_lesson.sync_future_reservations(created_by=request.user)
         self.message_user(request, f"{updated}件の固定レッスンを有効にしました。", level=messages.SUCCESS)
 
     @admin.action(description="選択した固定レッスンを無効にする")
     def deactivate_selected_fixed_lessons(self, request, queryset):
         updated = queryset.update(is_active=False)
+        for fixed_lesson in queryset.order_by("pk"):
+            fixed_lesson.sync_future_reservations(created_by=request.user)
         self.message_user(request, f"{updated}件の固定レッスンを無効にしました。", level=messages.SUCCESS)
 
     def delete_model(self, request, obj):

@@ -11,6 +11,7 @@ from .fixed_lesson_membership_service import (
     _is_intentionally_canceled,
 )
 from .models import Court, FixedLesson, LessonWaitlist, Reservation
+from .reservation_service import create_reservation
 
 
 UNASSIGNED_COURT_NAME = "コート未定（後日決定）"
@@ -131,7 +132,7 @@ def _create_or_update_fixed_reservation(
                 reason=DUPLICATE_RESERVATION_REASON,
             )
 
-        canonical = Reservation(
+        canonical = create_reservation(
             user=member,
             coach=fixed_lesson.primary_coach(),
             substitute_coach=availability.substitute_coach,
@@ -148,8 +149,6 @@ def _create_or_update_fixed_reservation(
             custom_ticket_price=availability.custom_ticket_price,
             custom_duration_hours=availability.custom_duration_hours,
         )
-        canonical.full_clean()
-        canonical.save()
     else:
         desired_values = {
             "coach": fixed_lesson.primary_coach(),
@@ -195,7 +194,20 @@ def _synchronize_locked_fixed_lesson(fixed_lesson_id, created_by=None):
     fixed_lesson = FixedLesson.objects.select_for_update().get(pk=fixed_lesson_id)
 
     if not fixed_lesson.is_active:
-        return 0
+        canceled_count = 0
+        future_reservations = Reservation.objects.select_for_update().filter(
+            fixed_lesson=fixed_lesson,
+            is_fixed_entry=True,
+            start_at__date__gte=timezone.localdate(),
+            status=Reservation.STATUS_ACTIVE,
+        )
+        for reservation in future_reservations:
+            if reservation.cancel(
+                created_by=created_by,
+                reason=OCCURRENCE_REMOVED_REASON,
+            ):
+                canceled_count += 1
+        return canceled_count
     if not fixed_lesson.court_id:
         raise ValidationError("固定メンバーの予約生成にはコート設定が必要です。")
 

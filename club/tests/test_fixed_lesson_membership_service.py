@@ -129,6 +129,35 @@ class FixedLessonMembershipServiceTests(TestCase):
             3,
         )
 
+    def test_reverse_clear_cancels_fixed_reservations(self):
+        self.fixed_lesson.members.add(self.member)
+
+        self.member.fixed_lessons.clear()
+
+        self.assertFalse(
+            Reservation.objects.filter(
+                user=self.member,
+                fixed_lesson=self.fixed_lesson,
+                status=Reservation.STATUS_ACTIVE,
+            ).exists()
+        )
+
+    def test_deactivation_cancels_future_fixed_reservations(self):
+        self.fixed_lesson.members.add(self.member)
+        self.fixed_lesson.is_active = False
+        self.fixed_lesson.save(update_fields=["is_active"])
+
+        changed_count = self.fixed_lesson.sync_future_reservations()
+
+        self.assertEqual(changed_count, 3)
+        self.assertFalse(
+            Reservation.objects.filter(
+                user=self.member,
+                fixed_lesson=self.fixed_lesson,
+                status=Reservation.STATUS_ACTIVE,
+            ).exists()
+        )
+
     def test_old_different_court_availability_is_reused_as_canonical_slot(self):
         old_court = Court.objects.create(
             name="旧コート",
