@@ -14,4 +14,3 @@ class ClubConfig(AppConfig):
         # 固定レッスンの開催回数変更だけを理由とする自動キャンセルを無効化する。
         # 会員本人キャンセル、雨天中止、固定メンバー解除は従来どおり有効。
         from . import fixed_lesson_auto_cancel_guard  # noqa: F401
-
