@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from .lesson_execution_storage import read_status_map, save_status
+from .lesson_participants import ALL_RESERVATION_STATUSES, reservations_for_lesson
 from .models import (
     CoachAvailability,
     CoachExpense,
@@ -302,21 +303,15 @@ def _reservation_queryset(slot):
     start_at = slot["start_at"]
     end_at = slot["end_at"]
 
-    condition = Q(
-        availability=availability,
-        start_at=start_at,
-        end_at=end_at,
-    )
-
-    if fixed_lesson is not None:
-        condition |= Q(
+    return (
+        reservations_for_lesson(
             fixed_lesson=fixed_lesson,
+            availability=availability,
+            lesson_type=slot.get("lesson_type"),
             start_at=start_at,
             end_at=end_at,
+            statuses=ALL_RESERVATION_STATUSES,
         )
-
-    return (
-        Reservation.objects.filter(condition)
         .select_related(
             "user",
             "coach",
@@ -324,7 +319,6 @@ def _reservation_queryset(slot):
             "fixed_lesson",
             "availability",
         )
-        .distinct()
         .order_by("id")
     )
 
