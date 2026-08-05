@@ -2,7 +2,6 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from club.customer_ui import _replace_fixed_occurrence_counts
 from club.fixed_occurrence_participants import active_count_for_occurrence
 from club.models import Court, FixedLesson, Reservation, User
 
@@ -71,19 +70,13 @@ class FixedOccurrenceCalendarCountTests(TestCase):
             0,
         )
 
-    def test_calendar_html_uses_occurrence_count_instead_of_physical_slot_count(self):
-        lesson_date = self.target_date.isoformat()
-        document = (
-            '<a data-member-list-url="/lesson-calendar/members/?fixed_lesson_id='
-            f'{self.fixed_lesson.pk}&amp;lesson_date={lesson_date}">'
-            '<div class="event-meta">4/5名</div></a>'
+    def test_calendar_html_uses_occurrence_count_without_response_rewrite(self):
+        response = self.client.get(
+            reverse("club:lesson_calendar"),
+            {"year": self.target_date.year, "month": self.target_date.month},
         )
-        updated = _replace_fixed_occurrence_counts(
-            document,
-            {(str(self.fixed_lesson.pk), lesson_date): 3},
-        )
-        self.assertIn('<div class="event-meta">3/5名</div>', updated)
-        self.assertNotIn('<div class="event-meta">4/5名</div>', updated)
+
+        self.assertContains(response, '<div class="event-meta">1/5名</div>', html=True)
 
     def test_calendar_does_not_mix_unrelated_reservation_in_same_physical_slot(self):
         other_member = User.objects.create_user(

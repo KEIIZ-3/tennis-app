@@ -2,7 +2,7 @@ from datetime import datetime, time, timedelta
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.urls import reverse
+from django.urls import resolve, reverse
 from django.utils import timezone
 
 from club.models import CoachAvailability, Court, FixedLesson, Reservation
@@ -110,6 +110,36 @@ class CustomerReservationUiTests(TestCase):
         self.assertContains(calendar_response, "lesson-status-label")
         self.assertContains(calendar_response, "空きあり")
         self.assertContains(calendar_response, "overflow-x:hidden")
+        self.assertContains(calendar_response, "club/customer-ui.css")
+        self.assertContains(calendar_response, "チケットが0枚でもレッスンをご予約いただけます")
+
+    def test_ticket_page_uses_view_context_without_response_rewrite(self):
+        reservation = self._reservation()
+        reservation.tickets_used = 2
+        reservation.save(update_fields=["tickets_used"])
+        reservation.refresh_from_db()
+        self.client.force_login(self.member)
+
+        response = self.client.get(reverse("club:tickets"))
+
+        self.assertEqual(
+            response.context["planned_ticket_count"],
+            reservation.tickets_used,
+        )
+        self.assertContains(response, "現在の保有チケット")
+        self.assertContains(response, "消費予定チケット")
+        self.assertContains(response, f"{reservation.tickets_used}枚")
+        self.assertContains(response, "予約済みレッスンのチケットについて")
+        self.assertNotContains(response, "{{ user.display_name }}")
+
+    def test_customer_ui_routes_resolve_to_regular_views(self):
+        from club import views
+
+        self.assertIs(
+            resolve(reverse("club:lesson_calendar")).func,
+            views.lesson_calendar_view,
+        )
+        self.assertIs(resolve(reverse("club:tickets")).func, views.tickets_view)
 
     def test_customer_cancel_entry_matches_backend_permissions(self):
         own = self._reservation()

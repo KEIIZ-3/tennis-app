@@ -16,7 +16,7 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -1307,6 +1307,7 @@ def _lesson_calendar_holiday_name(target_date):
 
 
 @require_http_methods(["GET", "POST"])
+@never_cache
 def lesson_calendar_view(request):
     today = timezone.localdate()
 
@@ -2899,6 +2900,7 @@ def stringing_order_list(request):
 
 @login_required
 @require_GET
+@never_cache
 def tickets_view(request):
 
     survey_redirect = _require_schedule_survey(request)
@@ -2912,6 +2914,14 @@ def tickets_view(request):
         .select_related("reservation", "purchase")
         .order_by("-created_at", "-id")[:30]
     )
+    planned_ticket_count = int(
+        Reservation.objects.filter(
+            user=request.user,
+            status__in=(Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING),
+            start_at__gt=timezone.now(),
+        ).aggregate(total=Sum("tickets_used"))["total"]
+        or 0
+    )
 
     return render(
         request,
@@ -2920,6 +2930,7 @@ def tickets_view(request):
             "ticket_ledgers": ledgers,
             "ticket_purchases": purchases,
             "ticket_consumptions": consumptions,
+            "planned_ticket_count": planned_ticket_count,
             "single_ticket_price": 4000,
             "set4_ticket_price": 14000,
         },
@@ -7148,6 +7159,9 @@ def reservation_create(request):
 @login_required
 @require_GET
 def reservation_list(request):
+    if getattr(request.user, "role", "") != "member":
+        return HttpResponse("予約確認は会員専用です。", status=403)
+
     now = timezone.now()
 
     qs = (

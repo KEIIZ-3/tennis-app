@@ -14,7 +14,7 @@
 ## 監査したファイル
 
 - 正本・同期: `club/models.py`, `club/reservation_service.py`, `club/lesson_participants.py`, `club/fixed_occurrence_participants.py`, `club/fixed_lesson_membership_service.py`, `club/fixed_lesson_integrity_service.py`, `club/fixed_lesson_sync_facade.py`, `club/signals.py`
-- 画面・管理・受付: `club/views.py`, `club/admin.py`, `club/admin_dashboard.py`, `club/analytics_dashboard.py`, `club/lesson_member_list.py`, `club/coach_fixed_lesson_weekly.py`, `club/lesson_execution.py`, `club/customer_ui.py`, `club/templates/reservations/*.html`, `club/templates/coach/*.html`, `club/templates/admin/reservations_manage.html`
+- 画面・管理・受付: `club/views.py`, `club/admin.py`, `club/admin_dashboard.py`, `club/analytics_dashboard.py`, `club/lesson_member_list.py`, `club/coach_fixed_lesson_weekly.py`, `club/lesson_execution.py`, `club/templates/reservations/*.html`, `club/templates/coach/*.html`, `club/templates/admin/reservations_manage.html`
 - 通知: `club/court_number_line_notice.py`, `club/notifications.py`, `club/services/notifications.py`, `club/tasks.py`
 - 精算・給与: `club/settlement_loader.py`, `club/settlement_service.py`, `club/settlement_balance_policy.py`, `club/settlement_calculator.py`, `club/settlement_coach_calculation.py`, `club/settlement_views.py`, `club/settlement_integrity_diagnostic.py`, `club/today_lesson_actions.py`
 - 回帰テスト: `club/test_reservation_flow.py`, `club/tests/test_fixed_lesson_occurrence_cancel_calendar.py`, `club/tests/test_fixed_occurrence_calendar_count.py`, `club/tests/test_settlement_unconfirmed_execution.py`, `club/tests/test_settlement_wallet_policy.py`
