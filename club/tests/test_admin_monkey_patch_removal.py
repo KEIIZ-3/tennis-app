@@ -167,6 +167,18 @@ class AdminBehaviorTests(TestCase):
         )
         self.assertEqual(list(queryset.values_list("pk", flat=True)), [self.future.pk])
 
+    def test_reservation_admin_list_preserves_canceled_reservations(self):
+        request = RequestFactory().get("/admin/club/reservation/")
+        model_admin = admin.site._registry[Reservation]
+
+        statuses = list(
+            model_admin.get_queryset(request).order_by("pk").values_list("status", flat=True)
+        )
+
+        self.assertIn(Reservation.STATUS_ACTIVE, statuses)
+        self.assertIn(Reservation.STATUS_PENDING, statuses)
+        self.assertIn(Reservation.STATUS_CANCELED, statuses)
+
     def test_expense_form_reads_edits_and_saves_legacy_note(self):
         expense = CoachExpense(note="既存メモ")
         form = EditableExpenseTypeAdminForm(instance=expense)

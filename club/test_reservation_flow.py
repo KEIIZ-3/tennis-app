@@ -2081,8 +2081,8 @@ class ReservationFlowSmokeTests(TestCase):
             {child_1.pk, child_2.pk},
         )
 
-    def test_direct_reservation_rejects_fixed_lesson_at_capacity(self):
-        fixed_lesson = self._create_fixed_lesson(title="直接保存満員テスト")
+    def test_direct_reservation_capacity_uses_active_reservations_not_fixed_members(self):
+        fixed_lesson = self._create_fixed_lesson(title="直接保存正本テスト")
         members = [
             self._create_user(
                 username=f"capacity_member_{index}",
@@ -2106,9 +2106,50 @@ class ReservationFlowSmokeTests(TestCase):
             status=CoachAvailability.STATUS_OPEN,
         )
 
+        # 同期元の固定メンバー設定だけが残り、開催回のReservationがない状態は
+        # 満員ではない。単発予約を追加できることを保証する。
+        Reservation.objects.filter(
+            fixed_lesson=fixed_lesson,
+            start_at=start_at,
+            end_at=end_at,
+        ).update(status=Reservation.STATUS_CANCELED)
+        regular_reservation = Reservation.objects.create(
+                user=self.member,
+                coach=self.coach,
+                court=self.court,
+                availability=availability,
+                fixed_lesson=fixed_lesson,
+                lesson_type=Reservation.LESSON_GENERAL,
+                target_level=self.User.LEVEL_BEGINNER,
+                start_at=start_at,
+                end_at=end_at,
+                status=Reservation.STATUS_ACTIVE,
+        )
+        self.assertEqual(regular_reservation.status, Reservation.STATUS_ACTIVE)
+
+        # 有効Reservationが定員に達した場合だけ満員になる。
+        for index, member in enumerate(members[1:], start=1):
+            Reservation.objects.create(
+                user=member,
+                coach=self.coach,
+                court=self.court,
+                availability=availability,
+                fixed_lesson=fixed_lesson,
+                lesson_type=Reservation.LESSON_GENERAL,
+                target_level=self.User.LEVEL_BEGINNER,
+                start_at=start_at,
+                end_at=end_at,
+                status=Reservation.STATUS_ACTIVE,
+                cancellation_reason=f"capacity-{index}",
+            )
+        extra_member = self._create_user(
+            username="capacity_extra_member",
+            role=self.User.ROLE_MEMBER,
+            full_name="定員超過 会員",
+        )
         with self.assertRaisesMessage(ValidationError, "このレッスンは満員です"):
             Reservation.objects.create(
-                user=self.member,
+                user=extra_member,
                 coach=self.coach,
                 court=self.court,
                 availability=availability,
