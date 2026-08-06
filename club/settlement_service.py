@@ -589,6 +589,7 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
     )
 
 
+@transaction.atomic
 def calculate_monthly_settlement(year, month, *, force=False):
     """月次精算の標準計算と会社財布ポリシーを一つの正式な入口で実行する。"""
     from .settlement_balance_policy import _apply_wallet_policy
