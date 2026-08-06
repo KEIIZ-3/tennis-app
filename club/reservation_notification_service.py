@@ -1,7 +1,9 @@
 import logging
 
+from django.db import transaction
+
 from .models import Reservation
-from .notification_service import freeze_recipients, schedule_delivery
+from .notification_service import deliver, freeze_recipients
 from .notifications import build_reservation_canceled_message
 
 
@@ -12,7 +14,7 @@ def _reservation_canceled_payload(reservation_id):
     try:
         reservation = Reservation.objects.select_related("user").get(pk=reservation_id)
         if reservation.status != Reservation.STATUS_CANCELED:
-            return False
+            return None
         return (
             freeze_recipients([reservation.user]),
             "【Play Design Tennis】予約キャンセル通知",
@@ -28,8 +30,17 @@ def _reservation_canceled_payload(reservation_id):
 def schedule_reservation_canceled_notification(reservation_id):
     """Schedule exactly one cancellation email for this completed business operation."""
     frozen_reservation_id = int(reservation_id)
-    payload = _reservation_canceled_payload(frozen_reservation_id)
-    if payload is None:
-        return {"queued": 0}
-    recipients, subject, message = payload
-    return schedule_delivery(recipients, subject=subject, message=message, media=("email",))
+
+    def send_after_commit():
+        try:
+            payload = _reservation_canceled_payload(frozen_reservation_id)
+            if payload is None:
+                return {"line_sent": 0, "email_sent": 0, "failed": 0, "skipped": 0}
+            recipients, subject, message = payload
+            return deliver(recipients, subject=subject, message=message, media=("email",))
+        except Exception:
+            logger.exception("reservation canceled notification delivery failed")
+            return {"line_sent": 0, "email_sent": 0, "failed": 1, "skipped": 0}
+
+    transaction.on_commit(send_after_commit)
+    return {"queued": 1}
