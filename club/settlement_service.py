@@ -278,13 +278,16 @@ def _current_payment_totals(settlement, coach):
     return salary_paid, reimbursement_paid
 
 
+@transaction.atomic
 def _calculate_monthly_settlement_base(year, month, *, force=False):
     month_start, next_month, _start_at, _end_at = aware_month_range(year, month)
 
-    sync_legacy_payouts_through(next_month)
     settlement = get_or_create_monthly_settlement(year, month)
+    settlement = MonthlySettlement.objects.select_for_update().get(
+        pk=settlement.pk,
+    )
 
-    if settlement.is_closed and not force:
+    if settlement.is_closed:
         coach_rows = []
         for saved in (
             CoachMonthlySettlement.objects.filter(monthly_settlement=settlement)
@@ -337,6 +340,12 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
                     "ball_expense_burden": money(
                         saved.calculation_snapshot.get("ball_expense_burden")
                     ),
+                    "other_expense_burden": money(
+                        saved.calculation_snapshot.get("other_expense_burden")
+                    ),
+                    "contractor_cost_burden": money(
+                        saved.calculation_snapshot.get("contractor_cost_burden")
+                    ),
                     "ball_expense_reimbursement": money(
                         saved.calculation_snapshot.get(
                             "ball_expense_reimbursement"
@@ -349,6 +358,9 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
                     ),
                     "wallet_reimbursement": money(
                         saved.calculation_snapshot.get("wallet_reimbursement")
+                    ),
+                    "wallet_balance_adjustment": money(
+                        saved.calculation_snapshot.get("wallet_balance_adjustment")
                     ),
                     "negative_carry_in": money(
                         saved.calculation_snapshot.get("negative_carry_in")
@@ -406,6 +418,8 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
                 ),
             }
         )
+
+    sync_legacy_payouts_through(next_month)
 
     monthly_data = load_monthly_settlement_data(
         month_start=month_start,
