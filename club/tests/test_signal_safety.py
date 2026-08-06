@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from club.apps import ClubConfig
 from club.models import CoachAvailability, Court, Reservation, User
+from club.reservation_notification_service import schedule_reservation_canceled_notification
 
 
 class SignalSafetyTests(TestCase):
@@ -95,4 +96,35 @@ class SignalSafetyTests(TestCase):
             self.reservation.save(update_fields=["cancellation_reason"])
 
         self.assertEqual(callbacks, [])
+        notify_mock.assert_not_called()
+
+    @patch("club.notification_service.send_email_to_address")
+    def test_non_canceled_reservation_is_skipped_after_commit(self, notify_mock):
+        with self.captureOnCommitCallbacks(execute=True) as callbacks:
+            schedule_reservation_canceled_notification(self.reservation.pk)
+
+        self.assertEqual(len(callbacks), 1)
+        notify_mock.assert_not_called()
+
+    @patch("club.notification_service.send_email_to_address")
+    def test_status_restored_before_commit_is_not_notified(self, notify_mock):
+        with self.captureOnCommitCallbacks(execute=True) as callbacks:
+            with transaction.atomic():
+                self.reservation.status = Reservation.STATUS_CANCELED
+                self.reservation.save(update_fields=["status"])
+                self.reservation.status = Reservation.STATUS_ACTIVE
+                self.reservation.save(update_fields=["status"])
+
+        self.assertEqual(len(callbacks), 1)
+        notify_mock.assert_not_called()
+
+    @patch("club.notification_service.send_email_to_address")
+    def test_deleted_reservation_is_skipped_after_commit(self, notify_mock):
+        reservation_id = self.reservation.pk
+        with self.captureOnCommitCallbacks(execute=True) as callbacks:
+            with transaction.atomic():
+                schedule_reservation_canceled_notification(reservation_id)
+                self.reservation.delete()
+
+        self.assertEqual(len(callbacks), 1)
         notify_mock.assert_not_called()
