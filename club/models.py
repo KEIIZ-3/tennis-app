@@ -23,6 +23,8 @@ STRINGING_COACH_NAMES = (
     "飯塚研太朗",
     "清水峻平",
 )
+STRINGING_BASE_PRICE = 1200
+STRINGING_DELIVERY_FEE = 500
 
 
 def ensure_accounting_month_is_open(value):
@@ -2466,7 +2468,7 @@ class StringingOrder(models.Model):
     delivery_location = models.CharField(max_length=255, blank=True, default="")
     preferred_delivery_time = models.CharField(max_length=255, blank=True, default="")
     note = models.TextField(blank=True, default="")
-    base_price = models.PositiveIntegerField(default=1200)
+    base_price = models.PositiveIntegerField(default=STRINGING_BASE_PRICE)
     delivery_fee = models.PositiveIntegerField(default=0)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_REQUESTED)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -2528,7 +2530,7 @@ class StringingOrder(models.Model):
             raise ValidationError("張り上げテンションは 30〜60 lbs の範囲で指定してください。")
 
         if self.delivery_requested:
-            self.delivery_fee = 500
+            self.delivery_fee = STRINGING_DELIVERY_FEE
             if not self.delivery_location:
                 raise ValidationError("デリバリー希望の場合は、届け場所を入力してください。")
             if not self.preferred_delivery_time:

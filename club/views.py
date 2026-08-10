@@ -70,6 +70,14 @@ from .lesson_participants import (
     reservations_for_object,
 )
 from .reservation_service import create_reservation
+from .stringing_service import (
+    STRINGING_BASE_PRICE,
+    STRINGING_DELIVERY_FEE,
+    create_stringing_order,
+    recognized_stringing_orders,
+    stringing_revenue_amount,
+    update_stringing_order_status,
+)
 from .notification_service import deliver_to_users
 from .notifications import (
     build_pending_request_for_coach_message,
@@ -2779,10 +2787,10 @@ def stringing_order_create(request):
 
     if request.method == "POST":
         if form.is_valid():
-            order = form.save(commit=False)
-            order.user = request.user
-            order.status = StringingOrder.STATUS_REQUESTED
-            order.save()
+            order = create_stringing_order(
+                order=form.save(commit=False),
+                user=request.user,
+            )
 
             messages.success(
                 request,
@@ -2797,9 +2805,9 @@ def stringing_order_create(request):
         "stringing/create.html",
         {
             "form": form,
-            "stringing_base_price": 1200,
-            "stringing_delivery_fee": 500,
-            "stringing_total_with_delivery": 1700,
+            "stringing_base_price": STRINGING_BASE_PRICE,
+            "stringing_delivery_fee": STRINGING_DELIVERY_FEE,
+            "stringing_total_with_delivery": STRINGING_BASE_PRICE + STRINGING_DELIVERY_FEE,
         },
     )
 
@@ -2888,9 +2896,9 @@ def stringing_order_list(request):
             "status_counts": status_counts,
             "stringing_status_choices": StringingOrder.STATUS_CHOICES,
             "is_stringing_manage_mode": True,
-            "stringing_base_price": 1200,
-            "stringing_delivery_fee": 500,
-            "stringing_total_with_delivery": 1700,
+            "stringing_base_price": STRINGING_BASE_PRICE,
+            "stringing_delivery_fee": STRINGING_DELIVERY_FEE,
+            "stringing_total_with_delivery": STRINGING_BASE_PRICE + STRINGING_DELIVERY_FEE,
         },
     )
 
@@ -4586,21 +4594,16 @@ def stringing_order_detail(request, pk):
             return HttpResponse("Forbidden", status=403)
 
         new_status = (request.POST.get("new_status") or "").strip()
-        valid_statuses = {value for value, _label in StringingOrder.STATUS_CHOICES}
-
-        if new_status not in valid_statuses:
-            messages.error(request, "更新する状態が不正です。")
-            return redirect("club:stringing_order_detail", pk=order.pk)
-
-        if order.status == new_status:
-            messages.info(request, "状態に変更はありません。")
-            return redirect("club:stringing_order_detail", pk=order.pk)
-
         try:
-            order.status = new_status
-            order.save(update_fields=["status", "updated_at"])
+            order, changed = update_stringing_order_status(
+                order_id=order.pk,
+                new_status=new_status,
+            )
+            if not changed:
+                messages.info(request, "状態に変更はありません。")
+                return redirect("club:stringing_order_detail", pk=order.pk)
             messages.success(request, f"ガット張り依頼の状態を「{order.get_status_display()}」に更新しました。")
-        except Exception as e:
+        except (ValidationError, StringingOrder.DoesNotExist) as e:
             messages.error(request, f"ガット張り依頼の状態更新に失敗しました: {e}")
 
         return redirect("club:stringing_order_detail", pk=order.pk)
@@ -5425,9 +5428,10 @@ def coach_payroll_summary(request):
 
     lesson_total_amount = ticket_lesson_amount + preopen_paid_amount
 
-    stringing_order_qs = StringingOrder.objects.filter(
-        created_at__date__gte=month_start,
-        created_at__date__lt=next_month,
+    stringing_order_qs = recognized_stringing_orders(
+        StringingOrder.objects.all(),
+        month_start=month_start,
+        next_month=next_month,
     ).select_related("user", "assigned_coach").order_by("-created_at", "-id")
 
     assigned_stringing_rows = []
@@ -5441,17 +5445,13 @@ def coach_payroll_summary(request):
         order_total = _money(order.total_price())
         status_key = _stringing_status_key(order).lower()
 
-        if "cancel" not in status_key:
-            total_stringing_amount += order_total
+        total_stringing_amount += order_total
 
         assigned_coach_id = getattr(order, "assigned_coach_id", None)
         if not assigned_coach_id:
             unassigned_stringing_count += 1
 
         if not selected_coach or assigned_coach_id != selected_coach.pk:
-            continue
-
-        if "cancel" in status_key:
             continue
 
         assigned_stringing_amount += order_total
@@ -5925,16 +5925,14 @@ def coach_admin_settlement(request):
                     row["preopen_unpaid_amount"] += split_payment
 
     stringing_orders = list(
-        StringingOrder.objects.filter(
-            created_at__date__gte=month_start,
-            created_at__date__lt=next_month,
+        recognized_stringing_orders(
+            StringingOrder.objects.all(),
+            month_start=month_start,
+            next_month=next_month,
         ).select_related("assigned_coach", "user")
     )
     stringing_total = 0
     for order in stringing_orders:
-        status_key = _stringing_status_key(order).lower()
-        if "cancel" in status_key:
-            continue
         amount = _money(order.total_price())
         stringing_total += amount
         if getattr(order, "assigned_coach_id", None) in coach_map:
@@ -8966,17 +8964,16 @@ def coach_revenue_summary(request):
     stringing_rows = []
     stringing_total = 0
     stringing_qs = (
-        StringingOrder.objects.filter(
-            created_at__date__gte=month_start,
-            created_at__date__lt=month_next,
+        recognized_stringing_orders(
+            StringingOrder.objects.all(),
+            month_start=month_start,
+            next_month=month_next,
         )
         .select_related("user", "assigned_coach")
         .order_by("created_at", "id")
     )
     for order in stringing_qs:
-        if _is_canceled_status(getattr(order, "status", "")):
-            continue
-        amount = _money(order.total_price())
+        amount = _money(stringing_revenue_amount(order))
         stringing_total += amount
         stringing_rows.append(
             {

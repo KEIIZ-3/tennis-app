@@ -5,7 +5,16 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import UserCreationForm
 from django.utils import timezone
 
-from .models import CoachAvailability, Court, LineAccountLink, Reservation, StringingOrder, TicketPurchase
+from .models import (
+    STRINGING_BASE_PRICE,
+    STRINGING_DELIVERY_FEE,
+    CoachAvailability,
+    Court,
+    LineAccountLink,
+    Reservation,
+    StringingOrder,
+    TicketPurchase,
+)
 
 User = get_user_model()
 
@@ -516,8 +525,10 @@ class StringingOrderForm(forms.ModelForm):
         instance.delivery_requested = self.cleaned_data.get("delivery_requested", False)
         instance.delivery_location = self.cleaned_data.get("delivery_location") or ""
         instance.tension_lbs = int(self.cleaned_data.get("tension_lbs") or 50)
-        instance.base_price = 1200
-        instance.delivery_fee = 500 if instance.delivery_requested else 0
+        instance.base_price = STRINGING_BASE_PRICE
+        instance.delivery_fee = (
+            STRINGING_DELIVERY_FEE if instance.delivery_requested else 0
+        )
 
         if instance.delivery_requested:
             instance.preferred_delivery_time = self.cleaned_data.get("preferred_delivery_time") or ""

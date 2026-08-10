@@ -61,9 +61,7 @@ def reservation_slot_key(reservation, coach):
     )
 
 
-def stringing_is_cancelled(order):
-    raw = str(getattr(order, "status", "") or "").lower()
-    return "cancel" in raw or "キャンセル" in raw
+from .stringing_service import stringing_revenue_amount
 
 
 def aggregate_reservations(
@@ -144,10 +142,9 @@ def aggregate_stringing_orders(*, stringing_orders, coach_map, money):
     stringing_total = 0
 
     for order in stringing_orders:
-        if stringing_is_cancelled(order):
+        amount = money(stringing_revenue_amount(order))
+        if amount <= 0:
             continue
-
-        amount = money(order.total_price())
         stringing_total += amount
 
         assigned_coach_id = getattr(order, "assigned_coach_id", None)
