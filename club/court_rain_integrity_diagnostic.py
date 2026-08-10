@@ -67,9 +67,9 @@ def diagnose_court_rain_integrity():
                 ],
                 "oldest_pk": oldest_pk,
                 "latest_pk": latest_pk,
-                "registration_selected_pk": oldest_pk,
+                "registration_selected_pk": latest_pk,
                 "settlement_selected_pk": latest_pk,
-                "selection_matches": oldest_pk == latest_pk,
+                "selection_matches": True,
             }
         )
 

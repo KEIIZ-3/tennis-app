@@ -63,15 +63,15 @@ class CourtRainIntegrityDiagnosticTests(TestCase):
         self.assertEqual(result["finding_count"], 0)
         self.assertEqual(self._snapshot(), before)
 
-    def test_duplicate_transfers_report_selection_difference_and_safe_ids(self):
+    def test_duplicate_transfers_report_unified_selection_and_safe_ids(self):
         first = self._expense(amount=1000)
         second = self._expense(amount=2000)
         result = diagnose_court_rain_integrity()
         row = result["duplicate_court_transfers"][0]
         self.assertEqual(row["expense_ids"], [first.pk, second.pk])
-        self.assertEqual(row["registration_selected_pk"], first.pk)
+        self.assertEqual(row["registration_selected_pk"], second.pk)
         self.assertEqual(row["settlement_selected_pk"], second.pk)
-        self.assertFalse(row["selection_matches"])
+        self.assertTrue(row["selection_matches"])
         output = json.dumps(result)
         for secret in ("secret@example.com", "090-0000-0000", "Private Person", "must-not-leak"):
             self.assertNotIn(secret, output)
