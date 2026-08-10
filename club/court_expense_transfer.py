@@ -22,6 +22,7 @@ from .models import (
     Reservation,
     ensure_accounting_month_is_open,
 )
+from .court_transfer_service import get_current_court_transfer_for_availability
 from .settlement_balance_policy import main_coaches
 
 RECORD_KIND = "court_transfer"
@@ -54,22 +55,10 @@ def _local(value):
 
 
 def _existing_transfer_for_availability(availability_id, *, for_update=True):
-    expenses = CoachExpense.objects.filter(
-        category=CoachExpense.CATEGORY_COURT,
-    ).order_by("id")
-    if for_update:
-        expenses = expenses.select_for_update()
-    for expense in expenses:
-        meta = parse_expense_note(expense.note)
-        if meta.get("record_kind") != RECORD_KIND:
-            continue
-        try:
-            linked_availability_id = int(meta.get("availability_id"))
-        except (TypeError, ValueError):
-            continue
-        if linked_availability_id == int(availability_id):
-            return expense
-    return None
+    return get_current_court_transfer_for_availability(
+        availability_id,
+        for_update=for_update,
+    )
 
 
 def court_transfer_summary_for_availability(availability):

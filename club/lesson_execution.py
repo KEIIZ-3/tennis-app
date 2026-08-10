@@ -531,10 +531,22 @@ def _mark_court_expense_refund_pending(
         _expense_parse_note,
     )
 
-    expenses = CoachExpense.objects.filter(
+    from .court_transfer_service import (
+        current_court_transfer_from_expenses,
+    )
+
+    expenses = list(CoachExpense.objects.filter(
         expense_date=_local(availability.start_at).date(),
         category=CoachExpense.CATEGORY_COURT,
-    ).order_by("id")
+    ).select_for_update().order_by("id"))
+    current_transfer = current_court_transfer_from_expenses(
+        expenses,
+        availability.pk,
+    )
+    if current_transfer is not None:
+        expenses = [current_transfer] + [
+            expense for expense in expenses if expense.pk != current_transfer.pk
+        ]
     for expense in expenses:
         if not _court_expense_matches_availability(expense, availability):
             continue
@@ -624,19 +636,18 @@ def _mark_court_expense_refund_pending(
 
 
 def _court_expense_for_availability(expenses, availability):
+    from .court_transfer_service import current_court_transfer_from_expenses
     from .expense_metadata import parse_expense_note as _parse_transfer_note
     from .views import _court_expense_matches_availability, _expense_parse_note
 
+    current_transfer = current_court_transfer_from_expenses(
+        expenses,
+        availability.pk,
+    )
+    if current_transfer is not None:
+        return current_transfer, _parse_transfer_note(current_transfer.note)
+
     for expense in expenses:
-        transfer_meta = _parse_transfer_note(expense.note)
-        try:
-            linked_availability_id = int(
-                transfer_meta.get("availability_id")
-            )
-        except (TypeError, ValueError):
-            linked_availability_id = None
-        if linked_availability_id == availability.pk:
-            return expense, transfer_meta
         if _court_expense_matches_availability(expense, availability):
             return expense, _expense_parse_note(expense.note)
     return None, {}

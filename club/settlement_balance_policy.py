@@ -611,23 +611,16 @@ def _court_transfer_allocation(
     reimbursement_by_coach = defaultdict(int)
     detail_rows = []
     excluded_availability_id_set = set(excluded_availability_ids or [])
-    canonical_rows_by_availability = {}
-    rows_without_availability = []
+    from .court_transfer_service import current_court_transfer_rows
 
-    for row in expense_rows:
-        meta = row["meta"]
-        if meta.get("record_kind") != COURT_TRANSFER_RECORD_KIND:
-            continue
-        try:
-            availability_id = int(meta.get("availability_id"))
-        except (TypeError, ValueError):
-            rows_without_availability.append(row)
-            continue
-        if availability_id in excluded_availability_id_set:
-            continue
-        current = canonical_rows_by_availability.get(availability_id)
-        if current is None or row["expense"].pk > current["expense"].pk:
-            canonical_rows_by_availability[availability_id] = row
+    rows_without_availability, canonical_rows_by_availability = (
+        current_court_transfer_rows(expense_rows)
+    )
+    canonical_rows_by_availability = {
+        availability_id: row
+        for availability_id, row in canonical_rows_by_availability.items()
+        if availability_id not in excluded_availability_id_set
+    }
 
     canonical_rows = [
         *rows_without_availability,
