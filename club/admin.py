@@ -389,7 +389,7 @@ class FixedLessonAdminForm(forms.ModelForm):
         model = FixedLesson
         fields = "__all__"
 
-    def save_m2m(self):
+    def _save_m2m(self):
         """adminのメンバー一括変更を正本serviceへ1回だけ渡す。"""
         from .fixed_lesson_sync_facade import replace_fixed_lesson_members
 
