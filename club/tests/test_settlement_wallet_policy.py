@@ -610,6 +610,44 @@ class SettlementWalletCourtCostTests(TestCase):
         self.assertEqual(counts, {1: 2, 2: 2})
         execution_rows_mock.assert_called_once_with(2026, 7)
 
+    @patch(
+        "club.settlement_balance_policy."
+        "_monthly_execution_reservations_and_status"
+    )
+    def test_ball_participant_count_keeps_family_reservations_separate(
+        self,
+        execution_rows_mock,
+    ):
+        coach = SimpleNamespace(pk=1, role="coach")
+        start_at = timezone.make_aware(datetime(2026, 7, 4, 19, 0))
+        fixed_lesson = SimpleNamespace(pk=10, all_coaches=lambda: [coach])
+        reservations = [
+            SimpleNamespace(
+                pk=1,
+                user_id=101,
+                start_at=start_at,
+                fixed_lesson=fixed_lesson,
+                availability=None,
+                substitute_coach=None,
+            ),
+            SimpleNamespace(
+                pk=2,
+                user_id=101,
+                start_at=start_at,
+                fixed_lesson=fixed_lesson,
+                availability=None,
+                substitute_coach=None,
+            ),
+        ]
+        execution_rows_mock.return_value = (
+            reservations,
+            {"fixed:10:2026-07-04": {"status": "held"}},
+        )
+
+        counts = _held_participant_count_by_coach(2026, 7, [1])
+
+        self.assertEqual(counts, {1: 2})
+
     @patch("club.settlement_balance_policy._active_salary_payment_total", return_value=0)
     @patch("club.settlement_balance_policy._active_reimbursement_payment_total", return_value=2000)
     @patch("club.settlement_balance_policy._unpaid_salary_carry_in_by_coach", return_value={1: 221})
