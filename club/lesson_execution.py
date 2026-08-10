@@ -448,13 +448,8 @@ def _status_entry(status_map, slot):
 
 
 def _mark_refunded(availability, changed_by):
-    from .views import (
-        EXPENSE_APPROVAL_REFUNDED,
-        EXPENSE_NOTE_META_PREFIX,
-        _court_expense_matches_availability,
-        _expense_build_note,
-        _expense_parse_note,
-    )
+    from .rain_refund_service import confirm_rain_refund
+    from .views import _court_expense_matches_availability, _expense_parse_note
 
     changed_count = 0
     expenses = CoachExpense.objects.filter(
@@ -474,35 +469,7 @@ def _mark_refunded(availability, changed_by):
             and meta.get("rain_refund_payer_coach_id")
         ):
             continue
-        extra_meta = {
-            key: value
-            for key, value in meta.items()
-            if key
-            not in {
-                "expense_type",
-                "receipt_status",
-                "receipt_check_status",
-                "approval_status",
-                "plain_note",
-            }
-        }
-        extra_meta.update(
-            {
-                "court_refunded_at": timezone.now().isoformat(),
-                "court_refunded_by_id": getattr(changed_by, "pk", None),
-                "court_refunded_by_name": _display_name(changed_by),
-            }
-        )
-        expense.note = _expense_build_note(
-            meta.get("plain_note", ""),
-            expense_type=meta.get("expense_type", "common"),
-            receipt_status=meta.get("receipt_status", "none"),
-            receipt_check_status=meta.get("receipt_check_status", "unchecked"),
-            approval_status=EXPENSE_APPROVAL_REFUNDED,
-            extra_meta=extra_meta,
-        )
-        if expense.note.startswith(EXPENSE_NOTE_META_PREFIX):
-            expense.save(update_fields=["note"])
+        if confirm_rain_refund(expense.pk, confirmed_by=changed_by) is not None:
             changed_count += 1
 
     return changed_count
