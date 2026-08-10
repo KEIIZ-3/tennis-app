@@ -6,6 +6,10 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import MAIN_COACH_NAMES
+from .ball_expense_allocation import (
+    held_participant_count_by_coach,
+    split_amount_by_participant_count,
+)
 from .settlement_coach_calculation import calculate_coach_wallets
 from .settlement_expense_distribution import build_expense_distribution_policies
 
@@ -254,33 +258,13 @@ def _split_amount(amount, coach_ids):
 
 def _split_amount_by_lesson_count(amount, coach_ids, lesson_count_by_coach):
     """合計額を担当人数比で四捨五入し、差額は最少担当者から調整する。"""
-    unique_ids = list(dict.fromkeys(coach_id for coach_id in coach_ids if coach_id))
-    weights = {
-        coach_id: max(_money((lesson_count_by_coach or {}).get(coach_id)), 0)
-        for coach_id in unique_ids
-    }
-    total_weight = sum(weights.values())
-    if total_weight <= 0:
-        return _split_amount(amount, unique_ids)
-
-    total_amount = _money(amount)
-    allocations = {}
-    for coach_id in unique_ids:
-        numerator = total_amount * weights[coach_id]
-        allocations[coach_id] = (numerator * 2 + total_weight) // (
-            total_weight * 2
-        )
-
-    difference = total_amount - sum(allocations.values())
-    adjustment_order = sorted(
-        unique_ids,
-        key=lambda coach_id: (weights[coach_id], unique_ids.index(coach_id)),
+    return split_amount_by_participant_count(
+        amount,
+        coach_ids,
+        lesson_count_by_coach,
+        money=_money,
+        split_evenly=_split_amount,
     )
-    step = 1 if difference > 0 else -1
-    for index in range(abs(difference)):
-        coach_id = adjustment_order[index % len(adjustment_order)]
-        allocations[coach_id] += step
-    return allocations
 
 
 def _slot_key_for_reservation(reservation):
@@ -555,41 +539,17 @@ def _held_execution_reservations(reservations, status_map):
 
 def _held_participant_count_by_coach(year, month, coach_ids):
     """終了済みかつ雨天中止でないレッスンの参加人数を担当別に集計する。"""
-    eligible_coach_ids = set(coach_ids or [])
-    counts = defaultdict(int)
     reservations, status_map = _monthly_execution_reservations_and_status(
         year,
         month,
     )
-    participants_by_slot = defaultdict(set)
-    coach_ids_by_slot = defaultdict(set)
-
-    for reservation in reservations:
-        slot_key = _execution_slot_key(reservation)
-        if not slot_key:
-            continue
-        entry = status_map.get(slot_key) or {}
-        # 終了日時を過ぎただけの scheduled 予約は、実施済みとは限らない。
-        # 月次精算で確定した held の開催回だけを担当人数へ含める。
-        if entry.get("status") != "held":
-            continue
-
-        participant_id = getattr(reservation, "user_id", None)
-        if participant_id is None:
-            participant_id = f"reservation:{getattr(reservation, 'pk', id(reservation))}"
-        participants_by_slot[slot_key].add(participant_id)
-        coach_ids_by_slot[slot_key].update(
-            coach.pk
-            for coach in _reservation_coaches(reservation)
-            if getattr(coach, "pk", None) in eligible_coach_ids
-        )
-
-    for slot_key, participant_ids in participants_by_slot.items():
-        participant_count = len(participant_ids)
-        for coach_id in coach_ids_by_slot[slot_key]:
-            counts[coach_id] += participant_count
-
-    return dict(counts)
+    return held_participant_count_by_coach(
+        reservations,
+        status_map,
+        eligible_coach_ids=coach_ids,
+        execution_slot_key=_execution_slot_key,
+        reservation_coaches=_reservation_coaches,
+    )
 
 
 def _court_transfer_allocation(
