@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 
 from .models import CoachExpense, Reservation, StringingOrder, TicketPurchase
+from .stringing_service import recognized_stringing_orders
 
 
 def load_monthly_settlement_data(*, month_start, next_month):
@@ -40,9 +41,10 @@ def load_monthly_settlement_data(*, month_start, next_month):
     )
 
     stringing_orders = list(
-        StringingOrder.objects.filter(
-            created_at__date__gte=month_start,
-            created_at__date__lt=next_month,
+        recognized_stringing_orders(
+            StringingOrder.objects.all(),
+            month_start=month_start,
+            next_month=next_month,
         ).select_related("assigned_coach", "user")
     )
 
