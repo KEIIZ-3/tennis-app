@@ -85,6 +85,31 @@ def _zero_price_kind(consumption, repair_reservation_ids):
     return "zero_price_indeterminate"
 
 
+def recoverable_participant_price(reservation, consumptions):
+    """Return class-A evidence price, or ``None`` when evidence is not safe."""
+    rows = list(consumptions)
+    evidence_tickets = sum(int(row.tickets_used) for row in rows)
+    has_zero_price = any(int(row.unit_price_snapshot) == 0 for row in rows)
+    complete_evidence = bool(rows) and evidence_tickets == int(reservation.tickets_used)
+    is_special = (
+        int(reservation.custom_ticket_price) > 0
+        or reservation.is_preopen_cash_lesson()
+        or reservation.payment_status == Reservation.PAYMENT_STATUS_WAIVED
+        or has_zero_price
+    )
+    if (
+        reservation.participant_ticket_price_snapshot is not None
+        or int(reservation.tickets_used) <= 0
+        or not complete_evidence
+        or is_special
+    ):
+        return None
+    return sum(
+        int(row.unit_price_snapshot) * int(row.tickets_used)
+        for row in rows
+    )
+
+
 def diagnose_participant_price_integrity():
     """Return deterministic, serializable diagnostics without database writes."""
     consumptions = TicketConsumption.objects.select_related("purchase").only(
@@ -169,6 +194,7 @@ def diagnose_participant_price_integrity():
             or reservation.payment_status == Reservation.PAYMENT_STATUS_WAIVED
             or has_zero_price
         )
+        recoverable_price = recoverable_participant_price(reservation, rows)
 
         if snapshot is None:
             if int(reservation.tickets_used) <= 0 or not complete_evidence:
@@ -176,6 +202,9 @@ def diagnose_participant_price_integrity():
             elif is_special:
                 result["legacy_classification"]["conditional_b"] += 1
             else:
+                # Keep classification and backfill-impact diagnostics on the
+                # same evidence rule.
+                assert recoverable_price is not None
                 result["legacy_classification"]["recoverable_a"] += 1
         elif complete_evidence:
             if int(snapshot) == evidence_price:
