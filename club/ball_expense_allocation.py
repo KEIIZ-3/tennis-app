@@ -1,5 +1,7 @@
 from collections import defaultdict
 
+from .participant_price_snapshot import is_ball_expense_eligible
+
 
 def held_participant_count_by_coach(
     reservations,
@@ -19,6 +21,8 @@ def held_participant_count_by_coach(
         if not slot_key:
             continue
         if (status_map.get(slot_key) or {}).get("status") != "held":
+            continue
+        if not is_ball_expense_eligible(reservation):
             continue
 
         # A Reservation represents exactly one actual participant.  The user is
