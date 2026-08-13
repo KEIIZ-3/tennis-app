@@ -1119,6 +1119,13 @@ class ReservationFlowSmokeTests(TestCase):
         )
         self.member.ticket_balance = 4
         self.member.save(update_fields=["ticket_balance"])
+        TicketPurchase.objects.create(
+            user=self.member,
+            purchase_type=TicketPurchase.PURCHASE_TYPE_SINGLE,
+            total_tickets=4,
+            remaining_tickets=4,
+            unit_price=4000,
+        )
         reservation = Reservation.objects.create(
             user=self.member,
             coach=self.coach,
@@ -1130,6 +1137,8 @@ class ReservationFlowSmokeTests(TestCase):
             status=Reservation.STATUS_ACTIVE,
         )
         reservation.consume_tickets(created_by=self.member)
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.participant_ticket_price_snapshot, 8000)
         existing_expense = CoachExpense.objects.create(
             expense_date=target_date,
             category=CoachExpense.CATEGORY_OTHER,
@@ -1148,6 +1157,7 @@ class ReservationFlowSmokeTests(TestCase):
         self.member.refresh_from_db()
         self.assertEqual(reservation.status, Reservation.STATUS_ACTIVE)
         self.assertIsNone(reservation.ticket_refunded_at)
+        self.assertEqual(reservation.participant_ticket_price_snapshot, 8000)
         self.assertEqual(self.member.ticket_balance, 2)
 
         with self.assertRaisesMessage(ValidationError, "締め済みの月"):

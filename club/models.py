@@ -1464,6 +1464,10 @@ class Reservation(models.Model, LessonTypeMixin):
     start_at = models.DateTimeField()
     end_at = models.DateTimeField()
     tickets_used = models.PositiveIntegerField(default=0)
+    participant_ticket_price_snapshot = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+    )
     ticket_consumed_at = models.DateTimeField(null=True, blank=True)
     ticket_refunded_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_ACTIVE)
@@ -1966,6 +1970,7 @@ class Reservation(models.Model, LessonTypeMixin):
             )
 
             remaining_to_consume = self.tickets_used
+            created_consumptions = []
             for purchase in purchases:
                 if remaining_to_consume <= 0:
                     break
@@ -1976,7 +1981,7 @@ class Reservation(models.Model, LessonTypeMixin):
                 purchase.remaining_tickets -= use_count
                 purchase.save(update_fields=["remaining_tickets"])
 
-                TicketConsumption.objects.create(
+                consumption = TicketConsumption.objects.create(
                     user=locked_user,
                     purchase=purchase,
                     reservation=self,
@@ -1984,7 +1989,12 @@ class Reservation(models.Model, LessonTypeMixin):
                     tickets_used=use_count,
                     unit_price_snapshot=purchase.unit_price,
                 )
+                created_consumptions.append(consumption)
                 remaining_to_consume -= use_count
+
+            from .participant_price_snapshot import set_participant_ticket_price_snapshot
+
+            set_participant_ticket_price_snapshot(self, created_consumptions)
 
             ledger = apply_ticket_change(
                 user=locked_user,
