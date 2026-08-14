@@ -1,6 +1,7 @@
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.test import TestCase
@@ -16,7 +17,7 @@ from club.models import (
     User,
 )
 from club.fixed_lesson_sync_facade import replace_fixed_lesson_members
-from club.admin import FixedLessonAdminForm
+from club.admin import FixedLessonAdmin, FixedLessonAdminForm
 
 
 class FixedLessonMembershipServiceTests(TestCase):
@@ -600,3 +601,73 @@ class FixedLessonAdminSaveTests(TestCase):
             lesson.members.add(self.members[0])
 
         sync_mock.assert_called_once_with(lesson.pk)
+
+
+class FixedLessonAdminActionServiceTests(TestCase):
+    def setUp(self):
+        self.admin_user = User.objects.create_superuser(
+            username="fixed-action-admin",
+            password="test-password",
+            email="action-admin@example.com",
+        )
+        self.coach = User.objects.create_user(
+            username="fixed-action-coach",
+            role=User.ROLE_COACH,
+            member_level=User.LEVEL_ADVANCED,
+        )
+        self.court = Court.objects.create(
+            name="Fixed action court",
+            court_type=Court.COURT_OTHER,
+        )
+        start_date = timezone.localdate() + timedelta(days=1)
+        self.lesson = FixedLesson.objects.create(
+            title="Fixed action lesson",
+            coach=self.coach,
+            court=self.court,
+            lesson_type=FixedLesson.LESSON_GENERAL,
+            target_level=User.LEVEL_BEGINNER,
+            start_date=start_date,
+            weekday=start_date.weekday(),
+            start_hour=19,
+            capacity=6,
+            coach_count=1,
+            court_count=1,
+            weeks_ahead=1,
+            is_active=False,
+        )
+
+    def test_activate_action_calls_service_once_without_direct_update(self):
+        model_admin = FixedLessonAdmin(FixedLesson, admin.site)
+        request = type("Request", (), {"user": self.admin_user})()
+        queryset = FixedLesson.objects.filter(pk=self.lesson.pk)
+
+        with patch(
+            "club.fixed_lesson_sync_facade.set_fixed_lesson_activity",
+            return_value={"changed": True, "synchronized_count": 0},
+        ) as service_mock, patch.object(model_admin, "message_user"):
+            model_admin.activate_selected_fixed_lessons(request, queryset)
+
+        service_mock.assert_called_once_with(
+            self.lesson.pk,
+            is_active=True,
+            created_by=self.admin_user,
+        )
+        self.lesson.refresh_from_db()
+        self.assertFalse(self.lesson.is_active)
+
+    def test_activity_change_rolls_back_when_synchronization_fails(self):
+        from club.fixed_lesson_sync_facade import set_fixed_lesson_activity
+
+        with patch(
+            "club.fixed_lesson_sync_facade.synchronize_fixed_lesson_membership",
+            side_effect=RuntimeError("sync failed"),
+        ):
+            with self.assertRaisesMessage(RuntimeError, "sync failed"):
+                set_fixed_lesson_activity(
+                    self.lesson.pk,
+                    is_active=True,
+                    created_by=self.admin_user,
+                )
+
+        self.lesson.refresh_from_db()
+        self.assertFalse(self.lesson.is_active)

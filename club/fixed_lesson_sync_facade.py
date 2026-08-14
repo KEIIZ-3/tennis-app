@@ -79,6 +79,35 @@ def replace_fixed_lesson_members(fixed_lesson, members, created_by=None):
             "changed_count": changed_count,
         }
 
+
+def synchronize_fixed_lesson(fixed_lesson_id, created_by=None):
+    """Synchronize one fixed lesson through the canonical membership service."""
+    return synchronize_fixed_lesson_membership(
+        fixed_lesson_id,
+        created_by=created_by,
+    )
+
+
+def set_fixed_lesson_activity(fixed_lesson_id, *, is_active, created_by=None):
+    """Change activity and synchronize reservations in one transaction."""
+    with transaction.atomic():
+        fixed_lesson = FixedLesson.objects.select_for_update().get(
+            pk=fixed_lesson_id
+        )
+        changed = fixed_lesson.is_active != is_active
+        if changed:
+            fixed_lesson.is_active = is_active
+            fixed_lesson.save(update_fields=["is_active"])
+
+        synchronized_count = synchronize_fixed_lesson_membership(
+            fixed_lesson.pk,
+            created_by=created_by,
+        )
+        return {
+            "changed": changed,
+            "synchronized_count": synchronized_count,
+        }
+
 _locked_active_occurrence_reservations = _locked_occurrence_reservations
 
 
@@ -88,5 +117,7 @@ __all__ = [
     "configured_future_dates",
     "membership_signal_is_suppressed",
     "replace_fixed_lesson_members",
+    "set_fixed_lesson_activity",
+    "synchronize_fixed_lesson",
     "synchronize_fixed_lesson_membership",
 ]
