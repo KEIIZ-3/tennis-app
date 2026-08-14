@@ -991,26 +991,45 @@ class FixedLessonAdmin(admin.ModelAdmin):
 
     @admin.action(description="選択した固定レッスンの今後予約を生成・再同期する")
     def sync_selected_fixed_lessons(self, request, queryset):
+        from .fixed_lesson_sync_facade import synchronize_fixed_lesson
+
         total = 0
         for fixed_lesson in queryset:
             try:
-                total += fixed_lesson.sync_future_reservations(created_by=request.user)
+                total += synchronize_fixed_lesson(
+                    fixed_lesson.pk,
+                    created_by=request.user,
+                )
             except Exception as e:
                 self.message_user(request, f"{fixed_lesson} の同期に失敗しました: {e}", level=messages.ERROR)
         self.message_user(request, f"固定レッスン予約を {total} 件生成・更新しました。", level=messages.SUCCESS)
 
     @admin.action(description="選択した固定レッスンを有効にする")
     def activate_selected_fixed_lessons(self, request, queryset):
-        updated = queryset.update(is_active=True)
+        from .fixed_lesson_sync_facade import set_fixed_lesson_activity
+
+        updated = 0
         for fixed_lesson in queryset.order_by("pk"):
-            fixed_lesson.sync_future_reservations(created_by=request.user)
+            result = set_fixed_lesson_activity(
+                fixed_lesson.pk,
+                is_active=True,
+                created_by=request.user,
+            )
+            updated += int(result["changed"])
         self.message_user(request, f"{updated}件の固定レッスンを有効にしました。", level=messages.SUCCESS)
 
     @admin.action(description="選択した固定レッスンを無効にする")
     def deactivate_selected_fixed_lessons(self, request, queryset):
-        updated = queryset.update(is_active=False)
+        from .fixed_lesson_sync_facade import set_fixed_lesson_activity
+
+        updated = 0
         for fixed_lesson in queryset.order_by("pk"):
-            fixed_lesson.sync_future_reservations(created_by=request.user)
+            result = set_fixed_lesson_activity(
+                fixed_lesson.pk,
+                is_active=False,
+                created_by=request.user,
+            )
+            updated += int(result["changed"])
         self.message_user(request, f"{updated}件の固定レッスンを無効にしました。", level=messages.SUCCESS)
 
     def delete_model(self, request, obj):
