@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from django.contrib import admin
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.core.exceptions import ValidationError
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
@@ -193,3 +194,64 @@ class ReservationAdminStatusTests(TestCase):
             ).count(),
             1,
         )
+
+    def test_admin_physical_delete_is_disabled_for_superuser(self):
+        self.assertFalse(self.model_admin.has_delete_permission(self.request))
+        self.assertFalse(
+            self.model_admin.has_delete_permission(self.request, self.reservation)
+        )
+
+        self.client.force_login(self.admin_user)
+        change_url = reverse("admin:club_reservation_change", args=[self.reservation.pk])
+        delete_url = reverse("admin:club_reservation_delete", args=[self.reservation.pk])
+
+        change_response = self.client.get(change_url)
+        self.assertEqual(change_response.status_code, 200)
+        self.assertNotContains(change_response, delete_url)
+        self.assertEqual(self.client.get(delete_url).status_code, 403)
+        self.assertEqual(self.client.post(delete_url, {"post": "yes"}).status_code, 403)
+        self.assertTrue(Reservation.objects.filter(pk=self.reservation.pk).exists())
+
+    def test_admin_bulk_delete_action_is_not_available(self):
+        self.client.force_login(self.admin_user)
+        changelist_url = reverse("admin:club_reservation_changelist")
+        response = self.client.get(changelist_url)
+
+        self.assertEqual(response.status_code, 200)
+        action_form = response.context["action_form"]
+        action_values = (
+            {
+                value
+                for value, _label in action_form.fields["action"].choices
+            }
+            if action_form is not None
+            else set()
+        )
+        self.assertNotIn("delete_selected", action_values)
+        post_response = self.client.post(
+            changelist_url,
+            {"action": "delete_selected", "_selected_action": [self.reservation.pk]},
+        )
+        self.assertEqual(post_response.status_code, 200)
+        self.assertTrue(Reservation.objects.filter(pk=self.reservation.pk).exists())
+
+    def test_admin_physical_delete_is_disabled_for_staff_with_delete_permission(self):
+        user_model = get_user_model()
+        staff = user_model.objects.create_user(
+            username="reservation-delete-staff",
+            password="password",
+            is_staff=True,
+        )
+        staff.user_permissions.add(
+            Permission.objects.get(codename="view_reservation"),
+            Permission.objects.get(codename="change_reservation"),
+            Permission.objects.get(codename="delete_reservation"),
+        )
+        request = RequestFactory().get("/")
+        request.user = staff
+
+        self.assertFalse(self.model_admin.has_delete_permission(request, self.reservation))
+        self.client.force_login(staff)
+        delete_url = reverse("admin:club_reservation_delete", args=[self.reservation.pk])
+        self.assertEqual(self.client.get(delete_url).status_code, 403)
+        self.assertTrue(Reservation.objects.filter(pk=self.reservation.pk).exists())
