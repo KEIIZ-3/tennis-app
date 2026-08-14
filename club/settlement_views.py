@@ -3,7 +3,6 @@ from datetime import date
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
-from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -12,10 +11,13 @@ from django.views.decorators.http import require_http_methods
 
 from .settlement_models import SettlementPayment
 from .settlement_service import (
-    allocate_reimbursement_fifo,
     calculate_monthly_settlement,
+    close_monthly_settlement,
+    create_settlement_payment,
     display_name,
     get_or_create_monthly_settlement,
+    reopen_monthly_settlement,
+    reverse_settlement_payment,
 )
 
 
@@ -38,29 +40,6 @@ def _next_month(year, month):
     if month == 13:
         return year + 1, 1
     return year, month
-
-
-def _matching_active_payment(
-    settlement,
-    coach,
-    payment_type,
-    amount,
-    paid_date,
-    note,
-):
-    return (
-        SettlementPayment.objects.select_for_update()
-        .filter(
-            monthly_settlement=settlement,
-            coach=coach,
-            payment_type=payment_type,
-            amount=amount,
-            paid_date=paid_date,
-            note=note,
-            is_reversed=False,
-        )
-        .first()
-    )
 
 
 @login_required
@@ -177,35 +156,13 @@ def coach_admin_settlement(request):
                 messages.error(request, "支払日の形式が正しくありません。")
                 return redirect(redirect_url)
 
-            with transaction.atomic():
-                duplicate = _matching_active_payment(
-                    settlement,
-                    coach,
-                    payment_type,
-                    amount,
-                    paid_date,
-                    note,
-                )
-                payment = duplicate
-                if payment is None:
-                    payment = SettlementPayment.objects.create(
-                        monthly_settlement=settlement,
-                        coach=coach,
-                        payment_type=payment_type,
-                        amount=amount,
-                        paid_date=paid_date,
-                        note=note,
-                        created_by=request.user,
-                    )
-                allocated = 0
-                if (
-                    payment_type
-                    == SettlementPayment.PAYMENT_TYPE_REIMBURSEMENT
-                    and duplicate is None
-                ):
-                    allocated = allocate_reimbursement_fifo(payment)
+            _payment, created, allocated = create_settlement_payment(
+                settlement=settlement, coach=coach, payment_type=payment_type,
+                amount=amount, paid_date=paid_date, note=note,
+                user=request.user,
+            )
 
-            if duplicate is not None:
+            if not created:
                 messages.info(
                     request,
                     "同じ内容の支払いは既に記録済みのため、重複登録しませんでした。",
@@ -222,7 +179,7 @@ def coach_admin_settlement(request):
                         f"{allocated:,}円を充当しました。"
                     ),
                 )
-            elif duplicate is None:
+            elif created:
                 messages.success(
                     request,
                     (
@@ -230,11 +187,6 @@ def coach_admin_settlement(request):
                         f"{amount:,}円を記録しました。"
                     ),
                 )
-            calculate_monthly_settlement(
-                selected_year,
-                selected_month,
-                force=True,
-            )
             return redirect(redirect_url)
 
         if action == "close_month":
@@ -248,38 +200,8 @@ def coach_admin_settlement(request):
                     "実施状態が未確定の開催回があるため、月次締めを実行できません。実施管理で状態を確定してください。",
                 )
                 return redirect(redirect_url)
-            result = calculate_monthly_settlement(
-                selected_year,
-                selected_month,
-                force=True,
-            )
-            settlement = result["settlement"]
-            settlement.close(
-                user=request.user,
-                snapshot={
-                    "coach_rows": [
-                        {
-                            "coach_id": row["coach"].pk,
-                            "coach_name": row["coach_name"],
-                            "salary_due": row["salary_due"],
-                            "salary_paid": row["salary_paid"],
-                            "unpaid_salary": row["unpaid_salary"],
-                            "reimbursement_due": row[
-                                "reimbursement_due"
-                            ],
-                            "reimbursement_paid": row[
-                                "reimbursement_paid"
-                            ],
-                            "unpaid_reimbursement": row[
-                                "unpaid_reimbursement"
-                            ],
-                        }
-                        for row in result["coach_rows"]
-                    ],
-                    "cash_in_total": result["cash_in_total"],
-                    "cash_out_total": result["cash_out_total"],
-                    "closing_balance": result["company_balance"],
-                },
+            settlement = close_monthly_settlement(
+                year=selected_year, month=selected_month, user=request.user
             )
             messages.success(
                 request,
@@ -288,7 +210,9 @@ def coach_admin_settlement(request):
             return redirect(redirect_url)
 
         if action == "reopen_month":
-            settlement.reopen(user=request.user)
+            settlement = reopen_monthly_settlement(
+                settlement=settlement, user=request.user
+            )
             messages.success(
                 request,
                 f"{selected_year}年{selected_month}月の締めを解除しました。",
@@ -310,14 +234,10 @@ def coach_admin_settlement(request):
                     "締め済みの月では支払いを取り消せません。",
                 )
                 return redirect(redirect_url)
-            payment.reverse(
+            reverse_settlement_payment(
+                settlement=settlement, payment_id=payment.pk,
                 user=request.user,
                 note=(request.POST.get("reversal_note") or "").strip(),
-            )
-            calculate_monthly_settlement(
-                selected_year,
-                selected_month,
-                force=True,
             )
             messages.success(request, "支払いを取り消しました。")
             return redirect(redirect_url)

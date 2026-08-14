@@ -18,7 +18,7 @@ from club.settlement_balance_policy import (
     _rain_refund_policy,
     _unpaid_salary_carry_in_by_coach,
 )
-from club.settlement_views import _matching_active_payment
+from club.settlement_service import matching_active_payment
 
 
 class SettlementWalletCourtCostTests(TestCase):
@@ -319,7 +319,7 @@ class SettlementWalletCourtCostTests(TestCase):
             existing
         )
 
-        result = _matching_active_payment(
+        result = matching_active_payment(
             settlement=SimpleNamespace(pk=1),
             coach=SimpleNamespace(pk=2),
             payment_type="salary",

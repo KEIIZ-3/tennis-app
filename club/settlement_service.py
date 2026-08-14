@@ -278,6 +278,125 @@ def _current_payment_totals(settlement, coach):
     return salary_paid, reimbursement_paid
 
 
+def matching_active_payment(
+    *, settlement, coach, payment_type, amount, paid_date, note
+):
+    return (
+        SettlementPayment.objects.select_for_update()
+        .filter(
+            monthly_settlement=settlement,
+            coach=coach,
+            payment_type=payment_type,
+            amount=amount,
+            paid_date=paid_date,
+            note=note,
+            is_reversed=False,
+        )
+        .first()
+    )
+
+
+@transaction.atomic
+def create_settlement_payment(
+    *, settlement, coach, payment_type, amount, paid_date, note="", user=None
+):
+    """支払を月次行ロック下で冪等に登録する正式な入口。"""
+    locked_settlement = MonthlySettlement.objects.select_for_update().get(
+        pk=settlement.pk
+    )
+    if locked_settlement.is_closed:
+        raise ValueError("締め済みの月には支払いを追加できません。")
+
+    payment = matching_active_payment(
+        settlement=locked_settlement,
+        coach=coach,
+        payment_type=payment_type,
+        amount=amount,
+        paid_date=paid_date,
+        note=note,
+    )
+    if payment is not None:
+        return payment, False, 0
+
+    payment = SettlementPayment.objects.create(
+        monthly_settlement=locked_settlement,
+        coach=coach,
+        payment_type=payment_type,
+        amount=amount,
+        paid_date=paid_date,
+        note=note,
+        created_by=user,
+    )
+    allocated = (
+        allocate_reimbursement_fifo(payment)
+        if payment_type == SettlementPayment.PAYMENT_TYPE_REIMBURSEMENT
+        else 0
+    )
+    calculate_monthly_settlement(
+        locked_settlement.year, locked_settlement.month, force=True
+    )
+    return payment, True, allocated
+
+
+@transaction.atomic
+def reverse_settlement_payment(*, settlement, payment_id, user, note=""):
+    """支払取消と月次再計算を同一transactionで行う。"""
+    locked_settlement = MonthlySettlement.objects.select_for_update().get(
+        pk=settlement.pk
+    )
+    if locked_settlement.is_closed:
+        raise ValueError("締め済みの月では支払いを取り消せません。")
+    payment = SettlementPayment.objects.select_for_update().filter(
+        pk=payment_id, monthly_settlement=locked_settlement
+    ).first()
+    if payment is None:
+        raise SettlementPayment.DoesNotExist
+    payment.reverse(user=user, note=note)
+    calculate_monthly_settlement(
+        locked_settlement.year, locked_settlement.month, force=True
+    )
+    return payment
+
+
+@transaction.atomic
+def close_monthly_settlement(*, year, month, user):
+    result = calculate_monthly_settlement(year, month, force=True)
+    settlement = MonthlySettlement.objects.select_for_update().get(
+        pk=result["settlement"].pk
+    )
+    settlement.close(
+        user=user,
+        snapshot={
+            "coach_rows": [
+                {
+                    "coach_id": row["coach"].pk,
+                    "coach_name": row["coach_name"],
+                    "salary_due": row["salary_due"],
+                    "salary_paid": row["salary_paid"],
+                    "unpaid_salary": row["unpaid_salary"],
+                    "reimbursement_due": row["reimbursement_due"],
+                    "reimbursement_paid": row["reimbursement_paid"],
+                    "unpaid_reimbursement": row["unpaid_reimbursement"],
+                }
+                for row in result["coach_rows"]
+            ],
+            "cash_in_total": result["cash_in_total"],
+            "cash_out_total": result["cash_out_total"],
+            "closing_balance": result["company_balance"],
+        },
+    )
+    return settlement
+
+
+@transaction.atomic
+def reopen_monthly_settlement(*, settlement, user):
+    locked_settlement = MonthlySettlement.objects.select_for_update().get(
+        pk=settlement.pk
+    )
+    locked_settlement.reopen(user=user)
+    return locked_settlement
+
+
 @transaction.atomic
 def _calculate_monthly_settlement_base(year, month, *, force=False):
     month_start, next_month, _start_at, _end_at = aware_month_range(year, month)
