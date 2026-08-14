@@ -1129,8 +1129,21 @@ class ReservationAdmin(ReservationAdminHistoryMixin, admin.ModelAdmin):
         obj.refresh_from_db()
 
 
+class TicketAuditAdmin(admin.ModelAdmin):
+    """Expose ticket records for audit without bypassing ticket services."""
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(TicketLedger)
-class TicketLedgerAdmin(admin.ModelAdmin):
+class TicketLedgerAdmin(TicketAuditAdmin):
     list_display = ("id", "user", "change_amount", "balance_after", "reason", "created_by", "created_at")
     list_filter = ("reason", "created_at")
     search_fields = (
@@ -1144,7 +1157,7 @@ class TicketLedgerAdmin(admin.ModelAdmin):
 
 
 @admin.register(TicketPurchase)
-class TicketPurchaseAdmin(admin.ModelAdmin):
+class TicketPurchaseAdmin(TicketAuditAdmin):
     list_display = (
         "id",
         "user",
@@ -1161,7 +1174,7 @@ class TicketPurchaseAdmin(admin.ModelAdmin):
 
 
 @admin.register(TicketConsumption)
-class TicketConsumptionAdmin(admin.ModelAdmin):
+class TicketConsumptionAdmin(TicketAuditAdmin):
     list_display = (
         "id",
         "user",
