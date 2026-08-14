@@ -1104,6 +1104,10 @@ class ReservationAdmin(ReservationAdminHistoryMixin, admin.ModelAdmin):
         "approved_court_note",
     )
 
+    def has_delete_permission(self, request, obj=None):
+        """Reservationの業務履歴を迂回する物理削除を管理画面から許可しない。"""
+        return False
+
     def save_model(self, request, obj, form, change):
         if not change:
             return super().save_model(request, obj, form, change)
