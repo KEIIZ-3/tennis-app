@@ -383,6 +383,27 @@ class ReservationAdminForm(forms.ModelForm):
             if getattr(self.instance, "end_at", None):
                 self.initial["end_at"] = self.instance.end_at
 
+    def clean_status(self):
+        status = self.cleaned_data["status"]
+        if not self.instance or not self.instance.pk:
+            return status
+
+        current_status = (
+            Reservation.objects.filter(pk=self.instance.pk)
+            .values_list("status", flat=True)
+            .first()
+        )
+        allowed_transitions = {
+            (Reservation.STATUS_ACTIVE, Reservation.STATUS_CANCELED),
+            (Reservation.STATUS_PENDING, Reservation.STATUS_CANCELED),
+            (Reservation.STATUS_PENDING, Reservation.STATUS_ACTIVE),
+        }
+        if current_status != status and (current_status, status) not in allowed_transitions:
+            raise ValidationError(
+                "この状態変更には正規の業務処理がないため、管理画面からは実行できません。"
+            )
+        return status
+
 
 class FixedLessonAdminForm(forms.ModelForm):
     class Meta:
@@ -1082,6 +1103,26 @@ class ReservationAdmin(ReservationAdminHistoryMixin, admin.ModelAdmin):
         "requested_court_note",
         "approved_court_note",
     )
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            return super().save_model(request, obj, form, change)
+
+        from .reservation_service import change_reservation_status
+
+        target_status = form.cleaned_data.get("status", obj.status)
+        current_status = Reservation.objects.values_list("status", flat=True).get(pk=obj.pk)
+        if current_status == target_status:
+            return super().save_model(request, obj, form, change)
+
+        obj.status = current_status
+        super().save_model(request, obj, form, change)
+        change_reservation_status(
+            obj.pk,
+            target_status=target_status,
+            created_by=request.user,
+        )
+        obj.refresh_from_db()
 
 
 @admin.register(TicketLedger)
