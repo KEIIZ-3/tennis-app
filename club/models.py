@@ -1948,17 +1948,18 @@ class Reservation(models.Model, LessonTypeMixin):
                 .order_by("purchased_at", "id")
             )
 
-            purchase_remaining_total = sum(
-                int(purchase.remaining_tickets) for purchase in purchases
+            evidenced_remaining_tickets = sum(
+                int(purchase.remaining_tickets or 0) for purchase in purchases
             )
             unknown_legacy_tickets = max(
-                int(locked_user.ticket_balance) - purchase_remaining_total,
+                int(locked_user.ticket_balance or 0) - evidenced_remaining_tickets,
                 0,
             )
-            remaining_to_consume = max(
-                int(locked_self.tickets_used) - unknown_legacy_tickets,
-                0,
+            unknown_tickets_consumed = min(
+                unknown_legacy_tickets,
+                int(locked_self.tickets_used or 0),
             )
+            remaining_to_consume = int(locked_self.tickets_used or 0) - unknown_tickets_consumed
             created_consumptions = []
             for purchase in purchases:
                 if remaining_to_consume <= 0:
@@ -1983,7 +1984,7 @@ class Reservation(models.Model, LessonTypeMixin):
 
             from .participant_price_snapshot import set_participant_ticket_price_snapshot
 
-            if unknown_legacy_tickets == 0 and remaining_to_consume == 0:
+            if remaining_to_consume == 0 and unknown_tickets_consumed == 0:
                 set_participant_ticket_price_snapshot(locked_self, created_consumptions)
 
             ledger = apply_ticket_change(

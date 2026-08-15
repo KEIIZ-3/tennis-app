@@ -4696,19 +4696,17 @@ def coach_ticket_summary(request):
                 filtered_reservations.append(reservation)
 
         for reservation in filtered_reservations:
-            is_consumed = bool(
-                reservation.ticket_consumed_at
-                and not reservation.ticket_refunded_at
-                and reservation.status
-                not in (Reservation.STATUS_CANCELED, Reservation.STATUS_RAIN_CANCELED)
-            )
-            if not is_consumed:
+            if reservation.ticket_refunded_at or reservation.status in (
+                Reservation.STATUS_CANCELED,
+                Reservation.STATUS_RAIN_CANCELED,
+            ):
                 continue
 
+            all_consumptions = list(reservation.ticket_consumptions.all())
             active_consumptions = (
-                reservation.ticket_consumptions.filter(refunded_at__isnull=True)
-                .select_related("purchase")
-                .order_by("created_at", "id")
+                consumption
+                for consumption in all_consumptions
+                if consumption.refunded_at is None
             )
 
             row_breakdown_map = {}
@@ -4728,13 +4726,21 @@ def coach_ticket_summary(request):
                 row_tickets += tickets_used
                 row_amount += unit_price * tickets_used
 
-            unknown_tickets = max(int(reservation.tickets_used or 0) - row_tickets, 0)
-            if unknown_tickets:
-                row_breakdown_map.setdefault(0, 0)
-                row_breakdown_map[0] += unknown_tickets
-                breakdown_map.setdefault(0, 0)
-                breakdown_map[0] += unknown_tickets
-                row_tickets += unknown_tickets
+            if reservation.ticket_consumed_at:
+                evidenced_tickets = sum(
+                    int(consumption.tickets_used or 0)
+                    for consumption in all_consumptions
+                )
+                unknown_tickets = max(
+                    int(reservation.tickets_used or 0) - evidenced_tickets,
+                    0,
+                )
+                if unknown_tickets:
+                    row_breakdown_map.setdefault(0, 0)
+                    row_breakdown_map[0] += unknown_tickets
+                    breakdown_map.setdefault(0, 0)
+                    breakdown_map[0] += unknown_tickets
+                    row_tickets += unknown_tickets
 
             if row_tickets <= 0:
                 continue
