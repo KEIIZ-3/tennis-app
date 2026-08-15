@@ -1340,30 +1340,6 @@ def purchase_tickets(
         return ledger, purchase
 
 
-def _ensure_ticket_purchase_stock_for_user(user, created_by=None):
-    locked_user = User.objects.select_for_update().get(pk=user.pk)
-    balance = max(int(locked_user.ticket_balance or 0), 0)
-    purchase_remaining = (
-        TicketPurchase.objects.filter(user=locked_user).aggregate(total=models.Sum("remaining_tickets")).get("total") or 0
-    )
-
-    if purchase_remaining >= balance:
-        return
-
-    shortage = balance - purchase_remaining
-    TicketPurchase.objects.create(
-        user=locked_user,
-        purchase_type=TicketPurchase.PURCHASE_TYPE_LEGACY,
-        total_tickets=shortage,
-        remaining_tickets=shortage,
-        unit_price=0,
-        label="旧データ移行分",
-        note="既存残高との差分を補完",
-        created_by=created_by if created_by and getattr(created_by, "pk", None) else None,
-        purchased_at=timezone.now(),
-    )
-
-
 class Reservation(models.Model, LessonTypeMixin):
     STATUS_ACTIVE = "active"
     STATUS_CANCELED = "canceled"
@@ -1965,8 +1941,6 @@ class Reservation(models.Model, LessonTypeMixin):
                 self.ticket_consumed_at = locked_self.ticket_consumed_at
                 return None
 
-            _ensure_ticket_purchase_stock_for_user(locked_self.user, created_by=created_by)
-
             locked_user = User.objects.select_for_update().get(pk=locked_self.user.pk)
             purchases = list(
                 TicketPurchase.objects.select_for_update()
@@ -1999,7 +1973,8 @@ class Reservation(models.Model, LessonTypeMixin):
 
             from .participant_price_snapshot import set_participant_ticket_price_snapshot
 
-            set_participant_ticket_price_snapshot(locked_self, created_consumptions)
+            if remaining_to_consume == 0:
+                set_participant_ticket_price_snapshot(locked_self, created_consumptions)
 
             ledger = apply_ticket_change(
                 user=locked_user,
