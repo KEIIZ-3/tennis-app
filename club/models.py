@@ -1956,20 +1956,25 @@ class Reservation(models.Model, LessonTypeMixin):
 
     def consume_tickets(self, reason="reservation_use", created_by=None, note=""):
         ensure_accounting_month_is_open(self.start_at)
-        if self.ticket_consumed_at or self.tickets_used <= 0:
+        if self.tickets_used <= 0:
             return None
 
         with transaction.atomic():
-            _ensure_ticket_purchase_stock_for_user(self.user, created_by=created_by)
+            locked_self = Reservation.objects.select_for_update().get(pk=self.pk)
+            if locked_self.ticket_consumed_at or locked_self.tickets_used <= 0:
+                self.ticket_consumed_at = locked_self.ticket_consumed_at
+                return None
 
-            locked_user = User.objects.select_for_update().get(pk=self.user.pk)
+            _ensure_ticket_purchase_stock_for_user(locked_self.user, created_by=created_by)
+
+            locked_user = User.objects.select_for_update().get(pk=locked_self.user.pk)
             purchases = list(
                 TicketPurchase.objects.select_for_update()
                 .filter(user=locked_user, remaining_tickets__gt=0)
                 .order_by("purchased_at", "id")
             )
 
-            remaining_to_consume = self.tickets_used
+            remaining_to_consume = locked_self.tickets_used
             created_consumptions = []
             for purchase in purchases:
                 if remaining_to_consume <= 0:
@@ -1984,8 +1989,8 @@ class Reservation(models.Model, LessonTypeMixin):
                 consumption = TicketConsumption.objects.create(
                     user=locked_user,
                     purchase=purchase,
-                    reservation=self,
-                    fixed_lesson=self.fixed_lesson,
+                    reservation=locked_self,
+                    fixed_lesson=locked_self.fixed_lesson,
                     tickets_used=use_count,
                     unit_price_snapshot=purchase.unit_price,
                 )
@@ -1994,21 +1999,22 @@ class Reservation(models.Model, LessonTypeMixin):
 
             from .participant_price_snapshot import set_participant_ticket_price_snapshot
 
-            set_participant_ticket_price_snapshot(self, created_consumptions)
+            set_participant_ticket_price_snapshot(locked_self, created_consumptions)
 
             ledger = apply_ticket_change(
                 user=locked_user,
-                amount=-self.tickets_used,
+                amount=-locked_self.tickets_used,
                 reason=reason,
-                note=note or f"予約消費: {self.start_at:%Y-%m-%d %H:%M}",
+                note=note or f"予約消費: {locked_self.start_at:%Y-%m-%d %H:%M}",
                 created_by=created_by,
-                reservation=self,
-                fixed_lesson=self.fixed_lesson,
+                reservation=locked_self,
+                fixed_lesson=locked_self.fixed_lesson,
             )
 
             consumed_at = timezone.now()
-            Reservation.objects.filter(pk=self.pk).update(ticket_consumed_at=consumed_at)
+            Reservation.objects.filter(pk=locked_self.pk).update(ticket_consumed_at=consumed_at)
             self.ticket_consumed_at = consumed_at
+            self.participant_ticket_price_snapshot = locked_self.participant_ticket_price_snapshot
             self.user.ticket_balance = locked_user.ticket_balance
             return ledger
 
