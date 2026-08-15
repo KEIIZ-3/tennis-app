@@ -2020,27 +2020,6 @@ def lesson_calendar_view(request):
             lesson_execution.STATUS_REFUND_PENDING,
             lesson_execution.STATUS_REFUNDED,
         )
-        can_manage_execution = bool(
-            availability_id
-            and availability is not None
-            and lesson_execution.can_manage_occurrence(request.user, availability, fixed_lesson)
-        )
-        can_register_cancellation = bool(
-            can_manage_execution
-            and execution_status in (
-                lesson_execution.STATUS_SCHEDULED,
-                lesson_execution.STATUS_UNCONFIRMED,
-                lesson_execution.STATUS_HELD,
-            )
-        )
-        cancellation_url = (
-            f"{reverse('club:lesson_execution_manage')}?"
-            f"{urlencode({'year': target_year, 'month': target_month, 'open_rain': availability_id})}"
-            f"#lesson-{availability_id}"
-            if can_register_cancellation
-            else ""
-        )
-
         can_book = False
         can_join_waitlist = False
         can_cancel_waitlist = False
@@ -2154,8 +2133,6 @@ def lesson_calendar_view(request):
             "reserve_url": reserve_url,
             "member_list_url": member_list_url,
             "court_expense_url": court_expense_url,
-            "cancellation_url": cancellation_url,
-            "can_register_cancellation": can_register_cancellation,
             "calendar_url": calendar_url,
             "calendar_login_url": (
                 member_list_url

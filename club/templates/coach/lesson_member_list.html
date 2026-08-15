@@ -115,7 +115,7 @@
     <section class="execution-panel">
       <h2 class="execution-title">このレッスンの終了処理</h2>
       <p class="execution-text">
-        レッスン終了後は「実施済み」を登録してください。雨天中止では対象予約をキャンセルし、消費済みチケットを返却します。
+        レッスン終了後は実施状況を登録してください。中止登録では雨天中止または雨天以外の中止を選択できます。
       </p>
       {% if execution_status %}
         <div class="court-state">実施状況：{{ execution_status.execution_status_label }}</div>
@@ -128,24 +128,16 @@
       {% endif %}
       {% if request.GET.availability_id %}
         <div class="execution-actions">
-          <form method="post" action="{% url 'club:lesson_quick_action' %}">
+          {% if execution_status.can_unhold or execution_status.can_mark_held %}<form method="post" action="{% url 'club:lesson_quick_action' %}">
             {% csrf_token %}
             <input type="hidden" name="year" value="{{ start_at|date:'Y' }}">
             <input type="hidden" name="month" value="{{ start_at|date:'n' }}">
             <input type="hidden" name="availability_id" value="{{ request.GET.availability_id }}">
-            <input type="hidden" name="action" value="held">
+            <input type="hidden" name="action" value="{% if execution_status.can_unhold %}unhold{% else %}held{% endif %}">
             <input type="hidden" name="next" value="{{ request.get_full_path }}">
-            <button type="submit" class="btn btn-held" onclick="return confirm('このレッスンを実施済みにしますか？');">実施登録</button>
-          </form>
-          <form method="post" action="{% url 'club:lesson_quick_action' %}">
-            {% csrf_token %}
-            <input type="hidden" name="year" value="{{ start_at|date:'Y' }}">
-            <input type="hidden" name="month" value="{{ start_at|date:'n' }}">
-            <input type="hidden" name="availability_id" value="{{ request.GET.availability_id }}">
-            <input type="hidden" name="action" value="rain_canceled">
-            <input type="hidden" name="next" value="{{ request.get_full_path }}">
-            <button type="submit" class="btn btn-rain" onclick="return confirm('雨天中止として予約をキャンセルし、チケットを返却しますか？');">雨天中止</button>
-          </form>
+            <button type="submit" class="btn btn-held" onclick="return confirm('{% if execution_status.can_unhold %}実施登録を解除しますか？{% else %}このレッスンを実施済みにしますか？{% endif %}');">{% if execution_status.can_unhold %}実施登録を解除{% else %}実施登録{% endif %}</button>
+          </form>{% endif %}
+          {% if execution_status.can_cancel %}<a href="{{ execution_manage_url }}" class="btn btn-rain">中止登録</a>{% endif %}
           <a href="{% url 'club:coach_expense_manage' %}?availability_id={{ request.GET.availability_id }}&date={{ start_at|date:'Y-m-d' }}&next={{ request.get_full_path|urlencode }}" class="btn btn-expense">コート代登録・修正</a>
         </div>
       {% else %}

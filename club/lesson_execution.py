@@ -224,13 +224,18 @@ def status_by_availability(user, year_month_pairs):
             availability = slot["availability"]
             entry = _status_entry(status_map, slot)
             reservations = list(_reservation_queryset(slot))
-            status, _cancellation_type = _effective_status(
+            status, cancellation_type = _effective_status(
                 entry, reservations, end_at=slot["end_at"]
             )
 
             result[availability.pk] = {
                 "execution_status": status,
-                "execution_status_label": STATUS_LABELS[status],
+                "execution_status_label": (
+                    CANCELLATION_TYPE_LABELS.get(cancellation_type, "雨天中止")
+                    if status in (STATUS_RAIN_CANCELED, STATUS_REFUND_PENDING, STATUS_REFUNDED)
+                    else STATUS_LABELS[status]
+                ),
+                "cancellation_type": cancellation_type,
                 "execution_needs_attention": bool(
                     status == STATUS_UNCONFIRMED
                 ),

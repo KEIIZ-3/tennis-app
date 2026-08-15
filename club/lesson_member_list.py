@@ -707,6 +707,7 @@ def lesson_calendar_member_list(request):
         lesson_date_text=lesson_date_text,
     )
     execution_status = None
+    execution_manage_url = ""
     court_summary = None
     if availability and is_coach_view:
         from . import lesson_execution
@@ -719,6 +720,22 @@ def lesson_calendar_member_list(request):
             {(start_at.year, start_at.month)},
         )
         execution_status = status_map.get(availability.pk)
+        execution_manage_url = (
+            f"{reverse('club:lesson_execution_manage')}?year={start_at.year}"
+            f"&month={start_at.month}&open_rain={availability.pk}#lesson-{availability.pk}"
+        )
+        if execution_status:
+            current_status = execution_status["execution_status"]
+            execution_status["can_mark_held"] = current_status in (
+                lesson_execution.STATUS_UNCONFIRMED,
+                lesson_execution.STATUS_SCHEDULED,
+            )
+            execution_status["can_unhold"] = current_status == lesson_execution.STATUS_HELD
+            execution_status["can_cancel"] = current_status in (
+                lesson_execution.STATUS_UNCONFIRMED,
+                lesson_execution.STATUS_SCHEDULED,
+                lesson_execution.STATUS_HELD,
+            )
         court_summary = court_transfer_summary_for_availability(
             availability
         )
@@ -802,6 +819,7 @@ def lesson_calendar_member_list(request):
             ),
             "reservation_url": reservation_url,
             "execution_status": execution_status,
+            "execution_manage_url": execution_manage_url,
             "court_summary": court_summary,
         },
     )
