@@ -11,8 +11,9 @@
 .operations-shell .main,.operations-shell .main>*{min-width:0}
 .operations-shell .main :is(.card,.panel,section,article,form,fieldset){max-width:100%}
 .operations-shell .main :is(.actions,.toolbar,.nav-links,.month-actions,.period-tabs,.coach-action-row,.dashboard-primary-actions){max-width:100%}
-.operations-shell .main :is(.person-name,.coach-name,.date-time,.lesson-date,.record-date,.record-amount,.summary-value,.metric-value,.stat-value){word-break:keep-all;overflow-wrap:normal}
-.operations-shell .main :is(.date-time,.lesson-date,.record-date,.record-amount){white-space:nowrap}
+.operations-shell .main :is(.person-name,.coach-name){word-break:keep-all;overflow-wrap:anywhere}
+.operations-shell .main :is(.summary-value,.metric-value,.stat-value){overflow-wrap:anywhere}
+.operations-shell .main :is(.date-time,.lesson-date,.record-date,.record-amount){white-space:nowrap;word-break:keep-all;overflow-wrap:normal}
 .operations-shell .main input:not([type="checkbox"]):not([type="radio"]),.operations-shell .main select,.operations-shell .main textarea{max-width:100%}
 .operations-shell .main table{max-width:100%}
 .operations-shell .main .table-wrap,.operations-shell .main .table-scroll,.operations-shell .main .table-container,.operations-shell .main .diagnostic-table,.operations-shell .main .revenue-table-wrap,.operations-shell .main .desktop-table-area{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
@@ -22,7 +23,7 @@
   .operations-shell .main .btn,.operations-shell .main button,.operations-shell .main input[type="submit"]{min-height:44px;max-width:100%;white-space:normal}
   .operations-shell .main .actions,.operations-shell .main .toolbar,.operations-shell .main .nav-links,.operations-shell .main .month-actions,.operations-shell .main .period-tabs,.operations-shell .main .coach-action-row{flex-wrap:wrap}
   .operations-shell .main :is(.actions,.toolbar,.nav-links,.month-actions,.period-tabs,.coach-action-row)>*{min-width:0}
-  .operations-shell .main :is(.person-name,.coach-name){white-space:normal;word-break:keep-all;overflow-wrap:anywhere}
+  .operations-shell .main :is(.person-name,.coach-name){white-space:normal}
 }
 @media(max-width:430px){
   .operations-shell .main :is(.actions,.toolbar,.nav-links,.month-actions,.coach-action-row)>.btn,
