@@ -89,7 +89,7 @@
     <section class="panel priority-alert" role="alert">
       <div class="section-head"><div><h2 class="section-title">実施状態が未確定の開催回（{{ unconfirmed_execution_count }}件）</h2><p class="help">終了時刻を過ぎても開催状態が未登録です。月次締めの前に、実施済みまたは雨天中止を登録してください。</p></div></div>
       {% for lesson in unconfirmed_execution_rows %}
-        <article class="payment-row operation-record"><span class="status-badge open">未確定</span><strong class="record-date">{{ lesson.lesson_date|date:"Y/m/d" }}<br>{{ lesson.time_label }}</strong><div class="record-main">{{ lesson.lesson_name }}<br><span class="muted">担当：{{ lesson.coach_names|join:" / " }}</span></div><a href="{{ lesson.registration_url }}" class="btn danger-button record-action">実施状態を確認</a></article>
+        <article class="payment-row operation-record"><span class="status-badge open">未確定</span><strong class="record-date date-time">{{ lesson.lesson_date|date:"Y/m/d" }}<br>{{ lesson.time_label }}</strong><div class="record-main">{{ lesson.lesson_name }}<br><span class="muted">担当：<span class="person-name">{{ lesson.coach_names|join:" / " }}</span></span></div><a href="{{ lesson.registration_url }}" class="btn danger-button record-action">実施状態を確認</a></article>
       {% endfor %}
     </section>
   {% endif %}

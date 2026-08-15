@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -92,6 +93,52 @@ class SettlementUnconfirmedExecutionTests(TestCase):
             [row["availability_id"] for row in rows],
             [first.pk, last.pk],
         )
+
+    def test_coach_names_are_people_not_characters(self):
+        self.coach.full_name = "井上春佳"
+        self.coach.save(update_fields=["full_name"])
+        self._availability(self.now - timedelta(hours=2))
+
+        rows = lesson_execution.unconfirmed_execution_rows(2026, 8, now=self.now)
+
+        self.assertEqual(rows[0]["coach_names"], ["井上春佳"])
+        self.client.force_login(self.admin)
+        response = self.client.get(
+            reverse("club:coach_admin_settlement"), {"year": 2026, "month": 8}
+        )
+        self.assertContains(response, "井上春佳")
+        self.assertNotContains(response, "井 / 上 / 春 / 佳")
+
+    def test_substitute_coach_name_is_used_as_one_person(self):
+        User = get_user_model()
+        substitute = User.objects.create_user(
+            username="substitute_coach",
+            full_name="清水峻平",
+            role=User.ROLE_COACH,
+        )
+        availability = self._availability(self.now - timedelta(hours=2))
+        availability.substitute_coach = substitute
+        availability.save(update_fields=["substitute_coach"])
+
+        rows = lesson_execution.unconfirmed_execution_rows(2026, 8, now=self.now)
+
+        self.assertEqual(rows[0]["coach_names"], ["清水峻平"])
+        self.assertNotEqual(rows[0]["coach_names"], list("清水峻平"))
+
+    def test_fixed_lesson_coaches_are_joined_between_people_only(self):
+        inoue = SimpleNamespace(display_name=lambda: "井上春佳")
+        shimizu = SimpleNamespace(display_name=lambda: "清水峻平")
+        fixed_lesson = SimpleNamespace(all_coaches=lambda: [inoue, shimizu])
+
+        names = lesson_execution._fixed_coach_names(fixed_lesson)
+
+        self.assertEqual(names, ["井上春佳", "清水峻平"])
+        self.assertEqual(" / ".join(names), "井上春佳 / 清水峻平")
+
+    def test_empty_fixed_lesson_coach_keeps_placeholder(self):
+        fixed_lesson = SimpleNamespace(all_coaches=lambda: [])
+
+        self.assertEqual(lesson_execution._fixed_coach_names(fixed_lesson), ["-"])
 
     def test_legacy_rain_cancel_is_not_unconfirmed(self):
         availability = self._availability(self.now - timedelta(hours=2))
