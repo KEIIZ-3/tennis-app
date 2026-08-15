@@ -44,7 +44,15 @@ def read_status_map(settlement):
     return {}
 
 
-def save_status(settlement, slot_key, status, user, *, legacy_keys=None):
+def save_status(
+    settlement,
+    slot_key,
+    status,
+    user,
+    *,
+    legacy_keys=None,
+    cancellation_type=None,
+):
     status_map, plain_note = _decode_note(settlement)
     if not status_map:
         status_map = read_status_map(settlement)
@@ -55,6 +63,14 @@ def save_status(settlement, slot_key, status, user, *, legacy_keys=None):
         "updated_by_id": getattr(user, "pk", None),
         "updated_by_name": _display_name(user),
     }
+    if cancellation_type:
+        entry["cancellation_type"] = str(cancellation_type)
+    else:
+        previous_type = (status_map.get(str(slot_key)) or {}).get(
+            "cancellation_type"
+        )
+        if previous_type:
+            entry["cancellation_type"] = previous_type
     status_map[str(slot_key)] = entry
 
     for legacy_key in legacy_keys or []:

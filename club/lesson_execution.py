@@ -30,6 +30,12 @@ STATUS_HELD = "held"
 STATUS_RAIN_CANCELED = "rain_canceled"
 STATUS_REFUND_PENDING = "refund_pending"
 STATUS_REFUNDED = "refunded"
+CANCELLATION_TYPE_RAIN = "rain"
+CANCELLATION_TYPE_OTHER = "other"
+CANCELLATION_TYPE_LABELS = {
+    CANCELLATION_TYPE_RAIN: "雨天中止",
+    CANCELLATION_TYPE_OTHER: "中止",
+}
 
 STATUS_LABELS = {
     STATUS_UNCONFIRMED: "実施確認待ち",
@@ -817,6 +823,14 @@ def lesson_execution_manage(request):
             )
 
         elif action == STATUS_RAIN_CANCELED:
+            cancellation_type = (
+                request.POST.get("cancellation_type")
+                or CANCELLATION_TYPE_RAIN
+            ).strip()
+            if cancellation_type not in CANCELLATION_TYPE_LABELS:
+                messages.error(request, "中止種別を選択してください。")
+                return redirect(redirect_url)
+            cancellation_label = CANCELLATION_TYPE_LABELS[cancellation_type]
             refund_input, input_error = _rain_refund_input(request)
             if input_error:
                 messages.error(request, input_error)
@@ -837,10 +851,17 @@ def lesson_execution_manage(request):
                 for reservation in reservations:
                     if reservation.status != Reservation.STATUS_ACTIVE:
                         continue
-                    reservation.cancel(
-                        created_by=request.user,
-                        reason="雨天中止による自動返却",
-                    )
+                    if cancellation_type == CANCELLATION_TYPE_RAIN:
+                        reservation.mark_rain_canceled(
+                            created_by=request.user,
+                            reason="雨天中止による自動返却",
+                        )
+                    else:
+                        reservation.cancel(
+                            created_by=request.user,
+                            reason="レッスン中止による自動返却",
+                            schedule_notification=False,
+                        )
                     canceled_count += 1
 
                 save_status(
@@ -849,11 +870,12 @@ def lesson_execution_manage(request):
                     STATUS_REFUND_PENDING,
                     request.user,
                     legacy_keys=_legacy_keys(slot),
+                    cancellation_type=cancellation_type,
                 )
 
             messages.success(
                 request,
-                f"雨天中止を登録しました。予約{canceled_count}件をキャンセルし、チケットを返却しました。",
+                f"{cancellation_label}を登録しました。予約{canceled_count}件をキャンセルし、チケットを返却しました。",
             )
 
         elif action == STATUS_REFUNDED:
@@ -949,6 +971,7 @@ def lesson_execution_manage(request):
         reservations = list(_reservation_queryset(slot))
         entry = _status_entry(status_map, slot)
         saved_status = entry.get("status")
+        cancellation_type = entry.get("cancellation_type")
         has_legacy_rain_cancel = any(
             reservation.status == Reservation.STATUS_RAIN_CANCELED
             or "雨天中止" in str(reservation.cancellation_reason or "")
@@ -973,7 +996,10 @@ def lesson_execution_manage(request):
         canceled_count = sum(
             1
             for reservation in reservations
-            if reservation.status == Reservation.STATUS_CANCELED
+            if reservation.status in (
+                Reservation.STATUS_CANCELED,
+                Reservation.STATUS_RAIN_CANCELED,
+            )
         )
         court_expense, court_meta = _court_expense_for_availability(
             court_expenses,
@@ -1034,7 +1060,15 @@ def lesson_execution_manage(request):
                 "end_local": _local(slot["end_at"]),
                 "coach_names": slot["coach_names"],
                 "status": status,
-                "status_label": STATUS_LABELS[status],
+                "status_label": (
+                    CANCELLATION_TYPE_LABELS.get(cancellation_type, "雨天中止")
+                    if status in (
+                        STATUS_RAIN_CANCELED,
+                        STATUS_REFUND_PENDING,
+                        STATUS_REFUNDED,
+                    )
+                    else STATUS_LABELS[status]
+                ),
                 "status_class": STATUS_CLASSES[status],
                 "active_count": active_count,
                 "canceled_count": canceled_count,
@@ -1087,6 +1121,7 @@ def lesson_execution_manage(request):
                     "rain_refund_payer_coach_name",
                     "",
                 ),
+                "cancellation_type": cancellation_type,
                 "court_expense_url": (
                     f"{reverse('club:coach_expense_manage')}?"
                     f"availability_id={availability.pk}"

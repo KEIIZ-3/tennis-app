@@ -657,6 +657,77 @@ class ReservationFlowSmokeTests(TestCase):
             action_response["Location"],
         )
 
+    def test_lesson_cancellation_type_distinguishes_calendar_and_reservation_status(self):
+        self.coach.full_name = "飯塚研太朗"
+        self.coach.save(update_fields=["full_name"])
+        self.client.force_login(self.coach)
+        payer = settlement_balance_policy.main_coaches()[0]
+        for index, (cancellation_type, expected_status, expected_label) in enumerate((
+            (lesson_execution.CANCELLATION_TYPE_RAIN, Reservation.STATUS_RAIN_CANCELED, "雨天中止"),
+            (lesson_execution.CANCELLATION_TYPE_OTHER, Reservation.STATUS_CANCELED, "中止"),
+        )):
+            start_at = timezone.make_aware(
+                datetime.combine(self.lesson_date, datetime.min.time()).replace(hour=9 + index)
+            )
+            availability = CoachAvailability.objects.create(
+                coach=self.coach,
+                court=self.court,
+                lesson_type=Reservation.LESSON_PRIVATE,
+                target_level=self.User.LEVEL_BEGINNER,
+                start_at=start_at,
+                end_at=start_at + timedelta(hours=1),
+                capacity=1,
+                status=CoachAvailability.STATUS_OPEN,
+            )
+            reservation = Reservation.objects.create(
+                user=self.member,
+                coach=self.coach,
+                court=self.court,
+                availability=availability,
+                lesson_type=Reservation.LESSON_PRIVATE,
+                target_level=self.User.LEVEL_BEGINNER,
+                start_at=start_at,
+                end_at=start_at + timedelta(hours=1),
+                status=Reservation.STATUS_ACTIVE,
+            )
+            expense_response = self.client.post(
+                reverse("club:coach_expense_manage"),
+                data={
+                    "action": "create_court_transfer",
+                    "availability_id": availability.pk,
+                    "payer_coach_id": payer.pk,
+                    "amount": 1800,
+                },
+            )
+            self.assertEqual(expense_response.status_code, 302)
+
+            response = self.client.post(
+                reverse("club:lesson_execution_manage"),
+                data={
+                    "year": self.lesson_date.year,
+                    "month": self.lesson_date.month,
+                    "availability_id": availability.pk,
+                    "action": lesson_execution.STATUS_RAIN_CANCELED,
+                    "cancellation_type": cancellation_type,
+                    "rain_booking_account": payer.pk,
+                    "rain_court_payer_id": payer.pk,
+                },
+            )
+            self.assertEqual(response.status_code, 302)
+            reservation.refresh_from_db()
+            self.assertEqual(reservation.status, expected_status)
+
+            calendar_response = self.client.get(
+                reverse("club:lesson_calendar"),
+                data={"year": self.lesson_date.year, "month": self.lesson_date.month},
+            )
+            item = next(
+                row for row in calendar_response.context["schedule_rows"]
+                if str(row["availability_id"]) == str(availability.pk)
+            )
+            self.assertEqual(item["customer_status_label"], expected_label)
+            self.assertEqual(item["target_level_label"], expected_label)
+
     def test_legacy_rain_cancel_without_refund_data_has_recovery_link(self):
         lesson_date = timezone.localdate() - timedelta(days=1)
         start_at = timezone.make_aware(
@@ -725,8 +796,8 @@ class ReservationFlowSmokeTests(TestCase):
                 "open_rain": availability.pk,
             },
         )
-        self.assertContains(execution_response, "雨天中止の返金情報を入力してください")
-        self.assertContains(execution_response, "雨天中止・返金情報を登録")
+        self.assertContains(execution_response, "中止時の返金・コート支払情報を入力してください")
+        self.assertContains(execution_response, "中止・返金情報を登録")
 
     def test_substitute_contractor_sees_fixed_lesson_weekly(self):
         fixed_lesson = self._create_fixed_lesson(
