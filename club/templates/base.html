@@ -890,7 +890,7 @@
 
   </style>
 </head>
-<body>
+<body{% if user.is_authenticated and user.role != "member" %} class="operations-shell"{% endif %}>
   <header class="topbar">
     <div class="wrap">
       <div class="topbar-row">

@@ -112,3 +112,18 @@ class OperationsResponsiveTemplateTests(TestCase):
     def test_common_responsive_stylesheet_is_loaded(self):
         source = get_template("base.html").template.source
         self.assertIn("club/operations-responsive.css", source)
+        self.assertIn('class="operations-shell"', source)
+
+    def test_settlement_keeps_people_join_separate_from_name_wrapping(self):
+        source = get_template("coach/admin_settlement.html").template.source
+        self.assertIn('coach_names|join:" / "', source)
+        self.assertIn('class="person-name"', source)
+        self.assertIn('class="record-date date-time"', source)
+
+    def test_common_mobile_foundation_covers_forms_buttons_and_tables(self):
+        with open("club/static/club/operations-responsive.css", encoding="utf-8") as css_file:
+            source = css_file.read()
+        self.assertIn(".operations-shell .main select", source)
+        self.assertIn("min-height:44px", source)
+        self.assertIn("overflow-x:auto", source)
+        self.assertNotIn("word-break:break-all", source.replace(" ", ""))

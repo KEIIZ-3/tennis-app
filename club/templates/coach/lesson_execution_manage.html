@@ -103,7 +103,7 @@
           <div class="lesson-top">
             <div>
               <div class="lesson-date">{{ row.start_local|date:"Y/m/d" }} {{ row.start_local|date:"H:i" }}〜{{ row.end_local|date:"H:i" }}</div>
-              <div class="lesson-meta">{{ row.availability.get_lesson_type_display }} / {{ row.availability.court }}<br>担当：{{ row.coach_names }}</div>
+              <div class="lesson-meta">{{ row.availability.get_lesson_type_display }} / {{ row.availability.court }}<br>担当：<span class="person-name">{{ row.coach_names|join:" / " }}</span></div>
             </div>
             <span class="status {{ row.status_class }}">{{ row.status_label }}</span>
           </div>

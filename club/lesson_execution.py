@@ -289,12 +289,12 @@ def _fixed_coach_names(fixed_lesson):
         if coach_name and coach_name != "-" and coach_name not in names:
             names.append(coach_name)
 
-    return "・".join(names) or "-"
+    return names or ["-"]
 
 
 def _availability_coach_names(availability):
     assigned = availability.substitute_coach or availability.coach
-    return _display_name(assigned)
+    return [_display_name(assigned)]
 
 
 def _reservation_queryset(slot):
