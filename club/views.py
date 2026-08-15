@@ -1722,6 +1722,7 @@ def lesson_calendar_view(request):
         return redirect(redirect_url)
 
     target_year, target_month = _parse_target_month(request.GET.get("year"), request.GET.get("month"))
+    from . import lesson_execution
     from .lesson_execution_storage import read_status_map
     from .settlement_models import MonthlySettlement
 
@@ -1735,7 +1736,6 @@ def lesson_calendar_view(request):
         else {}
     )
     month_start, next_month = _month_start_end(target_year, target_month)
-    calendar_cancellation_types = {}
     occurrence_reservations = Reservation.objects.filter(
         start_at__date__gte=month_start,
         start_at__date__lt=next_month,
@@ -1753,40 +1753,6 @@ def lesson_calendar_view(request):
         else:
             continue
         occurrence_statuses.setdefault(canceled_key, []).append(occurrence_reservation)
-    for canceled_key, occurrence_rows in occurrence_statuses.items():
-        if any(
-            row.status in (Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING)
-            for row in occurrence_rows
-        ):
-            continue
-        canceled_rows = [
-            row for row in occurrence_rows
-            if row.status in (
-                Reservation.STATUS_CANCELED,
-                Reservation.STATUS_RAIN_CANCELED,
-            )
-        ]
-        if not canceled_rows:
-            continue
-        if not any(
-            row.status == Reservation.STATUS_RAIN_CANCELED
-            or "雨天中止" in str(row.cancellation_reason or "")
-            or "レッスン中止" in str(row.cancellation_reason or "")
-            for row in canceled_rows
-        ):
-            continue
-        canceled_type = (
-            "rain"
-            if any(
-                row.status == Reservation.STATUS_RAIN_CANCELED
-                or "雨天中止" in str(row.cancellation_reason or "")
-                for row in canceled_rows
-            )
-            else "other"
-        )
-        if canceled_type == "rain" or canceled_key not in calendar_cancellation_types:
-            calendar_cancellation_types[canceled_key] = canceled_type
-
     prev_year = target_year
     prev_month = target_month - 1
     if prev_month == 0:
@@ -2030,6 +1996,8 @@ def lesson_calendar_view(request):
         user_slot_status_override="",
         user_waitlist_id_override="",
         is_recruitment_closed=False,
+        fixed_lesson=None,
+        availability=None,
     ):
         start_local = _local_dt(start_at)
         end_local = _local_dt(end_at)
@@ -2041,19 +2009,36 @@ def lesson_calendar_view(request):
             if fixed_lesson_id and lesson_date
             else f"availability:{availability_id}"
         )
-        execution_status = str(
-            (calendar_execution_statuses.get(execution_key) or {}).get("status")
-            or ""
+        execution_status, cancellation_type = lesson_execution.effective_status(
+            calendar_execution_statuses.get(execution_key),
+            occurrence_statuses.get(execution_key, []),
+            end_at=end_at,
         )
-        cancellation_type = str(
-            calendar_cancellation_types.get(execution_key)
-            or (calendar_execution_statuses.get(execution_key) or {}).get("cancellation_type")
-            or "rain"
+        cancellation_type = cancellation_type or lesson_execution.CANCELLATION_TYPE_RAIN
+        is_rain_canceled = execution_status in (
+            lesson_execution.STATUS_RAIN_CANCELED,
+            lesson_execution.STATUS_REFUND_PENDING,
+            lesson_execution.STATUS_REFUNDED,
         )
-        is_rain_canceled = bool(calendar_cancellation_types.get(execution_key)) or execution_status in (
-            "rain_canceled",
-            "refund_pending",
-            "refunded",
+        can_manage_execution = bool(
+            availability_id
+            and availability is not None
+            and lesson_execution.can_manage_occurrence(request.user, availability, fixed_lesson)
+        )
+        can_register_cancellation = bool(
+            can_manage_execution
+            and execution_status in (
+                lesson_execution.STATUS_SCHEDULED,
+                lesson_execution.STATUS_UNCONFIRMED,
+                lesson_execution.STATUS_HELD,
+            )
+        )
+        cancellation_url = (
+            f"{reverse('club:lesson_execution_manage')}?"
+            f"{urlencode({'year': target_year, 'month': target_month, 'open_rain': availability_id})}"
+            f"#lesson-{availability_id}"
+            if can_register_cancellation
+            else ""
         )
 
         can_book = False
@@ -2169,6 +2154,8 @@ def lesson_calendar_view(request):
             "reserve_url": reserve_url,
             "member_list_url": member_list_url,
             "court_expense_url": court_expense_url,
+            "cancellation_url": cancellation_url,
+            "can_register_cancellation": can_register_cancellation,
             "calendar_url": calendar_url,
             "calendar_login_url": (
                 member_list_url
@@ -2334,6 +2321,8 @@ def lesson_calendar_view(request):
                 user_slot_status_override=fixed_user_status,
                 user_waitlist_id_override=fixed_user_waitlist_id,
                 is_recruitment_closed=is_recruitment_closed,
+                fixed_lesson=fixed_lesson,
+                availability=matching_availability,
             )
 
             day_event_map.setdefault(cursor_date, [])
@@ -2380,6 +2369,7 @@ def lesson_calendar_view(request):
         item = _build_display_item(
             item_id=str(availability.pk),
             availability_id=str(availability.pk),
+            availability=availability,
             source_kind="availability",
             title="通常レッスン" if availability.lesson_type == Reservation.LESSON_GENERAL else availability.get_lesson_type_display(),
             lesson_type=availability.lesson_type,

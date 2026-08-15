@@ -129,6 +129,24 @@ def _is_allowed(user):
     )
 
 
+def effective_status(entry, reservations, *, end_at, now=None):
+    """Expose the canonical occurrence-state decision to read-only callers."""
+    return _effective_status(entry or {}, reservations, end_at=end_at, now=now)
+
+
+def can_manage_occurrence(user, availability, fixed_lesson=None):
+    """Use the lesson-execution permission boundary for calendar entry points."""
+    if not _is_allowed(user):
+        return False
+    return _user_can_manage_slot(
+        user,
+        {
+            "availability": availability,
+            "fixed_lesson": fixed_lesson,
+        },
+    )
+
+
 def _user_can_manage_slot(user, slot):
     if getattr(user, "role", "") != "contractor_coach":
         return True
