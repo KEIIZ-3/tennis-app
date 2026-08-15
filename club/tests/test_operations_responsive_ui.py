@@ -1,3 +1,4 @@
+import re
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -190,3 +191,48 @@ class OperationsResponsiveTemplateTests(TestCase):
         self.assertIn("@media(max-width:430px)", source)
         self.assertIn(".revenue-table-wrap", source)
         self.assertNotIn("word-break:break-all", source.replace(" ", ""))
+
+    def test_common_wrapping_rules_separate_names_values_and_dates(self):
+        with open("club/static/club/operations-responsive.css", encoding="utf-8") as css_file:
+            source = css_file.read()
+
+        name_rule = re.search(
+            r"\.operations-shell \.main :is\(\.person-name,\.coach-name\)\{([^}]*)\}",
+            source,
+        )
+        value_rule = re.search(
+            r"\.operations-shell \.main :is\(\.summary-value,\.metric-value,\.stat-value\)\{([^}]*)\}",
+            source,
+        )
+        date_rule = re.search(
+            r"\.operations-shell \.main :is\(\.date-time,\.lesson-date,\.record-date,\.record-amount\)\{([^}]*)\}",
+            source,
+        )
+
+        self.assertIsNotNone(name_rule)
+        self.assertIn("word-break:keep-all", name_rule.group(1))
+        self.assertIn("overflow-wrap:anywhere", name_rule.group(1))
+        self.assertNotIn("overflow-wrap:normal", name_rule.group(1))
+        self.assertIsNotNone(value_rule)
+        self.assertIn("overflow-wrap:anywhere", value_rule.group(1))
+        self.assertNotIn("white-space:nowrap", value_rule.group(1))
+        self.assertIsNotNone(date_rule)
+        self.assertIn("white-space:nowrap", date_rule.group(1))
+        self.assertNotIn("word-break:break-all", source.replace(" ", ""))
+
+    def test_long_mobile_content_keeps_shrinkable_card_structure(self):
+        with open("club/static/club/operations-responsive.css", encoding="utf-8") as css_file:
+            common_source = css_file.read()
+        analytics_source = get_template(
+            "coach/analytics_dashboard.html"
+        ).template.source
+        settlement_source = get_template(
+            "coach/admin_settlement.html"
+        ).template.source
+
+        self.assertIn(".operations-shell .main,.operations-shell .main>*{min-width:0}", common_source)
+        self.assertIn("@media(max-width:430px)", common_source)
+        self.assertIn("@media(max-width:390px)", analytics_source)
+        self.assertIn("@media(max-width:768px)", settlement_source)
+        self.assertIn(".metric-card{\n    min-width:0", analytics_source)
+        self.assertIn("grid-template-columns:repeat(4,minmax(0,1fr))", settlement_source)
