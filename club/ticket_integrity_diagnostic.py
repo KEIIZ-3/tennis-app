@@ -133,7 +133,13 @@ def diagnose_ticket_integrity():
         if not is_canceled and rows and not active_rows:
             reservation_findings.append(_finding("active_with_all_consumptions_refunded", reservation_id=row["id"]))
         if rows and not row["ticket_consumed_at"]:
-            reservation_findings.append(_finding("consumption_without_consumed_at", reservation_id=row["id"]))
+            # Historical consumptions are persisted accounting evidence even when
+            # the later Reservation marker is absent.  Do not call this damage or
+            # suggest recreating/refunding an otherwise valid consumption.
+            reservation_unverifiable.append(_finding(
+                "historical_consumption_without_consumed_at_marker",
+                reservation_id=row["id"],
+            ))
         if row["ticket_refunded_at"] and active_rows:
             reservation_findings.append(_finding("refunded_at_with_unrefunded_consumption", reservation_id=row["id"]))
         if rows and total != int(row["tickets_used"]):
