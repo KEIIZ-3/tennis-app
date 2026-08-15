@@ -1735,6 +1735,57 @@ def lesson_calendar_view(request):
         else {}
     )
     month_start, next_month = _month_start_end(target_year, target_month)
+    calendar_cancellation_types = {}
+    occurrence_reservations = Reservation.objects.filter(
+        start_at__date__gte=month_start,
+        start_at__date__lt=next_month,
+    ).select_related("fixed_lesson", "availability")
+    occurrence_statuses = {}
+    for occurrence_reservation in occurrence_reservations:
+        local_start = _local_dt(occurrence_reservation.start_at)
+        if occurrence_reservation.fixed_lesson_id:
+            canceled_key = (
+                f"fixed:{occurrence_reservation.fixed_lesson_id}:"
+                f"{local_start.date().isoformat()}"
+            )
+        elif occurrence_reservation.availability_id:
+            canceled_key = f"availability:{occurrence_reservation.availability_id}"
+        else:
+            continue
+        occurrence_statuses.setdefault(canceled_key, []).append(occurrence_reservation)
+    for canceled_key, occurrence_rows in occurrence_statuses.items():
+        if any(
+            row.status in (Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING)
+            for row in occurrence_rows
+        ):
+            continue
+        canceled_rows = [
+            row for row in occurrence_rows
+            if row.status in (
+                Reservation.STATUS_CANCELED,
+                Reservation.STATUS_RAIN_CANCELED,
+            )
+        ]
+        if not canceled_rows:
+            continue
+        if not any(
+            row.status == Reservation.STATUS_RAIN_CANCELED
+            or "雨天中止" in str(row.cancellation_reason or "")
+            or "レッスン中止" in str(row.cancellation_reason or "")
+            for row in canceled_rows
+        ):
+            continue
+        canceled_type = (
+            "rain"
+            if any(
+                row.status == Reservation.STATUS_RAIN_CANCELED
+                or "雨天中止" in str(row.cancellation_reason or "")
+                for row in canceled_rows
+            )
+            else "other"
+        )
+        if canceled_type == "rain" or canceled_key not in calendar_cancellation_types:
+            calendar_cancellation_types[canceled_key] = canceled_type
 
     prev_year = target_year
     prev_month = target_month - 1
@@ -1995,10 +2046,11 @@ def lesson_calendar_view(request):
             or ""
         )
         cancellation_type = str(
-            (calendar_execution_statuses.get(execution_key) or {}).get("cancellation_type")
+            calendar_cancellation_types.get(execution_key)
+            or (calendar_execution_statuses.get(execution_key) or {}).get("cancellation_type")
             or "rain"
         )
-        is_rain_canceled = execution_status in (
+        is_rain_canceled = bool(calendar_cancellation_types.get(execution_key)) or execution_status in (
             "rain_canceled",
             "refund_pending",
             "refunded",
