@@ -115,6 +115,60 @@ class TicketLifecycleE2ETests(TestCase):
         self.assertEqual([(row.purchase_id, row.tickets_used) for row in rows], [(lot_a.pk, 1), (lot_b.pk, 1)])
         self.assertEqual(reservation.participant_ticket_price_snapshot, 7500)
 
+    def test_legacy_balance_without_purchase_is_consumed_without_synthetic_evidence(self):
+        self.member.ticket_balance = 2
+        self.member.save(update_fields=["ticket_balance"])
+        reservation = self.reservation()
+
+        use_ledger = reservation.consume_tickets()
+        reservation.refresh_from_db()
+        self.member.refresh_from_db()
+
+        self.assertEqual((use_ledger.change_amount, use_ledger.balance_after), (-1, 1))
+        self.assertEqual(self.member.ticket_balance, 1)
+        self.assertIsNotNone(reservation.ticket_consumed_at)
+        self.assertIsNone(reservation.participant_ticket_price_snapshot)
+        self.assertFalse(TicketPurchase.objects.exists())
+        self.assertFalse(TicketConsumption.objects.exists())
+        self.assertFalse(
+            TicketPurchase.objects.filter(
+                purchase_type=TicketPurchase.PURCHASE_TYPE_LEGACY,
+                unit_price=0,
+                label="旧データ移行分",
+            ).exists()
+        )
+
+        reservation.cancel()
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.ticket_balance, 2)
+        self.assertFalse(TicketPurchase.objects.exists())
+        self.assertFalse(TicketConsumption.objects.exists())
+
+    def test_partial_purchase_evidence_consumes_only_proven_lot_and_keeps_price_unknown(self):
+        _, lot = self.purchase(tickets=1, unit_price=3500)
+        self.member.ticket_balance = 3
+        self.member.save(update_fields=["ticket_balance"])
+        reservation = self.reservation(tickets=2)
+
+        reservation.consume_tickets()
+        reservation.refresh_from_db()
+        self.member.refresh_from_db()
+        lot.refresh_from_db()
+        consumption = TicketConsumption.objects.get(reservation=reservation)
+
+        self.assertEqual((self.member.ticket_balance, lot.remaining_tickets), (1, 0))
+        self.assertEqual((consumption.tickets_used, consumption.unit_price_snapshot), (1, 3500))
+        self.assertIsNone(reservation.participant_ticket_price_snapshot)
+        self.assertEqual(TicketPurchase.objects.count(), 1)
+
+        reservation.cancel()
+        self.member.refresh_from_db()
+        lot.refresh_from_db()
+        consumption.refresh_from_db()
+        self.assertEqual((self.member.ticket_balance, lot.remaining_tickets), (3, 1))
+        self.assertIsNotNone(consumption.refunded_at)
+        self.assertEqual(TicketPurchase.objects.count(), 1)
+
     def test_zero_ticket_reservation_does_not_create_ticket_state(self):
         self.purchase()
         reservation = self.reservation(tickets=0)
