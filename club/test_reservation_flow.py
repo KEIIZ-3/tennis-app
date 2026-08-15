@@ -148,7 +148,7 @@ class ReservationFlowSmokeTests(TestCase):
                 response = self.client.get(reverse("club:reservation_list"))
                 self.assertEqual(response.status_code, 403)
 
-    def test_calendar_cancellation_entry_uses_execution_target_for_coach_only(self):
+    def test_calendar_has_no_direct_cancellation_entry(self):
         start_at = timezone.make_aware(
             datetime.combine(self.lesson_date, datetime.min.time()).replace(hour=10)
         )
@@ -162,24 +162,14 @@ class ReservationFlowSmokeTests(TestCase):
             capacity=6,
             status=CoachAvailability.STATUS_OPEN,
         )
-        expected_url = (
-            f"{reverse('club:lesson_execution_manage')}?year={self.lesson_date.year}"
-            f"&amp;month={self.lesson_date.month}&amp;open_rain={availability.pk}"
-            f"#lesson-{availability.pk}"
-        )
-
         self.client.force_login(self.coach)
         coach_response = self.client.get(
             reverse("club:lesson_calendar"),
             data={"year": self.lesson_date.year, "month": self.lesson_date.month},
         )
-        row = next(
-            item for item in coach_response.context["schedule_rows"]
-            if str(item["availability_id"]) == str(availability.pk)
-        )
-        self.assertTrue(row["can_register_cancellation"])
-        self.assertContains(coach_response, "中止を登録", count=2)
-        self.assertContains(coach_response, expected_url)
+        self.assertNotContains(coach_response, "中止を登録")
+        self.assertNotContains(coach_response, "calendar-cancel-action")
+        self.assertNotContains(coach_response, "cancellation-entry-button")
 
         execution_response = self.client.get(
             reverse("club:lesson_execution_manage"),
@@ -205,7 +195,7 @@ class ReservationFlowSmokeTests(TestCase):
         )
         self.assertEqual(forbidden_response.status_code, 403)
 
-    def test_calendar_cancellation_entry_follows_effective_execution_status(self):
+    def test_calendar_rows_do_not_expose_dead_cancellation_context(self):
         start_at = timezone.make_aware(
             datetime.combine(self.lesson_date, datetime.min.time()).replace(hour=11)
         )
@@ -227,11 +217,11 @@ class ReservationFlowSmokeTests(TestCase):
         url = reverse("club:lesson_calendar")
         query = {"year": self.lesson_date.year, "month": self.lesson_date.month}
 
-        for status, expected in (
-            (lesson_execution.STATUS_HELD, True),
-            (lesson_execution.STATUS_RAIN_CANCELED, False),
-            (lesson_execution.STATUS_REFUND_PENDING, False),
-            (lesson_execution.STATUS_REFUNDED, False),
+        for status in (
+            lesson_execution.STATUS_HELD,
+            lesson_execution.STATUS_RAIN_CANCELED,
+            lesson_execution.STATUS_REFUND_PENDING,
+            lesson_execution.STATUS_REFUNDED,
         ):
             with self.subTest(status=status):
                 lesson_execution.save_status(
@@ -245,8 +235,91 @@ class ReservationFlowSmokeTests(TestCase):
                     item for item in response.context["schedule_rows"]
                     if str(item["availability_id"]) == str(availability.pk)
                 )
-                self.assertEqual(row["can_register_cancellation"], expected)
-                self.assertEqual(bool(row["cancellation_url"]), expected)
+                self.assertNotIn("can_register_cancellation", row)
+                self.assertNotIn("cancellation_url", row)
+
+    def test_member_list_uses_shared_execution_actions(self):
+        start_at = timezone.make_aware(
+            datetime.combine(self.lesson_date, datetime.min.time()).replace(hour=12)
+        )
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+            capacity=6,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            availability=availability,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+            status=Reservation.STATUS_ACTIVE,
+        )
+        url = reverse("club:lesson_calendar_member_list")
+        query = {"availability_id": availability.pk}
+
+        self.client.force_login(self.coach)
+        response = self.client.get(url, data=query)
+        self.assertContains(response, ">実施登録</button>", html=False)
+        self.assertContains(response, ">中止登録</a>", html=False)
+        self.assertNotContains(response, ">雨天中止</button>", html=False)
+        self.assertContains(response, f"open_rain={availability.pk}")
+
+        settlement = MonthlySettlement.objects.get(
+            year=self.lesson_date.year,
+            month=self.lesson_date.month,
+        )
+        lesson_execution.save_status(
+            settlement,
+            f"availability:{availability.pk}",
+            lesson_execution.STATUS_HELD,
+            self.coach,
+        )
+        held_response = self.client.get(url, data=query)
+        self.assertContains(held_response, "実施登録を解除")
+        self.assertContains(held_response, ">中止登録</a>", html=False)
+
+        lesson_execution.save_status(
+            settlement,
+            f"availability:{availability.pk}",
+            lesson_execution.STATUS_REFUND_PENDING,
+            self.coach,
+            cancellation_type=lesson_execution.CANCELLATION_TYPE_OTHER,
+        )
+        canceled_response = self.client.get(url, data=query)
+        self.assertContains(canceled_response, "実施状況：中止")
+        self.assertNotContains(canceled_response, ">実施登録</button>", html=False)
+        self.assertNotContains(canceled_response, ">中止登録</a>", html=False)
+
+    def test_member_list_hides_management_actions_from_member(self):
+        start_at = timezone.make_aware(
+            datetime.combine(self.lesson_date, datetime.min.time()).replace(hour=13)
+        )
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+            capacity=6,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        self.client.force_login(self.member)
+        response = self.client.get(
+            reverse("club:lesson_calendar_member_list"),
+            data={"availability_id": availability.pk},
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertNotIn("中止登録", response.content.decode())
 
     def test_member_can_cancel_own_reservation_from_confirmation(self):
         self.member.ticket_balance = 10

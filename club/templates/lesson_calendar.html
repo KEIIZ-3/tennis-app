@@ -833,27 +833,6 @@
     color:#9a3412;
   }
 
-  .calendar-cancel-action,
-  .cancellation-entry-button{
-    border-color:#fecaca;
-    background:#fff1f2;
-    color:#b91c1c;
-  }
-
-  .calendar-cancel-action{
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    min-height:34px;
-    padding:5px 4px;
-    border:1px solid #fecaca;
-    border-radius:8px;
-    font-size:10px;
-    font-weight:1000;
-    line-height:1.15;
-    text-align:center;
-    overflow-wrap:anywhere;
-  }
 
   @media (max-width:768px){
     .lesson-page{
@@ -1033,12 +1012,6 @@
       border-radius:3px;
       font-size:7px;
       line-height:1.05;
-    }
-
-    .calendar-cancel-action{
-      min-height:36px;
-      padding:4px 2px;
-      font-size:8px;
     }
 
     .event-level{
@@ -1430,9 +1403,6 @@
                               </div>
                             </a>
                           {% endif %}
-                          {% if item.can_register_cancellation %}
-                            <a href="{{ item.cancellation_url }}" class="calendar-cancel-action">中止を登録</a>
-                          {% endif %}
                         {% endfor %}
                       </div>
                     {% endif %}
@@ -1508,11 +1478,6 @@
               {% endif %}
             {% else %}
               <a href="{{ item.login_url }}" class="btn btn-primary reserve-button">ログインして予約</a>
-            {% endif %}
-            {% if item.can_register_cancellation %}
-              <div class="reserve-form">
-                <a href="{{ item.cancellation_url }}" class="btn reserve-button cancellation-entry-button">中止を登録</a>
-              </div>
             {% endif %}
           </div>
         {% endfor %}
