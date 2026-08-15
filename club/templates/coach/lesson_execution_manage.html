@@ -13,6 +13,7 @@
   .filter{display:grid;grid-template-columns:1fr 1fr auto auto auto;gap:9px;align-items:end}
   label{display:block;margin-bottom:5px;color:#475569;font-size:12px;font-weight:900}
   input{width:100%;min-height:42px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:11px;background:#fff;box-sizing:border-box}
+  fieldset{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0;padding:10px 12px;border:1px solid #cbd5e1;border-radius:12px}fieldset legend{font-size:12px;font-weight:1000}fieldset label{display:flex;align-items:center;gap:6px;margin:0;font-size:14px}fieldset input[type="radio"]{width:auto;min-height:0}fieldset .help{flex-basis:100%;margin:0}
   .summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
   .summary{padding:13px;border:1px solid #e5e7eb;border-radius:15px;background:#fff}
   .summary-label{color:#64748b;font-size:12px;font-weight:900}.summary-value{margin-top:5px;font-size:22px;font-weight:1000}
@@ -78,7 +79,7 @@
   {% if is_month_closed %}
     <div class="notice closed">この月は締め済みです。開催状態を変更する場合は、先に月次精算画面で締めを解除してください。</div>
   {% else %}
-    <div class="notice">実施済みにしたレッスンだけがコート代の精算対象になります。雨天中止を登録すると予約をキャンセルし、消費済みチケットを返却して売上から除外します。</div>
+    <div class="notice">実施済みにしたレッスンだけがコート代の精算対象になります。中止を登録すると予約をキャンセルし、消費済みチケットを返却して売上から除外します。</div>
   {% endif %}
 
   <section class="summary-grid">
@@ -128,27 +129,29 @@
               {% if row.can_mark_rain or row.rain_refund_missing %}
                 {% if open_rain_id == row.availability.id|stringformat:"s" %}
                 <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}">{% if pending_only %}<input type="hidden" name="pending" value="1">{% endif %}<input type="hidden" name="availability_id" value="{{ row.availability.id }}"><input type="hidden" name="action" value="rain_canceled">
-                  <div class="confirmed-note">雨天中止の返金情報を入力してください。ここで選んだコート支払者が、返金確認後の付与先になります。</div>
+                  <div class="confirmed-note">中止時の返金・コート支払情報を入力してください。ここで選んだコート支払者が、返金確認後の付与先になります。</div>
+                  <fieldset><legend>中止種別</legend><label><input type="radio" name="cancellation_type" value="rain" required> 雨天中止</label><label><input type="radio" name="cancellation_type" value="other" required> 中止</label><p class="help">「中止」は人数不足・開催判断など、雨天以外の中止です。</p></fieldset>
                   <label>予約アカウント<select name="rain_booking_account" required onchange="const isOther=this.value==='other'; const other=this.form.querySelector('[name=rain_booking_account_other]'); const collection=this.form.querySelector('[data-rain-collection]'); const collectionSelect=this.form.querySelector('[name=rain_collection_coach_id]'); other.hidden=!isOther; other.required=isOther; collection.hidden=!isOther; collectionSelect.required=isOther; if(!isOther){other.value=''; collectionSelect.value='';}"><option value="">選択してください</option>{% for coach in main_coach_options %}<option value="{{ coach.id }}">{{ coach.display_name }}</option>{% endfor %}<option value="other">その他</option></select></label>
                   <input name="rain_booking_account_other" type="text" placeholder="その他のアカウント情報" hidden>
                   <label data-rain-collection hidden>回収予定コーチ<select name="rain_collection_coach_id"><option value="">選択してください</option>{% for coach in main_coach_options %}<option value="{{ coach.id }}">{{ coach.display_name }}</option>{% endfor %}</select></label>
                   <label>コート支払者<select name="rain_court_payer_id" required><option value="">選択してください</option>{% for coach in main_coach_options %}<option value="{{ coach.id }}">{{ coach.display_name }}</option>{% endfor %}</select></label>
-                  <button type="submit" class="btn btn-rain" onclick="return confirm('入力内容を保存し、コート代を返金待ちにしますか？');">雨天中止・返金情報を登録</button>
+                  <button type="submit" class="btn btn-rain" onclick="return confirm('入力内容を保存し、コート代を返金待ちにしますか？');">中止・返金情報を登録</button>
                 </form>
                 {% else %}
-                  <a href="?year={{ selected_year }}&month={{ selected_month }}{% if pending_only %}&pending=1{% endif %}&open_rain={{ row.availability.id }}#lesson-{{ row.availability.id }}" class="btn btn-rain">雨天中止・コート支払者入力へ</a>
+                  <a href="?year={{ selected_year }}&month={{ selected_month }}{% if pending_only %}&pending=1{% endif %}&open_rain={{ row.availability.id }}#lesson-{{ row.availability.id }}" class="btn btn-rain">中止・コート支払者入力へ</a>
                 {% endif %}
               {% endif %}
               {% if row.can_mark_refunded %}
                 <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}">{% if pending_only %}<input type="hidden" name="pending" value="1">{% endif %}<input type="hidden" name="availability_id" value="{{ row.availability.id }}"><input type="hidden" name="action" value="refunded"><button type="submit" class="btn btn-held" onclick="return confirm('コート側からの返金を確認済みにしますか？');">返金確認</button></form>
               {% endif %}
               {% if row.status == "held" %}
-                <a href="{% url 'club:coach_expense_manage' %}" class="btn">経費登録</a>
+                <a href="{{ row.court_expense_url }}#payer_coach_id" class="btn">コート支払者を登録</a>
+                <a href="{{ row.court_expense_url }}#amount" class="btn">コート代を登録・修正</a>
               {% endif %}
             </div>
           {% endif %}
           {% if row.status == "refund_pending" %}
-            <div class="confirmed-note">雨天中止返金待ち：予約アカウント {{ row.rain_refund_account_name }} / 回収予定 {{ row.rain_refund_collection_coach_name }} / コート支払者 {{ row.rain_refund_payer_coach_name }} / {{ row.court_amount }}円</div>
+            <div class="confirmed-note">{{ row.status_label }}返金待ち：予約アカウント {{ row.rain_refund_account_name }} / 回収予定 {{ row.rain_refund_collection_coach_name }} / コート支払者 {{ row.rain_refund_payer_coach_name }} / {{ row.court_amount }}円</div>
           {% endif %}
         </article>
       {% empty %}

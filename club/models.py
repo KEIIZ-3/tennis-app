@@ -2136,7 +2136,7 @@ class Reservation(models.Model, LessonTypeMixin):
         self.cancellation_reason = reason or "コーチ却下"
         return True
 
-    def cancel(self, created_by=None, reason=""):
+    def cancel(self, created_by=None, reason="", schedule_notification=True):
         ensure_accounting_month_is_open(self.start_at)
         with transaction.atomic():
             locked_self = Reservation.objects.select_for_update().get(pk=self.pk)
@@ -2164,7 +2164,8 @@ class Reservation(models.Model, LessonTypeMixin):
                 schedule_reservation_canceled_notification,
             )
 
-            schedule_reservation_canceled_notification(locked_self.pk)
+            if schedule_notification:
+                schedule_reservation_canceled_notification(locked_self.pk)
 
         self.status = self.STATUS_CANCELED
         self.canceled_at = canceled_at

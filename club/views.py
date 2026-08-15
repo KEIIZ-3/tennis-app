@@ -1994,6 +1994,10 @@ def lesson_calendar_view(request):
             (calendar_execution_statuses.get(execution_key) or {}).get("status")
             or ""
         )
+        cancellation_type = str(
+            (calendar_execution_statuses.get(execution_key) or {}).get("cancellation_type")
+            or "rain"
+        )
         is_rain_canceled = execution_status in (
             "rain_canceled",
             "refund_pending",
@@ -2016,7 +2020,7 @@ def lesson_calendar_view(request):
         user_waitlist_id = user_waitlist_id_override or user_waitlist_map.get(slot_key, "")
 
         if is_rain_canceled:
-            disabled_reason = "雨天中止"
+            disabled_reason = "中止" if cancellation_type == "other" else "雨天中止"
         elif start_at < timezone.now():
             disabled_reason = "受付終了"
         elif is_recruitment_closed:
@@ -2064,7 +2068,7 @@ def lesson_calendar_view(request):
             disabled_reason = "受付準備中"
 
         if is_rain_canceled:
-            customer_status_label = "雨天中止"
+            customer_status_label = "中止" if cancellation_type == "other" else "雨天中止"
         elif start_at < timezone.now():
             customer_status_label = "実施済み" if target_date < today else "受付終了"
         elif is_recruitment_closed:
@@ -2139,7 +2143,10 @@ def lesson_calendar_view(request):
             "has_substitute": bool(substitute_coach),
             "court_name": str(court) if court else "未定",
             "lesson_type_label": lesson_type_label,
-            "target_level_label": "雨天中止" if is_rain_canceled else target_level_label,
+            "target_level_label": (
+                ("中止" if cancellation_type == "other" else "雨天中止")
+                if is_rain_canceled else target_level_label
+            ),
             "target_level_2": target_level_2,
             "capacity": capacity,
             "member_count": int(member_count or 0),
