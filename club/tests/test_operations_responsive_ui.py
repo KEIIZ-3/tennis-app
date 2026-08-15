@@ -114,6 +114,67 @@ class OperationsResponsiveTemplateTests(TestCase):
         self.assertIn("club/operations-responsive.css", source)
         self.assertIn('class="operations-shell"', source)
 
+    def test_operations_shell_matches_staff_superuser_and_role_access(self):
+        User = get_user_model()
+        cases = (
+            ("staff_member", User.ROLE_MEMBER, True, False, True),
+            ("superuser_member", User.ROLE_MEMBER, False, True, True),
+            ("coach_user", User.ROLE_COACH, False, False, True),
+            ("ordinary_member", User.ROLE_MEMBER, False, False, False),
+        )
+        for username, role, is_staff, is_superuser, expected in cases:
+            with self.subTest(username=username):
+                user = User.objects.create_user(
+                    username=username,
+                    password="password12345",
+                    role=role,
+                    is_staff=is_staff,
+                    is_superuser=is_superuser,
+                    is_profile_completed=True,
+                )
+                self.client.force_login(user)
+                url_name = "home" if expected else "terms"
+                response = self.client.get(reverse(f"club:{url_name}"))
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    'class="operations-shell"' in response.content.decode(),
+                    expected,
+                )
+
+    def test_admin_dashboard_destinations_use_responsive_templates(self):
+        dashboard_source = get_template("coach/admin_dashboard.html").template.source
+        destination_templates = {
+            "analytics_dashboard": "coach/analytics_dashboard.html",
+            "coach_today_lessons": "coach/today_lessons.html",
+            "lesson_calendar": "lesson_calendar.html",
+            "reservation_list": "reservations/list.html",
+            "coach_expense_manage": "coach/court_expense_transfer.html",
+            "coach_revenue_summary": "coach/revenue_summary.html",
+            "coach_admin_settlement": "coach/admin_settlement.html",
+            "stringing_order_list": "stringing/list.html",
+            "coach_fixed_lesson_weekly": "coach/fixed_lesson_weekly.html",
+            "coach_availability_list": "coach/availability_list.html",
+            "lesson_execution_manage": "coach/lesson_execution_manage.html",
+            "coach_ticket_summary": "coach/ticket_summary.html",
+        }
+        for url_name, template_name in destination_templates.items():
+            with self.subTest(url_name=url_name):
+                self.assertIn("'club:%s'" % url_name, dashboard_source)
+                source = get_template(template_name).template.source
+                self.assertIn('{% extends "base.html" %}', source)
+
+    def test_management_tables_keep_internal_scroll_or_mobile_cards(self):
+        contracts = {
+            "coach/revenue_summary.html": "revenue-table-wrap",
+            "coach/ticket_summary.html": "mobile-card-area",
+            "coach/availability_list.html": "mobile-schedule-cards",
+            "reservations/list.html": "reservation-item",
+        }
+        for template_name, responsive_hook in contracts.items():
+            with self.subTest(template=template_name):
+                source = get_template(template_name).template.source
+                self.assertIn(responsive_hook, source)
+
     def test_settlement_keeps_people_join_separate_from_name_wrapping(self):
         source = get_template("coach/admin_settlement.html").template.source
         self.assertIn('coach_names|join:" / "', source)
@@ -126,4 +187,6 @@ class OperationsResponsiveTemplateTests(TestCase):
         self.assertIn(".operations-shell .main select", source)
         self.assertIn("min-height:44px", source)
         self.assertIn("overflow-x:auto", source)
+        self.assertIn("@media(max-width:430px)", source)
+        self.assertIn(".revenue-table-wrap", source)
         self.assertNotIn("word-break:break-all", source.replace(" ", ""))
