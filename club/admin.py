@@ -1,10 +1,12 @@
 import csv
 import io
+import uuid
 from pathlib import Path
 
 from openpyxl import load_workbook
 from django import forms
 from django.contrib import admin, messages
+from django.contrib.admin.helpers import ActionForm
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 from django.core.exceptions import ValidationError
@@ -42,6 +44,10 @@ from .user_admin_ticket_summary import UserAdminTicketSummaryMixin
 admin.site.site_header = "Play Design Tennis 管理サイト"
 admin.site.site_title = "Play Design Tennis 管理サイト"
 admin.site.index_title = "管理メニュー"
+
+
+class IdempotentTicketActionForm(ActionForm):
+    idempotency_token = forms.UUIDField(widget=forms.HiddenInput, initial=uuid.uuid4)
 
 
 _MODEL_VERBOSE_NAMES = {
@@ -524,6 +530,7 @@ class UserAdmin(UserAdminTicketSummaryMixin, BaseUserAdmin):
     search_fields = ("username", "full_name", "email", "phone_number")
     ordering = ("id",)
     actions = ("grant_tickets_selected", "grant_single_ticket", "grant_set4_tickets")
+    action_form = IdempotentTicketActionForm
 
     fieldsets = (
         (None, {"fields": ("username", "password")}),
@@ -610,6 +617,7 @@ class UserAdmin(UserAdminTicketSummaryMixin, BaseUserAdmin):
                 note = form.resolved_note()
                 tickets = form.cleaned_data["tickets"]
                 unit_price = form.cleaned_data["unit_price"]
+                idempotency_token = str(form.cleaned_data["idempotency_token"])
 
                 for user in members:
                     try:
@@ -622,6 +630,7 @@ class UserAdmin(UserAdminTicketSummaryMixin, BaseUserAdmin):
                             note=note,
                             created_by=request.user,
                             label=label,
+                            idempotency_key=f"admin-grant:{idempotency_token}:{user.pk}",
                         )
                         success_count += 1
                     except Exception as e:
@@ -670,6 +679,7 @@ class UserAdmin(UserAdminTicketSummaryMixin, BaseUserAdmin):
     @admin.action(description="チケット1枚を付与する（1枚 4,000円）")
     def grant_single_ticket(self, request, queryset):
         count = 0
+        idempotency_token = request.POST.get("idempotency_token", "")
         for user in queryset:
             if user.role != "member":
                 continue
@@ -683,6 +693,7 @@ class UserAdmin(UserAdminTicketSummaryMixin, BaseUserAdmin):
                     note="管理画面から1枚付与",
                     created_by=request.user,
                     label="1枚券",
+                    idempotency_key=f"admin-single:{idempotency_token}:{user.pk}" if idempotency_token else None,
                 )
                 count += 1
             except Exception as e:
@@ -693,6 +704,7 @@ class UserAdmin(UserAdminTicketSummaryMixin, BaseUserAdmin):
     @admin.action(description="4枚セットを付与する（1枚あたり 3,500円）")
     def grant_set4_tickets(self, request, queryset):
         count = 0
+        idempotency_token = request.POST.get("idempotency_token", "")
         for user in queryset:
             if user.role != "member":
                 continue
@@ -706,6 +718,7 @@ class UserAdmin(UserAdminTicketSummaryMixin, BaseUserAdmin):
                     note="管理画面から4枚セット付与",
                     created_by=request.user,
                     label="4枚セット",
+                    idempotency_key=f"admin-set4:{idempotency_token}:{user.pk}" if idempotency_token else None,
                 )
                 count += 1
             except Exception as e:

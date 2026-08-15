@@ -3,7 +3,7 @@ from datetime import date, datetime, time, timedelta
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
-from django.db import models, transaction
+from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
 from .capacity_policy import general_lesson_capacity
@@ -799,6 +799,7 @@ class TicketPurchase(models.Model):
     )
     purchased_at = models.DateTimeField(default=timezone.now)
     created_at = models.DateTimeField(auto_now_add=True)
+    idempotency_key = models.CharField(max_length=255, null=True, blank=True, unique=True)
 
     class Meta:
         ordering = ["purchased_at", "id"]
@@ -1308,36 +1309,54 @@ def purchase_tickets(
     fixed_lesson=None,
     purchased_at=None,
     label="",
+    idempotency_key=None,
 ):
     if tickets <= 0:
         raise ValidationError("購入枚数は1以上にしてください。")
 
-    with transaction.atomic():
-        ledger = apply_ticket_change(
-            user=user,
-            amount=tickets,
-            reason=reason,
-            note=note,
-            created_by=created_by,
-            reservation=reservation,
-            fixed_lesson=fixed_lesson,
-        )
+    normalized_key = (idempotency_key or "").strip() or None
 
-        locked_user = User.objects.select_for_update().get(pk=user.pk)
-        purchase = TicketPurchase.objects.create(
-            user=locked_user,
-            purchase_type=purchase_type,
-            total_tickets=tickets,
-            remaining_tickets=tickets,
-            unit_price=unit_price,
-            label=label,
-            note=note,
-            created_by=created_by if created_by and getattr(created_by, "pk", None) else None,
-            purchased_at=purchased_at or timezone.now(),
-        )
+    try:
+        with transaction.atomic():
+            if normalized_key:
+                existing = TicketPurchase.objects.filter(idempotency_key=normalized_key).first()
+                if existing:
+                    user.refresh_from_db(fields=["ticket_balance"])
+                    return None, existing
 
-        user.ticket_balance = locked_user.ticket_balance
-        return ledger, purchase
+            ledger = apply_ticket_change(
+                user=user,
+                amount=tickets,
+                reason=reason,
+                note=note,
+                created_by=created_by,
+                reservation=reservation,
+                fixed_lesson=fixed_lesson,
+            )
+
+            locked_user = User.objects.select_for_update().get(pk=user.pk)
+            purchase = TicketPurchase.objects.create(
+                user=locked_user,
+                purchase_type=purchase_type,
+                total_tickets=tickets,
+                remaining_tickets=tickets,
+                unit_price=unit_price,
+                label=label,
+                note=note,
+                created_by=created_by if created_by and getattr(created_by, "pk", None) else None,
+                purchased_at=purchased_at or timezone.now(),
+                idempotency_key=normalized_key,
+            )
+
+            user.ticket_balance = locked_user.ticket_balance
+            return ledger, purchase
+    except IntegrityError:
+        if normalized_key:
+            existing = TicketPurchase.objects.filter(idempotency_key=normalized_key).first()
+            if existing:
+                user.refresh_from_db(fields=["ticket_balance"])
+                return None, existing
+        raise
 
 
 class Reservation(models.Model, LessonTypeMixin):

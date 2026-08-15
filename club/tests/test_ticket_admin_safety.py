@@ -148,3 +148,64 @@ class TicketAdminSafetyTests(TestCase):
 
         self.member.refresh_from_db()
         self.assertEqual(self.member.ticket_balance, 4)
+
+    def test_grant_form_repeated_post_creates_one_purchase_and_ledger(self):
+        self.client.force_login(self.superuser)
+        url = reverse("admin:club_user_grant_tickets")
+        response = self.client.get(url, {"ids": str(self.member.pk)})
+        token = str(response.context["form"]["idempotency_token"].value())
+        data = {
+            "ids": str(self.member.pk),
+            "idempotency_token": token,
+            "tickets": 4,
+            "unit_price": 3500,
+            "label": "4枚セット",
+            "note": "現金購入",
+        }
+
+        first = self.client.post(url, data)
+        second = self.client.post(url, data)
+
+        self.assertEqual(first.status_code, 302)
+        self.assertEqual(second.status_code, 302)
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.ticket_balance, 8)
+        self.assertEqual(TicketPurchase.objects.filter(user=self.member).count(), 2)
+        self.assertEqual(
+            TicketLedger.objects.filter(user=self.member, change_amount=4).count(),
+            2,
+        )
+
+    def test_grant_form_different_tokens_create_distinct_purchases(self):
+        self.client.force_login(self.superuser)
+        url = reverse("admin:club_user_grant_tickets")
+        base = {
+            "ids": str(self.member.pk),
+            "tickets": 1,
+            "unit_price": 4000,
+            "label": "1枚券",
+            "note": "現金購入",
+        }
+        self.client.post(url, {**base, "idempotency_token": "11111111-1111-4111-8111-111111111111"})
+        self.client.post(url, {**base, "idempotency_token": "22222222-2222-4222-8222-222222222222"})
+
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.ticket_balance, 6)
+        self.assertEqual(TicketPurchase.objects.filter(user=self.member).count(), 3)
+
+    def test_repeated_admin_action_post_is_idempotent(self):
+        self.client.force_login(self.superuser)
+        url = reverse("admin:club_user_changelist")
+        data = {
+            "action": "grant_set4_tickets",
+            "_selected_action": str(self.member.pk),
+            "idempotency_token": "33333333-3333-4333-8333-333333333333",
+            "index": "0",
+        }
+
+        self.assertEqual(self.client.post(url, data).status_code, 302)
+        self.assertEqual(self.client.post(url, data).status_code, 302)
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.ticket_balance, 8)
+        self.assertEqual(TicketPurchase.objects.filter(user=self.member).count(), 2)
+        self.assertEqual(TicketLedger.objects.filter(user=self.member).count(), 2)
