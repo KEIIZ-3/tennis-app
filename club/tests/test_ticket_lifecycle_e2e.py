@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from club.models import (
@@ -46,21 +47,38 @@ class TicketLifecycleE2ETests(TestCase):
             purchased_at=purchased_at,
         )
 
-    def reservation(self, *, tickets=1, fixed_lesson=None):
+    def reservation(self, *, tickets=1, fixed_lesson=None, hour_offset=0):
+        start_at = self.start_at + timedelta(hours=hour_offset)
+        availability = self.availability
+        if hour_offset:
+            availability = CoachAvailability.objects.create(
+                coach=self.coach,
+                court=self.court,
+                start_at=start_at,
+                end_at=start_at + timedelta(hours=2),
+                capacity=20,
+            )
         reservation = Reservation.objects.create(
             user=self.member,
             coach=self.coach,
             court=self.court,
-            availability=self.availability,
+            availability=availability,
             fixed_lesson=fixed_lesson,
             is_fixed_entry=fixed_lesson is not None,
-            start_at=self.start_at,
-            end_at=self.start_at + timedelta(hours=2),
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=2),
             tickets_used=tickets,
         )
         Reservation.objects.filter(pk=reservation.pk).update(tickets_used=tickets)
         reservation.tickets_used = tickets
         return reservation
+
+    def ticket_summary(self):
+        self.client.force_login(self.coach)
+        return self.client.get(
+            reverse("club:coach_ticket_summary"),
+            {"year": self.start_at.year, "month": self.start_at.month},
+        )
 
     def test_purchase_consume_invariants(self):
         purchase_ledger, lot = self.purchase()
@@ -146,7 +164,7 @@ class TicketLifecycleE2ETests(TestCase):
 
     def test_partial_purchase_evidence_consumes_only_proven_lot_and_keeps_price_unknown(self):
         _, lot = self.purchase(tickets=1, unit_price=3500)
-        self.member.ticket_balance = 3
+        self.member.ticket_balance = 2
         self.member.save(update_fields=["ticket_balance"])
         reservation = self.reservation(tickets=2)
 
@@ -156,7 +174,7 @@ class TicketLifecycleE2ETests(TestCase):
         lot.refresh_from_db()
         consumption = TicketConsumption.objects.get(reservation=reservation)
 
-        self.assertEqual((self.member.ticket_balance, lot.remaining_tickets), (1, 0))
+        self.assertEqual((self.member.ticket_balance, lot.remaining_tickets), (0, 0))
         self.assertEqual((consumption.tickets_used, consumption.unit_price_snapshot), (1, 3500))
         self.assertIsNone(reservation.participant_ticket_price_snapshot)
         self.assertEqual(TicketPurchase.objects.count(), 1)
@@ -165,9 +183,62 @@ class TicketLifecycleE2ETests(TestCase):
         self.member.refresh_from_db()
         lot.refresh_from_db()
         consumption.refresh_from_db()
-        self.assertEqual((self.member.ticket_balance, lot.remaining_tickets), (3, 1))
+        self.assertEqual((self.member.ticket_balance, lot.remaining_tickets), (2, 1))
         self.assertIsNotNone(consumption.refunded_at)
         self.assertEqual(TicketPurchase.objects.count(), 1)
+
+    def test_ticket_summary_keeps_historical_active_consumption_without_marker(self):
+        _, lot = self.purchase(tickets=1, unit_price=4200)
+        reservation = self.reservation()
+        TicketConsumption.objects.create(
+            user=self.member,
+            purchase=lot,
+            reservation=reservation,
+            tickets_used=1,
+            unit_price_snapshot=4200,
+        )
+
+        response = self.ticket_summary()
+
+        self.assertEqual(response.context["total_tickets"], 1)
+        self.assertEqual(response.context["total_amount"], 4200)
+
+    def test_ticket_summary_reports_fully_and_partially_unknown_consumption(self):
+        self.member.ticket_balance = 2
+        self.member.save(update_fields=["ticket_balance"])
+        fully_unknown = self.reservation()
+        fully_unknown.consume_tickets()
+
+        _, lot = self.purchase(tickets=1, unit_price=3600)
+        partially_unknown = self.reservation(tickets=2, hour_offset=3)
+        partially_unknown.consume_tickets()
+
+        response = self.ticket_summary()
+
+        self.assertEqual(response.context["total_tickets"], 3)
+        self.assertEqual(response.context["total_amount"], 3600)
+        self.assertEqual(
+            [(row["unit_price"], row["tickets"]) for row in response.context["breakdown_rows"]],
+            [(0, 2), (3600, 1)],
+        )
+
+    def test_ticket_summary_does_not_revive_refunded_or_canceled_evidence_as_unknown(self):
+        _, lot = self.purchase(tickets=2, unit_price=3500)
+        refunded = self.reservation(tickets=2)
+        refunded.consume_tickets()
+        refunded.cancel()
+
+        canceled = self.reservation(hour_offset=3)
+        canceled.consume_tickets()
+        Reservation.objects.filter(pk=canceled.pk).update(
+            status=Reservation.STATUS_RAIN_CANCELED,
+            ticket_refunded_at=None,
+        )
+
+        response = self.ticket_summary()
+
+        self.assertEqual(response.context["total_tickets"], 0)
+        self.assertEqual(response.context["total_amount"], 0)
 
     def test_zero_ticket_reservation_does_not_create_ticket_state(self):
         self.purchase()
