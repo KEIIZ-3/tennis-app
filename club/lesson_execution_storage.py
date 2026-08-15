@@ -65,12 +65,6 @@ def save_status(
     }
     if cancellation_type:
         entry["cancellation_type"] = str(cancellation_type)
-    else:
-        previous_type = (status_map.get(str(slot_key)) or {}).get(
-            "cancellation_type"
-        )
-        if previous_type:
-            entry["cancellation_type"] = previous_type
     status_map[str(slot_key)] = entry
 
     for legacy_key in legacy_keys or []:

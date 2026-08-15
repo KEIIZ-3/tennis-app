@@ -700,6 +700,16 @@ class ReservationFlowSmokeTests(TestCase):
                 },
             )
             self.assertEqual(expense_response.status_code, 302)
+            settlement = MonthlySettlement.objects.get(
+                year=self.lesson_date.year,
+                month=self.lesson_date.month,
+            )
+            lesson_execution.save_status(
+                settlement,
+                f"availability:{availability.pk}",
+                lesson_execution.STATUS_HELD,
+                self.coach,
+            )
 
             response = self.client.post(
                 reverse("club:lesson_execution_manage"),
@@ -716,6 +726,13 @@ class ReservationFlowSmokeTests(TestCase):
             self.assertEqual(response.status_code, 302)
             reservation.refresh_from_db()
             self.assertEqual(reservation.status, expected_status)
+            settlement.refresh_from_db()
+            self.assertEqual(
+                lesson_execution.read_status_map(settlement)[
+                    f"availability:{availability.pk}"
+                ]["status"],
+                lesson_execution.STATUS_REFUND_PENDING,
+            )
 
             calendar_response = self.client.get(
                 reverse("club:lesson_calendar"),
@@ -919,6 +936,129 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertEqual(
             updated_response.context["rows"][0]["court_status"],
             "not_required",
+        )
+
+    def test_execution_registration_can_be_unheld_and_registered_again(self):
+        lesson_date = timezone.localdate() - timedelta(days=1)
+        start_at = timezone.make_aware(
+            datetime.combine(lesson_date, datetime.min.time()).replace(hour=10)
+        )
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+            capacity=1,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            availability=availability,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+            status=Reservation.STATUS_ACTIVE,
+        )
+        self.client.force_login(self.coach)
+        url = reverse("club:lesson_execution_manage")
+        base_data = {
+            "year": lesson_date.year,
+            "month": lesson_date.month,
+            "availability_id": availability.pk,
+        }
+
+        self.client.post(url, data={**base_data, "action": lesson_execution.STATUS_HELD})
+        held_page = self.client.get(url, data=base_data)
+        self.assertContains(held_page, "実施登録を解除")
+        self.assertNotContains(held_page, ">実施登録</button>")
+
+        self.client.post(url, data={**base_data, "action": lesson_execution.ACTION_UNHOLD})
+        settlement = MonthlySettlement.objects.get(year=lesson_date.year, month=lesson_date.month)
+        slot_key = f"availability:{availability.pk}"
+        self.assertEqual(
+            lesson_execution.read_status_map(settlement)[slot_key]["status"],
+            lesson_execution.STATUS_UNCONFIRMED,
+        )
+        self.assertEqual(
+            settlement_balance_policy._eligible_reservations(lesson_date.year, lesson_date.month),
+            [],
+        )
+        unheld_page = self.client.get(url, data=base_data)
+        self.assertContains(unheld_page, ">実施登録</button>", html=False)
+
+        self.client.post(url, data={**base_data, "action": lesson_execution.STATUS_HELD})
+        settlement.refresh_from_db()
+        self.assertEqual(
+            lesson_execution.read_status_map(settlement)[slot_key]["status"],
+            lesson_execution.STATUS_HELD,
+        )
+
+    def test_canceled_reservation_overrides_stale_held_evidence_everywhere(self):
+        lesson_date = timezone.localdate() - timedelta(days=1)
+        start_at = timezone.make_aware(
+            datetime.combine(lesson_date, datetime.min.time()).replace(hour=19)
+        )
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=2),
+            capacity=1,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            availability=availability,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=2),
+            status=Reservation.STATUS_CANCELED,
+            canceled_at=timezone.now(),
+            cancellation_reason="レッスン中止による自動返却",
+        )
+        settlement = MonthlySettlement.objects.create(year=lesson_date.year, month=lesson_date.month)
+        lesson_execution.save_status(
+            settlement,
+            f"availability:{availability.pk}",
+            lesson_execution.STATUS_HELD,
+            self.coach,
+        )
+        self.client.force_login(self.coach)
+
+        execution_page = self.client.get(
+            reverse("club:lesson_execution_manage"),
+            data={"year": lesson_date.year, "month": lesson_date.month},
+        )
+        row = next(
+            item for item in execution_page.context["rows"]
+            if item["availability"].pk == availability.pk
+        )
+        self.assertEqual(row["status_label"], "中止")
+        self.assertFalse(row["can_mark_held"])
+        self.assertNotContains(execution_page, "実施登録を解除")
+
+        calendar_page = self.client.get(
+            reverse("club:lesson_calendar"),
+            data={"year": lesson_date.year, "month": lesson_date.month},
+        )
+        calendar_row = next(
+            item for item in calendar_page.context["schedule_rows"]
+            if str(item["availability_id"]) == str(availability.pk)
+        )
+        self.assertEqual(calendar_row["customer_status_label"], "中止")
+        self.assertEqual(
+            settlement_balance_policy._eligible_reservations(lesson_date.year, lesson_date.month),
+            [],
         )
 
     def test_today_lessons_month_view_shows_execution_and_court_status(self):

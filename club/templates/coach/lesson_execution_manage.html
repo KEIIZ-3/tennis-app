@@ -123,8 +123,10 @@
 
           {% if not is_month_closed %}
             <div class="card-actions">
-              {% if row.can_mark_held and row.status != "held" %}
-                <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}">{% if pending_only %}<input type="hidden" name="pending" value="1">{% endif %}<input type="hidden" name="availability_id" value="{{ row.availability.id }}"><input type="hidden" name="action" value="held"><button type="submit" class="btn btn-held" onclick="return confirm('このレッスンを実施済みにしますか？');">実施済みにする</button></form>
+              {% if row.can_unhold %}
+                <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}">{% if pending_only %}<input type="hidden" name="pending" value="1">{% endif %}<input type="hidden" name="availability_id" value="{{ row.availability.id }}"><input type="hidden" name="action" value="unhold"><button type="submit" class="btn" onclick="return confirm('実施登録を解除しますか？売上・精算上も実施済み扱いではなくなります。');">実施登録を解除</button></form>
+              {% elif row.can_mark_held %}
+                <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}">{% if pending_only %}<input type="hidden" name="pending" value="1">{% endif %}<input type="hidden" name="availability_id" value="{{ row.availability.id }}"><input type="hidden" name="action" value="held"><button type="submit" class="btn btn-held" onclick="return confirm('このレッスンを実施済みとして登録しますか？');">実施登録</button></form>
               {% endif %}
               {% if row.can_mark_rain or row.rain_refund_missing %}
                 {% if open_rain_id == row.availability.id|stringformat:"s" %}

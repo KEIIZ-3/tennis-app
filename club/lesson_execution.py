@@ -30,6 +30,7 @@ STATUS_HELD = "held"
 STATUS_RAIN_CANCELED = "rain_canceled"
 STATUS_REFUND_PENDING = "refund_pending"
 STATUS_REFUNDED = "refunded"
+ACTION_UNHOLD = "unhold"
 CANCELLATION_TYPE_RAIN = "rain"
 CANCELLATION_TYPE_OTHER = "other"
 CANCELLATION_TYPE_LABELS = {
@@ -54,6 +55,70 @@ STATUS_CLASSES = {
     STATUS_REFUND_PENDING: "refund-pending",
     STATUS_REFUNDED: "refunded",
 }
+
+
+def _cancellation_evidence(reservations):
+    canceled = [
+        reservation for reservation in reservations
+        if reservation.status in (
+            Reservation.STATUS_CANCELED,
+            Reservation.STATUS_RAIN_CANCELED,
+        )
+    ]
+    if not canceled or any(
+        reservation.status in (
+            Reservation.STATUS_ACTIVE,
+            Reservation.STATUS_PENDING,
+        )
+        for reservation in reservations
+    ):
+        return None
+    if not any(
+        reservation.status == Reservation.STATUS_RAIN_CANCELED
+        or "雨天中止" in str(reservation.cancellation_reason or "")
+        or "レッスン中止" in str(reservation.cancellation_reason or "")
+        for reservation in canceled
+    ):
+        return None
+    if any(
+        reservation.status == Reservation.STATUS_RAIN_CANCELED
+        or "雨天中止" in str(reservation.cancellation_reason or "")
+        for reservation in canceled
+    ):
+        return CANCELLATION_TYPE_RAIN
+    return CANCELLATION_TYPE_OTHER
+
+
+def _effective_status(entry, reservations, *, end_at, now=None):
+    """Resolve one current occurrence state, prioritizing cancellation evidence."""
+    saved_status = entry.get("status")
+    cancellation_type = _cancellation_evidence(reservations)
+    if cancellation_type:
+        if saved_status in (
+            STATUS_RAIN_CANCELED,
+            STATUS_REFUND_PENDING,
+            STATUS_REFUNDED,
+        ):
+            return saved_status, entry.get("cancellation_type") or cancellation_type
+        return STATUS_RAIN_CANCELED, cancellation_type
+    if saved_status in STATUS_LABELS:
+        return saved_status, entry.get("cancellation_type")
+    return (
+        (STATUS_SCHEDULED, None)
+        if end_at > (now or timezone.now())
+        else (STATUS_UNCONFIRMED, None)
+    )
+
+
+def _set_execution_status(settlement, slot, status, changed_by, *, cancellation_type=None):
+    save_status(
+        settlement,
+        _slot_key(slot),
+        status,
+        changed_by,
+        legacy_keys=_legacy_keys(slot),
+        cancellation_type=cancellation_type,
+    )
 
 
 def _is_allowed(user):
@@ -140,13 +205,10 @@ def status_by_availability(user, year_month_pairs):
                 continue
             availability = slot["availability"]
             entry = _status_entry(status_map, slot)
-            saved_status = entry.get("status")
-            if saved_status in STATUS_LABELS:
-                status = saved_status
-            elif slot["end_at"] > timezone.now():
-                status = STATUS_SCHEDULED
-            else:
-                status = STATUS_UNCONFIRMED
+            reservations = list(_reservation_queryset(slot))
+            status, _cancellation_type = _effective_status(
+                entry, reservations, end_at=slot["end_at"]
+            )
 
             result[availability.pk] = {
                 "execution_status": status,
@@ -800,6 +862,10 @@ def lesson_execution_manage(request):
                 )
                 return redirect(redirect_url)
 
+            if _cancellation_evidence(reservations):
+                messages.error(request, "中止済みのレッスンは実施登録できません。")
+                return redirect(redirect_url)
+
             if not any(
                 reservation.status == Reservation.STATUS_ACTIVE
                 for reservation in reservations
@@ -810,16 +876,26 @@ def lesson_execution_manage(request):
                 )
                 return redirect(redirect_url)
 
-            save_status(
-                settlement,
-                _slot_key(slot),
-                STATUS_HELD,
-                request.user,
-                legacy_keys=_legacy_keys(slot),
-            )
+            _set_execution_status(settlement, slot, STATUS_HELD, request.user)
             messages.success(
                 request,
                 "レッスンを実施済みにしました。売上とコート代の精算対象になります。",
+            )
+
+        elif action == ACTION_UNHOLD:
+            entry = _status_entry(read_status_map(settlement), slot)
+            effective_status, cancellation_type = _effective_status(
+                entry, reservations, end_at=slot["end_at"]
+            )
+            if effective_status != STATUS_HELD:
+                messages.error(request, "実施登録済みのレッスンだけ解除できます。")
+                return redirect(redirect_url)
+            _set_execution_status(
+                settlement, slot, STATUS_UNCONFIRMED, request.user
+            )
+            messages.success(
+                request,
+                "実施登録を解除しました。売上と精算の実施済み対象から除外しました。",
             )
 
         elif action == STATUS_RAIN_CANCELED:
@@ -864,12 +940,11 @@ def lesson_execution_manage(request):
                         )
                     canceled_count += 1
 
-                save_status(
+                _set_execution_status(
                     settlement,
-                    _slot_key(slot),
+                    slot,
                     STATUS_REFUND_PENDING,
                     request.user,
-                    legacy_keys=_legacy_keys(slot),
                     cancellation_type=cancellation_type,
                 )
 
@@ -886,12 +961,14 @@ def lesson_execution_manage(request):
                     "返金待ちのコート代を確認できませんでした。",
                 )
                 return redirect(redirect_url)
+            previous_entry = _status_entry(read_status_map(settlement), slot)
             save_status(
                 settlement,
                 _slot_key(slot),
                 STATUS_REFUNDED,
                 request.user,
                 legacy_keys=_legacy_keys(slot),
+                cancellation_type=previous_entry.get("cancellation_type"),
             )
             messages.success(
                 request,
@@ -971,21 +1048,12 @@ def lesson_execution_manage(request):
         reservations = list(_reservation_queryset(slot))
         entry = _status_entry(status_map, slot)
         saved_status = entry.get("status")
-        cancellation_type = entry.get("cancellation_type")
-        has_legacy_rain_cancel = any(
-            reservation.status == Reservation.STATUS_RAIN_CANCELED
-            or "雨天中止" in str(reservation.cancellation_reason or "")
-            for reservation in reservations
+        status, cancellation_type = _effective_status(
+            entry, reservations, end_at=slot["end_at"]
         )
-
-        if saved_status in STATUS_LABELS:
-            status = saved_status
-        elif has_legacy_rain_cancel:
-            status = STATUS_RAIN_CANCELED
-        elif slot["end_at"] > timezone.now():
-            status = STATUS_SCHEDULED
-        else:
-            status = STATUS_UNCONFIRMED
+        has_cancellation_conflict = bool(
+            _cancellation_evidence(reservations) and saved_status == STATUS_HELD
+        )
 
         counts[status] = counts.get(status, 0) + 1
         active_count = sum(
@@ -1081,12 +1149,12 @@ def lesson_execution_manage(request):
                         STATUS_REFUNDED,
                     )
                 ),
+                "can_unhold": status == STATUS_HELD,
                 "can_mark_rain": status
                 not in (
-                    STATUS_HELD,
                     STATUS_REFUNDED,
                     STATUS_REFUND_PENDING,
-                ),
+                ) or has_cancellation_conflict,
                 "can_mark_refunded": (
                     rain_refund_exists
                     and status in (
