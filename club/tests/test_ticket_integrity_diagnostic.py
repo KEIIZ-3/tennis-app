@@ -76,8 +76,11 @@ class TicketIntegrityDiagnosticTests(TestCase):
         reasons = {row["reason"] for row in result["consumption_findings"]}
         self.assertIn("purchase_user_mismatch", reasons)
         self.assertIn("reservation_user_mismatch", reasons)
-        self.assertEqual(result["reservation_findings"][0]["reason"], "consumption_without_consumed_at")
         self.assertTrue(any(row["reason"] == "reservation_consumption_ticket_mismatch" for row in result["reservation_findings"]))
+        self.assertTrue(any(
+            row["reason"] == "historical_consumption_without_consumed_at_marker"
+            for row in result["unverifiable"]["reservation"]
+        ))
 
     def test_zero_ticket_and_missing_legacy_baseline_are_not_findings(self):
         self.member.ticket_balance = 3
