@@ -108,9 +108,6 @@ function Invoke-HandoffStaging {
             }
         }
         finally {
-            # Removing the variable is required here. Restoring a null value
-            # with SetEnvironmentVariable leaves an empty variable on Unix,
-            # and the following git add then has no writable index path.
             Remove-Item Env:GIT_INDEX_FILE -ErrorAction SilentlyContinue
             if (Test-Path -LiteralPath $temporaryIndex -PathType Leaf) {
                 Remove-Item -LiteralPath $temporaryIndex -Force
@@ -164,10 +161,12 @@ try {
     Assert-CommandAvailable -Name "git" -InstallMessage "Git was not found. Check the installation and PATH."
     $repoRoot = Get-RepositoryRoot
     Set-Location -LiteralPath $repoRoot
+
     Invoke-NativeChecked -FilePath "gh" -Arguments @("--version") `
         -FailureMessage "GitHub CLI validation failed."
     Invoke-NativeChecked -FilePath "gh" -Arguments @("auth", "status") `
         -FailureMessage "GitHub CLI authentication failed. Run gh auth login."
+
     $handoffPath = Join-Path $repoRoot "handoff.json"
     $prBodyPath = Join-Path $repoRoot ".pr-body.md"
 
@@ -203,18 +202,71 @@ try {
     if ($branch -notmatch '^agent/[a-z0-9]+(?:-[a-z0-9]+)*$') {
         throw "branch must start with agent/ and use lowercase kebab-case."
     }
+
     Invoke-NativeChecked -FilePath "git" -Arguments @("check-ref-format", "--branch", $branch) `
         -FailureMessage "The branch name is not valid for Git."
 
+    # Determine whether this handoff belongs to an already existing PR.
+    # An existing PR must be updated instead of creating a duplicate PR.
+    $existingPrJson = & gh pr list `
+        --head $branch `
+        --state open `
+        --json number,url,isDraft,headRefName `
+        --limit 1
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Existing pull requests for the handoff branch could not be inspected."
+    }
+
+    try {
+        $existingPrList = @($existingPrJson | ConvertFrom-Json -ErrorAction Stop)
+    }
+    catch {
+        throw "The existing pull request information returned by GitHub CLI was not valid JSON."
+    }
+
+    $existingPr = $null
+    if ($existingPrList.Count -gt 0) {
+        $existingPr = $existingPrList[0]
+    }
+
     [void](Invoke-HandoffStaging -RepositoryRoot $repoRoot -Files @($handoff.files) -BeforeStage {
-        Invoke-NativeChecked -FilePath "git" -Arguments @("switch", "-c", $branch) `
-            -FailureMessage "The work branch could not be created."
+        # The working tree already contains the Codex changes, so switch without
+        # discarding them. Reuse an existing local branch when present.
+        & git show-ref --verify --quiet "refs/heads/$branch"
+        $localBranchExists = $LASTEXITCODE -eq 0
+
+        if ($localBranchExists) {
+            Invoke-NativeChecked -FilePath "git" -Arguments @("switch", $branch) `
+                -FailureMessage "The existing work branch could not be checked out."
+        }
+        else {
+            # If the branch exists only on origin, create a local tracking
+            # branch from it. Otherwise this is a genuinely new branch.
+            & git ls-remote --exit-code --heads origin $branch *> $null
+            $remoteBranchExists = $LASTEXITCODE -eq 0
+
+            if ($remoteBranchExists) {
+                Invoke-NativeChecked -FilePath "git" -Arguments @("fetch", "origin", $branch) `
+                    -FailureMessage "The existing remote work branch could not be fetched."
+                Invoke-NativeChecked -FilePath "git" -Arguments @(
+                    "switch", "-c", $branch, "--track", "origin/$branch"
+                ) -FailureMessage "The existing remote work branch could not be checked out."
+            }
+            else {
+                Invoke-NativeChecked -FilePath "git" -Arguments @("switch", "-c", $branch) `
+                    -FailureMessage "The work branch could not be created."
+            }
+        }
     })
 
-    Invoke-NativeChecked -FilePath "git" -Arguments @("commit", "-m", $handoff.commit_message.Trim()) `
-        -FailureMessage "The commit failed."
-    Invoke-NativeChecked -FilePath "git" -Arguments @("push", "-u", "origin", $branch) `
-        -FailureMessage "The push failed."
+    Invoke-NativeChecked -FilePath "git" -Arguments @(
+        "commit", "-m", $handoff.commit_message.Trim()
+    ) -FailureMessage "The commit failed."
+
+    Invoke-NativeChecked -FilePath "git" -Arguments @(
+        "push", "-u", "origin", $branch
+    ) -FailureMessage "The push failed."
 
     $commitSha = (& git rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($commitSha)) {
@@ -226,37 +278,79 @@ try {
         $handoff.pr_body,
         [Text.UTF8Encoding]::new($false)
     )
-    $prOutput = & gh pr create --draft --title $handoff.pr_title.Trim() --body-file $prBodyPath
-    if ($LASTEXITCODE -ne 0) {
-        throw "Draft PR creation failed."
+
+    if ($null -ne $existingPr) {
+        $prUrl = [string]$existingPr.url
+
+        if ([string]::IsNullOrWhiteSpace($prUrl)) {
+            throw "The existing pull request URL was not returned."
+        }
+
+        # Keep the existing PR, but refresh its title and body from the latest
+        # handoff so the PR accurately describes the new head commit.
+        Invoke-NativeChecked -FilePath "gh" -Arguments @(
+            "pr", "edit", $prUrl,
+            "--title", $handoff.pr_title.Trim(),
+            "--body-file", $prBodyPath
+        ) -FailureMessage "The existing PR metadata could not be updated."
+
+        if ($existingPr.isDraft) {
+            Invoke-NativeChecked -FilePath "gh" -Arguments @(
+                "pr", "ready", $prUrl
+            ) -FailureMessage "The existing Draft PR could not be marked ready for review."
+        }
+    }
+    else {
+        $prOutput = & gh pr create `
+            --draft `
+            --title $handoff.pr_title.Trim() `
+            --body-file $prBodyPath
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "Draft PR creation failed."
+        }
+
+        $prUrl = ($prOutput | Select-Object -Last 1).Trim()
+        if ([string]::IsNullOrWhiteSpace($prUrl)) {
+            throw "The Draft PR URL was not returned."
+        }
+
+        Invoke-NativeChecked -FilePath "gh" -Arguments @(
+            "pr", "ready", $prUrl
+        ) -FailureMessage "The Draft PR could not be marked ready for review."
     }
 
-    $prUrl = ($prOutput | Select-Object -Last 1).Trim()
-    if ([string]::IsNullOrWhiteSpace($prUrl)) {
-        throw "The Draft PR URL was not returned."
-    }
-
-    Invoke-NativeChecked -FilePath "gh" -Arguments @("pr", "ready", $prUrl) `
-        -FailureMessage "The Draft PR could not be marked ready for review."
+    # Whether this was a new PR or an update to an existing PR, enable
+    # auto-merge against the exact commit that was just pushed.
     Invoke-NativeChecked -FilePath "gh" -Arguments @(
-        "pr", "merge", $prUrl, "--auto", "--squash", "--match-head-commit", $commitSha
+        "pr", "merge", $prUrl,
+        "--auto",
+        "--squash",
+        "--match-head-commit", $commitSha
     ) -FailureMessage "Auto-merge could not be enabled for the PR."
 
     $prNumber = [IO.Path]::GetFileName($prUrl.TrimEnd('/'))
     $reportPath = Join-Path $repoRoot "report.md"
+
     if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
         $report = Get-Content -Raw -Encoding utf8 -LiteralPath $reportPath
         $report = $report.Replace("{{PR_NUMBER}}", $prNumber)
         $report = $report.Replace("{{PR_URL}}", $prUrl)
         $report = $report.Replace("{{COMMIT_SHA}}", $commitSha)
-        [IO.File]::WriteAllText($reportPath, $report, [Text.UTF8Encoding]::new($false))
+        [IO.File]::WriteAllText(
+            $reportPath,
+            $report,
+            [Text.UTF8Encoding]::new($false)
+        )
     }
 
     Write-Host "Auto-merge enabled: $prUrl" -ForegroundColor Green
+
     if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
         Write-Host ""
         Get-Content -Raw -Encoding utf8 -LiteralPath $reportPath
     }
+
     $published = $true
 }
 catch {
