@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import uuid
 
 from django import forms
 from django.contrib.auth import get_user_model
@@ -542,6 +543,7 @@ class StringingOrderForm(forms.ModelForm):
 
 
 class TicketGrantAdminForm(forms.Form):
+    idempotency_token = forms.UUIDField(widget=forms.HiddenInput, initial=uuid.uuid4)
     tickets = forms.IntegerField(
         label="付与枚数",
         min_value=1,

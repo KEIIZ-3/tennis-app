@@ -299,6 +299,25 @@ class TicketLifecycleE2ETests(TestCase):
         self.assertEqual(self.member.ticket_balance, 0)
         self.assertFalse(TicketLedger.objects.exists())
 
+    def test_purchase_idempotency_key_can_retry_after_rollback(self):
+        kwargs = {
+            "user": self.member,
+            "tickets": 4,
+            "unit_price": 3500,
+            "purchase_type": TicketPurchase.PURCHASE_TYPE_SET4,
+            "reason": TicketLedger.REASON_PURCHASE_SET4,
+            "idempotency_key": "retry-after-rollback",
+        }
+        with patch.object(TicketPurchase.objects, "create", side_effect=RuntimeError("purchase failed")):
+            with self.assertRaises(RuntimeError):
+                purchase_tickets(**kwargs)
+
+        purchase_tickets(**kwargs)
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.ticket_balance, 4)
+        self.assertEqual(TicketPurchase.objects.count(), 1)
+        self.assertEqual(TicketLedger.objects.count(), 1)
+
     def test_consume_and_refund_roll_back_on_ledger_failure(self):
         self.purchase()
         reservation = self.reservation()
