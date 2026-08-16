@@ -13,7 +13,6 @@ from django.views.decorators.http import require_http_methods
 from .lesson_execution_storage import read_status_map, save_status
 from .lesson_participants import (
     ALL_RESERVATION_STATUSES,
-    CANCELED_RESERVATION_STATUSES,
     reservations_for_lesson,
 )
 from .models import (
@@ -260,22 +259,13 @@ def unconfirmed_execution_rows(year, month, *, now=None):
 
         reservations = list(_reservation_queryset(slot))
         entry = _status_entry(status_map, slot)
-        saved_status = entry.get("status")
-        has_legacy_rain_cancel = any(
-            reservation.status == Reservation.STATUS_RAIN_CANCELED
-            or "雨天中止" in str(reservation.cancellation_reason or "")
-            for reservation in reservations
+        status, _cancellation_type = effective_status(
+            _status_entry(status_map, slot),
+            reservations,
+            end_at=slot["end_at"],
+            now=current_time,
         )
-        is_explicitly_canceled = bool(reservations) and all(
-            reservation.status
-            in CANCELED_RESERVATION_STATUSES
-            for reservation in reservations
-        )
-        if (
-            saved_status in STATUS_LABELS
-            or has_legacy_rain_cancel
-            or is_explicitly_canceled
-        ):
+        if status != STATUS_UNCONFIRMED:
             continue
 
         availability = slot["availability"]
