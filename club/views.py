@@ -7459,86 +7459,14 @@ def lesson_waitlist_promote(request, pk):
         redirect_to = reverse("club:reservation_list")
 
     try:
-        with transaction.atomic():
-            availability = None
-            if waitlist.availability_id:
-                availability = CoachAvailability.objects.select_for_update().get(
-                    pk=waitlist.availability_id
-                )
-            else:
-                availability = CoachAvailability.objects.select_for_update().filter(
-                    coach=waitlist.coach,
-                    court=waitlist.court,
-                    lesson_type=waitlist.lesson_type,
-                    start_at=waitlist.start_at,
-                    end_at=waitlist.end_at,
-                ).first()
-                if availability is None:
-                    Court.objects.select_for_update().get(pk=waitlist.court_id)
+        from .waitlist_service import promote_waitlist
 
-            waitlist = (
-                LessonWaitlist.objects.select_for_update()
-                .select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
-                .get(pk=waitlist.pk)
-            )
-            if waitlist.status != LessonWaitlist.STATUS_WAITING:
-                messages.info(request, "このキャンセル待ちはすでに処理済みです。")
-                return redirect(redirect_to)
-
-            if waitlist.start_at < timezone.now():
-                messages.error(request, "開始済み・終了済みのキャンセル待ちは繰り上げできません。")
-                return redirect(redirect_to)
-
-            active_count = _active_reservation_count_for_slot(
-                coach=waitlist.coach,
-                court=waitlist.court,
-                lesson_type=waitlist.lesson_type,
-                start_at=waitlist.start_at,
-                end_at=waitlist.end_at,
-            )
-            if active_count >= _capacity_for_waitlist_slot(waitlist):
-                messages.error(request, "このレッスンはまだ満員のため、繰り上げできません。")
-                return redirect(redirect_to)
-
-            existing_reservation = Reservation.objects.filter(
-                user=waitlist.user,
-                coach=waitlist.coach,
-                court=waitlist.court,
-                lesson_type=waitlist.lesson_type,
-                start_at=waitlist.start_at,
-                end_at=waitlist.end_at,
-                status__in=CAPACITY_CONSUMING_STATUSES,
-            ).first()
-            if existing_reservation:
-                waitlist.mark_converted()
-                messages.info(request, "対象会員はすでに予約済みです。キャンセル待ちを処理済みにしました。")
-                return redirect("club:reservation_detail", pk=existing_reservation.pk)
-
-            reservation = create_reservation(
-                user=waitlist.user,
-                coach=waitlist.coach,
-                substitute_coach=waitlist.substitute_coach,
-                court=waitlist.court,
-                availability=availability,
-                fixed_lesson=waitlist.fixed_lesson,
-                lesson_type=waitlist.lesson_type,
-                target_level=waitlist.target_level,
-                target_level_2=getattr(waitlist, "target_level_2", "") or "",
-                start_at=waitlist.start_at,
-                end_at=waitlist.end_at,
-                status=Reservation.STATUS_ACTIVE,
-                custom_ticket_price=getattr(availability, "custom_ticket_price", 0) if availability else 0,
-                custom_duration_hours=getattr(availability, "custom_duration_hours", 0) if availability else 0,
-            )
-            copy_waitlist_participant_snapshot(waitlist, reservation)
-            reservation.consume_tickets(
-                reason=TicketLedger.REASON_RESERVATION_USE,
-                created_by=request.user,
-                note=f"キャンセル待ち繰り上げ: {reservation.start_at:%Y-%m-%d %H:%M}",
-            )
-            waitlist.mark_converted()
-
-        messages.success(request, f"{_display_name(reservation.user)} さんを予約へ繰り上げました。")
+        result = promote_waitlist(waitlist.pk, created_by=request.user)
+        reservation = result.reservation
+        if result.converted_existing:
+            messages.info(request, "対象参加者はすでに予約済みです。キャンセル待ちを処理済みにしました。")
+        else:
+            messages.success(request, f"{_display_name(reservation.user)} さんを予約へ繰り上げました。")
         return redirect("club:reservation_detail", pk=reservation.pk)
 
     except ValidationError as e:
