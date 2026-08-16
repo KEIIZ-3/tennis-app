@@ -38,7 +38,7 @@ class SettlementUnconfirmedExecutionTests(TestCase):
         )
         self.now = timezone.make_aware(datetime(2026, 8, 15, 12, 0))
 
-    def _availability(self, start_at, *, duration=1):
+    def _availability(self, start_at, *, duration=1, capacity=1):
         return CoachAvailability.objects.create(
             coach=self.coach,
             court=self.court,
@@ -46,7 +46,7 @@ class SettlementUnconfirmedExecutionTests(TestCase):
             target_level=get_user_model().LEVEL_BEGINNER,
             start_at=start_at,
             end_at=start_at + timedelta(hours=duration),
-            capacity=1,
+            capacity=capacity,
             status=CoachAvailability.STATUS_OPEN,
         )
 
@@ -172,7 +172,75 @@ class SettlementUnconfirmedExecutionTests(TestCase):
             start_at=availability.start_at,
             end_at=availability.end_at,
             status=Reservation.STATUS_CANCELED,
-            cancellation_reason="管理者による開催取消",
+            cancellation_reason="レッスン中止による自動返却",
+        )
+
+        self.assertEqual(
+            lesson_execution.unconfirmed_execution_rows(2026, 8, now=self.now),
+            [],
+        )
+
+    def test_refund_lifecycle_statuses_are_not_unconfirmed(self):
+        for index, status in enumerate(
+            (lesson_execution.STATUS_REFUND_PENDING, lesson_execution.STATUS_REFUNDED)
+        ):
+            availability = self._availability(
+                self.now - timedelta(days=index + 1, hours=2)
+            )
+            self._set_execution_status(availability, status)
+
+        self.assertEqual(
+            lesson_execution.unconfirmed_execution_rows(2026, 8, now=self.now),
+            [],
+        )
+
+    def test_personal_cancel_with_active_participant_stays_unconfirmed(self):
+        User = get_user_model()
+        active_member = User.objects.create_user(
+            username="active_settlement_member", role=User.ROLE_MEMBER
+        )
+        availability = self._availability(
+            self.now - timedelta(hours=2), capacity=5
+        )
+        common = {
+            "coach": self.coach,
+            "court": self.court,
+            "availability": availability,
+            "lesson_type": Reservation.LESSON_PRIVATE,
+            "target_level": User.LEVEL_BEGINNER,
+            "start_at": availability.start_at,
+            "end_at": availability.end_at,
+        }
+        Reservation.objects.create(
+            user=self.member,
+            status=Reservation.STATUS_CANCELED,
+            cancellation_reason="会員都合",
+            **common,
+        )
+        Reservation.objects.create(
+            user=active_member,
+            status=Reservation.STATUS_ACTIVE,
+            **common,
+        )
+
+        rows = lesson_execution.unconfirmed_execution_rows(2026, 8, now=self.now)
+
+        self.assertEqual([row["availability_id"] for row in rows], [availability.pk])
+
+    def test_cancellation_evidence_overrides_stale_held_metadata(self):
+        availability = self._availability(self.now - timedelta(hours=2))
+        self._set_execution_status(availability, lesson_execution.STATUS_HELD)
+        Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            availability=availability,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=get_user_model().LEVEL_BEGINNER,
+            start_at=availability.start_at,
+            end_at=availability.end_at,
+            status=Reservation.STATUS_CANCELED,
+            cancellation_reason="レッスン中止による自動返却",
         )
 
         self.assertEqual(
