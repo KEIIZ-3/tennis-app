@@ -7460,6 +7460,22 @@ def lesson_waitlist_promote(request, pk):
 
     try:
         with transaction.atomic():
+            availability = None
+            if waitlist.availability_id:
+                availability = CoachAvailability.objects.select_for_update().get(
+                    pk=waitlist.availability_id
+                )
+            else:
+                availability = CoachAvailability.objects.select_for_update().filter(
+                    coach=waitlist.coach,
+                    court=waitlist.court,
+                    lesson_type=waitlist.lesson_type,
+                    start_at=waitlist.start_at,
+                    end_at=waitlist.end_at,
+                ).first()
+                if availability is None:
+                    Court.objects.select_for_update().get(pk=waitlist.court_id)
+
             waitlist = (
                 LessonWaitlist.objects.select_for_update()
                 .select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
@@ -7497,14 +7513,6 @@ def lesson_waitlist_promote(request, pk):
                 waitlist.mark_converted()
                 messages.info(request, "対象会員はすでに予約済みです。キャンセル待ちを処理済みにしました。")
                 return redirect("club:reservation_detail", pk=existing_reservation.pk)
-
-            availability = waitlist.availability or CoachAvailability.objects.filter(
-                coach=waitlist.coach,
-                court=waitlist.court,
-                lesson_type=waitlist.lesson_type,
-                start_at=waitlist.start_at,
-                end_at=waitlist.end_at,
-            ).first()
 
             reservation = create_reservation(
                 user=waitlist.user,

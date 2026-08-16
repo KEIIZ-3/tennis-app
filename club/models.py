@@ -1676,8 +1676,10 @@ class Reservation(models.Model, LessonTypeMixin):
             qs = qs.exclude(pk=self.pk)
         return qs
 
-    def _is_new_activation(self):
-        if self.status != self.STATUS_ACTIVE:
+    def _is_new_capacity_consumption(self):
+        from .lesson_participants import CAPACITY_CONSUMING_STATUSES
+
+        if self.status not in CAPACITY_CONSUMING_STATUSES:
             return False
         if not self.pk:
             return True
@@ -1686,9 +1688,10 @@ class Reservation(models.Model, LessonTypeMixin):
             .values_list("status", flat=True)
             .first()
         )
-        return previous_status != self.STATUS_ACTIVE
+        return previous_status not in CAPACITY_CONSUMING_STATUSES
 
-    def _capacity_for_activation(self):
+    def _locked_capacity_for_consumption(self):
+        """Lock the stable occurrence parent and return its effective capacity."""
         availability = None
         if self.availability_id:
             availability = (
@@ -1724,19 +1727,26 @@ class Reservation(models.Model, LessonTypeMixin):
                 int(fixed_lesson.capacity or 0),
                 1,
             )
+
+        # Legacy/private requests do not always have an availability or fixed
+        # lesson.  The court is the stable parent shared by every competing
+        # write for that slot; serializing on it is intentionally broader than
+        # an occurrence lock, but preserves correctness without schema changes.
+        if self.court_id:
+            Court.objects.select_for_update().get(pk=self.court_id)
         return 1
 
-    def _validate_capacity_before_activation(self):
-        if not self._is_new_activation():
+    def _validate_capacity_before_consumption(self):
+        if not self._is_new_capacity_consumption():
             return
 
-        capacity = self._capacity_for_activation()
-        active_count = self.active_slot_reservations_qs().count()
+        capacity = self._locked_capacity_for_consumption()
+        consuming_count = self.active_slot_reservations_qs().count()
 
         # FixedLesson.members は将来予約を生成するための設定であり、開催回の
         # 参加人数ではない。個別キャンセルも反映できる有効 Reservation だけを
         # 正本として満員判定する。
-        if active_count >= capacity:
+        if consuming_count >= capacity:
             raise ValidationError(
                 f"このレッスンは満員です（定員{capacity}名）。"
                 "キャンセル待ちをご利用ください。"
@@ -1912,7 +1922,7 @@ class Reservation(models.Model, LessonTypeMixin):
 
     def save(self, *args, **kwargs):
         with transaction.atomic():
-            self._validate_capacity_before_activation()
+            self._validate_capacity_before_consumption()
             self.full_clean()
             return super().save(*args, **kwargs)
 
