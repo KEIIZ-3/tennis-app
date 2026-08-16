@@ -9,6 +9,7 @@ from .models import (
     FixedLesson,
     Reservation,
 )
+from .lesson_participants import CAPACITY_CONSUMING_STATUSES
 
 
 COURT_TRANSFER_RECORD_KIND = "court_transfer"
@@ -159,7 +160,7 @@ def _fixed_occurrence_coach_ids(availability, eligible_id_set):
             availability=availability,
             start_at=availability.start_at,
             end_at=availability.end_at,
-            status__in=(Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING),
+            status__in=CAPACITY_CONSUMING_STATUSES,
             fixed_lesson_id__isnull=False,
         )
         .select_related(
@@ -200,7 +201,7 @@ def _reservation_coach_ids(availability, eligible_id_set):
             availability=availability,
             start_at=availability.start_at,
             end_at=availability.end_at,
-            status__in=(Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING),
+            status__in=CAPACITY_CONSUMING_STATUSES,
         )
         .select_related("coach", "substitute_coach")
         .order_by("id")

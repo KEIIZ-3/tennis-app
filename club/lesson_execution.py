@@ -11,7 +11,11 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from .lesson_execution_storage import read_status_map, save_status
-from .lesson_participants import ALL_RESERVATION_STATUSES, reservations_for_lesson
+from .lesson_participants import (
+    ALL_RESERVATION_STATUSES,
+    CANCELED_RESERVATION_STATUSES,
+    reservations_for_lesson,
+)
 from .models import (
     CoachAvailability,
     CoachExpense,
@@ -264,7 +268,7 @@ def unconfirmed_execution_rows(year, month, *, now=None):
         )
         is_explicitly_canceled = bool(reservations) and all(
             reservation.status
-            in (Reservation.STATUS_CANCELED, Reservation.STATUS_RAIN_CANCELED)
+            in CANCELED_RESERVATION_STATUSES
             for reservation in reservations
         )
         if (

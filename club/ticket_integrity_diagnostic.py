@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 
+from .lesson_participants import CANCELED_RESERVATION_STATUSES
 from .models import (
     Reservation,
     ReservationParticipant,
@@ -109,7 +110,7 @@ def diagnose_ticket_integrity():
     reservation_findings = []
     reservation_unverifiable = []
     reservation_special = {"family": 0, "fixed_lesson": 0, "preopen": 0, "waived": 0, "zero_ticket": 0}
-    canceled_statuses = {Reservation.STATUS_CANCELED, Reservation.STATUS_RAIN_CANCELED}
+    canceled_statuses = set(CANCELED_RESERVATION_STATUSES)
     for row in reservations:
         rows = by_reservation[row["id"]]
         if row["id"] in family_ids:

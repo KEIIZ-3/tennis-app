@@ -10,6 +10,7 @@ from .family_reservations import (
     save_reservation_participant_snapshot,
 )
 from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation
+from .lesson_participants import CAPACITY_CONSUMING_STATUSES
 
 
 MEMBER_CANCEL_REASON = "会員が予約確認画面からキャンセル"
@@ -126,7 +127,7 @@ def _canonical_availability(fixed_lesson, start_at, end_at, required_capacity):
             fixed_lesson=fixed_lesson,
             start_at=start_at,
             end_at=end_at,
-            status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+            status__in=CAPACITY_CONSUMING_STATUSES,
         ).update(
             coach=primary_coach,
             court=fixed_lesson.court,
@@ -227,7 +228,7 @@ def _active_occurrence_reservations(fixed_lesson, member, availability, start_at
             lesson_type=fixed_lesson.lesson_type,
             start_at=start_at,
             end_at=end_at,
-            status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+            status__in=CAPACITY_CONSUMING_STATUSES,
         )
         .filter(
             models.Q(participant_snapshot__participant_type="self")
@@ -406,7 +407,7 @@ def synchronize_fixed_lesson_membership(fixed_lesson_id, created_by=None):
                 fixed_lesson=fixed_lesson,
                 start_at=start_at,
                 end_at=end_at,
-                status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+                status__in=CAPACITY_CONSUMING_STATUSES,
             ).update(
                 coach=fixed_lesson.primary_coach(),
                 court=fixed_lesson.court,
@@ -479,7 +480,7 @@ def synchronize_fixed_lesson_membership(fixed_lesson_id, created_by=None):
                     lesson_type=fixed_lesson.lesson_type,
                     start_at=start_at,
                     end_at=end_at,
-                    status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+                    status__in=CAPACITY_CONSUMING_STATUSES,
                 ).filter(
                     models.Q(participant_snapshot__participant_type="self")
                     | models.Q(participant_snapshot__isnull=True)

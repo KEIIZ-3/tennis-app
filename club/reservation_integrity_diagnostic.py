@@ -6,6 +6,11 @@ from django.utils import timezone
 
 from . import lesson_execution
 from .lesson_execution_storage import read_status_map
+from .lesson_participants import (
+    CAPACITY_CONSUMING_STATUSES,
+    CANCELED_RESERVATION_STATUSES,
+    CONFIRMED_PARTICIPANT_STATUSES,
+)
 from .models import FixedLesson, Reservation
 from .settlement_models import MonthlySettlement
 
@@ -71,12 +76,10 @@ def diagnose_reservation_integrity(*, today=None):
     findings = []
     occurrence_rows = []
     for key, rows in sorted(grouped.items()):
-        active = [row for row in rows if row.status == Reservation.STATUS_ACTIVE]
+        active = [row for row in rows if row.status in CONFIRMED_PARTICIPANT_STATUSES]
         pending = [row for row in rows if row.status == Reservation.STATUS_PENDING]
-        canceled = [
-            row for row in rows
-            if row.status in (Reservation.STATUS_CANCELED, Reservation.STATUS_RAIN_CANCELED)
-        ]
+        capacity_consuming = [row for row in rows if row.status in CAPACITY_CONSUMING_STATUSES]
+        canceled = [row for row in rows if row.status in CANCELED_RESERVATION_STATUSES]
         capacity = _capacity(rows)
         cancellation_type = lesson_execution._cancellation_evidence(rows)
         cancellation_intent = next((
@@ -99,6 +102,7 @@ def diagnose_reservation_integrity(*, today=None):
             "occurrence": key,
             "active_count": len(active),
             "pending_count": len(pending),
+            "capacity_consuming_count": len(capacity_consuming),
             "canceled_count": len(canceled),
             "capacity": capacity,
             "execution_status": execution_status,
@@ -115,10 +119,19 @@ def diagnose_reservation_integrity(*, today=None):
                     active_fixed_lesson_ids=active_fixed_ids,
                     availability_id=rows[0].availability_id,
                 ))
-        if capacity is not None and len(active) > capacity:
+        if capacity is not None and len(capacity_consuming) > capacity:
+            occurrence_date = timezone.localtime(rows[0].start_at).date()
+            is_historical_held = (
+                occurrence_date < today
+                and execution_status == lesson_execution.STATUS_HELD
+            )
             findings.append(_finding(
-                "J_CAPACITY_EXCEEDED", SEVERITY_ERROR, key, active,
-                active_count=len(active), capacity=capacity,
+                "J_CAPACITY_EXCEEDED",
+                SEVERITY_HISTORICAL if is_historical_held else SEVERITY_ERROR,
+                key,
+                capacity_consuming,
+                active_count=len(active), pending_count=len(pending),
+                capacity_consuming_count=len(capacity_consuming), capacity=capacity,
             ))
         if cancellation_intent and active:
             findings.append(_finding(
@@ -143,7 +156,7 @@ def diagnose_reservation_integrity(*, today=None):
     reservation_pairs = {
         (row.fixed_lesson_id, row.user_id, timezone.localtime(row.start_at).date())
         for row in reservations
-        if row.fixed_lesson_id and row.status in (Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING)
+        if row.fixed_lesson_id and row.status in CAPACITY_CONSUMING_STATUSES
     }
     for fixed_lesson in future_fixed_lessons:
         members = list(fixed_lesson.members.all())

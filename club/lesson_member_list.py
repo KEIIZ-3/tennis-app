@@ -10,7 +10,10 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from .lesson_participants import participant_details_by_reservation, reservations_for_lesson
+from .lesson_participants import (
+    participant_details_by_reservation,
+    reservations_for_lesson,
+)
 from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation
 
 
@@ -597,7 +600,16 @@ def lesson_calendar_member_list(request):
     )
 
     pending_reservations = list(
-        Reservation.objects.select_related(
+        reservations_for_lesson(
+            fixed_lesson=fixed_lesson,
+            availability=availability,
+            coach=coach,
+            court=court,
+            lesson_type=lesson_type,
+            start_at=start_at,
+            end_at=end_at,
+            statuses=(Reservation.STATUS_PENDING,),
+        ).select_related(
             "user",
             "coach",
             "substitute_coach",
@@ -605,16 +617,6 @@ def lesson_calendar_member_list(request):
             "fixed_lesson",
             "availability",
         )
-        .filter(
-            reservation_filter,
-            status=Reservation.STATUS_PENDING,
-        )
-        .order_by(
-            "user__full_name",
-            "user__username",
-            "id",
-        )
-        .distinct()
     )
 
     participant_snapshot_map = (
