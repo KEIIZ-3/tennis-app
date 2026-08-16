@@ -1,5 +1,20 @@
 # Reservation Source of Truth 最終監査
 
+## Phase 2 READ ONLYデータ診断
+
+静的監査に加えて、occurrence単位の本番データ診断は次のコマンドで実行する。
+
+```powershell
+python manage.py diagnose_reservation_integrity
+```
+
+PostgreSQLではコマンド自身が `SET TRANSACTION READ ONLY` を設定する。診断は
+`SELECT` のみを使用し、`save`、`update`、`get_or_create`、`select_for_update`、repairを
+実行しない。結果はJSONで、canonical key（`fixed:<id>:<date>`、
+`availability:<id>`、関係IDのない旧データは `legacy:...`）ごとの人数・定員・実施状態と、
+severity付きfindingを出力する。`FixedLesson.members` は未来Reservation欠落検出にだけ使い、
+開催回人数には加算しない。`LessonWaitlist` も参加人数には含めない。
+
 ## 結論
 
 個別開催回の参加者一覧、参加人数、満員判定、参加者向け通知対象は、有効な
