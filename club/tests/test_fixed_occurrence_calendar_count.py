@@ -3,7 +3,8 @@ from django.urls import reverse
 from django.utils import timezone
 
 from club.fixed_occurrence_participants import active_count_for_occurrence
-from club.models import Court, FixedLesson, Reservation, User
+from club.fixed_lesson_sync_facade import synchronize_fixed_lesson_membership
+from club.models import CoachAvailability, Court, FixedLesson, Reservation, User
 
 
 class FixedOccurrenceCalendarCountTests(TestCase):
@@ -162,3 +163,104 @@ class FixedOccurrenceCalendarCountTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["selected_lesson"]["member_count"], 1)
+
+    def test_recreated_fixed_lesson_rebinds_shared_occurrence_without_ticket_side_effects(self):
+        start_at, end_at = self.fixed_lesson._build_datetimes_for_date(self.target_date)
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=5,
+        )
+        Reservation.objects.filter(pk=self.reservation.pk).update(
+            availability=availability,
+            tickets_used=1,
+            ticket_consumed_at=timezone.now(),
+            is_fixed_entry=False,
+        )
+        replacement_member = User.objects.create_user(
+            username="replacement-fixed-member",
+            role=User.ROLE_MEMBER,
+            full_name="再作成後会員",
+            member_level=User.LEVEL_BEGINNER,
+        )
+        replacement = FixedLesson.objects.create(
+            title=self.fixed_lesson.title,
+            coach=self.coach,
+            court=self.court,
+            lesson_type=FixedLesson.LESSON_GENERAL,
+            target_level=User.LEVEL_BEGINNER,
+            start_date=self.target_date,
+            weekday=self.target_date.weekday(),
+            start_hour=19,
+            capacity=5,
+            weeks_ahead=1,
+            is_active=True,
+        )
+        replacement.members.add(replacement_member)
+
+        original_id = self.reservation.pk
+        consumed_at = Reservation.objects.get(pk=original_id).ticket_consumed_at
+        synchronize_fixed_lesson_membership(replacement.pk)
+
+        old_reservation = Reservation.objects.get(pk=original_id)
+        self.assertEqual(old_reservation.fixed_lesson_id, replacement.pk)
+        self.assertEqual(old_reservation.ticket_consumed_at, consumed_at)
+        self.assertEqual(old_reservation.tickets_used, 1)
+        self.assertFalse(old_reservation.is_fixed_entry)
+        active = Reservation.objects.filter(
+            availability=availability,
+            status=Reservation.STATUS_ACTIVE,
+        )
+        self.assertEqual(active.count(), 2)
+
+        response = self.client.get(
+            reverse("club:lesson_calendar"),
+            {"year": self.target_date.year, "month": self.target_date.month},
+        )
+        row = next(
+            item for item in response.context["schedule_rows"]
+            if item["fixed_lesson_id"] == str(replacement.pk)
+        )
+        self.assertEqual(row["member_count"], 2)
+
+        self.client.force_login(self.coach)
+        member_response = self.client.get(
+            reverse("club:lesson_calendar_member_list"),
+            {
+                "availability_id": availability.pk,
+                "fixed_lesson_id": replacement.pk,
+                "lesson_date": self.target_date.isoformat(),
+            },
+        )
+        self.assertEqual(member_response.status_code, 200)
+        self.assertEqual(len(member_response.context["active_rows"]), 2)
+
+    def test_availability_identity_does_not_merge_same_time_other_availability(self):
+        start_at, end_at = self.fixed_lesson._build_datetimes_for_date(self.target_date)
+        first = CoachAvailability.objects.create(
+            coach=self.coach, court=self.court, lesson_type=Reservation.LESSON_GENERAL,
+            start_at=start_at, end_at=end_at, capacity=5,
+        )
+        other = CoachAvailability.objects.create(
+            coach=self.coach, court=self.court, lesson_type=Reservation.LESSON_GENERAL,
+            start_at=start_at, end_at=end_at, capacity=5,
+        )
+        Reservation.objects.filter(pk=self.reservation.pk).update(availability=first)
+        other_member = User.objects.create_user(username="other-availability-member", role=User.ROLE_MEMBER)
+        Reservation.objects.bulk_create([Reservation(
+            user=other_member, coach=self.coach, court=self.court, availability=other,
+            fixed_lesson=self.fixed_lesson, lesson_type=Reservation.LESSON_GENERAL,
+            start_at=start_at, end_at=end_at, status=Reservation.STATUS_ACTIVE,
+        )])
+        from club.lesson_participants import reservations_for_lesson
+        self.assertEqual(
+            reservations_for_lesson(
+                fixed_lesson=self.fixed_lesson, availability=first,
+                lesson_type=Reservation.LESSON_GENERAL, start_at=start_at, end_at=end_at,
+            ).count(),
+            1,
+        )

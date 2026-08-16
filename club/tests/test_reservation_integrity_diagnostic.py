@@ -1,9 +1,11 @@
 from datetime import date, datetime, time, timedelta
+from io import StringIO
 
+from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
 
-from club.models import Court, FixedLesson, Reservation, User
+from club.models import CoachAvailability, Court, FixedLesson, Reservation, User
 from club.reservation_integrity_diagnostic import diagnose_reservation_integrity
 
 
@@ -74,3 +76,61 @@ class ReservationIntegrityDiagnosticTests(TestCase):
         self.assertEqual(list(Reservation.objects.values().order_by("id")), before)
         reservation.refresh_from_db()
         self.assertEqual(reservation.status, Reservation.STATUS_ACTIVE)
+
+    def test_split_fixed_lesson_links_on_one_availability_are_detected(self):
+        start_at = timezone.make_aware(datetime.combine(self.target_date, time(10)))
+        availability = CoachAvailability.objects.create(
+            coach=self.coach, court=self.court, lesson_type=Reservation.LESSON_GROUP,
+            start_at=start_at, end_at=start_at + timedelta(hours=1), capacity=2,
+        )
+        replacement = FixedLesson.objects.create(
+            coach=self.coach, court=self.court, start_date=self.target_date,
+            weekday=self.target_date.weekday(), start_hour=10, capacity=2,
+            lesson_type=FixedLesson.LESSON_GROUP, weeks_ahead=1,
+        )
+        for member, fixed in zip(self.members[:2], [self.fixed, replacement]):
+            Reservation.objects.create(
+                user=member, coach=self.coach, court=self.court,
+                availability=availability, fixed_lesson=fixed,
+                lesson_type=Reservation.LESSON_GROUP, start_at=start_at,
+                end_at=start_at + timedelta(hours=1), status=Reservation.STATUS_ACTIVE,
+            )
+
+        result = diagnose_reservation_integrity(today=date(2099, 1, 1))
+        finding = next(row for row in result["findings"] if row["category"] == "OCCURRENCE_LINK_MISMATCH")
+        self.assertEqual(finding["severity"], "ERROR")
+        self.assertEqual(finding["availability_id"], availability.pk)
+        occurrence = next(row for row in result["occurrences"] if row["occurrence"] == f"availability:{availability.pk}")
+        self.assertEqual(occurrence["active_count"], 2)
+
+    def test_repair_command_is_dry_run_by_default_and_idempotent_when_applied(self):
+        start_at = timezone.make_aware(datetime.combine(self.target_date, time(10)))
+        availability = CoachAvailability.objects.create(
+            coach=self.coach, court=self.court, lesson_type=Reservation.LESSON_GROUP,
+            start_at=start_at, end_at=start_at + timedelta(hours=1), capacity=2,
+        )
+        replacement = FixedLesson.objects.create(
+            title=self.fixed.title, coach=self.coach, court=self.court,
+            start_date=self.target_date, weekday=self.target_date.weekday(),
+            start_hour=10, capacity=2, lesson_type=FixedLesson.LESSON_GROUP,
+            weeks_ahead=1,
+        )
+        reservation = Reservation.objects.create(
+            user=self.members[0], coach=self.coach, court=self.court,
+            availability=availability, fixed_lesson=self.fixed,
+            lesson_type=Reservation.LESSON_GROUP, start_at=start_at,
+            end_at=start_at + timedelta(hours=1), status=Reservation.STATUS_ACTIVE,
+            tickets_used=1, ticket_consumed_at=timezone.now(),
+        )
+        evidence = (reservation.pk, reservation.tickets_used, reservation.ticket_consumed_at)
+        args = ["repair_occurrence_linkage", "--reservation-id", str(reservation.pk),
+                "--canonical-fixed-lesson-id", str(replacement.pk)]
+        call_command(*args, stdout=StringIO())
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.fixed_lesson_id, self.fixed.pk)
+
+        call_command(*args, "--apply", stdout=StringIO())
+        call_command(*args, "--apply", stdout=StringIO())
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.fixed_lesson_id, replacement.pk)
+        self.assertEqual((reservation.pk, reservation.tickets_used, reservation.ticket_consumed_at), evidence)

@@ -10,21 +10,34 @@ python manage.py diagnose_reservation_integrity
 
 PostgreSQLではコマンド自身が `SET TRANSACTION READ ONLY` を設定する。診断は
 `SELECT` のみを使用し、`save`、`update`、`get_or_create`、`select_for_update`、repairを
-実行しない。結果はJSONで、canonical key（`fixed:<id>:<date>`、
-`availability:<id>`、関係IDのない旧データは `legacy:...`）ごとの人数・定員・実施状態と、
-severity付きfindingを出力する。`FixedLesson.members` は未来Reservation欠落検出にだけ使い、
+実行しない。結果はJSONで、availabilityを持つ開催回はcanonical key
+`availability:<id>`、availabilityのない固定開催回は`fixed:<id>:<date>`、関係IDのない
+旧データは `legacy:...` として、人数・定員・実施状態とseverity付きfindingを出力する。
+同じavailability内でFixedLesson参照が分裂した場合は`OCCURRENCE_LINK_MISMATCH`を出力する。
+`FixedLesson.members` は未来Reservation欠落検出にだけ使い、
 開催回人数には加算しない。`LessonWaitlist` も参加人数には含めない。
+
+既存行の修復は対象を明示し、まずdry-runする。
+
+```powershell
+python manage.py repair_occurrence_linkage --reservation-id 1495 --canonical-fixed-lesson-id 65
+python manage.py repair_occurrence_linkage --reservation-id 1495 --canonical-fixed-lesson-id 65 --apply
+```
+
+修復コマンドは指定Reservationだけをtransaction内で更新し、チケット、台帳、決済、
+作成日時、通知を変更しない。`--apply`なしでは書き込まない。
 
 ## 結論
 
 個別開催回の参加者一覧、参加人数、満員判定、参加者向け通知対象は、有効な
 `Reservation` (`status=active`) を唯一の正本とする。全状態を表示する実施管理でも、
-開催回の識別は同じ共通サービスを使い、`fixed_lesson`、`availability`、物理枠の順に
-安定した関係IDを優先する。
+開催回の識別は同じ共通サービスを使う。availabilityがある場合はそれを安定IDとしつつ、
+同日に有効な並行FixedLessonは分離する。availabilityがない場合だけfixed_lessonを使い、
+物理枠一致はlegacy fallbackに限定する。
 
 最終監査で、実施管理だけが固定開催回の `fixed_lesson` と `availability` をOR結合し、
 同じavailabilityを共有する別レッスンの予約を混入させ得る経路を確認した。
-`reservations_for_lesson` へ統一し、固定レッスンIDを優先するよう修正した。
+`reservations_for_lesson` へ統一し、並行レッスンを分離するよう修正した。
 
 ## 監査したファイル
 

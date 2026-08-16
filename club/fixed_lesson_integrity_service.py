@@ -9,6 +9,7 @@ from .fixed_lesson_membership_service import (
     _canonical_availability,
     _ensure_self_snapshot,
     _is_intentionally_canceled,
+    rebind_occurrence_links,
 )
 from .models import Court, FixedLesson, LessonWaitlist, Reservation
 from .reservation_service import create_reservation
@@ -244,6 +245,12 @@ def _synchronize_locked_fixed_lesson(fixed_lesson_id, created_by=None):
             start_at,
             end_at,
             required_capacity,
+        )
+        rebind_occurrence_links(
+            fixed_lesson,
+            availability,
+            start_at,
+            end_at,
         )
 
         Reservation.objects.filter(

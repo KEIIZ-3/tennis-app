@@ -1860,7 +1860,7 @@ class Reservation(models.Model, LessonTypeMixin):
                 not is_registered_fixed_member
                 and slot_reservations_qs.count() >= availability.capacity
             ):
-                raise ValidationError("この時間枠は満員です。")
+                raise ValidationError("このレッスンは満員です。")
 
         if self.lesson_type == self.LESSON_PRIVATE:
             if self.status == self.STATUS_PENDING:

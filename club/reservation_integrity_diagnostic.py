@@ -19,10 +19,10 @@ SEVERITY_UNKNOWN = "UNKNOWN"
 
 def occurrence_key(reservation):
     local_date = timezone.localtime(reservation.start_at).date()
-    if reservation.fixed_lesson_id:
-        return f"fixed:{reservation.fixed_lesson_id}:{local_date.isoformat()}"
     if reservation.availability_id:
         return f"availability:{reservation.availability_id}"
+    if reservation.fixed_lesson_id:
+        return f"fixed:{reservation.fixed_lesson_id}:{local_date.isoformat()}"
     return "legacy:{lesson_type}:{coach}:{court}:{start}:{end}".format(
         lesson_type=reservation.lesson_type,
         coach=reservation.coach_id,
@@ -104,6 +104,17 @@ def diagnose_reservation_integrity(*, today=None):
             "execution_status": execution_status,
             "cancellation_type": cancellation_type,
         })
+        if key.startswith("availability:"):
+            fixed_ids = sorted({row.fixed_lesson_id for row in rows if row.fixed_lesson_id})
+            if len(fixed_ids) > 1:
+                active_fixed_ids = sorted({row.fixed_lesson_id for row in active if row.fixed_lesson_id})
+                severity = SEVERITY_ERROR if len(active_fixed_ids) > 1 else SEVERITY_HISTORICAL
+                findings.append(_finding(
+                    "OCCURRENCE_LINK_MISMATCH", severity, key, rows,
+                    fixed_lesson_ids=fixed_ids,
+                    active_fixed_lesson_ids=active_fixed_ids,
+                    availability_id=rows[0].availability_id,
+                ))
         if capacity is not None and len(active) > capacity:
             findings.append(_finding(
                 "J_CAPACITY_EXCEEDED", SEVERITY_ERROR, key, active,

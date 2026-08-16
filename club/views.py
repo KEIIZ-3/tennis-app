@@ -2256,8 +2256,25 @@ def lesson_calendar_view(request):
             # 固定メンバー設定ではなく、この開催回に存在する有効予約だけを表示人数とする。
             # 物理枠の一致を混ぜると、同時刻・同コートの別レッスンまで数えるため、
             # FixedLesson に明示的に紐づく Reservation のみを使用する。
-            member_count = int(fixed_lesson_active_counts.get(fixed_key, 0))
-            pending_count = int(fixed_lesson_pending_counts.get(fixed_key, 0))
+            if matching_availability:
+                member_count = reservations_for_lesson(
+                    fixed_lesson=fixed_lesson,
+                    availability=matching_availability,
+                    lesson_type=fixed_lesson.lesson_type,
+                    start_at=start_at,
+                    end_at=end_at,
+                ).count()
+                pending_count = reservations_for_lesson(
+                    fixed_lesson=fixed_lesson,
+                    availability=matching_availability,
+                    lesson_type=fixed_lesson.lesson_type,
+                    start_at=start_at,
+                    end_at=end_at,
+                    statuses=(Reservation.STATUS_PENDING,),
+                ).count()
+            else:
+                member_count = int(fixed_lesson_active_counts.get(fixed_key, 0))
+                pending_count = int(fixed_lesson_pending_counts.get(fixed_key, 0))
             fixed_user_status = user_fixed_lesson_status_map.get(fixed_key, "")
             fixed_user_waitlist_id = user_fixed_lesson_waitlist_map.get(fixed_key, "")
 
