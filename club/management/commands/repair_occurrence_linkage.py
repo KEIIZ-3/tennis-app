@@ -5,7 +5,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from club.fixed_lesson_membership_service import rebind_occurrence_links
-from club.models import FixedLesson, Reservation
+from club.models import CoachAvailability, FixedLesson, Reservation
 
 
 class Command(BaseCommand):
@@ -19,17 +19,23 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         try:
             with transaction.atomic():
-                reservation = Reservation.objects.select_for_update().select_related(
-                    "availability", "fixed_lesson"
-                ).get(pk=options["reservation_id"])
+                # PostgreSQL cannot apply FOR UPDATE to nullable relations brought
+                # in by select_related() as LEFT OUTER JOINs. Lock each mutable row
+                # with a separate query, in a consistent order.
+                reservation = Reservation.objects.select_for_update().get(
+                    pk=options["reservation_id"]
+                )
                 fixed_lesson = FixedLesson.objects.select_for_update().get(
                     pk=options["canonical_fixed_lesson_id"]
                 )
                 if not reservation.availability_id:
                     raise ValidationError("Reservationにavailabilityがありません。")
+                availability = CoachAvailability.objects.select_for_update().get(
+                    pk=reservation.availability_id
+                )
                 result = rebind_occurrence_links(
                     fixed_lesson,
-                    reservation.availability,
+                    availability,
                     reservation.start_at,
                     reservation.end_at,
                     apply=options["apply"],
@@ -45,6 +51,11 @@ class Command(BaseCommand):
                 }
                 if not options["apply"]:
                     transaction.set_rollback(True)
-        except (Reservation.DoesNotExist, FixedLesson.DoesNotExist, ValidationError) as exc:
+        except (
+            Reservation.DoesNotExist,
+            FixedLesson.DoesNotExist,
+            CoachAvailability.DoesNotExist,
+            ValidationError,
+        ) as exc:
             raise CommandError(str(exc)) from exc
         self.stdout.write(json.dumps(output, ensure_ascii=False, sort_keys=True))
