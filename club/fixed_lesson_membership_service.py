@@ -170,6 +170,55 @@ def _ensure_self_snapshot(reservation):
     save_reservation_participant_snapshot(reservation, participant)
 
 
+def rebind_occurrence_links(
+    fixed_lesson, availability, start_at, end_at, *, apply=True,
+    preserve_parallel=True, reservation_ids=None,
+):
+    """Bind one availability-backed occurrence to its current FixedLesson.
+
+    Availability is the stable occurrence identity already stored on reservations.
+    QuerySet.update deliberately avoids save signals, notifications, and ticket logic.
+    """
+    if (
+        availability.start_at != start_at
+        or availability.end_at != end_at
+        or availability.lesson_type != fixed_lesson.lesson_type
+    ):
+        raise ValidationError("開催枠と固定レッスンの日時・種別が一致しません。")
+
+    from .lesson_participants import competing_fixed_lesson_ids
+
+    competing_ids = (
+        competing_fixed_lesson_ids(fixed_lesson, start_at, end_at)
+        if preserve_parallel
+        else []
+    )
+    reservations = Reservation.objects.filter(
+        availability=availability,
+        lesson_type=fixed_lesson.lesson_type,
+        start_at=start_at,
+        end_at=end_at,
+    ).exclude(fixed_lesson=fixed_lesson).exclude(fixed_lesson_id__in=competing_ids)
+    if reservation_ids is not None:
+        reservations = reservations.filter(pk__in=reservation_ids)
+    waitlists = LessonWaitlist.objects.filter(
+        availability=availability,
+        lesson_type=fixed_lesson.lesson_type,
+        start_at=start_at,
+        end_at=end_at,
+    ).exclude(fixed_lesson=fixed_lesson).exclude(fixed_lesson_id__in=competing_ids)
+    if reservation_ids is not None:
+        waitlists = waitlists.none()
+    result = {
+        "reservation_ids": list(reservations.values_list("id", flat=True)),
+        "waitlist_ids": list(waitlists.values_list("id", flat=True)),
+    }
+    if apply:
+        reservations.update(fixed_lesson=fixed_lesson)
+        waitlists.update(fixed_lesson=fixed_lesson)
+    return result
+
+
 def _active_occurrence_reservations(fixed_lesson, member, availability, start_at, end_at):
     return list(
         Reservation.objects.select_for_update()
@@ -344,6 +393,13 @@ def synchronize_fixed_lesson_membership(fixed_lesson_id, created_by=None):
                 start_at,
                 end_at,
                 required_capacity,
+            )
+
+            rebind_occurrence_links(
+                fixed_lesson,
+                availability,
+                start_at,
+                end_at,
             )
 
             Reservation.objects.filter(

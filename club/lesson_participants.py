@@ -1,10 +1,36 @@
 from datetime import date
 
+from django.utils import timezone
+
 from .models import Reservation, ReservationParticipant
 
 
 ACTIVE_PARTICIPANT_STATUSES = (Reservation.STATUS_ACTIVE,)
 ALL_RESERVATION_STATUSES = tuple(value for value, _label in Reservation.STATUS_CHOICES)
+
+
+def competing_fixed_lesson_ids(fixed_lesson, start_at, end_at):
+    """Return other active templates that legitimately own the same date/time.
+
+    A shared availability normally identifies an occurrence, but two active fixed
+    lessons may intentionally share a physical slot.  An old/inactive template
+    that no longer schedules the date is not a competing occurrence.
+    """
+    target_date = timezone.localtime(start_at).date() if timezone.is_aware(start_at) else start_at.date()
+    competing_ids = []
+    model = type(fixed_lesson)
+    for candidate in model.objects.filter(is_active=True).exclude(pk=fixed_lesson.pk):
+        current_title = (fixed_lesson.title or "").strip()
+        if current_title and (candidate.title or "").strip() == current_title:
+            # A recreated template with the same business identity is a
+            # predecessor, not a parallel lesson.
+            continue
+        if target_date not in candidate.scheduled_occurrence_dates():
+            continue
+        candidate_start, candidate_end = candidate._build_datetimes_for_date(target_date)
+        if candidate_start == start_at and candidate_end == end_at:
+            competing_ids.append(candidate.pk)
+    return competing_ids
 
 
 def reservations_for_lesson(*, fixed_lesson=None, availability=None, coach=None,
@@ -25,10 +51,14 @@ def reservations_for_lesson(*, fixed_lesson=None, availability=None, coach=None,
     # Stable relation identifiers take precedence. Falling back to physical
     # fields is only for legacy reservations without either relation; OR-ing
     # every hint would merge two distinct lessons that share a court/time.
-    if fixed_lesson is not None:
-        queryset = queryset.filter(fixed_lesson=fixed_lesson)
-    elif availability is not None:
+    if availability is not None:
         queryset = queryset.filter(availability=availability)
+        if fixed_lesson is not None:
+            competing_ids = competing_fixed_lesson_ids(fixed_lesson, start_at, end_at)
+            if competing_ids:
+                queryset = queryset.exclude(fixed_lesson_id__in=competing_ids)
+    elif fixed_lesson is not None:
+        queryset = queryset.filter(fixed_lesson=fixed_lesson)
     elif coach is not None and court is not None:
         queryset = queryset.filter(coach=coach, court=court)
     elif coach is not None:
