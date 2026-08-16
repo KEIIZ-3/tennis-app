@@ -5,7 +5,18 @@ from django.utils import timezone
 from .models import Reservation, ReservationParticipant
 
 
-ACTIVE_PARTICIPANT_STATUSES = (Reservation.STATUS_ACTIVE,)
+CONFIRMED_PARTICIPANT_STATUSES = (Reservation.STATUS_ACTIVE,)
+CAPACITY_CONSUMING_STATUSES = (
+    Reservation.STATUS_ACTIVE,
+    Reservation.STATUS_PENDING,
+)
+CANCELED_RESERVATION_STATUSES = (
+    Reservation.STATUS_CANCELED,
+    Reservation.STATUS_RAIN_CANCELED,
+)
+# Backwards-compatible name for callers whose business meaning is confirmed
+# participation. New code should use the more explicit canonical name above.
+ACTIVE_PARTICIPANT_STATUSES = CONFIRMED_PARTICIPANT_STATUSES
 ALL_RESERVATION_STATUSES = tuple(value for value, _label in Reservation.STATUS_CHOICES)
 
 
@@ -35,7 +46,7 @@ def competing_fixed_lesson_ids(fixed_lesson, start_at, end_at):
 
 def reservations_for_lesson(*, fixed_lesson=None, availability=None, coach=None,
                             court=None, lesson_type=None, start_at=None, end_at=None,
-                            statuses=ACTIVE_PARTICIPANT_STATUSES):
+                            statuses=CONFIRMED_PARTICIPANT_STATUSES):
     """Return canonical Reservation rows for one lesson occurrence.
 
     Reservation is the attendance source of truth. FixedLesson.members is only
@@ -69,7 +80,7 @@ def reservations_for_lesson(*, fixed_lesson=None, availability=None, coach=None,
     return queryset.order_by("user__full_name", "user__username", "id").distinct()
 
 
-def reservations_for_object(obj, *, statuses=ACTIVE_PARTICIPANT_STATUSES):
+def reservations_for_object(obj, *, statuses=CONFIRMED_PARTICIPANT_STATUSES):
     return reservations_for_lesson(
         fixed_lesson=getattr(obj, "fixed_lesson", None),
         availability=getattr(obj, "availability", None),
@@ -82,7 +93,7 @@ def reservations_for_object(obj, *, statuses=ACTIVE_PARTICIPANT_STATUSES):
     )
 
 
-def reservations_for_fixed_occurrence(fixed_lesson, target_date, *, statuses=ACTIVE_PARTICIPANT_STATUSES):
+def reservations_for_fixed_occurrence(fixed_lesson, target_date, *, statuses=CONFIRMED_PARTICIPANT_STATUSES):
     if isinstance(target_date, str):
         target_date = date.fromisoformat(target_date)
     start_at, end_at = fixed_lesson._build_datetimes_for_date(target_date)

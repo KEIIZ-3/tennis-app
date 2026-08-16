@@ -694,6 +694,8 @@ class FixedLesson(models.Model, LessonTypeMixin):
 
     def cancel_and_delete(self, created_by=None):
         """固定レッスン削除時に、生成済みの開催枠と受付情報も一体で取り消す。"""
+        from .lesson_participants import CAPACITY_CONSUMING_STATUSES
+
         if not self.pk:
             return super().delete()
 
@@ -734,7 +736,7 @@ class FixedLesson(models.Model, LessonTypeMixin):
                 Reservation.objects.select_for_update()
                 .filter(
                     reservation_filter,
-                    status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+                    status__in=CAPACITY_CONSUMING_STATUSES,
                 )
                 .order_by("id")
             )
@@ -1668,8 +1670,8 @@ class Reservation(models.Model, LessonTypeMixin):
         ).first()
 
     def active_slot_reservations_qs(self):
-        from .lesson_participants import reservations_for_object
-        qs = reservations_for_object(self)
+        from .lesson_participants import CAPACITY_CONSUMING_STATUSES, reservations_for_object
+        qs = reservations_for_object(self, statuses=CAPACITY_CONSUMING_STATUSES)
         if self.pk:
             qs = qs.exclude(pk=self.pk)
         return qs
@@ -2321,16 +2323,20 @@ class LessonWaitlist(models.Model):
         return "・".join([label for label in labels if label])
 
     def active_slot_reservations_qs(self):
+        from .lesson_participants import CAPACITY_CONSUMING_STATUSES
+
         return Reservation.objects.filter(
             coach=self.coach,
             court=self.court,
             lesson_type=self.lesson_type,
             start_at=self.start_at,
             end_at=self.end_at,
-            status=Reservation.STATUS_ACTIVE,
+            status__in=CAPACITY_CONSUMING_STATUSES,
         )
 
     def clean(self):
+        from .lesson_participants import CAPACITY_CONSUMING_STATUSES
+
         if self.user_id and getattr(self.user, "role", "") not in User.LESSON_PARTICIPANT_ROLE_VALUES:
             raise ValidationError("キャンセル待ちは会員または業務委託コーチアカウントのみ登録できます。")
 
@@ -2380,7 +2386,7 @@ class LessonWaitlist(models.Model):
             lesson_type=self.lesson_type,
             start_at=self.start_at,
             end_at=self.end_at,
-            status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+            status__in=CAPACITY_CONSUMING_STATUSES,
         ).exists()
         if active_reservation_exists and self.status == self.STATUS_WAITING:
             raise ValidationError("このレッスンはすでに予約済み、または申請済みです。")

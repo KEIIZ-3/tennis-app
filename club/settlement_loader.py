@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 
+from .lesson_participants import CONFIRMED_PARTICIPANT_STATUSES
 from .models import CoachExpense, Reservation, StringingOrder, TicketPurchase
 from .stringing_service import recognized_stringing_orders
 
@@ -19,7 +20,7 @@ def load_monthly_settlement_data(*, month_start, next_month):
         Reservation.objects.filter(
             start_at__date__gte=month_start,
             start_at__date__lt=next_month,
-            status=Reservation.STATUS_ACTIVE,
+            status__in=CONFIRMED_PARTICIPANT_STATUSES,
         )
         .exclude(
             fixed_lesson__isnull=True,

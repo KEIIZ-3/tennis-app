@@ -5,6 +5,7 @@ from django.db import models
 from django.utils import timezone
 
 from club.models import Reservation, StringingOrder
+from club.lesson_participants import CAPACITY_CONSUMING_STATUSES
 
 register = template.Library()
 
@@ -31,7 +32,7 @@ def _future_reservations_for_member(user):
         .filter(
             user=user,
             start_at__gte=now,
-            status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+            status__in=CAPACITY_CONSUMING_STATUSES,
         )
         .order_by("start_at", "id")
     )

@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 
+from .lesson_participants import CANCELED_RESERVATION_STATUSES
 from .models import (
     Reservation,
     ReservationParticipant,
@@ -21,7 +22,7 @@ REFUND_REASONS = {
     TicketLedger.REASON_CANCEL_REFUND,
     TicketLedger.REASON_RAIN_REFUND,
 }
-CANCELED_STATUSES = {Reservation.STATUS_CANCELED, Reservation.STATUS_RAIN_CANCELED}
+CANCELED_STATUSES = set(CANCELED_RESERVATION_STATUSES)
 
 
 def _ids(rows):

@@ -65,6 +65,8 @@ from .family_reservations import (
     validate_participant_can_book_lesson,
 )
 from .lesson_participants import (
+    CAPACITY_CONSUMING_STATUSES,
+    CANCELED_RESERVATION_STATUSES,
     participant_details_by_reservation,
     reservations_for_lesson,
     reservations_for_object,
@@ -566,7 +568,7 @@ def _coach_can_manage_request(user, reservation):
 
 
 def _is_reservation_canceled(reservation):
-    return reservation.status in (Reservation.STATUS_CANCELED, Reservation.STATUS_RAIN_CANCELED)
+    return reservation.status in CANCELED_RESERVATION_STATUSES
 
 
 def _can_user_cancel_reservation(user, reservation):
@@ -1117,6 +1119,7 @@ def _active_reservation_count_for_slot(*, coach, court, lesson_type, start_at, e
         lesson_type=lesson_type,
         start_at=start_at,
         end_at=end_at,
+        statuses=CAPACITY_CONSUMING_STATUSES,
     ).count()
 
 
@@ -1510,7 +1513,7 @@ def lesson_calendar_view(request):
                 lesson_type=availability.lesson_type,
                 start_at=availability.start_at,
                 end_at=availability.end_at,
-                status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+                status__in=CAPACITY_CONSUMING_STATUSES,
             )
             snapshots = ReservationParticipant.objects.filter(
                 reservation__in=participant_reservations,
@@ -1538,6 +1541,7 @@ def lesson_calendar_view(request):
                 lesson_type=availability.lesson_type,
                 start_at=availability.start_at,
                 end_at=availability.end_at,
+                statuses=CAPACITY_CONSUMING_STATUSES,
             ).count()
             # 開催回ごとの参加人数は、有効な予約レコードだけを正本とする。
             # 固定メンバー設定そのものは、個別開催回のキャンセル後も維持されるため、
@@ -1582,6 +1586,7 @@ def lesson_calendar_view(request):
                             lesson_type=availability.lesson_type,
                             start_at=availability.start_at,
                             end_at=availability.end_at,
+                            statuses=CAPACITY_CONSUMING_STATUSES,
                         ).count()
                         # 固定参加を含め、満員判定は開催回の有効予約だけで行う。
                         if locked_active_count < _capacity_for_availability(availability):
@@ -1667,6 +1672,7 @@ def lesson_calendar_view(request):
                     lesson_type=availability.lesson_type,
                     start_at=availability.start_at,
                     end_at=availability.end_at,
+                    statuses=CAPACITY_CONSUMING_STATUSES,
                 ).count()
                 # 固定参加を含め、満員判定は開催回の有効予約だけで行う。
                 if locked_active_count >= _capacity_for_availability(availability):
@@ -1767,7 +1773,7 @@ def lesson_calendar_view(request):
 
     reservation_qs = (
         Reservation.objects.filter(
-            status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+            status__in=CAPACITY_CONSUMING_STATUSES,
             start_at__date__gte=month_start,
             start_at__date__lt=next_month,
         )
@@ -2003,7 +2009,8 @@ def lesson_calendar_view(request):
         end_local = _local_dt(end_at)
         target_date = start_local.date()
         weekday_label = weekday_short[target_date.weekday()]
-        remaining_count = max(int(capacity or 0) - int(member_count or 0), 0)
+        capacity_consuming_count = int(member_count or 0) + int(pending_count or 0)
+        remaining_count = max(int(capacity or 0) - capacity_consuming_count, 0)
         execution_key = (
             f"fixed:{fixed_lesson_id}:{lesson_date}"
             if fixed_lesson_id and lesson_date
@@ -2069,7 +2076,7 @@ def lesson_calendar_view(request):
             start_at=start_at,
         ):
             disabled_reason = "ご自身のレベルでは予約できません。"
-        elif int(member_count or 0) >= int(capacity or 0):
+        elif capacity_consuming_count >= int(capacity or 0):
             if user_waitlist_id:
                 disabled_reason = "キャンセル待ち中です。"
                 can_cancel_waitlist = True
@@ -2089,7 +2096,7 @@ def lesson_calendar_view(request):
             customer_status_label = "実施済み" if target_date < today else "受付終了"
         elif is_recruitment_closed:
             customer_status_label = "募集終了"
-        elif int(member_count or 0) >= int(capacity or 0):
+        elif capacity_consuming_count >= int(capacity or 0):
             customer_status_label = "満員"
         else:
             customer_status_label = f"空きあり（残り{remaining_count}名）"
@@ -2167,6 +2174,7 @@ def lesson_calendar_view(request):
             "capacity": capacity,
             "member_count": int(member_count or 0),
             "pending_count": int(pending_count or 0),
+            "capacity_consuming_count": capacity_consuming_count,
             "remaining_count": remaining_count,
             "is_past": target_date < today,
             "is_rain_canceled": is_rain_canceled,
@@ -2609,6 +2617,7 @@ def lesson_reservation_confirm(request):
             lesson_type=lesson_type,
             start_at=start_at,
             end_at=end_at,
+            statuses=CAPACITY_CONSUMING_STATUSES,
         ).count()
 
         # 予約確認画面の参加人数も、開催回の有効予約だけを正本とする。
@@ -2640,7 +2649,7 @@ def lesson_reservation_confirm(request):
             lesson_type=lesson_type,
             start_at=start_at,
             end_at=end_at,
-            status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+            status__in=CAPACITY_CONSUMING_STATUSES,
         ).order_by("id").first()
         if own_reservation:
             user_slot_status = own_reservation.status
@@ -2657,7 +2666,7 @@ def lesson_reservation_confirm(request):
             lesson_type=lesson_type,
             start_at=start_at,
             end_at=end_at,
-            status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+            status__in=CAPACITY_CONSUMING_STATUSES,
         )
         booked_family_ids = set(
             ReservationParticipant.objects.filter(
@@ -2965,7 +2974,7 @@ def tickets_view(request):
     planned_ticket_count = int(
         Reservation.objects.filter(
             user=request.user,
-            status__in=(Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING),
+            status__in=CAPACITY_CONSUMING_STATUSES,
             start_at__gt=timezone.now(),
         ).aggregate(total=Sum("tickets_used"))["total"]
         or 0
@@ -6721,7 +6730,7 @@ def calendar_events(request):
     reservation_qs = (
         Reservation.objects.select_related("user", "coach", "substitute_coach", "court", "availability")
         .prefetch_related("ticket_consumptions__purchase")
-        .exclude(status__in=[Reservation.STATUS_CANCELED, Reservation.STATUS_RAIN_CANCELED])
+        .exclude(status__in=CANCELED_RESERVATION_STATUSES)
     )
 
     if coach_filter:
@@ -7287,7 +7296,7 @@ def reservation_list(request):
             "substitute_coach_name": _display_name(reservation.substitute_coach) if reservation.substitute_coach else "",
             "has_substitute": reservation.has_substitute_coach(),
             "is_future": reservation.start_at >= now,
-            "is_canceled": reservation.status in (Reservation.STATUS_CANCELED, Reservation.STATUS_RAIN_CANCELED),
+            "is_canceled": reservation.status in CANCELED_RESERVATION_STATUSES,
             "is_pending": reservation.status == Reservation.STATUS_PENDING,
             "is_active": reservation.status == Reservation.STATUS_ACTIVE,
         }
@@ -7482,7 +7491,7 @@ def lesson_waitlist_promote(request, pk):
                 lesson_type=waitlist.lesson_type,
                 start_at=waitlist.start_at,
                 end_at=waitlist.end_at,
-                status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+                status__in=CAPACITY_CONSUMING_STATUSES,
             ).first()
             if existing_reservation:
                 waitlist.mark_converted()

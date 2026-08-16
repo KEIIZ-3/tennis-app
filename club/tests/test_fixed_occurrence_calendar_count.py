@@ -4,6 +4,12 @@ from django.utils import timezone
 
 from club.fixed_occurrence_participants import active_count_for_occurrence
 from club.fixed_lesson_sync_facade import synchronize_fixed_lesson_membership
+from club.lesson_participants import (
+    CAPACITY_CONSUMING_STATUSES,
+    CANCELED_RESERVATION_STATUSES,
+    CONFIRMED_PARTICIPANT_STATUSES,
+    reservations_for_fixed_occurrence,
+)
 from club.models import CoachAvailability, Court, FixedLesson, Reservation, User
 
 
@@ -66,6 +72,56 @@ class FixedOccurrenceCalendarCountTests(TestCase):
         )
         self.reservation.status = Reservation.STATUS_CANCELED
         self.reservation.save(update_fields=["status"])
+        self.assertEqual(
+            active_count_for_occurrence(self.fixed_lesson, self.target_date),
+            0,
+        )
+
+    def test_canonical_status_sets_keep_participation_and_capacity_distinct(self):
+        self.assertEqual(CONFIRMED_PARTICIPANT_STATUSES, (Reservation.STATUS_ACTIVE,))
+        self.assertEqual(
+            CAPACITY_CONSUMING_STATUSES,
+            (Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING),
+        )
+        self.assertEqual(
+            CANCELED_RESERVATION_STATUSES,
+            (Reservation.STATUS_CANCELED, Reservation.STATUS_RAIN_CANCELED),
+        )
+
+        pending_member = User.objects.create_user(
+            username="calendar-pending-member",
+            role=User.ROLE_MEMBER,
+        )
+        pending = Reservation(
+            user=pending_member,
+            coach=self.coach,
+            court=self.court,
+            fixed_lesson=self.fixed_lesson,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=User.LEVEL_BEGINNER,
+            start_at=self.reservation.start_at,
+            end_at=self.reservation.end_at,
+            status=Reservation.STATUS_PENDING,
+        )
+        Reservation.objects.bulk_create([pending])
+        confirmed = reservations_for_fixed_occurrence(
+            self.fixed_lesson, self.target_date
+        )
+        capacity_consuming = reservations_for_fixed_occurrence(
+            self.fixed_lesson,
+            self.target_date,
+            statuses=CAPACITY_CONSUMING_STATUSES,
+        )
+        self.assertEqual(list(confirmed.values_list("pk", flat=True)), [self.reservation.pk])
+        self.assertEqual(
+            set(capacity_consuming.values_list("pk", flat=True)),
+            {self.reservation.pk, pending.pk},
+        )
+
+    def test_rain_canceled_reservation_is_not_counted(self):
+        Reservation.objects.filter(pk=self.reservation.pk).update(
+            status=Reservation.STATUS_RAIN_CANCELED
+        )
         self.assertEqual(
             active_count_for_occurrence(self.fixed_lesson, self.target_date),
             0,

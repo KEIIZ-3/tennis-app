@@ -3,6 +3,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import Reservation, TicketConsumption, TicketLedger
+from .lesson_participants import CAPACITY_CONSUMING_STATUSES
 
 
 REPAIR_NOTE_PREFIX = "固定予約チケット補正"
@@ -20,7 +21,7 @@ def _missing_consumption_queryset():
         Reservation.objects.filter(
             is_fixed_entry=True,
             fixed_lesson_id__isnull=False,
-            status__in=(Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING),
+            status__in=CAPACITY_CONSUMING_STATUSES,
             tickets_used__gt=0,
             ticket_consumed_at__isnull=True,
             ticket_refunded_at__isnull=True,

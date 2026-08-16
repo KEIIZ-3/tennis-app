@@ -12,6 +12,7 @@ from .fixed_lesson_membership_service import (
     rebind_occurrence_links,
 )
 from .models import Court, FixedLesson, LessonWaitlist, Reservation
+from .lesson_participants import CAPACITY_CONSUMING_STATUSES
 from .reservation_service import create_reservation
 
 
@@ -74,7 +75,7 @@ def _locked_occurrence_reservations(
             lesson_type=fixed_lesson.lesson_type,
             start_at=start_at,
             end_at=end_at,
-            status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+            status__in=CAPACITY_CONSUMING_STATUSES,
         )
         .filter(
             models.Q(participant_snapshot__participant_type="self")
@@ -257,7 +258,7 @@ def _synchronize_locked_fixed_lesson(fixed_lesson_id, created_by=None):
             fixed_lesson=fixed_lesson,
             start_at=start_at,
             end_at=end_at,
-            status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+            status__in=CAPACITY_CONSUMING_STATUSES,
         ).update(
             coach=fixed_lesson.primary_coach(),
             court=fixed_lesson.court,
@@ -330,7 +331,7 @@ def _synchronize_locked_fixed_lesson(fixed_lesson_id, created_by=None):
                 lesson_type=fixed_lesson.lesson_type,
                 start_at=start_at,
                 end_at=end_at,
-                status__in=[Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING],
+                status__in=CAPACITY_CONSUMING_STATUSES,
             ).filter(
                 models.Q(participant_snapshot__participant_type="self")
                 | models.Q(participant_snapshot__isnull=True)
