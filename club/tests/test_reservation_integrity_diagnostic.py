@@ -1,8 +1,13 @@
 from datetime import date, datetime, time, timedelta
+import json
 from io import StringIO
+from unittest.mock import patch
 
 from django.core.management import call_command
+from django.core.management.base import CommandError
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from club.models import CoachAvailability, Court, FixedLesson, Reservation, User
@@ -122,15 +127,94 @@ class ReservationIntegrityDiagnosticTests(TestCase):
             end_at=start_at + timedelta(hours=1), status=Reservation.STATUS_ACTIVE,
             tickets_used=1, ticket_consumed_at=timezone.now(),
         )
-        evidence = (reservation.pk, reservation.tickets_used, reservation.ticket_consumed_at)
+        evidence = {
+            "id": reservation.pk,
+            "user_id": reservation.user_id,
+            "availability_id": reservation.availability_id,
+            "start_at": reservation.start_at,
+            "end_at": reservation.end_at,
+            "status": reservation.status,
+            "tickets_used": reservation.tickets_used,
+            "ticket_consumed_at": reservation.ticket_consumed_at,
+            "ticket_refunded_at": reservation.ticket_refunded_at,
+        }
         args = ["repair_occurrence_linkage", "--reservation-id", str(reservation.pk),
                 "--canonical-fixed-lesson-id", str(replacement.pk)]
-        call_command(*args, stdout=StringIO())
+        stdout = StringIO()
+        with CaptureQueriesContext(connection) as captured:
+            call_command(*args, stdout=stdout)
+        output = json.loads(stdout.getvalue())
+        self.assertFalse(output["applied"])
+        self.assertEqual(output["availability_id"], availability.pk)
+        self.assertEqual(output["before_fixed_lesson_id"], self.fixed.pk)
+        self.assertEqual(output["canonical_fixed_lesson_id"], replacement.pk)
+        self.assertEqual(output["reservation_ids"], [reservation.pk])
+        reservation_selects = [
+            query["sql"].upper()
+            for query in captured.captured_queries
+            if 'FROM "CLUB_RESERVATION"' in query["sql"].upper()
+            and query["sql"].lstrip().upper().startswith("SELECT")
+        ]
+        self.assertTrue(reservation_selects)
+        self.assertTrue(all("LEFT OUTER JOIN" not in sql for sql in reservation_selects))
         reservation.refresh_from_db()
         self.assertEqual(reservation.fixed_lesson_id, self.fixed.pk)
+        self.assertEqual(
+            {field: getattr(reservation, field) for field in evidence},
+            evidence,
+        )
 
-        call_command(*args, "--apply", stdout=StringIO())
-        call_command(*args, "--apply", stdout=StringIO())
+        with patch("club.notification_service.send_email_to_address") as email_mock, patch(
+            "club.notification_service.send_line_to_id"
+        ) as line_mock:
+            call_command(*args, "--apply", stdout=StringIO())
+            call_command(*args, "--apply", stdout=StringIO())
+        email_mock.assert_not_called()
+        line_mock.assert_not_called()
         reservation.refresh_from_db()
         self.assertEqual(reservation.fixed_lesson_id, replacement.pk)
-        self.assertEqual((reservation.pk, reservation.tickets_used, reservation.ticket_consumed_at), evidence)
+        self.assertEqual(
+            {field: getattr(reservation, field) for field in evidence},
+            evidence,
+        )
+        self.assertEqual(reservation.ticket_consumptions.count(), 0)
+
+    def test_repair_command_rejects_missing_availability(self):
+        reservation = self.reservation(self.members[0])
+        with self.assertRaisesMessage(CommandError, "Reservationにavailabilityがありません"):
+            call_command(
+                "repair_occurrence_linkage",
+                "--reservation-id", reservation.pk,
+                "--canonical-fixed-lesson-id", self.fixed.pk,
+            )
+
+    def test_repair_command_rejects_mismatched_occurrence(self):
+        reservation = self.reservation(self.members[0])
+        availability = CoachAvailability.objects.create(
+            coach=self.coach, court=self.court,
+            lesson_type=Reservation.LESSON_GROUP,
+            start_at=reservation.start_at + timedelta(hours=1),
+            end_at=reservation.end_at + timedelta(hours=1), capacity=2,
+        )
+        Reservation.objects.filter(pk=reservation.pk).update(availability=availability)
+        with self.assertRaisesMessage(CommandError, "日時・種別が一致しません"):
+            call_command(
+                "repair_occurrence_linkage",
+                "--reservation-id", reservation.pk,
+                "--canonical-fixed-lesson-id", self.fixed.pk,
+            )
+
+    def test_repair_command_rejects_missing_ids(self):
+        reservation = self.reservation(self.members[0])
+        with self.assertRaises(CommandError):
+            call_command(
+                "repair_occurrence_linkage",
+                "--reservation-id", reservation.pk + 10000,
+                "--canonical-fixed-lesson-id", self.fixed.pk,
+            )
+        with self.assertRaises(CommandError):
+            call_command(
+                "repair_occurrence_linkage",
+                "--reservation-id", reservation.pk,
+                "--canonical-fixed-lesson-id", self.fixed.pk + 10000,
+            )
