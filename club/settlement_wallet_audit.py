@@ -1,9 +1,29 @@
 from datetime import date
 
 from django.db.models import Sum
+from django.utils import timezone
 
-from .models import Reservation, StringingOrder, TicketConsumption, TicketPurchase
-from .settlement_balance_policy import _build_court_cost_policy, main_coaches
+from .court_policy_reconciliation import (
+    _scheduled_fixed_lesson_match,
+    reconcile_court_policy,
+)
+from .court_transfer_service import current_court_transfer_rows
+from .models import (
+    CoachAvailability,
+    RainRefund,
+    Reservation,
+    StringingOrder,
+    TicketConsumption,
+    TicketPurchase,
+    User,
+)
+from .settlement_balance_policy import (
+    _approved_monthly_expenses,
+    _automatic_court_cost,
+    _build_court_cost_policy,
+    _slot_key_for_reservation,
+    main_coaches,
+)
 from .settlement_models import MonthlySettlement, SettlementPayment
 from .stringing_service import recognized_stringing_orders, stringing_revenue_amount
 
@@ -16,6 +36,203 @@ def _month_range(year, month):
 
 def _money(value):
     return int(value or 0)
+
+
+def _display_name(user):
+    if user is None:
+        return ""
+    try:
+        return user.display_name()
+    except Exception:
+        return str(user)
+
+
+def _court_cost_audit_rows(year, month, court_policy):
+    """Explain every approved court transfer without changing settlement data."""
+    start, end = _month_range(year, month)
+    expense_rows = [
+        row
+        for row in _approved_monthly_expenses(start, end)
+        if row["is_court"] and row["meta"].get("record_kind") == "court_transfer"
+    ]
+    rows_without_availability, current_by_availability = (
+        current_court_transfer_rows(expense_rows)
+    )
+
+    availability_ids = {
+        availability_id for availability_id in current_by_availability
+    }
+    for row in expense_rows:
+        try:
+            availability_ids.add(int(row["meta"].get("availability_id")))
+        except (TypeError, ValueError):
+            pass
+    availability_map = {
+        item.pk: item
+        for item in CoachAvailability.objects.filter(pk__in=availability_ids)
+        .select_related("court", "coach", "substitute_coach")
+    }
+    rain_refund_availability_ids = set(
+        RainRefund.objects.filter(
+            lesson_date__gte=start,
+            lesson_date__lt=end,
+            availability_id__isnull=False,
+        ).values_list("availability_id", flat=True)
+    )
+    reservations = list(
+        Reservation.objects.filter(
+            start_at__date__gte=start,
+            start_at__date__lt=end,
+        )
+        .select_related("fixed_lesson", "court", "availability")
+        .order_by("start_at", "id")
+    )
+    reservations_by_availability = {}
+    reservations_by_slot = {}
+    for reservation in reservations:
+        if reservation.availability_id:
+            reservations_by_availability.setdefault(
+                reservation.availability_id, reservation
+            )
+        slot_key = _slot_key_for_reservation(reservation)
+        if slot_key:
+            reservations_by_slot.setdefault(slot_key, reservation)
+
+    user_ids = set()
+    for row in expense_rows:
+        user_ids.add(row["payer_id"])
+        for value in row["meta"].get("using_coach_ids") or []:
+            try:
+                user_ids.add(int(value))
+            except (TypeError, ValueError):
+                pass
+    users = {
+        user.pk: user
+        for user in User.objects.filter(
+            pk__in=[value for value in user_ids if value]
+        )
+    }
+
+    included_policy_rows = {
+        _money(row.get("expense_id")): row
+        for row in court_policy.get("detail_rows") or []
+        if row.get("expense_id")
+    }
+    current_legacy_by_slot = {}
+    for row in rows_without_availability:
+        slot_key = str(row["meta"].get("court_refund_slot_key") or "").strip()
+        current = current_legacy_by_slot.get(slot_key)
+        if slot_key and (
+            current is None or row["expense"].pk > current["expense"].pk
+        ):
+            current_legacy_by_slot[slot_key] = row
+
+    result = []
+    for source in expense_rows:
+        expense = source["expense"]
+        meta = source["meta"]
+        try:
+            availability_id = int(meta.get("availability_id"))
+        except (TypeError, ValueError):
+            availability_id = None
+        availability = availability_map.get(availability_id)
+        slot_key = str(meta.get("court_refund_slot_key") or "").strip()
+        reservation = (
+            reservations_by_availability.get(availability_id)
+            if availability_id
+            else reservations_by_slot.get(slot_key)
+        )
+        occurrence = availability or reservation
+        canonical_source = (
+            current_by_availability.get(availability_id)
+            if availability_id
+            else current_legacy_by_slot.get(slot_key)
+        )
+        canonical_id = (
+            canonical_source["expense"].pk
+            if canonical_source is not None
+            else expense.pk
+        )
+        is_canonical = expense.pk == canonical_id
+        policy_row = included_policy_rows.get(expense.pk)
+        included = policy_row is not None
+        using_ids = []
+        for value in meta.get("using_coach_ids") or []:
+            try:
+                coach_id = int(value)
+            except (TypeError, ValueError):
+                continue
+            if coach_id not in using_ids:
+                using_ids.append(coach_id)
+
+        start_at = getattr(occurrence, "start_at", None)
+        end_at = getattr(occurrence, "end_at", None)
+        if start_at and timezone.is_aware(start_at):
+            start_at = timezone.localtime(start_at)
+        if end_at and timezone.is_aware(end_at):
+            end_at = timezone.localtime(end_at)
+        court = getattr(occurrence, "court", None)
+        fixed_lesson_id = getattr(reservation, "fixed_lesson_id", None)
+        if fixed_lesson_id is None and availability is not None:
+            _coach_ids, fixed_lesson_ids = _scheduled_fixed_lesson_match(
+                availability, set(users)
+            )
+            if len(fixed_lesson_ids) == 1:
+                fixed_lesson_id = fixed_lesson_ids[0]
+        calculated_cost = _automatic_court_cost(occurrence) if occurrence else None
+        if included:
+            reason = policy_row.get("included_reason") or "canonical court transfer"
+        elif not is_canonical:
+            reason = f"superseded by expense_id {canonical_id}"
+        elif occurrence is None:
+            reason = "canonical occurrence not found"
+        else:
+            reason = "excluded by settlement execution/cancellation policy"
+        reservation_status = getattr(reservation, "status", "")
+        if availability_id in rain_refund_availability_ids:
+            execution_status = "canceled_court_settlement"
+        elif reservation_status == Reservation.STATUS_RAIN_CANCELED:
+            execution_status = "rain_canceled"
+        elif reservation_status == Reservation.STATUS_CANCELED:
+            execution_status = "canceled"
+        else:
+            execution_status = (policy_row or {}).get("execution_status", "excluded")
+        result.append({
+            "expense_id": expense.pk,
+            "availability_id": availability_id,
+            "fixed_lesson_id": fixed_lesson_id,
+            "date": (
+                start_at.date().isoformat()
+                if start_at
+                else str(expense.expense_date)
+            ),
+            "start_at": start_at.isoformat() if start_at else "",
+            "end_at": end_at.isoformat() if end_at else "",
+            "court_id": getattr(occurrence, "court_id", None),
+            "court_name": str(court or ""),
+            "court_count": getattr(occurrence, "court_count", None),
+            "registered_cost": _money(expense.amount),
+            "calculated_cost": calculated_cost,
+            "canonical_cost": _money(expense.amount) if included else 0,
+            "cost_warning": bool(
+                calculated_cost is not None
+                and calculated_cost != _money(expense.amount)
+            ),
+            "payer_id": source["payer_id"],
+            "payer_name": _display_name(users.get(source["payer_id"])),
+            "using_coach_ids": using_ids,
+            "using_coach_names": [_display_name(users.get(pk)) for pk in using_ids],
+            "execution_status": execution_status,
+            "canonical_occurrence_key": (
+                f"availability:{availability_id}" if availability_id else slot_key
+            ),
+            "is_canonical": is_canonical,
+            "duplicate_of": None if is_canonical else canonical_id,
+            "included": included,
+            "included_reason": reason,
+            "created_at": expense.created_at.isoformat(),
+        })
+    return result
 
 
 def audit_wallet_month(year, month):
@@ -108,6 +325,13 @@ def audit_wallet_month(year, month):
     coaches = main_coaches()
     main_ids = [coach.pk for coach in coaches]
     court_policy = _build_court_cost_policy(year, month, main_ids, main_ids, [])
+    court_policy = reconcile_court_policy(
+        court_policy,
+        main_coach_ids=main_ids,
+        eligible_coach_ids=main_ids,
+        contractor_coach_ids=[],
+    )
+    court_rows = _court_cost_audit_rows(year, month, court_policy)
     paid_total = _money(SettlementPayment.objects.filter(
         monthly_settlement=settlement, is_reversed=False
     ).aggregate(total=Sum("amount"))["total"]) if settlement else 0
@@ -128,7 +352,18 @@ def audit_wallet_month(year, month):
         "stringing_cash_total": stringing_total,
         "stringing_rows": stringing_rows,
         "court_cost_total": court_policy["finalized_court_cost_total"],
-        "court_cost_rows": court_policy["detail_rows"],
+        "court_cost_rows": court_rows,
+        "included_court_rows": [row for row in court_rows if row["included"]],
+        "excluded_court_rows": [row for row in court_rows if not row["included"]],
+        "court_cost_invariant": {
+            "included_canonical_cost_sum": sum(
+                row["canonical_cost"] for row in court_rows if row["included"]
+            ),
+            "court_cost_total": court_policy["finalized_court_cost_total"],
+            "matches": sum(
+                row["canonical_cost"] for row in court_rows if row["included"]
+            ) == court_policy["finalized_court_cost_total"],
+        },
         "settlement_paid_total": paid_total,
         "unpaid_settlement_total": _money(settlement.unpaid_salary_total) if settlement else 0,
         "calculated_closing_wallet": expected,
