@@ -75,6 +75,8 @@ def _zero_price_kind(consumption, repair_reservation_ids):
     if consumption.reservation_id in repair_reservation_ids:
         return "zero_price_fixed_repair"
     purchase = consumption.purchase
+    if purchase.purchase_type == TicketPurchase.PURCHASE_TYPE_FORMAL_FREE:
+        return "zero_price_formal_free"
     if (
         purchase.purchase_type == TicketPurchase.PURCHASE_TYPE_LEGACY
         and purchase.label == "旧データ移行分"

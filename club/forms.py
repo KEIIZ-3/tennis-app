@@ -543,6 +543,19 @@ class StringingOrderForm(forms.ModelForm):
 
 
 class TicketGrantAdminForm(forms.Form):
+    GRANT_KIND_PAID = "paid"
+    GRANT_KIND_FORMAL_FREE = "formal_free"
+    GRANT_KIND_ADJUSTMENT = "adjustment"
+
+    grant_kind = forms.ChoiceField(
+        label="付与区分",
+        choices=(
+            (GRANT_KIND_PAID, "有料購入"),
+            (GRANT_KIND_FORMAL_FREE, "無料謝礼"),
+            (GRANT_KIND_ADJUSTMENT, "残高調整"),
+        ),
+        help_text="無料謝礼と残高調整は、メモではなくこの区分で識別します。",
+    )
     idempotency_token = forms.UUIDField(widget=forms.HiddenInput, initial=uuid.uuid4)
     tickets = forms.IntegerField(
         label="付与枚数",
@@ -583,6 +596,18 @@ class TicketGrantAdminForm(forms.Form):
             raise forms.ValidationError("1枚あたり金額は0以上にしてください。")
         return value
 
+    def clean(self):
+        cleaned = super().clean()
+        kind = cleaned.get("grant_kind")
+        unit_price = cleaned.get("unit_price")
+        if unit_price is None:
+            return cleaned
+        if kind == self.GRANT_KIND_FORMAL_FREE and unit_price != 0:
+            self.add_error("unit_price", "無料謝礼の単価は0円にしてください。")
+        if kind == self.GRANT_KIND_PAID and unit_price == 0:
+            self.add_error("unit_price", "有料購入の単価は1円以上にしてください。")
+        return cleaned
+
     def clean_label(self):
         return (self.cleaned_data.get("label") or "").strip()
 
@@ -590,6 +615,11 @@ class TicketGrantAdminForm(forms.Form):
         return (self.cleaned_data.get("note") or "").strip()
 
     def resolved_purchase_type(self):
+        grant_kind = self.cleaned_data.get("grant_kind")
+        if grant_kind == self.GRANT_KIND_FORMAL_FREE:
+            return TicketPurchase.PURCHASE_TYPE_FORMAL_FREE
+        if grant_kind == self.GRANT_KIND_ADJUSTMENT:
+            return TicketPurchase.PURCHASE_TYPE_ADMIN
         tickets = int(self.cleaned_data.get("tickets") or 0)
         unit_price = int(self.cleaned_data.get("unit_price") or 0)
         if tickets == 1 and unit_price == 4000:
