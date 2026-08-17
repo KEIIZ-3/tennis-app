@@ -42,6 +42,8 @@ class MissingTicketPurchaseEvidenceAuditTests(TestCase):
         self.assertEqual(row["candidate_count"], 1)
         self.assertEqual(row["candidate_purchases"][0]["purchase_id"], purchase.id)
         self.assertEqual(row["repair_rejection_reason"], "persisted_evidence_consistent")
+        self.assertFalse(row["linkage_possible"])
+        self.assertEqual(row["block_reason"], "no_later_purchase_capacity")
         self.assertEqual(result["summary"]["missing_count"], 1)
         self.assertEqual(result["summary"]["negative_balance_user_count"], 1)
         self.assertTrue(result["user_timelines"][str(self.user.id)])
@@ -63,3 +65,21 @@ class MissingTicketPurchaseEvidenceAuditTests(TestCase):
         classified = sum(summary[key] for key in ("no_purchase_candidate_count", "multiple_purchase_candidate_count",
             "single_but_inconsistent_count", "price_evidence_missing_count", "legacy_only_count", "other_count"))
         self.assertEqual(classified, summary["missing_count"])
+
+    def test_reports_later_purchase_fifo_candidate_without_writes(self):
+        reservation, _ = self.reservation()
+        purchase = TicketPurchase.objects.create(
+            user=self.user, total_tickets=4, remaining_tickets=4,
+            unit_price=500, purchase_type=TicketPurchase.PURCHASE_TYPE_ADMIN,
+            purchased_at=self.now,
+        )
+        stdout = StringIO()
+        with CaptureQueriesContext(connection) as queries:
+            call_command("audit_missing_ticket_purchase_evidence", "--reservation-id", str(reservation.id), stdout=stdout)
+        row = json.loads(stdout.getvalue())["rows"][0]
+        self.assertEqual(row["candidate_later_purchase_id"], purchase.id)
+        self.assertEqual(row["candidate_purchase_unit_price"], 500)
+        self.assertEqual(row["fifo_position"], 1)
+        self.assertTrue(row["linkage_possible"])
+        self.assertIsNone(row["block_reason"])
+        self.assertTrue(all(query["sql"].lstrip().upper().startswith("SELECT") for query in queries.captured_queries))

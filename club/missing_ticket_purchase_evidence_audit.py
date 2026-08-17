@@ -56,7 +56,7 @@ def _timeline(user_id):
     for row in TicketConsumption.objects.filter(user_id=user_id):
         events.append({"event_type": "consumption", "occurred_at": _iso(row.created_at), "consumption_id": row.id,
                        "reservation_id": row.reservation_id, "purchase_id": row.purchase_id,
-                       "tickets_used": int(row.tickets_used), "unit_price_snapshot": int(row.unit_price_snapshot),
+                       "tickets_used": int(row.tickets_used), "unit_price_snapshot": None if row.unit_price_snapshot is None else int(row.unit_price_snapshot),
                        "refunded_at": _iso(row.refunded_at), "created_at": _iso(row.created_at)})
     return sorted(events, key=lambda row: (row["occurred_at"] or "", row["event_type"], row.get("ledger_id", row.get("purchase_id", row.get("consumption_id", 0)))))
 
@@ -82,6 +82,50 @@ def audit_missing_ticket_purchase_evidence(reservation_ids=DEFAULT_RESERVATION_I
                 "reason": ledger.reason, "created_at": _iso(ledger.created_at)},
             "candidate_purchases": [_purchase_row(row) for row in candidates], "candidate_count": len(candidates),
             "candidate_classification": classification, "repair_rejection_reason": preview.reason})
+
+    # Simulate the formal deferred-payment FIFO using persisted timestamps and
+    # currently unallocated lot capacity.  This is intentionally SELECT-only.
+    for user_id in sorted(user_ids):
+        user_rows = sorted(
+            (row for row in rows if row["user_id"] == user_id),
+            key=lambda row: (row["ticket_consumed_at"] or "", row["reservation_id"]),
+        )
+        capacity = {
+            purchase.id: int(purchase.remaining_tickets or 0)
+            for purchase in TicketPurchase.objects.filter(user_id=user_id)
+        }
+        purchases = list(
+            TicketPurchase.objects.filter(user_id=user_id).order_by("purchased_at", "id")
+        )
+        for position, row in enumerate(user_rows, start=1):
+            row.update({
+                "candidate_later_purchase_id": None,
+                "candidate_purchase_unit_price": None,
+                "fifo_position": position,
+                "linkage_possible": False,
+                "block_reason": "no_later_purchase_capacity",
+            })
+            reservation = Reservation.objects.get(pk=row["reservation_id"])
+            if reservation.status != Reservation.STATUS_ACTIVE:
+                row["block_reason"] = "reservation_not_active"
+                continue
+            if reservation.ticket_refunded_at is not None:
+                row["block_reason"] = "usage_refunded"
+                continue
+            required = int(reservation.tickets_used or 0)
+            for purchase in purchases:
+                if purchase.purchased_at <= reservation.ticket_consumed_at:
+                    continue
+                if capacity[purchase.id] < required:
+                    continue
+                capacity[purchase.id] -= required
+                row.update({
+                    "candidate_later_purchase_id": purchase.id,
+                    "candidate_purchase_unit_price": int(purchase.unit_price),
+                    "linkage_possible": True,
+                    "block_reason": None,
+                })
+                break
     names = ("no_purchase_candidate", "multiple_purchase_candidates", "single_but_inconsistent", "price_evidence_missing", "legacy_only", "other")
     counts = {name: sum(row["candidate_classification"] == name for row in rows) for name in names}
     balances = {row.id: int(row.ticket_balance or 0) for row in User.objects.filter(id__in=user_ids)}

@@ -83,7 +83,7 @@ def diagnose_ticket_integrity():
             balance_unverifiable.append(_finding("no_legacy_baseline", **detail))
 
     consumption_findings = []
-    consumption_special = {"fixed_lesson": 0, "legacy_purchase": 0, "zero_price": 0}
+    consumption_special = {"fixed_lesson": 0, "legacy_purchase": 0, "zero_price": 0, "pending_purchase": 0}
     by_reservation = defaultdict(list)
     for row in consumptions:
         purchase = purchase_by_id.get(row["purchase_id"])
@@ -102,7 +102,9 @@ def diagnose_ticket_integrity():
             consumption_special["fixed_lesson"] += 1
         if purchase and purchase["purchase_type"] == TicketPurchase.PURCHASE_TYPE_LEGACY:
             consumption_special["legacy_purchase"] += 1
-        if int(row["unit_price_snapshot"]) == 0:
+        if not purchase:
+            consumption_special["pending_purchase"] += 1
+        if int(row["unit_price_snapshot"] or 0) == 0:
             consumption_special["zero_price"] += 1
         if row["reservation_id"]:
             by_reservation[row["reservation_id"]].append(row)

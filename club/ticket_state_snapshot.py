@@ -136,7 +136,7 @@ def build_ticket_state_snapshot():
                 "reservation_id": row["reservation_id"],
                 "fixed_lesson_id": row["fixed_lesson_id"],
                 "tickets_used": int(row["tickets_used"]),
-                "unit_price_snapshot": int(row["unit_price_snapshot"]),
+                "unit_price_snapshot": None if row["unit_price_snapshot"] is None else int(row["unit_price_snapshot"]),
                 "refunded_at": _isoformat(row["refunded_at"]),
                 "created_at": _isoformat(row["created_at"]),
             }

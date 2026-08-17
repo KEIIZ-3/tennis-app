@@ -91,7 +91,7 @@ def recoverable_participant_price(reservation, consumptions):
     """Return class-A evidence price, or ``None`` when evidence is not safe."""
     rows = list(consumptions)
     evidence_tickets = sum(int(row.tickets_used) for row in rows)
-    has_zero_price = any(int(row.unit_price_snapshot) == 0 for row in rows)
+    has_zero_price = any(int(row.unit_price_snapshot or 0) == 0 for row in rows)
     complete_evidence = bool(rows) and evidence_tickets == int(reservation.tickets_used)
     is_special = (
         int(reservation.custom_ticket_price) > 0
@@ -107,7 +107,7 @@ def recoverable_participant_price(reservation, consumptions):
     ):
         return None
     return sum(
-        int(row.unit_price_snapshot) * int(row.tickets_used)
+        int(row.unit_price_snapshot or 0) * int(row.tickets_used)
         for row in rows
     )
 
@@ -169,7 +169,7 @@ def diagnose_participant_price_integrity():
             result["consumption_summary"]["single"] += 1
         else:
             result["consumption_summary"]["multiple"] += 1
-            prices = sorted({int(row.unit_price_snapshot) for row in rows})
+            prices = sorted({int(row.unit_price_snapshot or 0) for row in rows})
             key = "same_unit_price_multiple" if len(prices) == 1 else "mixed_unit_price"
             result["consumption_summary"][key] += 1
             result["multiple_lot_reservations"].append({
@@ -177,7 +177,7 @@ def diagnose_participant_price_integrity():
                 "consumption_count": row_count,
                 "unit_prices": prices,
                 "ticket_count": sum(int(row.tickets_used) for row in rows),
-                "price_total": sum(int(row.unit_price_snapshot) * int(row.tickets_used) for row in rows),
+                "price_total": sum(int(row.unit_price_snapshot or 0) * int(row.tickets_used) for row in rows),
             })
 
         if any(row.refunded_at is not None for row in rows):
@@ -186,9 +186,9 @@ def diagnose_participant_price_integrity():
             result["consumption_summary"]["unreturned"] += 1
 
         evidence_tickets = sum(int(row.tickets_used) for row in rows)
-        evidence_price = sum(int(row.unit_price_snapshot) * int(row.tickets_used) for row in rows)
+        evidence_price = sum(int(row.unit_price_snapshot or 0) * int(row.tickets_used) for row in rows)
         complete_evidence = bool(rows) and evidence_tickets == int(reservation.tickets_used)
-        has_zero_price = any(int(row.unit_price_snapshot) == 0 for row in rows)
+        has_zero_price = any(int(row.unit_price_snapshot or 0) == 0 for row in rows)
         is_preopen = reservation.is_preopen_cash_lesson()
         is_special = (
             int(reservation.custom_ticket_price) > 0
@@ -253,7 +253,7 @@ def diagnose_participant_price_integrity():
             result["special_cases"]["same_account_multiple_reservations"] += 1
 
         for row in rows:
-            if int(row.unit_price_snapshot) != 0:
+            if int(row.unit_price_snapshot or 0) != 0:
                 continue
             result["special_cases"]["zero_price_consumptions"] += 1
             kind = _zero_price_kind(row, repair_reservation_ids)

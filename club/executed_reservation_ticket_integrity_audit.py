@@ -31,8 +31,8 @@ def _consumption_details(consumptions):
         {
             "consumption_id": item.pk,
             "purchase_id": item.purchase_id,
-            "purchase_type": item.purchase.purchase_type,
-            "classification": classify_purchase(item.purchase),
+            "purchase_type": item.purchase.purchase_type if item.purchase_id else None,
+            "classification": classify_purchase(item.purchase) if item.purchase_id else "pending_purchase",
             "tickets_used": int(item.tickets_used or 0),
             "unit_price_snapshot": int(item.unit_price_snapshot or 0),
             "consumption_value": int(item.tickets_used or 0) * int(item.unit_price_snapshot or 0),
