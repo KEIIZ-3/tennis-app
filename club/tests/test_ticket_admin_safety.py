@@ -157,6 +157,7 @@ class TicketAdminSafetyTests(TestCase):
         data = {
             "ids": str(self.member.pk),
             "idempotency_token": token,
+            "grant_kind": "paid",
             "tickets": 4,
             "unit_price": 3500,
             "label": "4枚セット",
@@ -181,6 +182,7 @@ class TicketAdminSafetyTests(TestCase):
         url = reverse("admin:club_user_grant_tickets")
         base = {
             "ids": str(self.member.pk),
+            "grant_kind": "paid",
             "tickets": 1,
             "unit_price": 4000,
             "label": "1枚券",

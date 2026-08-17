@@ -771,6 +771,7 @@ class TicketPurchase(models.Model):
     PURCHASE_TYPE_SET4 = "set4"
     PURCHASE_TYPE_EVENT = "event"
     PURCHASE_TYPE_ADMIN = "admin"
+    PURCHASE_TYPE_FORMAL_FREE = "formal_free"
     PURCHASE_TYPE_LEGACY = "legacy"
 
     PURCHASE_TYPE_CHOICES = (
@@ -778,6 +779,7 @@ class TicketPurchase(models.Model):
         (PURCHASE_TYPE_SET4, "4枚セット"),
         (PURCHASE_TYPE_EVENT, "イベント用"),
         (PURCHASE_TYPE_ADMIN, "管理画面調整"),
+        (PURCHASE_TYPE_FORMAL_FREE, "無料謝礼"),
         (PURCHASE_TYPE_LEGACY, "旧データ移行"),
     )
 
