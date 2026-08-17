@@ -22,6 +22,7 @@ from .settlement_balance_policy import (
     _automatic_court_cost,
     _build_court_cost_policy,
     _slot_key_for_reservation,
+    _execution_slot_key,
     main_coaches,
 )
 from .settlement_models import MonthlySettlement, SettlementPayment
@@ -55,12 +56,12 @@ def _court_cost_audit_rows(year, month, court_policy):
         for row in _approved_monthly_expenses(start, end)
         if row["is_court"] and row["meta"].get("record_kind") == "court_transfer"
     ]
-    rows_without_availability, current_by_availability = (
+    rows_without_availability, current_by_occurrence, occurrence_keys = (
         current_court_transfer_rows(expense_rows)
     )
 
     availability_ids = {
-        availability_id for availability_id in current_by_availability
+        availability_id for availability_id in occurrence_keys
     }
     for row in expense_rows:
         try:
@@ -144,7 +145,7 @@ def _court_cost_audit_rows(year, month, court_policy):
         )
         occurrence = availability or reservation
         canonical_source = (
-            current_by_availability.get(availability_id)
+            current_by_occurrence.get(occurrence_keys.get(availability_id))
             if availability_id
             else current_legacy_by_slot.get(slot_key)
         )
@@ -224,7 +225,8 @@ def _court_cost_audit_rows(year, month, court_policy):
             "using_coach_names": [_display_name(users.get(pk)) for pk in using_ids],
             "execution_status": execution_status,
             "canonical_occurrence_key": (
-                f"availability:{availability_id}" if availability_id else slot_key
+                occurrence_keys.get(availability_id, f"availability:{availability_id}")
+                if availability_id else slot_key
             ),
             "is_canonical": is_canonical,
             "duplicate_of": None if is_canonical else canonical_id,
@@ -268,39 +270,94 @@ def audit_wallet_month(year, month):
             purchase_total += amount
             purchase_rows.append(row)
 
+    from .lesson_execution_storage import read_status_map
+
     consumption_rows = []
     consumption_total = 0
+    consumed_inventory_total = 0
+    future_consumed_total = 0
+    canceled_refunded_total = 0
+    zero_price_consumption_total = 0
+    zero_price_consumption_count = 0
+    settlement_status = read_status_map(settlement) if settlement else {}
+    now = timezone.now()
     consumptions = TicketConsumption.objects.filter(
         reservation__start_at__date__gte=start,
         reservation__start_at__date__lt=end,
-    ).select_related("reservation", "purchase", "user").order_by(
+    ).select_related(
+        "reservation",
+        "reservation__availability",
+        "reservation__fixed_lesson",
+        "purchase",
+        "user",
+    ).order_by(
         "reservation__start_at", "reservation_id", "id"
     )
     for consumption in consumptions:
         reservation = consumption.reservation
-        included = (
-            consumption.refunded_at is None
-            and reservation.status == Reservation.STATUS_ACTIVE
+        slot_key = _execution_slot_key(reservation)
+        saved_execution_status = (settlement_status.get(slot_key) or {}).get(
+            "status"
         )
+        is_past = reservation.end_at <= now
+        is_executed = saved_execution_status == "held" and is_past
+        refunded = consumption.refunded_at is not None
+        canceled = reservation.status in (
+            Reservation.STATUS_CANCELED,
+            Reservation.STATUS_RAIN_CANCELED,
+        )
+        included = not refunded and not canceled and is_executed
         amount = _money(consumption.tickets_used) * _money(
             consumption.unit_price_snapshot
         )
+        if not refunded:
+            consumed_inventory_total += amount
+        if not refunded and not canceled and not is_past:
+            future_consumed_total += amount
+        if refunded or canceled:
+            canceled_refunded_total += amount
+        if consumption.unit_price_snapshot == 0:
+            zero_price_consumption_total += amount
+            zero_price_consumption_count += 1
         if included:
             consumption_total += amount
+        if refunded:
+            included_reason = "refunded consumption"
+        elif canceled:
+            included_reason = "canceled reservation"
+        elif not is_past:
+            included_reason = "future occurrence; inventory only"
+        elif saved_execution_status != "held":
+            included_reason = "occurrence not confirmed held"
+        else:
+            included_reason = "held occurrence revenue"
         consumption_rows.append({
             "consumption_id": consumption.pk,
             "reservation_id": reservation.pk,
+            "participant": _display_name(consumption.user),
             "participant_id": consumption.user_id,
-            "occurrence": reservation.start_at.isoformat(),
+            "lesson_date": reservation.start_at.date().isoformat(),
+            "start": reservation.start_at.isoformat(),
+            "end": reservation.end_at.isoformat(),
+            "execution_status": saved_execution_status or (
+                "scheduled" if not is_past else "unconfirmed"
+            ),
+            "reservation_status": reservation.status,
             "tickets": _money(consumption.tickets_used),
             "purchase_id": consumption.purchase_id,
             "purchase_type": consumption.purchase.purchase_type,
+            "purchase_amount": (
+                _money(consumption.purchase.total_tickets)
+                * _money(consumption.purchase.unit_price)
+            ),
             "unit_price_snapshot": _money(consumption.unit_price_snapshot),
             "consumed_value": amount,
-            "refunded": consumption.refunded_at is not None,
-            "canceled": reservation.status != Reservation.STATUS_ACTIVE,
+            "refunded": refunded,
+            "canceled": canceled,
+            "is_past": is_past,
+            "is_executed": is_executed,
             "included": included,
-            "reason": "active consumption" if included else "refunded or canceled",
+            "included_reason": included_reason,
         })
 
     direct_cash_rows = list(Reservation.objects.filter(
@@ -346,6 +403,11 @@ def audit_wallet_month(year, month):
         "ticket_purchase_rows": purchase_rows,
         "excluded_purchase_rows": excluded_purchase_rows,
         "ticket_consumption_revenue_total": consumption_total,
+        "ticket_consumed_inventory_total": consumed_inventory_total,
+        "ticket_future_consumed_value": future_consumed_total,
+        "ticket_canceled_refunded_value": canceled_refunded_total,
+        "ticket_zero_price_consumption_value": zero_price_consumption_total,
+        "ticket_zero_price_consumption_count": zero_price_consumption_count,
         "ticket_consumption_rows": consumption_rows,
         "direct_cash_revenue_total": direct_cash_total,
         "direct_cash_rows": direct_cash_rows,

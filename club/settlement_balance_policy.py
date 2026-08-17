@@ -592,18 +592,19 @@ def _court_transfer_allocation(
     excluded_availability_id_set = set(excluded_availability_ids or [])
     from .court_transfer_service import current_court_transfer_rows
 
-    rows_without_availability, canonical_rows_by_availability = (
+    rows_without_availability, canonical_rows_by_occurrence, _occurrence_keys = (
         current_court_transfer_rows(expense_rows)
     )
-    canonical_rows_by_availability = {
-        availability_id: row
-        for availability_id, row in canonical_rows_by_availability.items()
-        if availability_id not in excluded_availability_id_set
+    canonical_rows_by_occurrence = {
+        occurrence_key: row
+        for occurrence_key, row in canonical_rows_by_occurrence.items()
+        if int(row["meta"].get("availability_id"))
+        not in excluded_availability_id_set
     }
 
     canonical_rows = [
         *rows_without_availability,
-        *canonical_rows_by_availability.values(),
+        *canonical_rows_by_occurrence.values(),
     ]
     for row in canonical_rows:
         meta = row["meta"]
