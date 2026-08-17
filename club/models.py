@@ -896,6 +896,8 @@ class TicketConsumption(models.Model):
     purchase = models.ForeignKey(
         TicketPurchase,
         on_delete=models.CASCADE,
+        null=True,
+        blank=True,
         related_name="consumptions",
     )
     reservation = models.ForeignKey(
@@ -913,7 +915,7 @@ class TicketConsumption(models.Model):
         related_name="ticket_consumptions",
     )
     tickets_used = models.PositiveIntegerField(default=1)
-    unit_price_snapshot = models.PositiveIntegerField(default=0)
+    unit_price_snapshot = models.PositiveIntegerField(null=True, blank=True, default=None)
     refunded_at = models.DateTimeField(null=True, blank=True)
     refund_note = models.CharField(max_length=255, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -925,7 +927,7 @@ class TicketConsumption(models.Model):
         return f"{self.user} / {self.unit_price_label()} / {self.tickets_used}枚"
 
     def unit_price_label(self):
-        if self.unit_price_snapshot > 0:
+        if self.unit_price_snapshot is not None and self.unit_price_snapshot > 0:
             return f"{self.unit_price_snapshot}円券"
         return "価格不明券"
 
@@ -1351,6 +1353,10 @@ def purchase_tickets(
                 purchased_at=purchased_at or timezone.now(),
                 idempotency_key=normalized_key,
             )
+
+            from .deferred_ticket_consumption import allocate_pending_ticket_consumptions
+
+            allocate_pending_ticket_consumptions(purchase)
 
             user.ticket_balance = locked_user.ticket_balance
             return ledger, purchase
@@ -2015,6 +2021,17 @@ class Reservation(models.Model, LessonTypeMixin):
                 created_consumptions.append(consumption)
                 remaining_to_consume -= use_count
 
+            pending_tickets = unknown_tickets_consumed + remaining_to_consume
+            if pending_tickets > 0:
+                TicketConsumption.objects.create(
+                    user=locked_user,
+                    purchase=None,
+                    reservation=locked_self,
+                    fixed_lesson=locked_self.fixed_lesson,
+                    tickets_used=pending_tickets,
+                    unit_price_snapshot=None,
+                )
+
             from .participant_price_snapshot import set_participant_ticket_price_snapshot
 
             if remaining_to_consume == 0 and unknown_tickets_consumed == 0:
@@ -2066,10 +2083,11 @@ class Reservation(models.Model, LessonTypeMixin):
 
             for consumption in consumptions:
                 purchase = consumption.purchase
-                purchase.remaining_tickets += consumption.tickets_used
-                if purchase.remaining_tickets > purchase.total_tickets:
-                    purchase.remaining_tickets = purchase.total_tickets
-                purchase.save(update_fields=["remaining_tickets"])
+                if purchase is not None:
+                    purchase.remaining_tickets += consumption.tickets_used
+                    if purchase.remaining_tickets > purchase.total_tickets:
+                        purchase.remaining_tickets = purchase.total_tickets
+                    purchase.save(update_fields=["remaining_tickets"])
 
                 consumption.refunded_at = timezone.now()
                 consumption.refund_note = note or "予約返却"

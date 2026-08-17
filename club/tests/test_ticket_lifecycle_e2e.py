@@ -147,7 +147,9 @@ class TicketLifecycleE2ETests(TestCase):
         self.assertIsNotNone(reservation.ticket_consumed_at)
         self.assertIsNone(reservation.participant_ticket_price_snapshot)
         self.assertFalse(TicketPurchase.objects.exists())
-        self.assertFalse(TicketConsumption.objects.exists())
+        pending = TicketConsumption.objects.get()
+        self.assertIsNone(pending.purchase_id)
+        self.assertIsNone(pending.unit_price_snapshot)
         self.assertFalse(
             TicketPurchase.objects.filter(
                 purchase_type=TicketPurchase.PURCHASE_TYPE_LEGACY,
@@ -160,7 +162,7 @@ class TicketLifecycleE2ETests(TestCase):
         self.member.refresh_from_db()
         self.assertEqual(self.member.ticket_balance, 2)
         self.assertFalse(TicketPurchase.objects.exists())
-        self.assertFalse(TicketConsumption.objects.exists())
+        self.assertIsNotNone(TicketConsumption.objects.get().refunded_at)
 
     def test_partial_purchase_evidence_consumes_only_proven_lot_and_keeps_price_unknown(self):
         _, lot = self.purchase(tickets=1, unit_price=3500)
@@ -172,10 +174,12 @@ class TicketLifecycleE2ETests(TestCase):
         reservation.refresh_from_db()
         self.member.refresh_from_db()
         lot.refresh_from_db()
-        consumption = TicketConsumption.objects.get(reservation=reservation)
+        consumption = TicketConsumption.objects.get(reservation=reservation, purchase=lot)
+        pending = TicketConsumption.objects.get(reservation=reservation, purchase__isnull=True)
 
         self.assertEqual((self.member.ticket_balance, lot.remaining_tickets), (0, 0))
         self.assertEqual((consumption.tickets_used, consumption.unit_price_snapshot), (1, 3500))
+        self.assertEqual((pending.tickets_used, pending.unit_price_snapshot), (1, None))
         self.assertIsNone(reservation.participant_ticket_price_snapshot)
         self.assertEqual(TicketPurchase.objects.count(), 1)
 

@@ -345,10 +345,11 @@ def audit_wallet_month(year, month):
             "reservation_status": reservation.status,
             "tickets": _money(consumption.tickets_used),
             "purchase_id": consumption.purchase_id,
-            "purchase_type": consumption.purchase.purchase_type,
+            "purchase_type": consumption.purchase.purchase_type if consumption.purchase_id else None,
             "purchase_amount": (
                 _money(consumption.purchase.total_tickets)
                 * _money(consumption.purchase.unit_price)
+                if consumption.purchase_id else 0
             ),
             "unit_price_snapshot": _money(consumption.unit_price_snapshot),
             "consumed_value": amount,
