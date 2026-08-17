@@ -91,6 +91,7 @@ from .notifications import (
     build_waitlist_registered_for_member_email_message,
     verify_line_signature,
 )
+from .settlement_models import MonthlySettlement
 
 
 def _display_name(user):
@@ -1730,8 +1731,6 @@ def lesson_calendar_view(request):
     target_year, target_month = _parse_target_month(request.GET.get("year"), request.GET.get("month"))
     from . import lesson_execution
     from .lesson_execution_storage import read_status_map
-    from .settlement_models import MonthlySettlement
-
     calendar_settlement = MonthlySettlement.objects.filter(
         year=target_year,
         month=target_month,
