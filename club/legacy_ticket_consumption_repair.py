@@ -66,7 +66,7 @@ def _participant_name(reservation):
     return participant or reservation.user.full_name or reservation.user.username
 
 
-def _candidate_purchases(reservation, consumption_ledger):
+def candidate_purchases(reservation, consumption_ledger):
     """Find lots whose persisted depletion has exactly one unexplained use."""
     candidates = []
     purchases = TicketPurchase.objects.filter(
@@ -120,7 +120,7 @@ def inspect_legacy_ticket_consumption_repair(reservation_id, *, lock=False):
     if len(ledgers) != 1:
         return RepairPreview(**base, reason="single_reservation_use_ledger_required")
 
-    candidates = _candidate_purchases(reservation, ledgers[0])
+    candidates = candidate_purchases(reservation, ledgers[0])
     if len(candidates) != 1:
         return RepairPreview(**base, reason="unique_purchase_lot_required")
     purchase = candidates[0]

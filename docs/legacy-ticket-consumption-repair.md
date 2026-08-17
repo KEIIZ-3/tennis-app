@@ -28,3 +28,16 @@ Each apply runs atomically with row locks. After creating the linkage it verifie
 ticket balance, ledger count and delta, purchase remaining tickets, reservation
 payment/court fields, and the applicable monthly settlement snapshot. Any change
 causes a rollback. Existing consumption is an idempotent no-op.
+
+## Read-only purchase evidence audit
+
+Run the production investigation set without repairing or writing ticket data:
+
+```powershell
+python manage.py audit_missing_ticket_purchase_evidence
+```
+
+The JSON includes the repair logic's purchase candidates, classification,
+reservation ledger, user purchase/ledger/consumption timelines, and totals. The
+command has no apply mode. Repeat `--reservation-id` to audit an explicit set,
+including a missing/normal comparison such as reservations 1541 and 1554.
