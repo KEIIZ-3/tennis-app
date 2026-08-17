@@ -48,6 +48,47 @@ def _display_name(user):
         return str(user)
 
 
+_EXPLICIT_FREE_MARKERS = ("無料", "無償", "免除", "free")
+
+
+def _zero_price_classification(consumption, *, refunded, canceled, is_past):
+    """Classify zero snapshots from persisted evidence, never from current prices."""
+    purchase = consumption.purchase
+    evidence_text = " ".join(
+        value.strip() for value in (purchase.label or "", purchase.note or "")
+        if value and value.strip()
+    )
+    normalized_evidence = evidence_text.lower()
+    explicit_free = any(marker in normalized_evidence for marker in _EXPLICIT_FREE_MARKERS)
+
+    if refunded or canceled:
+        classification = "B_refunded_or_canceled"
+    elif not is_past:
+        classification = "C_future_inventory_only"
+    elif int(purchase.unit_price or 0) > 0:
+        classification = "E_paid_price_evidence"
+    elif explicit_free:
+        classification = "A_legitimate_zero_price"
+    elif purchase.purchase_type == TicketPurchase.PURCHASE_TYPE_LEGACY:
+        classification = "D_historical_unknown_price"
+    else:
+        classification = "F_inconsistent_or_missing_price_evidence"
+
+    if int(consumption.unit_price_snapshot or 0) > 0:
+        source = "ticket_consumption.unit_price_snapshot"
+        price_evidence = True
+    elif int(purchase.unit_price or 0) > 0:
+        source = "ticket_purchase.unit_price"
+        price_evidence = True
+    elif explicit_free:
+        source = "ticket_purchase.label_or_note_explicit_free"
+        price_evidence = True
+    else:
+        source = "no_persisted_price_evidence"
+        price_evidence = False
+    return classification, source, price_evidence, evidence_text
+
+
 def _court_cost_audit_rows(year, month, court_policy):
     """Explain every approved court transfer without changing settlement data."""
     start, end = _month_range(year, month)
@@ -279,6 +320,15 @@ def audit_wallet_month(year, month):
     canceled_refunded_total = 0
     zero_price_consumption_total = 0
     zero_price_consumption_count = 0
+    zero_price_rows = []
+    zero_price_classification_counts = {
+        "A_legitimate_zero_price": 0,
+        "B_refunded_or_canceled": 0,
+        "C_future_inventory_only": 0,
+        "D_historical_unknown_price": 0,
+        "E_paid_price_evidence": 0,
+        "F_inconsistent_or_missing_price_evidence": 0,
+    }
     settlement_status = read_status_map(settlement) if settlement else {}
     now = timezone.now()
     consumptions = TicketConsumption.objects.filter(
@@ -319,6 +369,14 @@ def audit_wallet_month(year, month):
         if consumption.unit_price_snapshot == 0:
             zero_price_consumption_total += amount
             zero_price_consumption_count += 1
+        classification, source, price_evidence, purchase_evidence = (
+            _zero_price_classification(
+                consumption,
+                refunded=refunded,
+                canceled=canceled,
+                is_past=is_past,
+            )
+        )
         if included:
             consumption_total += amount
         if refunded:
@@ -331,11 +389,12 @@ def audit_wallet_month(year, month):
             included_reason = "occurrence not confirmed held"
         else:
             included_reason = "held occurrence revenue"
-        consumption_rows.append({
+        audit_row = {
             "consumption_id": consumption.pk,
             "reservation_id": reservation.pk,
             "participant": _display_name(consumption.user),
             "participant_id": consumption.user_id,
+            "user_id": consumption.user_id,
             "lesson_date": reservation.start_at.date().isoformat(),
             "start": reservation.start_at.isoformat(),
             "end": reservation.end_at.isoformat(),
@@ -350,6 +409,15 @@ def audit_wallet_month(year, month):
                 _money(consumption.purchase.total_tickets)
                 * _money(consumption.purchase.unit_price)
             ),
+            "purchase_unit_price": _money(consumption.purchase.unit_price),
+            "purchase_ticket_count": _money(consumption.purchase.total_tickets),
+            "purchase_remaining": _money(consumption.purchase.remaining_tickets),
+            "purchase_label": consumption.purchase.label,
+            "purchase_note": consumption.purchase.note,
+            "purchase_created_by_id": consumption.purchase.created_by_id,
+            "purchase_created_at": consumption.purchase.created_at.isoformat(),
+            "reservation_created_at": reservation.created_at.isoformat(),
+            "consumption_created_at": consumption.created_at.isoformat(),
             "unit_price_snapshot": _money(consumption.unit_price_snapshot),
             "consumed_value": amount,
             "refunded": refunded,
@@ -358,7 +426,15 @@ def audit_wallet_month(year, month):
             "is_executed": is_executed,
             "included": included,
             "included_reason": included_reason,
-        })
+            "source": source,
+            "price_evidence": price_evidence,
+            "purchase_evidence": purchase_evidence,
+            "classification": classification,
+        }
+        consumption_rows.append(audit_row)
+        if consumption.unit_price_snapshot == 0:
+            zero_price_rows.append(audit_row)
+            zero_price_classification_counts[classification] += 1
 
     direct_cash_rows = list(Reservation.objects.filter(
         start_at__date__gte=start,
@@ -408,6 +484,34 @@ def audit_wallet_month(year, month):
         "ticket_canceled_refunded_value": canceled_refunded_total,
         "ticket_zero_price_consumption_value": zero_price_consumption_total,
         "ticket_zero_price_consumption_count": zero_price_consumption_count,
+        "ticket_zero_price_rows": zero_price_rows,
+        "ticket_zero_price_classification_counts": zero_price_classification_counts,
+        "ticket_revenue_summary": {
+            "executed_paid": sum(
+                row["consumed_value"] for row in consumption_rows
+                if row["included"] and row["unit_price_snapshot"] > 0
+            ),
+            "executed_zero_price": sum(
+                1 for row in zero_price_rows if row["included"]
+            ),
+            "future_paid": sum(
+                row["consumed_value"] for row in consumption_rows
+                if not row["is_past"] and not row["refunded"] and not row["canceled"]
+            ),
+            "future_zero_price": sum(
+                1 for row in zero_price_rows
+                if not row["is_past"] and not row["refunded"] and not row["canceled"]
+            ),
+            "refunded": sum(
+                1 for row in zero_price_rows if row["refunded"] or row["canceled"]
+            ),
+            "legacy_unknown": zero_price_classification_counts["D_historical_unknown_price"],
+            "admin_unknown": sum(
+                1 for row in zero_price_rows
+                if row["purchase_type"] == TicketPurchase.PURCHASE_TYPE_ADMIN
+                and not row["price_evidence"]
+            ),
+        },
         "ticket_consumption_rows": consumption_rows,
         "direct_cash_revenue_total": direct_cash_total,
         "direct_cash_rows": direct_cash_rows,

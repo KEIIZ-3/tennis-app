@@ -543,6 +543,7 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
     monthly_data = load_monthly_settlement_data(
         month_start=month_start,
         next_month=next_month,
+        settlement=settlement,
     )
     coaches = monthly_data["coaches"]
     coach_map = build_coach_map(

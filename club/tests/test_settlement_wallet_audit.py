@@ -13,6 +13,7 @@ from club.models import (
 )
 from club.settlement_models import MonthlySettlement
 from club.lesson_execution_storage import save_status
+from club.settlement_loader import load_monthly_settlement_data
 from club.settlement_wallet_audit import _court_cost_audit_rows, audit_wallet_month
 
 
@@ -232,3 +233,67 @@ class SettlementWalletTicketRevenueAuditTests(TestCase):
         self.assertFalse(rows[refunded.pk]["included"])
         self.assertEqual(rows[future.pk]["included_reason"], "future occurrence; inventory only")
         self.assertEqual(rows[held.pk]["purchase_amount"], 14000)
+
+    def test_zero_price_rows_are_separated_by_evidence_and_operational_state(self):
+        held, held_consumption = self.create_consumption(
+            2, unit_price=0, purchase_type=TicketPurchase.PURCHASE_TYPE_ADMIN
+        )
+        held_consumption.purchase.note = "管理画面から一括付与"
+        held_consumption.purchase.save(update_fields=["note"])
+        refunded, _ = self.create_consumption(
+            3, unit_price=0, refunded=True,
+            purchase_type=TicketPurchase.PURCHASE_TYPE_LEGACY,
+        )
+        future, _ = self.create_consumption(
+            28, unit_price=0,
+            purchase_type=TicketPurchase.PURCHASE_TYPE_ADMIN,
+        )
+        free, free_consumption = self.create_consumption(
+            4, unit_price=0,
+            purchase_type=TicketPurchase.PURCHASE_TYPE_ADMIN,
+        )
+        free_consumption.purchase.note = "体験会の無料券"
+        free_consumption.purchase.save(update_fields=["note"])
+        save_status(self.settlement, f"availability:{held.availability_id}", "held", self.coach)
+        save_status(self.settlement, f"availability:{free.availability_id}", "held", self.coach)
+
+        with patch(
+            "club.settlement_wallet_audit.timezone.now",
+            return_value=timezone.make_aware(datetime(2026, 8, 17, 12)),
+        ):
+            result = audit_wallet_month(2026, 8)
+
+        counts = result["ticket_zero_price_classification_counts"]
+        self.assertEqual(result["ticket_zero_price_consumption_count"], 4)
+        self.assertEqual(counts["A_legitimate_zero_price"], 1)
+        self.assertEqual(counts["B_refunded_or_canceled"], 1)
+        self.assertEqual(counts["C_future_inventory_only"], 1)
+        self.assertEqual(counts["F_inconsistent_or_missing_price_evidence"], 1)
+        self.assertEqual(result["ticket_revenue_summary"]["admin_unknown"], 2)
+        row = next(
+            row for row in result["ticket_zero_price_rows"]
+            if row["reservation_id"] == held.pk
+        )
+        self.assertEqual(row["source"], "no_persisted_price_evidence")
+        self.assertFalse(row["price_evidence"])
+        self.assertIn("purchase_created_at", row)
+        self.assertIn("reservation_created_at", row)
+        self.assertIn("consumption_created_at", row)
+
+    def test_monthly_settlement_loader_only_returns_held_completed_reservations(self):
+        held, _ = self.create_consumption(2)
+        future, _ = self.create_consumption(28)
+        unconfirmed, _ = self.create_consumption(3)
+        save_status(self.settlement, f"availability:{held.availability_id}", "held", self.coach)
+        save_status(self.settlement, f"availability:{future.availability_id}", "held", self.coach)
+
+        data = load_monthly_settlement_data(
+            month_start=date(2026, 8, 1),
+            next_month=date(2026, 9, 1),
+            settlement=self.settlement,
+            now=timezone.make_aware(datetime(2026, 8, 17, 12)),
+        )
+
+        self.assertEqual([row.pk for row in data["reservations"]], [held.pk])
+        self.assertNotIn(future.pk, [row.pk for row in data["reservations"]])
+        self.assertNotIn(unconfirmed.pk, [row.pk for row in data["reservations"]])
