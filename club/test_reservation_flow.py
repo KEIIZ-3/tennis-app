@@ -181,7 +181,9 @@ class ReservationFlowSmokeTests(TestCase):
         )
         self.assertEqual(execution_response.context["open_rain_id"], str(availability.pk))
         self.assertContains(execution_response, f'id="lesson-{availability.pk}"')
-        self.assertContains(execution_response, "中止時の返金・コート支払情報を入力してください")
+        self.assertContains(execution_response, "中止時のコート精算情報を入力してください")
+        self.assertContains(execution_response, "コート代金")
+        self.assertContains(execution_response, "回収者")
 
         self.client.force_login(self.member)
         member_response = self.client.get(
@@ -893,6 +895,7 @@ class ReservationFlowSmokeTests(TestCase):
                     "action": lesson_execution.STATUS_RAIN_CANCELED,
                     "cancellation_type": cancellation_type,
                     "rain_booking_account": payer.pk,
+                    "rain_collection_coach_id": payer.pk,
                     "rain_court_payer_id": payer.pk,
                 },
             )
@@ -986,7 +989,7 @@ class ReservationFlowSmokeTests(TestCase):
                 "open_rain": availability.pk,
             },
         )
-        self.assertContains(execution_response, "中止時の返金・コート支払情報を入力してください")
+        self.assertContains(execution_response, "中止時のコート精算情報を入力してください")
         self.assertContains(execution_response, "中止・返金情報を登録")
 
     def test_substitute_contractor_sees_fixed_lesson_weekly(self):
