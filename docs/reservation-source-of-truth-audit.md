@@ -98,3 +98,14 @@ python manage.py repair_occurrence_linkage --reservation-id 1495 --canonical-fix
 参加者や人数を取得するコードを追加するときは `reservations_for_lesson` または
 `reservations_for_object` を使用し、`FixedLesson.members.count()`、物理枠だけの独自検索、
 テンプレート内の独自集計を追加しないこと。待機人数は参加人数と明確に別名で扱うこと。
+# 実施済み予約とチケットのREAD ONLY監査
+
+実施参加者は `TicketConsumption` や `FixedLesson.members` から逆算せず、canonical execution status が `held` の有効な `Reservation` を正本とする。
+
+月途中までを監査する例:
+
+```powershell
+python manage.py audit_executed_reservation_ticket_integrity 2026 8 --through-day 17
+```
+
+出力はReservationごとのConsumption、予約紐づきTicketLedger、Consumptionが参照するPurchase、保存済み参加単価、ボール代対象判定を含む。このコマンドはSELECTのみを実行し、欠落データのrepairや価格推定は行わない。
