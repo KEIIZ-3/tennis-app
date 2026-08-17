@@ -10,6 +10,7 @@ from .models import (
     Reservation,
 )
 from .lesson_participants import CAPACITY_CONSUMING_STATUSES
+from .court_cost_allocation import allocate_court_cost
 
 
 COURT_TRANSFER_RECORD_KIND = "court_transfer"
@@ -378,16 +379,16 @@ def reconcile_court_policy(
             target_ids = saved_ids
             source_label = "コート代登録時の担当履歴"
 
-        contractor_only = bool(target_ids) and all(
-            coach_id in contractor_id_set for coach_id in target_ids
-        )
-        burden_target_ids = main_ids if contractor_only else target_ids
         amount = max(_money(row.get("amount")), 0)
-
-        for coach_id, allocated in _split_amount(
+        allocation = allocate_court_cost(
             amount,
-            burden_target_ids,
-        ).items():
+            target_ids,
+            main_coach_ids=main_ids,
+            contractor_coach_ids=contractor_id_set,
+        )
+        burden_target_ids = allocation["burden_target_ids"]
+
+        for coach_id, allocated in allocation["burden_by_coach"].items():
             burden_by_coach[coach_id] += allocated
 
         payer_id = _money(meta.get("payer_coach_id") or row.get("payer_id"))
@@ -403,7 +404,7 @@ def reconcile_court_policy(
                 "payer_id": payer_id,
                 "burden_rule": (
                     "業務委託コーチのみのためメインコーチ3人で均等負担"
-                    if contractor_only
+                    if allocation["rule"] == "contractor_only"
                     else f"{source_label}で負担"
                 ),
                 "lesson_label": meta.get("court_refund_lesson_label") or "",

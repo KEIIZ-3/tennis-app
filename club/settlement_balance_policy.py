@@ -11,6 +11,7 @@ from .ball_expense_allocation import (
     split_amount_by_participant_count,
 )
 from .settlement_coach_calculation import calculate_coach_wallets
+from .court_cost_allocation import allocate_court_cost
 from .settlement_expense_distribution import build_expense_distribution_policies
 
 WEEKDAY_COURT_RATE_PER_HOUR = 900
@@ -561,9 +562,18 @@ def _court_transfer_allocation(
     excluded_availability_ids=None,
 ):
     eligible_coach_id_set = set(eligible_coach_ids)
+    configured_main_coach_ids = (
+        main_coach_ids
+        if main_coach_ids is not None
+        else [
+            coach_id
+            for coach_id in eligible_coach_ids
+            if coach_id not in set(contractor_coach_ids or [])
+        ]
+    )
     main_coach_id_list = [
         coach_id
-        for coach_id in (main_coach_ids or [])
+        for coach_id in configured_main_coach_ids
         if coach_id in eligible_coach_id_set
     ]
     contractor_coach_id_set = set(contractor_coach_ids or [])
@@ -605,17 +615,17 @@ def _court_transfer_allocation(
         if amount <= 0 or not using_coach_ids:
             continue
 
-        contractor_only = bool(using_coach_ids) and all(
-            coach_id in contractor_coach_id_set for coach_id in using_coach_ids
+        allocation = allocate_court_cost(
+            amount,
+            using_coach_ids,
+            main_coach_ids=main_coach_id_list,
+            contractor_coach_ids=contractor_coach_id_set,
         )
-        burden_target_ids = main_coach_id_list if contractor_only else using_coach_ids
+        burden_target_ids = allocation["burden_target_ids"]
         if not burden_target_ids:
             continue
 
-        for coach_id, allocated in _split_amount(
-            amount,
-            burden_target_ids,
-        ).items():
+        for coach_id, allocated in allocation["burden_by_coach"].items():
             burden_by_coach[coach_id] += allocated
 
         try:
@@ -633,7 +643,7 @@ def _court_transfer_allocation(
                 "burden_target_ids": burden_target_ids,
                 "burden_rule": (
                     "業務委託コーチのみのためメインコーチ3人で均等負担"
-                    if contractor_only
+                    if allocation["rule"] == "contractor_only"
                     else "登録された利用コーチで均等負担"
                 ),
                 "is_court_transfer": True,
