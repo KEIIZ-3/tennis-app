@@ -1,0 +1,16 @@
+import json
+
+from django.core.management.base import BaseCommand
+
+from club.missing_ticket_purchase_evidence_audit import DEFAULT_RESERVATION_IDS, audit_missing_ticket_purchase_evidence
+
+
+class Command(BaseCommand):
+    help = "欠落TicketConsumptionのPurchase根拠をSELECT-onlyで監査します。"
+
+    def add_arguments(self, parser):
+        parser.add_argument("--reservation-id", action="append", type=int)
+
+    def handle(self, *args, **options):
+        reservation_ids = options["reservation_id"] or DEFAULT_RESERVATION_IDS
+        self.stdout.write(json.dumps(audit_missing_ticket_purchase_evidence(reservation_ids), ensure_ascii=False, indent=2))
