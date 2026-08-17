@@ -40,6 +40,15 @@ def _money(value):
         return 0
 
 
+def _company_cash_in_total(result, coach_rows):
+    """Cash received this month; ticket consumption is intentionally excluded."""
+    return _money(result.get("ticket_purchase_total")) + sum(
+        _money(row.get("preopen_paid_amount"))
+        + _money(row.get("stringing_amount"))
+        for row in coach_rows
+    )
+
+
 def _display_name(user):
     if not user:
         return ""
@@ -638,8 +647,17 @@ def _court_transfer_allocation(
         detail_rows.append(
             {
                 "expense_id": row["expense"].pk,
+                "date": str(getattr(row["expense"], "expense_date", "") or ""),
+                "start_at": meta.get("start_at") or "",
+                "end_at": meta.get("end_at") or "",
+                "court": meta.get("court_name") or meta.get("account_name") or "",
+                "court_count": _money(meta.get("court_count")) or None,
+                "calculated_cost": None,
+                "registered_cost": amount,
+                "canonical_cost": amount,
                 "amount": amount,
                 "payer_id": payer_id,
+                "using_coach_ids": using_coach_ids,
                 "burden_target_ids": burden_target_ids,
                 "burden_rule": (
                     "業務委託コーチのみのためメインコーチ3人で均等負担"
@@ -647,6 +665,10 @@ def _court_transfer_allocation(
                     else "登録された利用コーチで均等負担"
                 ),
                 "is_court_transfer": True,
+                "execution_status": "registered_transfer",
+                "canceled": False,
+                "rain_canceled": False,
+                "included_reason": "canonical availability-linked court transfer",
             }
         )
 
@@ -803,15 +825,32 @@ def _build_court_cost_policy(
         detail_rows.append(
             {
                 "reservation_id": reservation.pk,
+                "date": _local_datetime(reservation.start_at).date().isoformat(),
                 "start_at": reservation.start_at.isoformat(),
                 "end_at": reservation.end_at.isoformat(),
+                "court": str(getattr(reservation, "court", "") or ""),
+                "court_count": max(
+                    int(getattr(reservation, "court_count", 1) or 1), 1
+                ),
                 "slot_key": slot_key,
+                "calculated_cost": expected_cost,
+                "registered_cost": finalized_cost if is_finalized else None,
+                "canonical_cost": finalized_cost if is_finalized else expected_cost,
                 "expected_cost": expected_cost,
                 "finalized_cost": finalized_cost,
                 "payer_id": payer_id,
+                "using_coach_ids": [coach.pk for coach in coaches],
                 "burden_target_ids": burden_targets,
                 "burden_rule": burden_rule,
                 "is_finalized": is_finalized,
+                "execution_status": "held",
+                "canceled": False,
+                "rain_canceled": False,
+                "included_reason": (
+                    "held occurrence with finalized registered court cost"
+                    if is_finalized
+                    else "held occurrence; expected cost excluded until registered"
+                ),
             }
         )
 
@@ -1067,12 +1106,8 @@ def _apply_wallet_policy(result, year, month):
         main_coach_ids,
     )
 
-    total_company_revenue = sum(
-        _money(row.get("ticket_amount"))
-        + _money(row.get("preopen_paid_amount"))
-        + _money(row.get("stringing_amount"))
-        for row in coach_rows
-    )
+    ticket_purchase_cash = _money(result.get("ticket_purchase_total"))
+    total_company_revenue = _company_cash_in_total(result, coach_rows)
 
     coach_calculation = calculate_coach_wallets(
         coach_rows=coach_rows,
@@ -1107,9 +1142,7 @@ def _apply_wallet_policy(result, year, month):
     )
     settlement.opening_balance = company_internal_reserve
     settlement.cash_in_total = total_company_revenue
-    settlement.ticket_cash_in = _money(
-        result.get("ticket_amount_total")
-    )
+    settlement.ticket_cash_in = ticket_purchase_cash
     settlement.preopen_cash_in = _money(
         result.get("preopen_paid_total")
     )
@@ -1137,7 +1170,10 @@ def _apply_wallet_policy(result, year, month):
             "wallet_policy": True,
             "company_internal_reserve": company_internal_reserve,
             "company_revenue_definition": (
-                "ticket_consumption + collected_cash + stringing"
+                "ticket_purchase_cash + collected_cash + stringing"
+            ),
+            "ticket_consumption_revenue": _money(
+                result.get("ticket_amount_total")
             ),
             "main_coach_names": list(MAIN_COACH_NAMES),
             "main_coach_ids": main_coach_ids,
