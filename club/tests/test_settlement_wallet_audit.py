@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from unittest.mock import patch
 
 from django.db import connection
 from django.test import TestCase
@@ -6,8 +7,13 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from club.expense_metadata import build_expense_note
-from club.models import CoachAvailability, CoachExpense, Court, Reservation, User
-from club.settlement_wallet_audit import _court_cost_audit_rows
+from club.models import (
+    CoachAvailability, CoachExpense, Court, FixedLesson, Reservation,
+    TicketConsumption, TicketPurchase, User,
+)
+from club.settlement_models import MonthlySettlement
+from club.lesson_execution_storage import save_status
+from club.settlement_wallet_audit import _court_cost_audit_rows, audit_wallet_month
 
 
 class SettlementWalletCourtAuditTests(TestCase):
@@ -87,6 +93,45 @@ class SettlementWalletCourtAuditTests(TestCase):
         self.assertTrue(by_id[latest.pk]["is_canonical"])
         self.assertEqual(sum(row["canonical_cost"] for row in rows), 2600)
 
+    def test_replacement_availabilities_for_fixed_occurrence_share_canonical_expense(self):
+        fixed = FixedLesson.objects.create(
+            title="Replacement court lesson",
+            coach=self.coach,
+            court=self.court,
+            start_date=date(2026, 8, 5),
+            weekday=2,
+            start_hour=19,
+        )
+        old_availability = self.availability(19)
+        replacement = self.availability(19)
+        member = User.objects.create_user(username="replacement-court-member")
+        Reservation.objects.bulk_create([
+            Reservation(
+                user=member,
+                coach=self.coach,
+                court=availability.court,
+                availability=availability,
+                fixed_lesson=fixed,
+                start_at=availability.start_at,
+                end_at=availability.end_at,
+            )
+            for availability in (old_availability, replacement)
+        ])
+        old = self.expense(old_availability, 2600)
+        latest = self.expense(replacement, 2600)
+        policy = {"detail_rows": [{"expense_id": latest.pk}]}
+
+        rows = _court_cost_audit_rows(2026, 8, policy)
+        by_id = {row["expense_id"]: row for row in rows}
+
+        self.assertEqual(
+            by_id[old.pk]["canonical_occurrence_key"],
+            by_id[latest.pk]["canonical_occurrence_key"],
+        )
+        self.assertFalse(by_id[old.pk]["included"])
+        self.assertEqual(by_id[old.pk]["duplicate_of"], latest.pk)
+        self.assertTrue(by_id[latest.pk]["included"])
+
     def test_two_courts_and_multiple_coaches_do_not_multiply_registered_cost(self):
         availability = self.availability(19, court_count=2)
         CoachAvailability.objects.filter(pk=availability.pk).update(court_count=2)
@@ -125,3 +170,65 @@ class SettlementWalletCourtAuditTests(TestCase):
             query["sql"].lstrip().upper().startswith("SELECT")
             for query in queries.captured_queries
         ))
+
+
+class SettlementWalletTicketRevenueAuditTests(TestCase):
+    def setUp(self):
+        self.member = User.objects.create_user(username="wallet-ticket-member")
+        self.coach = User.objects.create_user(
+            username="wallet-ticket-coach", role=User.ROLE_COACH
+        )
+        self.court = Court.objects.create(name="Wallet ticket court")
+        self.settlement = MonthlySettlement.objects.create(year=2026, month=8)
+
+    def create_consumption(self, day, *, status=Reservation.STATUS_ACTIVE,
+                           unit_price=3500, refunded=False, purchase_type="set4"):
+        start_at = timezone.make_aware(datetime(2026, 8, day, 10))
+        availability = CoachAvailability.objects.create(
+            coach=self.coach, court=self.court, start_at=start_at,
+            end_at=start_at + timedelta(hours=2), capacity=4,
+        )
+        reservation = Reservation.objects.create(
+            user=self.member, coach=self.coach, court=self.court,
+            availability=availability, start_at=start_at,
+            end_at=start_at + timedelta(hours=2), status=status, tickets_used=1,
+        )
+        purchase = TicketPurchase.objects.create(
+            user=self.member, purchase_type=purchase_type, total_tickets=4,
+            remaining_tickets=3, unit_price=unit_price, purchased_at=start_at,
+        )
+        consumption = TicketConsumption.objects.create(
+            user=self.member, purchase=purchase, reservation=reservation,
+            tickets_used=1, unit_price_snapshot=unit_price,
+            refunded_at=timezone.now() if refunded else None,
+        )
+        return reservation, consumption
+
+    def test_only_held_past_consumption_is_recognized_as_revenue(self):
+        held, _held_consumption = self.create_consumption(2)
+        future, _future_consumption = self.create_consumption(28)
+        canceled, _canceled_consumption = self.create_consumption(
+            3, status=Reservation.STATUS_CANCELED
+        )
+        rain, _rain_consumption = self.create_consumption(
+            4, status=Reservation.STATUS_RAIN_CANCELED
+        )
+        refunded, _refunded_consumption = self.create_consumption(5, refunded=True)
+        _zero, _zero_consumption = self.create_consumption(
+            6, unit_price=0, purchase_type=TicketPurchase.PURCHASE_TYPE_ADMIN
+        )
+        save_status(self.settlement, f"availability:{held.availability_id}", "held", self.coach)
+        save_status(self.settlement, f"availability:{refunded.availability_id}", "held", self.coach)
+
+        with patch("club.settlement_wallet_audit.timezone.now", return_value=timezone.make_aware(datetime(2026, 8, 17, 12))):
+            result = audit_wallet_month(2026, 8)
+
+        self.assertEqual(result["ticket_consumption_revenue_total"], 3500)
+        rows = {row["reservation_id"]: row for row in result["ticket_consumption_rows"]}
+        self.assertTrue(rows[held.pk]["included"])
+        self.assertFalse(rows[future.pk]["included"])
+        self.assertFalse(rows[canceled.pk]["included"])
+        self.assertFalse(rows[rain.pk]["included"])
+        self.assertFalse(rows[refunded.pk]["included"])
+        self.assertEqual(rows[future.pk]["included_reason"], "future occurrence; inventory only")
+        self.assertEqual(rows[held.pk]["purchase_amount"], 14000)
