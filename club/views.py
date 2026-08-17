@@ -5856,6 +5856,16 @@ def coach_admin_settlement(request):
         .prefetch_related("ticket_consumptions__purchase")
         .order_by("start_at", "id")
     )
+    from .settlement_loader import executed_reservations
+
+    revenue_settlement = MonthlySettlement.objects.filter(
+        year=selected_year,
+        month=selected_month,
+    ).first()
+    reservations = executed_reservations(
+        reservations,
+        settlement=revenue_settlement,
+    )
 
     def _reservation_coaches_for_split(reservation):
         substitute = getattr(reservation, "substitute_coach", None)
@@ -8841,6 +8851,16 @@ def coach_revenue_summary(request):
         .select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
         .prefetch_related("ticket_consumptions__purchase")
         .order_by("start_at", "id")
+    )
+    from .settlement_loader import executed_reservations
+
+    revenue_settlement = MonthlySettlement.objects.filter(
+        year=selected_year,
+        month=selected_month,
+    ).first()
+    reservations = executed_reservations(
+        reservations,
+        settlement=revenue_settlement,
     )
 
     preopen_rows = []

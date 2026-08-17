@@ -5,7 +5,25 @@ from .models import CoachExpense, Reservation, StringingOrder, TicketPurchase
 from .stringing_service import recognized_stringing_orders
 
 
-def load_monthly_settlement_data(*, month_start, next_month):
+def executed_reservations(reservations, *, settlement, now=None):
+    """Return only completed occurrences explicitly confirmed as held."""
+    if settlement is None:
+        return []
+    from django.utils import timezone
+    from .lesson_execution_storage import read_status_map
+    from .settlement_balance_policy import _execution_slot_key
+
+    status_map = read_status_map(settlement)
+    effective_now = now or timezone.now()
+    return [
+        reservation for reservation in reservations
+        if reservation.end_at <= effective_now
+        and (status_map.get(_execution_slot_key(reservation)) or {}).get("status")
+        == "held"
+    ]
+
+
+def load_monthly_settlement_data(*, month_start, next_month, settlement=None, now=None):
     User = get_user_model()
 
     coaches = list(
@@ -40,6 +58,12 @@ def load_monthly_settlement_data(*, month_start, next_month):
         .prefetch_related("ticket_consumptions__purchase")
         .order_by("start_at", "id")
     )
+    if settlement is not None:
+        reservations = executed_reservations(
+            reservations,
+            settlement=settlement,
+            now=now,
+        )
 
     stringing_orders = list(
         recognized_stringing_orders(
