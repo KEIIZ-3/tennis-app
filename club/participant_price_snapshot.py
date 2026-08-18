@@ -1,13 +1,15 @@
 def ticket_revenue_from_consumptions(consumptions):
     """Return the participant's canonical ticket revenue for consumptions."""
     rows = list(consumptions)
-    if not rows:
+    if not rows or any(
+        row.refunded_at is not None or row.unit_price_snapshot is None
+        for row in rows
+    ):
         return None
     return sum(
-        int(consumption.unit_price_snapshot or 0)
+        int(consumption.unit_price_snapshot)
         * int(consumption.tickets_used or 0)
         for consumption in rows
-        if consumption.refunded_at is None
     )
 
 
@@ -16,7 +18,10 @@ def set_participant_ticket_price_snapshot(reservation, consumptions):
     if reservation.participant_ticket_price_snapshot is not None:
         return reservation.participant_ticket_price_snapshot
 
-    price = ticket_revenue_from_consumptions(consumptions)
+    rows = list(consumptions)
+    if sum(int(row.tickets_used or 0) for row in rows) != int(reservation.tickets_used or 0):
+        return None
+    price = ticket_revenue_from_consumptions(rows)
     if price is None:
         return None
 
