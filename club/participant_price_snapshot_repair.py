@@ -77,7 +77,7 @@ def inspect_participant_price_snapshot_repair(reservation_id, *, lock=False):
     reservation = query.get(pk=reservation_id)
     rows_query = reservation.ticket_consumptions.select_related("purchase").order_by("id")
     if lock:
-        rows_query = rows_query.select_for_update()
+        rows_query = rows_query.select_for_update(of=("self",))
     rows = list(rows_query)
     prices = [row.unit_price_snapshot for row in rows]
     purchase_ids = [row.purchase_id for row in rows]
