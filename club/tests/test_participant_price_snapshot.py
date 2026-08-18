@@ -27,13 +27,13 @@ class ParticipantPriceSnapshotTests(SimpleTestCase):
             0,
         )
 
-    def test_refunded_consumption_does_not_contribute_to_price(self):
+    def test_any_refunded_consumption_makes_price_unknown(self):
         consumptions = [
             SimpleNamespace(unit_price_snapshot=4000, tickets_used=1, refunded_at=object()),
             SimpleNamespace(unit_price_snapshot=3500, tickets_used=1, refunded_at=None),
         ]
 
-        self.assertEqual(ticket_revenue_from_consumptions(consumptions), 3500)
+        self.assertIsNone(ticket_revenue_from_consumptions(consumptions))
 
     def test_ball_expense_boundary_and_unknown_compatibility(self):
         expected = {
