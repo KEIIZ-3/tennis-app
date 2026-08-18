@@ -1,8 +1,10 @@
 import json
 from datetime import datetime, timedelta
 from io import StringIO
+from unittest.mock import patch
 
 from django.core.management import call_command
+from django.db.models.query import QuerySet
 from django.test import TestCase
 from django.utils import timezone
 
@@ -124,3 +126,33 @@ class ParticipantPriceSnapshotRepairTests(TestCase):
         reservation.refresh_from_db()
         self.assertEqual(reservation.participant_ticket_price_snapshot, 3500)
         self.assertEqual(self.protected_state(), before)
+
+    def test_apply_locks_consumptions_without_locking_nullable_purchase_join(self):
+        reservation = self.reservation()
+        self.evidence(reservation, 3500)
+        observed_queries = []
+
+        original_fetch_all = QuerySet._fetch_all
+
+        def capture_fetch_all(queryset):
+            if queryset.model is TicketConsumption and queryset.query.select_for_update:
+                observed_queries.append(queryset.query)
+            return original_fetch_all(queryset)
+
+        with patch("django.db.models.query.QuerySet._fetch_all", capture_fetch_all):
+            result = repair_participant_price_snapshot(reservation.pk)
+
+        self.assertTrue(result.candidate)
+        self.assertTrue(observed_queries)
+        for query in observed_queries:
+            self.assertEqual(query.select_for_update_of, ("self",))
+            self.assertIn("purchase", query.select_related)
+
+    def test_consumption_missing_is_rejected(self):
+        reservation = self.reservation()
+
+        result = repair_participant_price_snapshot(reservation.pk)
+
+        self.assertEqual(result.reason, "consumption_missing")
+        reservation.refresh_from_db()
+        self.assertIsNone(reservation.participant_ticket_price_snapshot)
