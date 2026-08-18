@@ -63,6 +63,37 @@ class CourtRainIntegrityDiagnosticTests(TestCase):
         self.assertEqual(result["finding_count"], 0)
         self.assertEqual(self._snapshot(), before)
 
+    def test_cancellation_settlements_for_august_refunds_have_no_findings(self):
+        for day in (6, 10, 25):
+            with self.subTest(day=day):
+                availability = CoachAvailability.objects.create(
+                    coach=self.coach, court=self.court,
+                    lesson_type=Reservation.LESSON_PRIVATE,
+                    target_level=User.LEVEL_BEGINNER,
+                    start_at=timezone.make_aware(datetime(2026, 8, day, 19)),
+                    end_at=timezone.make_aware(datetime(2026, 8, day, 21)),
+                    capacity=1,
+                )
+                expense = self._expense(
+                    status="refund_pending",
+                    availability_id=availability.pk,
+                    record_kind="cancellation_court_settlement",
+                )
+                self._refund(expense, availability=availability)
+
+        result = diagnose_court_rain_integrity()
+        self.assertEqual(result["finding_count"], 0)
+
+    def test_cancellation_settlements_are_not_normal_transfer_duplicates(self):
+        first = self._expense(record_kind="cancellation_court_settlement")
+        self._expense(record_kind="cancellation_court_settlement")
+        self._refund(first)
+
+        result = diagnose_court_rain_integrity()
+
+        self.assertEqual(result["duplicate_court_transfers"], [])
+        self.assertEqual(result["finding_count"], 0)
+
     def test_duplicate_transfers_report_unified_selection_and_safe_ids(self):
         first = self._expense(amount=1000)
         second = self._expense(amount=2000)
