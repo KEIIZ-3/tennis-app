@@ -83,6 +83,69 @@ class TicketConsumptionAuditTests(TestCase):
         call_command("audit_ticket_consumptions", 2026, 8, stdout=output)
         self.assertEqual(output.getvalue().count(f'"consumption_id": {consumption.pk}'), 1)
 
+    def test_missing_purchase_evidence_is_unverifiable_without_value_inference(self):
+        start = timezone.make_aware(datetime(2026, 8, 4, 10))
+        availability = CoachAvailability.objects.create(
+            coach=self.coach, court=self.court, start_at=start,
+            end_at=start + timedelta(hours=2), capacity=4,
+        )
+        reservation = Reservation.objects.create(
+            user=self.member, coach=self.coach, court=self.court,
+            availability=availability, start_at=start,
+            end_at=start + timedelta(hours=2), tickets_used=1,
+        )
+        consumption = TicketConsumption.objects.create(
+            user=self.member, purchase=None, reservation=reservation,
+            tickets_used=1, unit_price_snapshot=None,
+        )
+
+        result = audit_ticket_consumptions(2026, 8, now=self.now)
+        row = result["consumptions"][0]
+
+        self.assertEqual(row["consumption_id"], consumption.pk)
+        self.assertEqual(row["classification"], "unverifiable")
+        self.assertEqual(row["purchase_evidence"], "missing_purchase_evidence")
+        self.assertIsNone(row["purchase_id"])
+        self.assertIsNone(row["purchase_type"])
+        self.assertIsNone(row["purchase_unit_price"])
+        self.assertEqual(row["consumption_value"], 0)
+        self.assertEqual(result["summary"]["unverifiable_ticket_count"], 1)
+        self.assertEqual(result["summary"]["executed_paid_consumption_value"], 0)
+        self.assertEqual(result["summary"]["active_inventory_value"], 0)
+
+    def test_refunded_missing_purchase_keeps_refunded_lifecycle(self):
+        start = timezone.make_aware(datetime(2026, 8, 5, 10))
+        availability = CoachAvailability.objects.create(
+            coach=self.coach, court=self.court, start_at=start,
+            end_at=start + timedelta(hours=2), capacity=4,
+        )
+        reservation = Reservation.objects.create(
+            user=self.member, coach=self.coach, court=self.court,
+            availability=availability, start_at=start, end_at=start + timedelta(hours=2),
+            status=Reservation.STATUS_CANCELED, tickets_used=1,
+        )
+        TicketConsumption.objects.create(
+            user=self.member, purchase=None, reservation=reservation,
+            tickets_used=1, unit_price_snapshot=None, refunded_at=self.now,
+        )
+
+        result = audit_ticket_consumptions(2026, 8, now=self.now)
+
+        self.assertEqual(result["consumptions"][0]["classification"], "unverifiable")
+        self.assertEqual(result["consumptions"][0]["lifecycle_state"], "refunded")
+        self.assertEqual(result["summary"]["returned_ticket_count"], 1)
+
+    def test_admin_adjustment_classification_is_preserved(self):
+        _reservation, consumption = self.consumption(
+            6, 0, TicketPurchase.PURCHASE_TYPE_ADMIN,
+        )
+
+        result = audit_ticket_consumptions(2026, 8, now=self.now)
+
+        self.assertEqual(result["consumptions"][0]["consumption_id"], consumption.pk)
+        self.assertEqual(result["consumptions"][0]["classification"], "adjustment")
+        self.assertEqual(result["summary"]["adjustment_ticket_count"], 1)
+
 
 class TicketGrantClassificationTests(TestCase):
     def form(self, kind, price):

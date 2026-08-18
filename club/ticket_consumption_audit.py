@@ -17,6 +17,10 @@ PAID_TYPES = {
 
 
 def classify_purchase(purchase):
+    if purchase is None:
+        # A consumption without a purchase is persisted evidence that tickets
+        # were used, but it does not prove their commercial classification.
+        return "unverifiable"
     if purchase.purchase_type == TicketPurchase.PURCHASE_TYPE_FORMAL_FREE:
         return "formal_free"
     if purchase.purchase_type == TicketPurchase.PURCHASE_TYPE_LEGACY:
@@ -55,6 +59,7 @@ def audit_ticket_consumptions(year, month, *, now=None):
         "formal_free_ticket_count": 0,
         "legacy_ticket_count": 0,
         "adjustment_ticket_count": 0,
+        "unverifiable_ticket_count": 0,
         "unknown_ticket_count": 0,
         "returned_ticket_count": 0,
         "future_ticket_count": 0,
@@ -109,10 +114,11 @@ def audit_ticket_consumptions(year, month, *, now=None):
             "tickets_used": tickets,
             "unit_price_snapshot": int(consumption.unit_price_snapshot or 0),
             "consumption_value": value,
-            "purchase_id": purchase.pk,
-            "purchase_type": purchase.purchase_type,
-            "purchase_unit_price": int(purchase.unit_price or 0),
-            "purchase_label": purchase.label,
+            "purchase_id": purchase.pk if purchase else None,
+            "purchase_type": purchase.purchase_type if purchase else None,
+            "purchase_unit_price": int(purchase.unit_price or 0) if purchase else None,
+            "purchase_label": purchase.label if purchase else "",
+            "purchase_evidence": "present" if purchase else "missing_purchase_evidence",
             "classification": classification,
             "consumed_at": consumption.created_at.isoformat(),
             "refunded_at": consumption.refunded_at.isoformat() if returned else None,
