@@ -65,6 +65,8 @@ def audit_missing_ticket_purchase_evidence(reservation_ids=DEFAULT_RESERVATION_I
     rows, user_ids = [], set()
     for reservation_id in reservation_ids:
         reservation = Reservation.objects.select_related("user").get(pk=reservation_id)
+        if TicketConsumption.objects.filter(reservation_id=reservation_id).exists():
+            continue
         preview = inspect_legacy_ticket_consumption_repair(reservation_id)
         ledgers = list(TicketLedger.objects.filter(reservation_id=reservation_id, user_id=reservation.user_id,
             reason=TicketLedger.REASON_RESERVATION_USE, change_amount=-int(reservation.tickets_used)).order_by("id"))
