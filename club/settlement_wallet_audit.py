@@ -27,6 +27,8 @@ from .settlement_balance_policy import (
 )
 from .settlement_models import MonthlySettlement, SettlementPayment
 from .stringing_service import recognized_stringing_orders, stringing_revenue_amount
+from .lesson_execution import effective_status
+from .lesson_execution_storage import read_status_map
 
 
 def _month_range(year, month):
@@ -93,11 +95,14 @@ def _court_cost_audit_rows(year, month, court_policy):
     for reservation in reservations:
         if reservation.availability_id:
             reservations_by_availability.setdefault(
-                reservation.availability_id, reservation
-            )
+                reservation.availability_id, []
+            ).append(reservation)
         slot_key = _slot_key_for_reservation(reservation)
         if slot_key:
-            reservations_by_slot.setdefault(slot_key, reservation)
+            reservations_by_slot.setdefault(slot_key, []).append(reservation)
+
+    settlement = MonthlySettlement.objects.filter(year=year, month=month).first()
+    settlement_status = read_status_map(settlement) if settlement else {}
 
     user_ids = set()
     for row in expense_rows:
@@ -138,11 +143,12 @@ def _court_cost_audit_rows(year, month, court_policy):
             availability_id = None
         availability = availability_map.get(availability_id)
         slot_key = str(meta.get("court_refund_slot_key") or "").strip()
-        reservation = (
+        occurrence_reservations = (
             reservations_by_availability.get(availability_id)
             if availability_id
             else reservations_by_slot.get(slot_key)
-        )
+        ) or []
+        reservation = occurrence_reservations[0] if occurrence_reservations else None
         occurrence = availability or reservation
         canonical_source = (
             current_by_occurrence.get(occurrence_keys.get(availability_id))
@@ -189,15 +195,20 @@ def _court_cost_audit_rows(year, month, court_policy):
             reason = "canonical occurrence not found"
         else:
             reason = "excluded by settlement execution/cancellation policy"
-        reservation_status = getattr(reservation, "status", "")
         if availability_id in rain_refund_availability_ids:
             execution_status = "canceled_court_settlement"
-        elif reservation_status == Reservation.STATUS_RAIN_CANCELED:
-            execution_status = "rain_canceled"
-        elif reservation_status == Reservation.STATUS_CANCELED:
-            execution_status = "canceled"
+            execution_status_source = "rain_refund"
+        elif occurrence_reservations and end_at:
+            execution_key = _execution_slot_key(reservation)
+            execution_status, _cancellation_type = effective_status(
+                settlement_status.get(execution_key) or {},
+                occurrence_reservations,
+                end_at=getattr(occurrence, "end_at", end_at),
+            )
+            execution_status_source = "reservation_occurrence"
         else:
             execution_status = (policy_row or {}).get("execution_status", "excluded")
+            execution_status_source = "settlement_policy"
         result.append({
             "expense_id": expense.pk,
             "availability_id": availability_id,
@@ -224,6 +235,7 @@ def _court_cost_audit_rows(year, month, court_policy):
             "using_coach_ids": using_ids,
             "using_coach_names": [_display_name(users.get(pk)) for pk in using_ids],
             "execution_status": execution_status,
+            "lesson_execution_status_source": execution_status_source,
             "canonical_occurrence_key": (
                 occurrence_keys.get(availability_id, f"availability:{availability_id}")
                 if availability_id else slot_key
