@@ -7,6 +7,11 @@ from .models import CoachExpense, RainRefund
 
 
 COURT_TRANSFER_RECORD_KIND = "court_transfer"
+CANCELLATION_COURT_SETTLEMENT_RECORD_KIND = "cancellation_court_settlement"
+RAIN_REFUND_EXPENSE_RECORD_KINDS = {
+    COURT_TRANSFER_RECORD_KIND,
+    CANCELLATION_COURT_SETTLEMENT_RECORD_KIND,
+}
 REFUND_PENDING = "refund_pending"
 REFUNDED = "refunded"
 
@@ -113,7 +118,7 @@ def diagnose_court_rain_integrity():
         reasons = []
         if refund.expense.category != CoachExpense.CATEGORY_COURT:
             reasons.append("expense_category_is_not_court")
-        if meta.get("record_kind") != COURT_TRANSFER_RECORD_KIND:
+        if meta.get("record_kind") not in RAIN_REFUND_EXPENSE_RECORD_KINDS:
             reasons.append("expense_is_not_court_transfer")
         if metadata_availability_id != refund.availability_id:
             reasons.append("availability_id_mismatch")
