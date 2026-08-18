@@ -25,8 +25,8 @@ class SettlementWalletCourtAuditTests(TestCase):
         )
         self.court = Court.objects.create(name="Audit Court", is_active=True)
 
-    def availability(self, hour, *, court=None, court_count=1):
-        start = timezone.make_aware(datetime(2026, 8, 5, hour))
+    def availability(self, hour, *, day=5, court=None, court_count=1):
+        start = timezone.make_aware(datetime(2026, 8, day, hour))
         return CoachAvailability.objects.create(
             coach=self.coach,
             court=court or self.court,
@@ -157,6 +157,66 @@ class SettlementWalletCourtAuditTests(TestCase):
         self.assertFalse(row["included"])
         self.assertEqual(row["canonical_cost"], 0)
         self.assertIn("cancellation", row["included_reason"])
+
+    def test_active_reservation_prevents_stale_cancellation_from_overriding_held(self):
+        settlement = MonthlySettlement.objects.create(year=2026, month=8)
+        expenses = []
+        for day in (2, 4):
+            availability = self.availability(19, day=day)
+            expense = self.expense(availability, 2600)
+            expenses.append(expense)
+            canceled_member = User.objects.create_user(username=f"stale-cancel-{day}")
+            active_member = User.objects.create_user(username=f"held-active-{day}")
+            Reservation.objects.bulk_create([
+                Reservation(
+                    user=canceled_member, coach=self.coach, court=self.court,
+                    availability=availability, start_at=availability.start_at,
+                    end_at=availability.end_at, status=Reservation.STATUS_CANCELED,
+                    cancellation_reason="レッスン中止",
+                ),
+                Reservation(
+                    user=active_member, coach=self.coach, court=self.court,
+                    availability=availability, start_at=availability.start_at,
+                    end_at=availability.end_at, status=Reservation.STATUS_ACTIVE,
+                ),
+            ])
+            save_status(
+                settlement, f"availability:{availability.pk}", "held", self.coach
+            )
+
+        rows = _court_cost_audit_rows(2026, 8, {"detail_rows": [
+            {"expense_id": expense.pk} for expense in expenses
+        ]})
+        by_id = {row["expense_id"]: row for row in rows}
+        for expense in expenses:
+            self.assertEqual(by_id[expense.pk]["execution_status"], "held")
+            self.assertEqual(
+                by_id[expense.pk]["lesson_execution_status_source"],
+                "reservation_occurrence",
+            )
+
+    def test_all_canceled_reservations_are_reported_canceled(self):
+        expenses = []
+        for day in (6, 9, 19):
+            availability = self.availability(19, day=day)
+            expense = self.expense(availability, 2600)
+            expenses.append(expense)
+            member = User.objects.create_user(username=f"true-cancel-{day}")
+            Reservation.objects.create(
+                user=member, coach=self.coach, court=self.court,
+                availability=availability, start_at=availability.start_at,
+                end_at=availability.end_at, status=Reservation.STATUS_CANCELED,
+                cancellation_reason="レッスン中止",
+            )
+
+        rows = _court_cost_audit_rows(2026, 8, {"detail_rows": []})
+        by_id = {row["expense_id"]: row for row in rows}
+        for expense in expenses:
+            self.assertEqual(by_id[expense.pk]["execution_status"], "rain_canceled")
+            self.assertEqual(
+                by_id[expense.pk]["lesson_execution_status_source"],
+                "reservation_occurrence",
+            )
 
     def test_court_audit_is_select_only(self):
         expense = self.expense(self.availability(19), 2600)
