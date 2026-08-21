@@ -30,7 +30,6 @@ from .models import (
     ScheduleSurveyResponse,
     ShopEstimateRequest,
     ShopProductMaster,
-    STRINGING_COACH_NAMES,
     StringingOrder,
     TicketConsumption,
     TicketLedger,
@@ -486,10 +485,11 @@ class StringingOrderAdminForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if "assigned_coach" in self.fields:
-            self.fields["assigned_coach"].queryset = User.objects.filter(
-                role=User.ROLE_COACH,
-                full_name__in=STRINGING_COACH_NAMES,
-            ).order_by("full_name", "username", "id")
+            self.fields["assigned_coach"].queryset = (
+                StringingOrder.supported_assigned_coaches().order_by(
+                    "full_name", "username", "id"
+                )
+            )
             self.fields["assigned_coach"].required = False
             self.fields["assigned_coach"].label = "担当コーチ"
 

@@ -27,13 +27,13 @@ class StringingServiceTests(TestCase):
         )
         self.iizuka = user_model.objects.create_user(
             username="stringing-iizuka",
-            full_name="飯塚研太朗",
+            full_name="飯塚　研太朗",
             role=user_model.ROLE_COACH,
         )
         self.shimizu = user_model.objects.create_user(
             username=StringingOrder.DEFAULT_ASSIGNED_COACH_USERNAME,
             email=StringingOrder.DEFAULT_ASSIGNED_COACH_EMAIL,
-            full_name="清水峻平",
+            full_name="清水 峻平",
             role=user_model.ROLE_COACH,
         )
         self.inoue = user_model.objects.create_user(
@@ -45,6 +45,12 @@ class StringingServiceTests(TestCase):
             username="stringing-contractor",
             full_name="業務委託コーチ",
             role=user_model.ROLE_CONTRACTOR_COACH,
+        )
+        self.inactive_iizuka = user_model.objects.create_user(
+            username="inactive-stringing-iizuka",
+            full_name="飯塚研太朗",
+            role=user_model.ROLE_COACH,
+            is_active=False,
         )
 
     def _order(self, **overrides):
@@ -153,8 +159,9 @@ class StringingServiceTests(TestCase):
         )
         self.assertNotIn(self.inoue, form.fields["assigned_coach"].queryset)
         self.assertNotIn(self.contractor, form.fields["assigned_coach"].queryset)
+        self.assertNotIn(self.inactive_iizuka, form.fields["assigned_coach"].queryset)
 
-    def test_coach_records_completed_order_for_existing_member(self):
+    def test_supported_coaches_can_record_completed_order_for_existing_member(self):
         self.iizuka.set_password("password")
         self.iizuka.save(update_fields=["password"])
         self.client.force_login(self.iizuka)
@@ -164,25 +171,26 @@ class StringingServiceTests(TestCase):
         form_page = self.client.get(reverse("club:stringing_order_record_create"))
         self.assertContains(form_page, "ガット張り実績を登録")
 
-        response = self.client.post(
-            reverse("club:stringing_order_record_create"),
-            {
-                "user": self.member.pk,
-                "assigned_coach": self.shimizu.pk,
-                "performed_date": performed_date.isoformat(),
-                "delivery_option": "0",
-                "tension_lbs": "50",
-                "racket_name": "口頭依頼ラケット",
-                "string_name": "",
-                "delivery_location": "",
-                "preferred_delivery_time": "",
-                "note": "口頭受付",
-            },
-        )
+        for coach in (self.iizuka, self.shimizu):
+            response = self.client.post(
+                reverse("club:stringing_order_record_create"),
+                {
+                    "user": self.member.pk,
+                    "assigned_coach": coach.pk,
+                    "performed_date": performed_date.isoformat(),
+                    "delivery_option": "0",
+                    "tension_lbs": "50",
+                    "racket_name": f"口頭依頼ラケット{coach.pk}",
+                    "string_name": "",
+                    "delivery_location": "",
+                    "preferred_delivery_time": "",
+                    "note": "口頭受付",
+                },
+            )
+            self.assertEqual(response.status_code, 302)
 
-        self.assertEqual(response.status_code, 302)
         self.assertEqual(get_user_model().objects.count(), user_count)
-        order = StringingOrder.objects.get(racket_name="口頭依頼ラケット")
+        order = StringingOrder.objects.get(racket_name=f"口頭依頼ラケット{self.shimizu.pk}")
         self.assertEqual(order.user, self.member)
         self.assertEqual(order.assigned_coach, self.shimizu)
         self.assertEqual(order.status, StringingOrder.STATUS_COMPLETED)
@@ -196,7 +204,7 @@ class StringingServiceTests(TestCase):
         self.member.phone_number = "09000000000"
         self.member.save(update_fields=["is_profile_completed", "full_name", "email", "phone_number"])
         history = self.client.get(reverse("club:stringing_order_create"))
-        self.assertContains(history, "口頭依頼ラケット")
+        self.assertContains(history, f"口頭依頼ラケット{self.shimizu.pk}")
         detail = self.client.get(reverse("club:stringing_order_detail", args=[order.pk]))
         self.assertEqual(detail.status_code, 200)
 

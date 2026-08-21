@@ -2547,7 +2547,6 @@ class StringingOrder(models.Model):
         related_name="assigned_stringing_orders",
         limit_choices_to={
             "role": User.ROLE_COACH,
-            "full_name__in": STRINGING_COACH_NAMES,
         },
     )
     racket_name = models.CharField(max_length=120, blank=True, default="")
@@ -2570,6 +2569,26 @@ class StringingOrder(models.Model):
 
     def __str__(self):
         return f"{self.user} / ガット張り / {self.tension_lbs}lbs / {self.created_at:%Y-%m-%d %H:%M}"
+
+    @classmethod
+    def supported_assigned_coaches(cls):
+        from .settlement_balance_policy import main_coaches
+
+        supported_names = {
+            "".join(name.replace("\u3000", " ").split())
+            for name in STRINGING_COACH_NAMES
+        }
+        active_coaches = User.objects.filter(
+            role=User.ROLE_COACH,
+            is_active=True,
+        )
+        coach_ids = [
+            coach.pk
+            for coach in main_coaches(active_coaches)
+            if "".join(coach.display_name().replace("\u3000", " ").split())
+            in supported_names
+        ]
+        return active_coaches.filter(pk__in=coach_ids)
 
     @classmethod
     def default_assigned_coach(cls):
@@ -2606,10 +2625,9 @@ class StringingOrder(models.Model):
             if default_coach:
                 self.assigned_coach = default_coach
 
-        if self.assigned_coach and (
-            getattr(self.assigned_coach, "role", "") != User.ROLE_COACH
-            or getattr(self.assigned_coach, "full_name", "") not in STRINGING_COACH_NAMES
-        ):
+        if self.assigned_coach and not self.supported_assigned_coaches().filter(
+            pk=self.assigned_coach_id
+        ).exists():
             raise ValidationError("ガット張りの担当者には対応可能なコーチを指定してください。")
 
         if self.base_price < 0:
