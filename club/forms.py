@@ -7,6 +7,7 @@ from django.contrib.auth.forms import UserCreationForm
 from django.utils import timezone
 
 from .models import (
+    STRINGING_COACH_NAMES,
     STRINGING_BASE_PRICE,
     STRINGING_DELIVERY_FEE,
     CoachAvailability,
@@ -515,9 +516,21 @@ class StringingOrderForm(forms.ModelForm):
                 self.add_error("preferred_delivery_time", "デリバリー希望の場合は、日時指定を入力してください。")
         else:
             cleaned_data["delivery_location"] = ""
-            cleaned_data["preferred_delivery_time"] = ""
+            cleaned_data["preferred_delivery_time"] = (
+                preferred_finish_date.strftime("%Y-%m-%d") if preferred_finish_date else ""
+            )
             if not preferred_finish_date:
                 self.add_error("preferred_finish_date", "デリバリーなしの場合は、希望張り上げ納期を入力してください。")
+
+        self.instance.delivery_requested = delivery_requested
+        self.instance.delivery_location = cleaned_data.get("delivery_location") or ""
+        if delivery_requested:
+            self.instance.preferred_delivery_time = cleaned_data.get("preferred_delivery_time") or ""
+        else:
+            self.instance.preferred_delivery_time = (
+                preferred_finish_date.strftime("%Y-%m-%d") if preferred_finish_date else ""
+            )
+        self.instance.tension_lbs = tension_lbs
 
         return cleaned_data
 
@@ -540,6 +553,57 @@ class StringingOrderForm(forms.ModelForm):
         if commit:
             instance.save()
         return instance
+
+
+class StringingOrderRecordForm(StringingOrderForm):
+    user = forms.ModelChoiceField(label="対象顧客", queryset=User.objects.none())
+    assigned_coach = forms.ModelChoiceField(
+        label="ガット張り担当コーチ",
+        queryset=User.objects.none(),
+    )
+    performed_date = forms.DateField(
+        label="実績日",
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.order_fields(
+            [
+                "user",
+                "assigned_coach",
+                "performed_date",
+                "delivery_option",
+                "racket_name",
+                "string_name",
+                "tension_lbs",
+                "delivery_location",
+                "preferred_delivery_time",
+                "preferred_finish_date",
+                "note",
+            ]
+        )
+        self.fields["user"].queryset = User.objects.filter(
+            role=User.ROLE_MEMBER,
+            is_active=True,
+        ).order_by("full_name", "username", "id")
+        self.fields["assigned_coach"].queryset = User.objects.filter(
+            role=User.ROLE_COACH,
+            full_name__in=STRINGING_COACH_NAMES,
+            is_active=True,
+        ).order_by("full_name", "username", "id")
+        self.fields["performed_date"].initial = timezone.localdate()
+        self.fields["preferred_finish_date"].required = False
+        self.fields["preferred_finish_date"].widget = forms.HiddenInput()
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not cleaned_data.get("delivery_requested"):
+            self._errors.pop("preferred_finish_date", None)
+            cleaned_data["preferred_finish_date"] = cleaned_data.get("performed_date")
+            if cleaned_data.get("performed_date"):
+                cleaned_data["preferred_delivery_time"] = cleaned_data["performed_date"].isoformat()
+        return cleaned_data
 
 
 class TicketGrantAdminForm(forms.Form):

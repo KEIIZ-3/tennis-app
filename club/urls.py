@@ -36,6 +36,7 @@ urlpatterns = [
     path("help/", views.help_view, name="help"),
     path("terms/", views.terms_view, name="terms"),
     path("stringing/new/", views.stringing_order_create, name="stringing_order_create"),
+    path("stringing/record/new/", views.stringing_order_record_create, name="stringing_order_record_create"),
     path("stringing/", views.stringing_order_list, name="stringing_order_list"),
     path("stringing/<int:pk>/", views.stringing_order_detail, name="stringing_order_detail"),
     path("shop/estimate/", views.shop_estimate_view, name="shop_estimate"),
