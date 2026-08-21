@@ -6,6 +6,7 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import MAIN_COACH_NAMES
+from .lesson_execution_storage import reservation_slot_key
 from .ball_expense_allocation import (
     held_participant_count_by_coach,
     split_amount_by_participant_count,
@@ -523,15 +524,7 @@ def _eligible_reservations(year, month):
 
 
 def _execution_slot_key(reservation):
-    fixed_lesson = getattr(reservation, "fixed_lesson", None)
-    if fixed_lesson is not None:
-        start_local = _local_datetime(reservation.start_at)
-        return f"fixed:{fixed_lesson.pk}:{start_local.date().isoformat()}"
-
-    availability = getattr(reservation, "availability", None)
-    if availability is None:
-        return ""
-    return f"availability:{availability.pk}"
+    return reservation_slot_key(reservation)
 
 
 def _held_execution_reservations(reservations, status_map):

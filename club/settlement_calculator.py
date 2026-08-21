@@ -62,6 +62,7 @@ def reservation_slot_key(reservation, coach):
 
 
 from .stringing_service import stringing_revenue_amount
+from .lesson_execution_storage import is_held_finished_reservation
 
 
 def aggregate_reservations(
@@ -72,6 +73,7 @@ def aggregate_reservations(
     preopen_cash_price,
     is_preopen_cash_lesson_date,
     money,
+    execution_status_map,
 ):
     active_regular_coach_ids = set()
     active_coach_ids = set()
@@ -95,6 +97,11 @@ def aggregate_reservations(
             and is_preopen_cash_lesson_date(reservation.start_at)
             and reservation.is_payment_tracking_required()
         )
+        if not is_preopen and not is_held_finished_reservation(
+            reservation,
+            execution_status_map,
+        ):
+            continue
 
         for coach in split_coaches:
             row = coach_map.get(coach.pk)

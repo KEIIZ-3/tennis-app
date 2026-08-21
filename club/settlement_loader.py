@@ -1,7 +1,9 @@
 from django.contrib.auth import get_user_model
 
 from .lesson_participants import CONFIRMED_PARTICIPANT_STATUSES
+from .lesson_execution_storage import read_status_map
 from .models import CoachExpense, Reservation, StringingOrder, TicketPurchase
+from .settlement_models import MonthlySettlement
 from .stringing_service import recognized_stringing_orders
 
 
@@ -62,10 +64,16 @@ def load_monthly_settlement_data(*, month_start, next_month):
         ).exclude(purchase_type=TicketPurchase.PURCHASE_TYPE_LEGACY)
     )
 
+    settlement = MonthlySettlement.objects.filter(
+        year=month_start.year,
+        month=month_start.month,
+    ).first()
+
     return {
         "coaches": coaches,
         "reservations": reservations,
         "stringing_orders": stringing_orders,
         "all_expenses": all_expenses,
         "ticket_purchases": ticket_purchases,
+        "execution_status_map": read_status_map(settlement) if settlement else {},
     }

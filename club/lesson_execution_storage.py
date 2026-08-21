@@ -44,6 +44,28 @@ def read_status_map(settlement):
     return {}
 
 
+def reservation_slot_key(reservation):
+    """Return the canonical execution-status key for a reservation occurrence."""
+    fixed_lesson = getattr(reservation, "fixed_lesson", None)
+    if fixed_lesson is not None:
+        start_at = reservation.start_at
+        if timezone.is_aware(start_at):
+            start_at = timezone.localtime(start_at)
+        return f"fixed:{fixed_lesson.pk}:{start_at.date().isoformat()}"
+
+    availability = getattr(reservation, "availability", None)
+    if availability is None:
+        return ""
+    return f"availability:{availability.pk}"
+
+
+def is_held_finished_reservation(reservation, status_map, *, now=None):
+    """Whether a reservation belongs to a formally held, finished occurrence."""
+    slot_key = reservation_slot_key(reservation)
+    status = (status_map.get(slot_key) or {}).get("status") if slot_key else None
+    return status == "held" and reservation.end_at <= (now or timezone.now())
+
+
 def save_status(
     settlement,
     slot_key,
