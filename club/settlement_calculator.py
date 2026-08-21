@@ -82,12 +82,10 @@ def aggregate_reservations(
             continue
 
         denominator = max(len(split_coaches), 1)
-        ticket_total = sum(
-            money(consumption.unit_price_snapshot)
-            * money(consumption.tickets_used)
-            for consumption in reservation.ticket_consumptions.filter(
-                refunded_at__isnull=True
-            )
+        snapshot = getattr(reservation, "participant_ticket_price_snapshot", None)
+        ticket_total = money(snapshot) if snapshot is not None else sum(
+            money(consumption.unit_price_snapshot) * money(consumption.tickets_used)
+            for consumption in reservation.ticket_consumptions.filter(refunded_at__isnull=True)
         )
         payment_amount = money(
             getattr(reservation, "payment_amount", 0) or preopen_cash_price

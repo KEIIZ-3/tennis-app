@@ -77,7 +77,7 @@ def reservations_for_lesson(*, fixed_lesson=None, availability=None, coach=None,
     elif court is not None:
         queryset = queryset.filter(court=court)
 
-    return queryset.order_by("user__full_name", "user__username", "id").distinct()
+    return queryset.order_by("guest_name", "user__full_name", "user__username", "id").distinct()
 
 
 def reservations_for_object(obj, *, statuses=CONFIRMED_PARTICIPANT_STATUSES):
@@ -132,6 +132,8 @@ def unique_contact_reservations(reservations):
     result = []
     seen_user_ids = set()
     for reservation in reservations:
+        if not reservation.user_id:
+            continue
         if reservation.user_id in seen_user_ids:
             continue
         seen_user_ids.add(reservation.user_id)

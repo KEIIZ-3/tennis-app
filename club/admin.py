@@ -25,6 +25,7 @@ from .models import (
     FixedLesson,
     LessonWaitlist,
     LineAccountLink,
+    ParticipantPriceChange,
     Reservation,
     ScheduleSurveyResponse,
     ShopEstimateRequest,
@@ -1073,6 +1074,23 @@ class FixedLessonAdmin(admin.ModelAdmin):
         # QuerySet.delete() はモデルの delete() を呼ばないため、一括削除も逐次処理する。
         for fixed_lesson in queryset.order_by("pk"):
             fixed_lesson.delete(created_by=request.user)
+
+
+@admin.register(ParticipantPriceChange)
+class ParticipantPriceChangeAdmin(admin.ModelAdmin):
+    list_display = ("reservation", "participant_name", "old_amount", "new_amount", "changed_by", "changed_at")
+    list_filter = ("changed_at",)
+    search_fields = ("participant_name",)
+    readonly_fields = ("reservation", "participant_name", "old_amount", "new_amount", "changed_by", "changed_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Reservation)

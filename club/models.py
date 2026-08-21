@@ -1407,6 +1407,8 @@ class Reservation(models.Model, LessonTypeMixin):
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
+        null=True,
+        blank=True,
         related_name="reservations",
     )
     coach = models.ForeignKey(
@@ -1473,6 +1475,7 @@ class Reservation(models.Model, LessonTypeMixin):
         null=True,
         blank=True,
     )
+    guest_name = models.CharField(max_length=120, blank=True, default="")
     ticket_consumed_at = models.DateTimeField(null=True, blank=True)
     ticket_refunded_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_ACTIVE)
@@ -1499,7 +1502,8 @@ class Reservation(models.Model, LessonTypeMixin):
         ordering = ["-start_at", "-id"]
 
     def __str__(self):
-        return f"{self.user} / {self.coach} / {self.get_lesson_type_display()} / {self.start_at:%Y-%m-%d %H:%M}"
+        participant = self.user or self.guest_name or "ゲスト"
+        return f"{participant} / {self.coach} / {self.get_lesson_type_display()} / {self.start_at:%Y-%m-%d %H:%M}"
 
     @property
     def is_active(self):
@@ -1833,12 +1837,14 @@ class Reservation(models.Model, LessonTypeMixin):
         if self.status not in (self.STATUS_ACTIVE, self.STATUS_PENDING):
             return
 
-        user_overlap_qs = Reservation.objects.filter(
-            user=self.user,
-            status__in=[self.STATUS_ACTIVE, self.STATUS_PENDING],
-            start_at__lt=self.end_at,
-            end_at__gt=self.start_at,
-        )
+        user_overlap_qs = Reservation.objects.none()
+        if self.user_id:
+            user_overlap_qs = Reservation.objects.filter(
+                user=self.user,
+                status__in=[self.STATUS_ACTIVE, self.STATUS_PENDING],
+                start_at__lt=self.end_at,
+                end_at__gt=self.start_at,
+            )
         if self.pk:
             user_overlap_qs = user_overlap_qs.exclude(pk=self.pk)
         if user_overlap_qs.exists():
@@ -2468,6 +2474,18 @@ class ReservationParticipant(models.Model):
     class Meta:
         ordering = ["-created_at", "-id"]
         indexes = [models.Index(fields=["parent", "participant_type"], name="res_part_parent_type_idx"), models.Index(fields=["family_member"], name="res_part_family_idx")]
+
+
+class ParticipantPriceChange(models.Model):
+    reservation = models.ForeignKey(Reservation, on_delete=models.CASCADE, related_name="price_changes")
+    participant_name = models.CharField(max_length=120)
+    old_amount = models.PositiveIntegerField()
+    new_amount = models.PositiveIntegerField()
+    changed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="participant_price_changes")
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-changed_at", "-id"]
 
 
 class LessonWaitlistParticipant(models.Model):
