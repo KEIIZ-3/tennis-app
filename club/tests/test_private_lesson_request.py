@@ -8,7 +8,8 @@ from django.utils import timezone
 from unittest.mock import patch
 
 from club.forms import ReservationCreateForm
-from club.models import Court, Reservation
+from club.models import CoachAvailability, Court, Reservation
+from club.notifications import build_request_approved_for_member_message
 
 
 class PrivateLessonRequestTests(TestCase):
@@ -267,6 +268,56 @@ class PrivateLessonRequestTests(TestCase):
                 detail_response = self.client.get(private_row["calendar_unavailable_url"])
                 self.assertEqual(detail_response.status_code, 200)
                 self.assertEqual(detail_response.context["reservation"], active)
+
+    def test_private_detail_displays_requested_court_note(self):
+        reservation = self._pending(status=Reservation.STATUS_ACTIVE)
+        self.client.force_login(self.member)
+
+        response = self.client.get(reverse("club:reservation_detail", args=[reservation.pk]))
+
+        self.assertContains(response, reservation.requested_court_note)
+        self.assertNotContains(response, self.court.name)
+
+    def test_private_detail_without_requested_court_note_falls_back_to_court(self):
+        reservation = self._pending(status=Reservation.STATUS_ACTIVE)
+        reservation.requested_court_note = ""
+        reservation.save(update_fields=["requested_court_note"])
+        self.client.force_login(self.member)
+
+        response = self.client.get(reverse("club:reservation_detail", args=[reservation.pk]))
+
+        self.assertContains(response, self.court.name)
+
+    def test_regular_detail_keeps_assigned_court(self):
+        reservation = self._pending(status=Reservation.STATUS_ACTIVE)
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.member.member_level,
+            start_at=self.start_at,
+            end_at=self.end_at,
+            capacity=6,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        reservation.lesson_type = Reservation.LESSON_GENERAL
+        reservation.availability = availability
+        reservation.requested_court_note = "通常レッスンでは表示しない自由入力コート"
+        reservation.save(update_fields=["lesson_type", "availability", "requested_court_note"])
+        self.client.force_login(self.member)
+
+        response = self.client.get(reverse("club:reservation_detail", args=[reservation.pk]))
+
+        self.assertContains(response, self.court.name)
+        self.assertNotContains(response, reservation.requested_court_note)
+
+    def test_private_approval_message_uses_requested_court_note(self):
+        reservation = self._pending(status=Reservation.STATUS_ACTIVE)
+
+        message = build_request_approved_for_member_message(reservation)
+
+        self.assertIn(f"コート: {reservation.requested_court_note}", message)
+        self.assertNotIn(f"コート: {self.court}", message)
 
     def test_unrelated_member_cannot_open_private_reservation_from_calendar(self):
         active = self._pending(status=Reservation.STATUS_ACTIVE)
