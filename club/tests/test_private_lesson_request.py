@@ -39,6 +39,18 @@ class PrivateLessonRequestTests(TestCase):
             full_name="別コーチ",
             member_level=User.LEVEL_BEGINNER,
         )
+        self.other_member = User.objects.create_user(
+            username="other-private-member",
+            password="password12345",
+            role=User.ROLE_MEMBER,
+            member_level=User.LEVEL_BEGINNER,
+        )
+        self.admin = User.objects.create_user(
+            username="private-admin",
+            password="password12345",
+            role=User.ROLE_MEMBER,
+            is_staff=True,
+        )
         self.court = Court.objects.create(
             name="内部割当用コート",
             is_active=True,
@@ -232,6 +244,50 @@ class PrivateLessonRequestTests(TestCase):
         self.assertNotIn(pending.requested_court_note, content)
         self.assertNotIn(f"private-{pending.pk}", content)
         self.assertNotIn(f"private-{canceled.pk}", content)
+
+    def test_private_calendar_link_uses_reservation_detail_for_authorized_users(self):
+        active = self._pending(status=Reservation.STATUS_ACTIVE)
+        detail_url = reverse("club:reservation_detail", args=[active.pk])
+        calendar_url = reverse("club:lesson_calendar")
+        calendar_params = {"year": self.start_at.year, "month": self.start_at.month}
+
+        for user in (self.member, self.coach, self.admin):
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                response = self.client.get(calendar_url, calendar_params)
+                private_row = next(
+                    row for row in response.context["schedule_rows"]
+                    if row["id"] == f"private-{active.pk}"
+                )
+                self.assertEqual(private_row["calendar_unavailable_url"], detail_url)
+                self.assertEqual(private_row["member_list_url"], "")
+                self.assertNotIn("availability_id", private_row["calendar_unavailable_url"])
+                self.assertNotIn("fixed_lesson_id", private_row["calendar_unavailable_url"])
+
+                detail_response = self.client.get(private_row["calendar_unavailable_url"])
+                self.assertEqual(detail_response.status_code, 200)
+                self.assertEqual(detail_response.context["reservation"], active)
+
+    def test_unrelated_member_cannot_open_private_reservation_from_calendar(self):
+        active = self._pending(status=Reservation.STATUS_ACTIVE)
+        self.client.force_login(self.other_member)
+
+        response = self.client.get(
+            reverse("club:lesson_calendar"),
+            {"year": self.start_at.year, "month": self.start_at.month},
+        )
+        private_row = next(
+            row for row in response.context["schedule_rows"]
+            if row["id"] == f"private-{active.pk}"
+        )
+        self.assertEqual(
+            private_row["calendar_unavailable_url"],
+            f"#lesson-private-{active.pk}",
+        )
+        self.assertEqual(
+            self.client.get(reverse("club:reservation_detail", args=[active.pk])).status_code,
+            403,
+        )
 
     def test_approval_uses_existing_ticket_flow_with_zero_balance(self):
         reservation = self._pending()

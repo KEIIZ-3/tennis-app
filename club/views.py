@@ -2414,6 +2414,12 @@ def lesson_calendar_view(request):
     )
     for reservation in private_reservations:
         assigned_coach = reservation.assigned_coach()
+        can_access_detail = _user_can_access_reservation(request.user, reservation)
+        private_detail_url = (
+            reverse("club:reservation_detail", kwargs={"pk": reservation.pk})
+            if can_access_detail
+            else f"#lesson-private-{reservation.pk}"
+        )
         item = _build_display_item(
             item_id=f"private-{reservation.pk}",
             source_kind="private_reservation",
@@ -2438,6 +2444,10 @@ def lesson_calendar_view(request):
         )
         item.update(
             is_private_event=True,
+            calendar_url=private_detail_url,
+            calendar_login_url=private_detail_url,
+            calendar_unavailable_url=private_detail_url,
+            member_list_url="",
             can_book=False,
             can_join_waitlist=False,
             can_cancel_waitlist=False,
