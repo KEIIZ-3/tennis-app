@@ -2504,7 +2504,7 @@ class ReservationParticipant(models.Model):
 class ParticipantPriceChange(models.Model):
     reservation = models.ForeignKey(Reservation, on_delete=models.CASCADE, related_name="price_changes")
     participant_name = models.CharField(max_length=120)
-    old_amount = models.PositiveIntegerField()
+    old_amount = models.PositiveIntegerField(null=True, blank=True)
     new_amount = models.PositiveIntegerField()
     changed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="participant_price_changes")
     changed_at = models.DateTimeField(auto_now_add=True)

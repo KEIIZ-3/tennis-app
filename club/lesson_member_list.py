@@ -247,7 +247,10 @@ def _member_row_from_reservation(
             )
             or 0
         ),
-        "ticket_amount": int(reservation.participant_ticket_price_snapshot or 0),
+        "ticket_amount": reservation.participant_ticket_price_snapshot,
+        "ticket_amount_is_unset": (
+            reservation.participant_ticket_price_snapshot is None
+        ),
     }
 
 

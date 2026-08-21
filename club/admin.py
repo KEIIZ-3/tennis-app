@@ -1078,10 +1078,14 @@ class FixedLessonAdmin(admin.ModelAdmin):
 
 @admin.register(ParticipantPriceChange)
 class ParticipantPriceChangeAdmin(admin.ModelAdmin):
-    list_display = ("reservation", "participant_name", "old_amount", "new_amount", "changed_by", "changed_at")
+    list_display = ("reservation", "participant_name", "old_amount_display", "new_amount", "changed_by", "changed_at")
     list_filter = ("changed_at",)
     search_fields = ("participant_name",)
     readonly_fields = ("reservation", "participant_name", "old_amount", "new_amount", "changed_by", "changed_at")
+
+    @admin.display(description="変更前金額", ordering="old_amount")
+    def old_amount_display(self, obj):
+        return "未確定" if obj.old_amount is None else obj.old_amount
 
     def has_add_permission(self, request):
         return False
