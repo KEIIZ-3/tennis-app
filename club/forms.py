@@ -357,6 +357,9 @@ class ReservationCreateForm(forms.ModelForm):
             self.fields["end_date"].initial = end_at.date()
             self.fields["end_hour"].initial = str(end_at.hour)
 
+        if self.private_only:
+            self.fields.pop("end_date")
+
     def _build_aware_datetime(self, date_value, hour_value):
         dt = datetime(
             year=date_value.year,
@@ -376,7 +379,7 @@ class ReservationCreateForm(forms.ModelForm):
         lesson_type = cleaned_data.get("lesson_type") or Reservation.LESSON_PRIVATE
         start_date = cleaned_data.get("start_date")
         start_hour = cleaned_data.get("start_hour")
-        end_date = cleaned_data.get("end_date")
+        end_date = start_date if self.private_only else cleaned_data.get("end_date")
         end_hour = cleaned_data.get("end_hour")
         coach_choice = (cleaned_data.get("coach_choice") or "").strip()
         requested_court_note = (cleaned_data.get("requested_court_note") or "").strip()
@@ -388,7 +391,7 @@ class ReservationCreateForm(forms.ModelForm):
             self.add_error("start_date", "開始日時を入力してください。")
             return cleaned_data
         if not end_date or end_hour in (None, ""):
-            self.add_error("end_date", "終了日時を入力してください。")
+            self.add_error("end_hour" if self.private_only else "end_date", "終了日時を入力してください。")
             return cleaned_data
 
         start_at = self._build_aware_datetime(start_date, start_hour)

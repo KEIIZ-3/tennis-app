@@ -376,7 +376,6 @@
 
       <div class="reserve-mobile-actions">
         <a href="{% url 'club:reservation_list' %}" class="btn">確認</a>
-        <button type="submit" class="btn btn-primary">申請</button>
       </div>
     </form>
   </div>
@@ -427,6 +426,24 @@
       lessonType.addEventListener("change", updateSummary);
       updateSummary();
     }
+
+    {% if private_only %}
+    const startHour = document.getElementById("id_start_hour");
+    const endHour = document.getElementById("id_end_hour");
+
+    function setDefaultEndHour() {
+      if (!startHour || !endHour) return;
+      const nextHour = Number.parseInt(startHour.value, 10) + 1;
+      const matchingOption = Array.from(endHour.options).find(function (option) {
+        return Number.parseInt(option.value, 10) === nextHour;
+      });
+      if (matchingOption) endHour.value = matchingOption.value;
+    }
+
+    if (startHour && endHour) {
+      startHour.addEventListener("change", setDefaultEndHour);
+    }
+    {% endif %}
   })();
 </script>
 {% endblock %}
