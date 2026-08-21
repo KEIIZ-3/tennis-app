@@ -7,7 +7,6 @@ from django.contrib.auth.forms import UserCreationForm
 from django.utils import timezone
 
 from .models import (
-    STRINGING_COACH_NAMES,
     STRINGING_BASE_PRICE,
     STRINGING_DELIVERY_FEE,
     CoachAvailability,
@@ -587,11 +586,11 @@ class StringingOrderRecordForm(StringingOrderForm):
             role=User.ROLE_MEMBER,
             is_active=True,
         ).order_by("full_name", "username", "id")
-        self.fields["assigned_coach"].queryset = User.objects.filter(
-            role=User.ROLE_COACH,
-            full_name__in=STRINGING_COACH_NAMES,
-            is_active=True,
-        ).order_by("full_name", "username", "id")
+        self.fields["assigned_coach"].queryset = (
+            StringingOrder.supported_assigned_coaches().order_by(
+                "full_name", "username", "id"
+            )
+        )
         self.fields["performed_date"].initial = timezone.localdate()
         self.fields["preferred_finish_date"].required = False
         self.fields["preferred_finish_date"].widget = forms.HiddenInput()

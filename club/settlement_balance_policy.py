@@ -63,13 +63,14 @@ def _display_name(user):
         ).strip()
 
 
-def main_coaches():
+def main_coaches(users=None):
     User = get_user_model()
     def normalized_name(value):
         return "".join(str(value or "").replace("\u3000", " ").split())
 
     users_by_name = {}
-    for user in User.objects.all().order_by("id"):
+    users = users if users is not None else User.objects.all()
+    for user in users.order_by("id"):
         display_name = normalized_name(_display_name(user))
         full_name = normalized_name(getattr(user, "full_name", ""))
         for name in (display_name, full_name):
