@@ -32,7 +32,7 @@
         <div class="detail-row"><div class="detail-label">レッスン</div><div class="detail-value">{{ reservation.get_lesson_type_display }}</div></div>
         <div class="detail-row"><div class="detail-label">レベル</div><div class="detail-value">{{ reservation.get_target_level_display }}</div></div>
         <div class="detail-row"><div class="detail-label">コーチ</div><div class="detail-value">{{ assigned_coach_name }}{% if has_substitute %}（通常：{{ normal_coach_name }}）{% endif %}</div></div>
-        <div class="detail-row"><div class="detail-label">コート</div><div class="detail-value">{{ reservation.court }}</div></div>
+        <div class="detail-row"><div class="detail-label">コート</div><div class="detail-value">{% if reservation.lesson_type == "private" and reservation.requested_court_note %}{{ reservation.requested_court_note }}{% else %}{{ reservation.court }}{% endif %}</div></div>
         <div class="detail-row"><div class="detail-label">消費チケット</div><div class="detail-value">{{ reservation.tickets_used }}枚</div></div>
       </div>
     </div>

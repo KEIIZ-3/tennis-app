@@ -139,6 +139,15 @@ def build_request_approved_for_member_message(reservation):
     if approved_court_note:
         lines.insert(-2, f"コート連絡: {approved_court_note}")
 
+    requested_court_note = (getattr(reservation, "requested_court_note", "") or "").strip()
+    if getattr(reservation, "lesson_type", "") == "private" and requested_court_note:
+        court_line_index = next(
+            (index for index, line in enumerate(lines) if line.startswith("コート: ")),
+            None,
+        )
+        if court_line_index is not None:
+            lines[court_line_index] = f"コート: {requested_court_note}"
+
     return "\n".join(lines)
 
 
