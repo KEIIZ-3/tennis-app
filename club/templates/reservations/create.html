@@ -374,9 +374,11 @@
         <a href="{% url 'club:reservation_list' %}" class="btn">予約確認へ</a>
       </div>
 
-      <div class="reserve-mobile-actions">
-        <a href="{% url 'club:reservation_list' %}" class="btn">確認</a>
-      </div>
+      {% if not private_only %}
+        <div class="reserve-mobile-actions">
+          <a href="{% url 'club:reservation_list' %}" class="btn">確認</a>
+        </div>
+      {% endif %}
     </form>
   </div>
 
