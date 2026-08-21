@@ -8847,8 +8847,10 @@ def coach_revenue_summary(request):
         .prefetch_related("ticket_consumptions__purchase")
         .order_by("start_at", "id")
     )
-    from .lesson_execution_storage import read_status_map
-    from .settlement_balance_policy import _execution_slot_key
+    from .lesson_execution_storage import (
+        is_held_finished_reservation,
+        read_status_map,
+    )
 
     revenue_settlement = MonthlySettlement.objects.filter(
         year=selected_year, month=selected_month
@@ -8921,10 +8923,7 @@ def coach_revenue_summary(request):
 
         row_amount = 0
         breakdown_items = []
-        execution_status = (
-            execution_status_map.get(_execution_slot_key(reservation)) or {}
-        ).get("status")
-        if execution_status != "held" or reservation.end_at > timezone.now():
+        if not is_held_finished_reservation(reservation, execution_status_map):
             continue
         active_consumptions = reservation.ticket_consumptions.filter(refunded_at__isnull=True).order_by("created_at", "id")
         for consumption in active_consumptions:

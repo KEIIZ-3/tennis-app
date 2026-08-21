@@ -560,6 +560,7 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
         preopen_cash_price=PREOPEN_CASH_PRICE,
         is_preopen_cash_lesson_date=is_preopen_cash_lesson_date,
         money=money,
+        execution_status_map=monthly_data["execution_status_map"],
     )
 
     stringing_orders = monthly_data["stringing_orders"]
