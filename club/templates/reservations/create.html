@@ -371,7 +371,9 @@
 
       <div class="actions">
         <button type="submit" class="btn btn-primary">申請を送信する</button>
-        <a href="{% url 'club:reservation_list' %}" class="btn">予約確認へ</a>
+        {% if not private_only %}
+          <a href="{% url 'club:reservation_list' %}" class="btn">予約確認へ</a>
+        {% endif %}
       </div>
 
       {% if not private_only %}
