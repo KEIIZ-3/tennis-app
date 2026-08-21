@@ -287,6 +287,7 @@
 
     <form method="post" id="reservation-request-form">
       {% csrf_token %}
+      {% if private_only %}<input type="hidden" name="private_only" value="1">{% endif %}
 
       {% if form.non_field_errors %}
         <div class="message error">
@@ -304,12 +305,14 @@
         <div class="field-grid">
           {% for field in form.visible_fields %}
             {% if field.name == "lesson_type" or field.name == "coach_choice" or field.name == "coach" %}
+              {% if field.name != "lesson_type" or not private_only %}
               <div class="field-block">
                 <label for="{{ field.id_for_label }}">{{ field.label }}</label>
                 {{ field }}
                 {% if field.help_text %}<span class="muted" style="display:block; margin-top:6px; font-size:13px;">{{ field.help_text }}</span>{% endif %}
                 {{ field.errors }}
               </div>
+              {% else %}{{ field.as_hidden }}{% endif %}
             {% endif %}
           {% endfor %}
         </div>
