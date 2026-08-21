@@ -169,6 +169,12 @@
   {% else %}
     <section class="section-card">
       <h2 class="section-title"><span>参加者</span><span class="count-badge">{{ active_count }}</span></h2>
+      <form method="post" style="display:grid;grid-template-columns:minmax(0,1fr) 150px auto;gap:8px;margin:12px 0;">
+        {% csrf_token %}<input type="hidden" name="action" value="add_guest">
+        <input name="guest_name" maxlength="120" required placeholder="ゲスト氏名" style="min-height:42px;padding:8px;border:1px solid #cbd5e1;border-radius:10px;">
+        <input name="amount" type="number" min="0" step="1" required placeholder="会計金額（円）" style="min-height:42px;padding:8px;border:1px solid #cbd5e1;border-radius:10px;">
+        <button class="btn btn-primary" type="submit">ゲスト追加</button>
+      </form>
       {% if active_rows %}
         <div class="person-list">
           {% for row in active_rows %}
@@ -193,6 +199,12 @@
               </div>
               {% if is_coach_view %}
                 <div class="person-actions">
+                  <form method="post">
+                    {% csrf_token %}<input type="hidden" name="action" value="change_amount"><input type="hidden" name="reservation_id" value="{{ row.reservation.pk }}">
+                    <input name="amount" type="number" min="0" step="1" required value="{{ row.ticket_amount }}" aria-label="参加会計金額" style="width:100px;min-height:34px;border:1px solid #cbd5e1;border-radius:8px;">
+                    <button type="submit" class="mini-btn">金額変更</button>
+                  </form>
+                  {% if row.is_guest %}<form method="post" onsubmit="return confirm('このゲスト参加をキャンセルしますか？');">{% csrf_token %}<input type="hidden" name="action" value="cancel_guest"><input type="hidden" name="reservation_id" value="{{ row.reservation.pk }}"><button type="submit" class="mini-btn">参加取消</button></form>{% endif %}
                   {% if row.phone %}<a href="tel:{{ row.phone }}" class="mini-btn primary">電話</a>{% endif %}
                   {% if row.detail_url %}<a href="{{ row.detail_url }}" class="mini-btn">予約詳細</a>{% endif %}
                 </div>

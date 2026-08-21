@@ -200,6 +200,8 @@ def _member_row_from_reservation(
     is_family_participant = participant_type == "family"
 
     participant_name = (
+        (f"ゲスト：{reservation.guest_name}" if reservation.guest_name else "")
+        or
         participant_snapshot.get("participant_name")
         or _display_name(user)
     )
@@ -223,6 +225,7 @@ def _member_row_from_reservation(
         "level": participant_level,
         "relationship_label": relationship_label,
         "is_family_participant": is_family_participant,
+        "is_guest": bool(reservation.guest_name),
         "status_label": reservation.get_status_display(),
         "detail_url": reverse(
             "club:reservation_detail",
@@ -244,6 +247,7 @@ def _member_row_from_reservation(
             )
             or 0
         ),
+        "ticket_amount": int(reservation.participant_ticket_price_snapshot or 0),
     }
 
 
@@ -527,6 +531,32 @@ def lesson_calendar_member_list(request):
             return HttpResponse("Forbidden", status=403)
 
         action = (request.POST.get("action") or "").strip()
+        if action in ("add_guest", "change_amount", "cancel_guest"):
+            from .participant_accounting import add_guest, cancel_guest, change_participation_amount
+            try:
+                if action == "add_guest":
+                    add_guest(
+                        actor=request.user, guest_name=request.POST.get("guest_name"),
+                        coach=coach, court=court, start_at=start_at, end_at=end_at,
+                        lesson_type=lesson_type, amount=request.POST.get("amount"),
+                        capacity=_capacity_for_slot(availability=availability, fixed_lesson=fixed_lesson),
+                        availability=availability, fixed_lesson=fixed_lesson,
+                        target_level=getattr(fixed_lesson or availability, "target_level", "beginner"),
+                    )
+                    messages.success(request, "ゲスト参加者を追加しました。")
+                elif action == "change_amount":
+                    change_participation_amount(
+                        reservation_id=request.POST.get("reservation_id"),
+                        amount=request.POST.get("amount"), actor=request.user,
+                    )
+                    messages.success(request, "参加者の会計金額を変更しました。")
+                else:
+                    cancel_guest(reservation_id=request.POST.get("reservation_id"))
+                    messages.success(request, "ゲスト参加をキャンセルしました。")
+            except (ValidationError, Reservation.DoesNotExist, ValueError) as exc:
+                messages.error(request, "; ".join(getattr(exc, "messages", [str(exc)])))
+            return redirect(request.get_full_path())
+
         if action not in ("close_recruitment", "reopen_recruitment"):
             return HttpResponse("Bad Request", status=400)
 

@@ -5411,6 +5411,9 @@ def coach_payroll_summary(request):
                 row_tickets += tickets_used
                 row_gross_amount += unit_price * tickets_used
 
+            if reservation.participant_ticket_price_snapshot is not None:
+                row_gross_amount = _money(reservation.participant_ticket_price_snapshot)
+
             row_share_amount = _split_amount_for_selected_coach(row_gross_amount, reservation)
             if row_tickets > 0 and row_share_amount > 0:
                 total_tickets += row_tickets
@@ -5958,9 +5961,12 @@ def coach_admin_settlement(request):
         if not coaches:
             continue
 
-        ticket_total = 0
-        for consumption in reservation.ticket_consumptions.filter(refunded_at__isnull=True):
-            ticket_total += _money(consumption.unit_price_snapshot) * _money(consumption.tickets_used)
+        if reservation.participant_ticket_price_snapshot is not None:
+            ticket_total = _money(reservation.participant_ticket_price_snapshot)
+        else:
+            ticket_total = 0
+            for consumption in reservation.ticket_consumptions.filter(refunded_at__isnull=True):
+                ticket_total += _money(consumption.unit_price_snapshot) * _money(consumption.tickets_used)
 
         payment_amount = _money(getattr(reservation, "payment_amount", 0) or PREOPEN_CASH_PRICE)
         is_preopen = (
@@ -8934,6 +8940,13 @@ def coach_revenue_summary(request):
                 }
             )
 
+        if reservation.participant_ticket_price_snapshot is not None:
+            row_amount = _money(reservation.participant_ticket_price_snapshot)
+            breakdown_items = [{
+                "label": "参加会計額", "tickets": int(reservation.tickets_used or 1),
+                "amount": row_amount,
+            }]
+
         if row_amount <= 0:
             continue
 
@@ -8941,7 +8954,7 @@ def coach_revenue_summary(request):
         ticket_lesson_rows.append(
             {
                 "reservation": reservation,
-                "member_name": _display_name(reservation.user),
+                "member_name": f"ゲスト：{reservation.guest_name}" if reservation.guest_name else _display_name(reservation.user),
                 "coach_name": _display_name(assigned_coach),
                 "amount": row_amount,
                 "breakdown_items": breakdown_items,
