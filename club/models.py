@@ -1892,6 +1892,18 @@ class Reservation(models.Model, LessonTypeMixin):
             if self.status == self.STATUS_PENDING:
                 return
 
+            coach_overlap_qs = Reservation.objects.filter(
+                status=self.STATUS_ACTIVE,
+                start_at__lt=self.end_at,
+                end_at__gt=self.start_at,
+            ).filter(
+                models.Q(coach=self.coach) | models.Q(substitute_coach=self.coach)
+            )
+            if self.pk:
+                coach_overlap_qs = coach_overlap_qs.exclude(pk=self.pk)
+            if coach_overlap_qs.exists():
+                raise ValidationError("担当コーチには同じ時間帯の予約があります。")
+
             if availability:
                 self.availability = availability
                 self.target_level = availability.target_level

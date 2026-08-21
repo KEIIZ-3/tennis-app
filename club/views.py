@@ -758,7 +758,7 @@ def _assign_pending_request_targets(reservation, selected_coach_id):
 
     if matched_slot:
         reservation.coach = matched_slot.coach
-        reservation.substitute_coach = matched_slot.substitute_coach
+        reservation.substitute_coach = None
         reservation.court = matched_slot.court
         reservation.availability = matched_slot
         reservation.target_level = matched_slot.target_level
@@ -782,11 +782,13 @@ def _assign_pending_request_targets(reservation, selected_coach_id):
         reservation.custom_ticket_price = 0
         reservation.custom_duration_hours = 0
 
-    reservation.requested_court_type = Court.COURT_SONO
-    if not selected_coach_id:
-        reservation.requested_court_note = "コーチおまかせ"
-    else:
-        reservation.requested_court_note = ""
+    reservation.requested_court_type = Court.COURT_OTHER
+
+
+def _send_notification_on_commit(recipient, subject, message):
+    transaction.on_commit(
+        lambda: _send_email_notification_safely(recipient, subject, message)
+    )
 
 
 
@@ -2398,6 +2400,55 @@ def lesson_calendar_view(request):
 
         day_event_map.setdefault(target_date, [])
         day_event_map[target_date].append(item)
+        schedule_rows.append(item)
+
+    private_reservations = (
+        Reservation.objects.filter(
+            lesson_type=Reservation.LESSON_PRIVATE,
+            status=Reservation.STATUS_ACTIVE,
+            start_at__date__gte=month_start,
+            start_at__date__lt=next_month,
+        )
+        .select_related("coach", "substitute_coach", "court")
+        .order_by("start_at", "id")
+    )
+    for reservation in private_reservations:
+        assigned_coach = reservation.assigned_coach()
+        item = _build_display_item(
+            item_id=f"private-{reservation.pk}",
+            source_kind="private_reservation",
+            title="プライベートレッスン",
+            lesson_type=Reservation.LESSON_PRIVATE,
+            lesson_type_label="プライベートレッスン",
+            target_level="",
+            target_level_label="プライベートレッスン",
+            target_level_2="",
+            start_at=reservation.start_at,
+            end_at=reservation.end_at,
+            coach=reservation.coach,
+            assigned_coach_name=_display_name(assigned_coach),
+            substitute_coach=reservation.substitute_coach,
+            court=reservation.court,
+            capacity=1,
+            member_count=1,
+            status=CoachAvailability.STATUS_APPROVED,
+            color_class=_coach_color_from_names(
+                _display_name(assigned_coach), reservation.coach_id
+            ),
+        )
+        item.update(
+            is_private_event=True,
+            can_book=False,
+            can_join_waitlist=False,
+            can_cancel_waitlist=False,
+            customer_status_label="プライベートレッスン",
+            disabled_reason="参加者募集はありません",
+            court_name="",
+            member_count=0,
+            capacity=0,
+        )
+        target_date = _local_dt(reservation.start_at).date()
+        day_event_map.setdefault(target_date, []).append(item)
         schedule_rows.append(item)
 
     for target_date, items in day_event_map.items():
@@ -7205,6 +7256,7 @@ def reservation_create(request):
             },
         )
 
+    private_only = (request.GET.get("private_only") or request.POST.get("private_only")) == "1"
     initial = {}
     coach_id = (request.GET.get("coach") or "").strip()
     lesson_type = request.GET.get("lesson_type") or Reservation.LESSON_PRIVATE
@@ -7230,6 +7282,7 @@ def reservation_create(request):
         request.POST or None,
         request_user=request.user,
         initial=initial,
+        private_only=private_only,
     )
 
     if request.method == "POST":
@@ -7247,13 +7300,13 @@ def reservation_create(request):
                     reservation.save()
 
                 coach_message = build_pending_request_for_coach_message(reservation)
-                _send_email_notification_safely(
+                _send_notification_on_commit(
                     reservation.coach,
                     "【Play Design Tennis】個別レッスン申請",
                     coach_message,
                 )
                 if getattr(reservation, "substitute_coach_id", None):
-                    _send_email_notification_safely(
+                    _send_notification_on_commit(
                         reservation.substitute_coach,
                         "【Play Design Tennis】個別レッスン申請",
                         coach_message,
@@ -7282,6 +7335,7 @@ def reservation_create(request):
         "reservations/create.html",
         {
             "form": form,
+            "private_only": private_only,
         },
     )
 
@@ -7657,7 +7711,7 @@ def coach_request_approve(request, pk):
             reservation.activate_after_approval(created_by=request.user)
 
         member_message = build_request_approved_for_member_message(reservation)
-        _send_email_notification_safely(
+        _send_notification_on_commit(
             reservation.user,
             "【Play Design Tennis】個別レッスン申請 承認通知",
             member_message,
@@ -7702,7 +7756,7 @@ def coach_request_reject(request, pk):
             )
 
         member_message = build_request_rejected_for_member_message(reservation)
-        _send_email_notification_safely(
+        _send_notification_on_commit(
             reservation.user,
             "【Play Design Tennis】個別レッスン申請 却下通知",
             member_message,
