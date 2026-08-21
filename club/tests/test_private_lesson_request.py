@@ -76,6 +76,13 @@ class PrivateLessonRequestTests(TestCase):
         self.assertTrue(response.context["private_only"])
         self.assertTrue(response.context["form"].fields["coach_choice"].required)
         self.assertIn("requested_court_note", response.context["form"].fields)
+        self.assertNotIn("end_date", response.context["form"].fields)
+        request_form_html = response.content.decode().split(
+            '<form method="post" id="reservation-request-form">', 1
+        )[1].split("</form>", 1)[0]
+        self.assertEqual(request_form_html.count('type="submit"'), 1)
+        self.assertContains(response, 'startHour.addEventListener("change", setDefaultEndHour)')
+        self.assertContains(response, "Number.parseInt(startHour.value, 10) + 1")
 
     def test_private_form_accepts_free_court_and_calculates_tickets(self):
         lesson_date = self.start_at.date()
@@ -86,7 +93,6 @@ class PrivateLessonRequestTests(TestCase):
                 "requested_court_note": "Courtマスタにない公園コート",
                 "start_date": lesson_date.isoformat(),
                 "start_hour": "18",
-                "end_date": lesson_date.isoformat(),
                 "end_hour": "21",
             },
             request_user=self.member,
@@ -95,6 +101,66 @@ class PrivateLessonRequestTests(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         reservation = form.save(commit=False)
         self.assertEqual(reservation.calculate_tickets_used(), 6)
+        self.assertEqual(reservation.start_at.date(), reservation.end_at.date())
+
+    def test_private_form_uses_same_day_and_preserves_manually_selected_end_hour(self):
+        lesson_date = self.start_at.date()
+        form = ReservationCreateForm(
+            data={
+                "lesson_type": Reservation.LESSON_PRIVATE,
+                "coach_choice": str(self.coach.pk),
+                "requested_court_note": "自由入力コート",
+                "start_date": lesson_date.isoformat(),
+                "start_hour": "13",
+                "end_hour": "15",
+            },
+            request_user=self.member,
+            private_only=True,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        reservation = form.save(commit=False)
+        self.assertEqual(timezone.localtime(reservation.end_at).hour, 15)
+        self.assertEqual(reservation.calculate_tickets_used(), 4)
+
+    def test_private_form_one_hour_uses_two_tickets(self):
+        lesson_date = self.start_at.date()
+        form = ReservationCreateForm(
+            data={
+                "lesson_type": Reservation.LESSON_PRIVATE,
+                "coach_choice": str(self.coach.pk),
+                "requested_court_note": "自由入力コート",
+                "start_date": lesson_date.isoformat(),
+                "start_hour": "13",
+                "end_hour": "14",
+            },
+            request_user=self.member,
+            private_only=True,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.save(commit=False).calculate_tickets_used(), 2)
+
+    def test_regular_request_form_still_requires_end_date(self):
+        form = ReservationCreateForm(request_user=self.member)
+        self.assertIn("end_date", form.fields)
+
+    def test_private_form_ignores_posted_end_date_and_prevents_day_crossing(self):
+        lesson_date = self.start_at.date()
+        form = ReservationCreateForm(
+            data={
+                "lesson_type": Reservation.LESSON_PRIVATE,
+                "coach_choice": str(self.coach.pk),
+                "requested_court_note": "自由入力コート",
+                "start_date": lesson_date.isoformat(),
+                "start_hour": "20",
+                "end_date": (lesson_date + timedelta(days=1)).isoformat(),
+                "end_hour": "21",
+            },
+            request_user=self.member,
+            private_only=True,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        reservation = form.save(commit=False)
+        self.assertEqual(reservation.start_at.date(), reservation.end_at.date())
 
     def test_request_creates_pending_and_notifies_only_selected_coach(self):
         lesson_date = self.start_at.date()
@@ -110,7 +176,6 @@ class PrivateLessonRequestTests(TestCase):
                         "requested_court_note": "自由入力の市民コート",
                         "start_date": lesson_date.isoformat(),
                         "start_hour": "18",
-                        "end_date": lesson_date.isoformat(),
                         "end_hour": "20",
                     },
                 )
