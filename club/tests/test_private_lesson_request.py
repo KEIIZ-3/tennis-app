@@ -81,8 +81,21 @@ class PrivateLessonRequestTests(TestCase):
             '<form method="post" id="reservation-request-form">', 1
         )[1].split("</form>", 1)[0]
         self.assertEqual(request_form_html.count('type="submit"'), 1)
+        self.assertIn("申請を送信する", request_form_html)
+        self.assertIn("予約確認へ", request_form_html)
+        self.assertIn(f'href="{reverse("club:reservation_list")}"', request_form_html)
+        self.assertNotIn("reserve-mobile-actions", request_form_html)
         self.assertContains(response, 'startHour.addEventListener("change", setDefaultEndHour)')
         self.assertContains(response, "Number.parseInt(startHour.value, 10) + 1")
+
+    def test_regular_request_form_keeps_mobile_confirmation_action(self):
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("club:reservation_create"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["private_only"])
+        self.assertContains(response, "reserve-mobile-actions")
+        self.assertContains(response, ">確認</a>")
 
     def test_private_form_accepts_free_court_and_calculates_tickets(self):
         lesson_date = self.start_at.date()
