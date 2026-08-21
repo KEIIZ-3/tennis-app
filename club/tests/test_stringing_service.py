@@ -3,12 +3,15 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
+from club.forms import StringingOrderRecordForm
 from club.models import StringingOrder
 from club.settlement_service import calculate_monthly_settlement
 from club.stringing_service import (
     create_stringing_order,
+    create_recorded_stringing_order,
     recognized_stringing_orders,
     stringing_revenue_amount,
     update_stringing_order_status,
@@ -139,3 +142,126 @@ class StringingServiceTests(TestCase):
         )
         canceled = calculate_monthly_settlement(now.year, now.month, force=True)
         self.assertEqual(canceled["stringing_total"], 0)
+
+    def test_record_form_only_offers_members_and_supported_coaches(self):
+        form = StringingOrderRecordForm()
+
+        self.assertEqual(list(form.fields["user"].queryset), [self.member])
+        self.assertEqual(
+            set(form.fields["assigned_coach"].queryset),
+            {self.iizuka, self.shimizu},
+        )
+        self.assertNotIn(self.inoue, form.fields["assigned_coach"].queryset)
+        self.assertNotIn(self.contractor, form.fields["assigned_coach"].queryset)
+
+    def test_coach_records_completed_order_for_existing_member(self):
+        self.iizuka.set_password("password")
+        self.iizuka.save(update_fields=["password"])
+        self.client.force_login(self.iizuka)
+        user_count = get_user_model().objects.count()
+        performed_date = timezone.localdate()
+
+        form_page = self.client.get(reverse("club:stringing_order_record_create"))
+        self.assertContains(form_page, "ガット張り実績を登録")
+
+        response = self.client.post(
+            reverse("club:stringing_order_record_create"),
+            {
+                "user": self.member.pk,
+                "assigned_coach": self.shimizu.pk,
+                "performed_date": performed_date.isoformat(),
+                "delivery_option": "0",
+                "tension_lbs": "50",
+                "racket_name": "口頭依頼ラケット",
+                "string_name": "",
+                "delivery_location": "",
+                "preferred_delivery_time": "",
+                "note": "口頭受付",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(get_user_model().objects.count(), user_count)
+        order = StringingOrder.objects.get(racket_name="口頭依頼ラケット")
+        self.assertEqual(order.user, self.member)
+        self.assertEqual(order.assigned_coach, self.shimizu)
+        self.assertEqual(order.status, StringingOrder.STATUS_COMPLETED)
+        self.assertEqual(timezone.localtime(order.created_at).date(), performed_date)
+        self.assertEqual(order.total_price(), 1200)
+
+        self.client.force_login(self.member)
+        self.member.is_profile_completed = True
+        self.member.full_name = "ガット会員"
+        self.member.email = "member@example.com"
+        self.member.phone_number = "09000000000"
+        self.member.save(update_fields=["is_profile_completed", "full_name", "email", "phone_number"])
+        history = self.client.get(reverse("club:stringing_order_create"))
+        self.assertContains(history, "口頭依頼ラケット")
+        detail = self.client.get(reverse("club:stringing_order_detail", args=[order.pk]))
+        self.assertEqual(detail.status_code, 200)
+
+        self.client.force_login(self.contractor)
+        forbidden = self.client.get(reverse("club:stringing_order_record_create"))
+        self.assertEqual(forbidden.status_code, 403)
+
+    def test_recorded_delivery_and_settlement_use_existing_source_once(self):
+        performed_date = timezone.localdate()
+        order = create_recorded_stringing_order(
+            order=self._order(
+                delivery_requested=True,
+                delivery_location="テストコート",
+                preferred_delivery_time="18時",
+            ),
+            user=self.member,
+            assigned_coach=self.iizuka,
+            performed_date=performed_date,
+        )
+
+        result = calculate_monthly_settlement(
+            performed_date.year, performed_date.month, force=True
+        )
+        amounts = {row["coach"].pk: row["stringing_amount"] for row in result["coach_rows"]}
+        self.assertEqual(order.total_price(), 1700)
+        self.assertEqual(result["stringing_total"], 1700)
+        self.assertEqual(amounts[self.iizuka.pk], 1700)
+
+        update_stringing_order_status(
+            order_id=order.pk,
+            new_status=StringingOrder.STATUS_CANCELED,
+        )
+        canceled = calculate_monthly_settlement(
+            performed_date.year, performed_date.month, force=True
+        )
+        canceled_amounts = {
+            row["coach"].pk: row["stringing_amount"] for row in canceled["coach_rows"]
+        }
+        self.assertEqual(canceled["stringing_total"], 0)
+        self.assertEqual(canceled_amounts[self.iizuka.pk], 0)
+
+    def test_customer_order_form_still_creates_requested_order(self):
+        self.member.is_profile_completed = True
+        self.member.full_name = "ガット会員"
+        self.member.email = "member@example.com"
+        self.member.phone_number = "09000000000"
+        self.member.save(update_fields=["is_profile_completed", "full_name", "email", "phone_number"])
+        self.client.force_login(self.member)
+
+        response = self.client.post(
+            reverse("club:stringing_order_create"),
+            {
+                "delivery_option": "0",
+                "tension_lbs": "50",
+                "racket_name": "通常依頼ラケット",
+                "string_name": "",
+                "delivery_location": "",
+                "preferred_delivery_time": "",
+                "preferred_finish_date": (timezone.localdate() + timedelta(days=7)).isoformat(),
+                "note": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        order = StringingOrder.objects.get(racket_name="通常依頼ラケット")
+        self.assertEqual(order.user, self.member)
+        self.assertEqual(order.status, StringingOrder.STATUS_REQUESTED)
+        self.assertEqual(order.total_price(), 1200)

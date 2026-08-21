@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card" style="max-width:720px; margin:0 auto;">
+  <h1>ガット張り実績を登録</h1>
+  <p class="muted">顧客から口頭で受けた依頼を、完了実績として登録します。</p>
+  <p>基本料金 {{ stringing_base_price }}円 / デリバリー +{{ stringing_delivery_fee }}円</p>
+
+  <form method="post">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    {% for field in form %}
+      {% if not field.is_hidden %}
+        <div style="margin-bottom:16px;">
+          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}<div class="muted">{{ field.help_text }}</div>{% endif %}
+          {{ field.errors }}
+        </div>
+      {% else %}
+        {{ field }}
+      {% endif %}
+    {% endfor %}
+    <div class="actions" style="display:flex; gap:10px; flex-wrap:wrap;">
+      <button type="submit" class="btn btn-primary">実績を登録</button>
+      <a href="{% url 'club:stringing_order_list' %}" class="btn">戻る</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

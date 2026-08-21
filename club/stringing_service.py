@@ -1,10 +1,14 @@
 from django.core.exceptions import ValidationError
+from datetime import datetime, time
+
 from django.db import transaction
+from django.utils import timezone
 
 from .models import (
     STRINGING_BASE_PRICE,
     STRINGING_DELIVERY_FEE,
     StringingOrder,
+    ensure_accounting_month_is_open,
 )
 
 
@@ -37,6 +41,29 @@ def create_stringing_order(*, order, user):
     )
     order.full_clean()
     order.save()
+    return order
+
+
+@transaction.atomic
+def create_recorded_stringing_order(*, order, user, assigned_coach, performed_date):
+    """Persist a completed oral-request record using the existing accounting source."""
+    ensure_accounting_month_is_open(performed_date)
+    order.user = user
+    order.assigned_coach = assigned_coach
+    order.status = StringingOrder.STATUS_COMPLETED
+    order.base_price = STRINGING_BASE_PRICE
+    order.delivery_fee = (
+        STRINGING_DELIVERY_FEE if order.delivery_requested else 0
+    )
+    order.full_clean()
+    order.save()
+
+    performed_at = timezone.make_aware(
+        datetime.combine(performed_date, time(12, 0)),
+        timezone.get_current_timezone(),
+    )
+    StringingOrder.objects.filter(pk=order.pk).update(created_at=performed_at)
+    order.created_at = performed_at
     return order
 
 

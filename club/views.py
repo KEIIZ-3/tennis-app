@@ -34,6 +34,7 @@ from .forms import (
     MemberRegistrationForm,
     ReservationCreateForm,
     StringingOrderForm,
+    StringingOrderRecordForm,
 )
 from .models import (
     MAIN_COACH_NAMES,
@@ -76,6 +77,7 @@ from .stringing_service import (
     STRINGING_BASE_PRICE,
     STRINGING_DELIVERY_FEE,
     create_stringing_order,
+    create_recorded_stringing_order,
     recognized_stringing_orders,
     stringing_revenue_amount,
     update_stringing_order_status,
@@ -2851,6 +2853,22 @@ def stringing_order_create(request):
 
         messages.error(request, "ガット張り依頼を保存できませんでした。入力内容をご確認ください。")
 
+    own_orders = StringingOrder.objects.filter(user=request.user).select_related(
+        "assigned_coach"
+    ).order_by("-created_at", "-id")
+    order_rows = [
+        {
+            "order": order,
+            "status_label": _stringing_status_label(order),
+            "preferred_finish_date": (
+                order.preferred_delivery_time if not order.delivery_requested else "-"
+            ),
+            "total_price": order.total_price(),
+            "can_manage": False,
+        }
+        for order in own_orders
+    ]
+
     return render(
         request,
         "stringing/create.html",
@@ -2859,6 +2877,43 @@ def stringing_order_create(request):
             "stringing_base_price": STRINGING_BASE_PRICE,
             "stringing_delivery_fee": STRINGING_DELIVERY_FEE,
             "stringing_total_with_delivery": STRINGING_BASE_PRICE + STRINGING_DELIVERY_FEE,
+            "order_rows": order_rows,
+            "status_counts": {"all": len(order_rows)},
+        },
+    )
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def stringing_order_record_create(request):
+    if not _is_staff_like(request.user):
+        return HttpResponse("Forbidden", status=403)
+
+    form = StringingOrderRecordForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        try:
+            order = create_recorded_stringing_order(
+                order=form.save(commit=False),
+                user=form.cleaned_data["user"],
+                assigned_coach=form.cleaned_data["assigned_coach"],
+                performed_date=form.cleaned_data["performed_date"],
+            )
+        except ValidationError as exc:
+            form.add_error(None, exc)
+        else:
+            messages.success(
+                request,
+                f"ガット張り実績を登録しました。料金は {order.total_price()}円 です。",
+            )
+            return redirect("club:stringing_order_detail", pk=order.pk)
+
+    return render(
+        request,
+        "stringing/record_create.html",
+        {
+            "form": form,
+            "stringing_base_price": STRINGING_BASE_PRICE,
+            "stringing_delivery_fee": STRINGING_DELIVERY_FEE,
         },
     )
 
