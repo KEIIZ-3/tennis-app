@@ -18,7 +18,8 @@ def participant_name(reservation):
 def participation_revenue(reservation):
     if reservation.status != Reservation.STATUS_ACTIVE:
         return 0
-    return int(reservation.participant_ticket_price_snapshot or 0)
+    amount = reservation.participant_ticket_price_snapshot
+    return None if amount is None else int(amount)
 
 
 def validate_amount(value):
@@ -65,7 +66,7 @@ def add_guest(*, actor, guest_name, coach, court, start_at, end_at,
 def change_participation_amount(*, reservation_id, amount, actor):
     reservation = Reservation.objects.select_for_update(of=("self",)).get(pk=reservation_id)
     amount = validate_amount(amount)
-    old_amount = int(reservation.participant_ticket_price_snapshot or 0)
+    old_amount = reservation.participant_ticket_price_snapshot
     if old_amount != amount:
         reservation.participant_ticket_price_snapshot = amount
         reservation.save(update_fields=["participant_ticket_price_snapshot"])

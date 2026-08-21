@@ -201,7 +201,8 @@
                 <div class="person-actions">
                   <form method="post">
                     {% csrf_token %}<input type="hidden" name="action" value="change_amount"><input type="hidden" name="reservation_id" value="{{ row.reservation.pk }}">
-                    <input name="amount" type="number" min="0" step="1" required value="{{ row.ticket_amount }}" aria-label="参加会計金額" style="width:100px;min-height:34px;border:1px solid #cbd5e1;border-radius:8px;">
+                    {% if row.ticket_amount_is_unset %}<span class="status-badge">会計金額：未確定</span>{% endif %}
+                    <input name="amount" type="number" min="0" step="1" required value="{% if not row.ticket_amount_is_unset %}{{ row.ticket_amount }}{% endif %}" placeholder="金額を入力" aria-label="参加会計金額{% if row.ticket_amount_is_unset %}（未確定）{% endif %}" style="width:100px;min-height:34px;border:1px solid #cbd5e1;border-radius:8px;">
                     <button type="submit" class="mini-btn">金額変更</button>
                   </form>
                   {% if row.is_guest %}<form method="post" onsubmit="return confirm('このゲスト参加をキャンセルしますか？');">{% csrf_token %}<input type="hidden" name="action" value="cancel_guest"><input type="hidden" name="reservation_id" value="{{ row.reservation.pk }}"><button type="submit" class="mini-btn">参加取消</button></form>{% endif %}

@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from club.models import CoachAvailability, Court, ParticipantPriceChange, Reservation, TicketPurchase, User
@@ -64,6 +65,55 @@ class GuestParticipantAccountingTests(TestCase):
         self.assertEqual(change.participant_name, self.member.display_name())
         self.assertEqual(change.old_amount, 1000)
         self.assertEqual(change.new_amount, 800)
+
+    def test_unset_amount_remains_unknown_until_manual_change(self):
+        reservation = Reservation.objects.create(
+            user=self.member, coach=self.coach, court=self.court,
+            availability=self.availability, start_at=self.availability.start_at,
+            end_at=self.availability.end_at, lesson_type=Reservation.LESSON_EVENT,
+            target_level=User.LEVEL_BEGINNER, status=Reservation.STATUS_ACTIVE,
+            tickets_used=1, participant_ticket_price_snapshot=None,
+        )
+        self.assertIsNone(participation_revenue(reservation))
+
+        change_participation_amount(
+            reservation_id=reservation.pk, amount=3500, actor=self.coach,
+        )
+
+        reservation.refresh_from_db()
+        change = ParticipantPriceChange.objects.get(reservation=reservation)
+        self.assertEqual(reservation.participant_ticket_price_snapshot, 3500)
+        self.assertIsNone(change.old_amount)
+        self.assertEqual(change.new_amount, 3500)
+
+    def test_explicit_zero_is_formal_revenue_value(self):
+        guest = self.add_guest(amount=0)
+        self.assertEqual(participation_revenue(guest), 0)
+
+    def test_member_list_distinguishes_unset_zero_and_paid_amounts(self):
+        for index, amount in enumerate((None, 0, 3500)):
+            Reservation.objects.create(
+                user=None, guest_name=f"表示確認{index}",
+                coach=self.coach, court=self.court,
+                availability=self.availability,
+                start_at=self.availability.start_at,
+                end_at=self.availability.end_at,
+                lesson_type=Reservation.LESSON_EVENT,
+                target_level=User.LEVEL_BEGINNER,
+                status=Reservation.STATUS_ACTIVE,
+                tickets_used=1,
+                participant_ticket_price_snapshot=amount,
+            )
+
+        self.client.force_login(self.coach)
+        response = self.client.get(
+            reverse("club:lesson_calendar_member_list"),
+            {"availability_id": self.availability.pk},
+        )
+
+        self.assertContains(response, "会計金額：未確定")
+        self.assertContains(response, 'value="0"', html=False)
+        self.assertContains(response, 'value="3500"', html=False)
 
     def test_zero_and_arbitrary_amount_allowed_negative_rejected(self):
         guest = self.add_guest(amount=0)
