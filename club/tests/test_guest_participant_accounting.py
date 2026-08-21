@@ -55,19 +55,33 @@ class GuestParticipantAccountingTests(TestCase):
             target_level=User.LEVEL_BEGINNER, status=Reservation.STATUS_ACTIVE,
             tickets_used=1, participant_ticket_price_snapshot=1000,
         )
-        change_participation_amount(reservation_id=reservation.pk, amount=500, actor=self.coach)
+        change_participation_amount(reservation_id=reservation.pk, amount=800, actor=self.coach)
         reservation.refresh_from_db(); purchase.refresh_from_db()
-        self.assertEqual(participation_revenue(reservation), 500)
+        self.assertEqual(reservation.participant_ticket_price_snapshot, 800)
+        self.assertEqual(participation_revenue(reservation), 800)
         self.assertEqual(purchase.unit_price, 1000)
-        self.assertEqual(ParticipantPriceChange.objects.get(reservation=reservation).old_amount, 1000)
+        change = ParticipantPriceChange.objects.get(reservation=reservation)
+        self.assertEqual(change.participant_name, self.member.display_name())
+        self.assertEqual(change.old_amount, 1000)
+        self.assertEqual(change.new_amount, 800)
 
     def test_zero_and_arbitrary_amount_allowed_negative_rejected(self):
         guest = self.add_guest(amount=0)
         self.assertEqual(guest.participant_ticket_price_snapshot, 0)
         change_participation_amount(reservation_id=guest.pk, amount=2345, actor=self.coach)
         guest.refresh_from_db(); self.assertEqual(guest.participant_ticket_price_snapshot, 2345)
+        self.assertEqual(participation_revenue(guest), 2345)
+        change = ParticipantPriceChange.objects.filter(reservation=guest).latest("pk")
+        self.assertEqual(change.participant_name, "ゲスト：佐藤花子")
+        self.assertEqual(change.old_amount, 0)
+        self.assertEqual(change.new_amount, 2345)
         with self.assertRaises(ValidationError):
             change_participation_amount(reservation_id=guest.pk, amount=-1, actor=self.coach)
+
+    def test_amount_change_locks_only_reservation_without_nullable_user_join(self):
+        queryset = Reservation.objects.select_for_update(of=("self",))
+        self.assertEqual(queryset.query.select_for_update_of, ("self",))
+        self.assertFalse(queryset.query.select_related)
 
     def test_cancel_guest_excludes_count_and_revenue_without_delete(self):
         guest = self.add_guest(amount=2000)
