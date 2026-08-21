@@ -2069,8 +2069,21 @@ class Reservation(models.Model, LessonTypeMixin):
                 return None
 
             consumptions = list(
-                locked_self.ticket_consumptions.select_related("purchase").select_for_update().filter(refunded_at__isnull=True)
+                locked_self.ticket_consumptions.select_for_update().filter(
+                    refunded_at__isnull=True
+                )
             )
+            purchase_ids = {
+                consumption.purchase_id
+                for consumption in consumptions
+                if consumption.purchase_id is not None
+            }
+            locked_purchases = {
+                purchase.pk: purchase
+                for purchase in TicketPurchase.objects.select_for_update().filter(
+                    pk__in=purchase_ids
+                ).order_by("pk")
+            }
 
             if not consumptions:
                 ledger = apply_ticket_change(
@@ -2088,7 +2101,7 @@ class Reservation(models.Model, LessonTypeMixin):
                 return ledger
 
             for consumption in consumptions:
-                purchase = consumption.purchase
+                purchase = locked_purchases.get(consumption.purchase_id)
                 if purchase is not None:
                     purchase.remaining_tickets += consumption.tickets_used
                     if purchase.remaining_tickets > purchase.total_tickets:

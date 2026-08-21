@@ -2,7 +2,9 @@ from datetime import datetime, time, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
@@ -163,6 +165,68 @@ class TicketLifecycleE2ETests(TestCase):
         self.assertEqual(self.member.ticket_balance, 2)
         self.assertFalse(TicketPurchase.objects.exists())
         self.assertIsNotNone(TicketConsumption.objects.get().refunded_at)
+
+    def test_refund_locks_consumptions_without_nullable_purchase_join(self):
+        _, lot = self.purchase(tickets=2)
+        self.member.ticket_balance = 3
+        self.member.save(update_fields=["ticket_balance"])
+        reservation = self.reservation(tickets=3)
+        reservation.consume_tickets()
+
+        self.client.force_login(self.member)
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.post(
+                reverse("club:reservation_cancel", args=[reservation.pk])
+            )
+
+        self.assertEqual(response.status_code, 302)
+        reservation.refresh_from_db()
+        self.member.refresh_from_db()
+        lot.refresh_from_db()
+        consumptions = list(
+            TicketConsumption.objects.filter(reservation=reservation).order_by("id")
+        )
+        consumption_lock_queries = [
+            query["sql"]
+            for query in queries.captured_queries
+            if "club_ticketconsumption" in query["sql"].lower()
+            and query["sql"].lstrip().upper().startswith("SELECT")
+        ]
+
+        self.assertTrue(consumption_lock_queries)
+        self.assertTrue(
+            all("JOIN" not in query.upper() for query in consumption_lock_queries)
+        )
+        self.assertEqual(self.member.ticket_balance, 3)
+        self.assertEqual(lot.remaining_tickets, 2)
+        self.assertTrue(all(row.refunded_at is not None for row in consumptions))
+        self.assertTrue(all(row.refund_note for row in consumptions))
+        self.assertTrue(any(row.purchase_id == lot.pk for row in consumptions))
+        self.assertTrue(any(row.purchase_id is None for row in consumptions))
+        self.assertEqual(reservation.status, Reservation.STATUS_CANCELED)
+        self.assertIsNotNone(reservation.ticket_refunded_at)
+        self.assertEqual(
+            TicketLedger.objects.filter(
+                reservation=reservation,
+                reason=TicketLedger.REASON_CANCEL_REFUND,
+            ).count(),
+            1,
+        )
+
+        second_response = self.client.post(
+            reverse("club:reservation_cancel", args=[reservation.pk])
+        )
+        self.assertEqual(second_response.status_code, 302)
+        self.member.refresh_from_db()
+        lot.refresh_from_db()
+        self.assertEqual((self.member.ticket_balance, lot.remaining_tickets), (3, 2))
+        self.assertEqual(
+            TicketLedger.objects.filter(
+                reservation=reservation,
+                reason=TicketLedger.REASON_CANCEL_REFUND,
+            ).count(),
+            1,
+        )
 
     def test_partial_purchase_evidence_consumes_only_proven_lot_and_keeps_price_unknown(self):
         _, lot = self.purchase(tickets=1, unit_price=3500)
