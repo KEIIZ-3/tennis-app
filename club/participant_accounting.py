@@ -63,7 +63,7 @@ def add_guest(*, actor, guest_name, coach, court, start_at, end_at,
 
 @transaction.atomic
 def change_participation_amount(*, reservation_id, amount, actor):
-    reservation = Reservation.objects.select_for_update().select_related("user").get(pk=reservation_id)
+    reservation = Reservation.objects.select_for_update(of=("self",)).get(pk=reservation_id)
     amount = validate_amount(amount)
     old_amount = int(reservation.participant_ticket_price_snapshot or 0)
     if old_amount != amount:
