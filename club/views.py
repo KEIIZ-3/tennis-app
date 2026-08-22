@@ -17,7 +17,7 @@ from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q, Sum
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -2479,6 +2479,11 @@ def lesson_calendar_view(request):
                     "is_current_month": cursor.month == target_month,
                     "is_today": cursor == today,
                     "is_past": cursor < today,
+                    "can_create_single_lesson": (
+                        cursor >= today
+                        and request.user.is_authenticated
+                        and (_is_coach_user(request.user) or _is_staff_like(request.user))
+                    ),
                     "is_saturday": cursor.weekday() == 5,
                     "is_sunday": cursor.weekday() == 6,
                     "holiday_name": _lesson_calendar_holiday_name(cursor),
@@ -7793,10 +7798,24 @@ def coach_availability_create(request, pk=None):
         if not _is_staff_like(request.user) and instance.coach != request.user:
             return HttpResponse("Forbidden", status=403)
 
+    initial = {}
+    if instance is None and request.method == "GET" and request.GET.get("date"):
+        try:
+            requested_date = date.fromisoformat(request.GET["date"])
+        except ValueError:
+            return HttpResponseBadRequest("日付の形式が正しくありません。")
+        if requested_date < timezone.localdate():
+            return HttpResponseBadRequest("過去の日付には新しい単発レッスンを登録できません。")
+        initial = {
+            "start_date": requested_date,
+            "end_date": requested_date,
+        }
+
     form = CoachAvailabilityForm(
         request.POST or None,
         request_user=request.user,
         instance=instance,
+        initial=initial,
     )
 
     if request.method == "POST":
