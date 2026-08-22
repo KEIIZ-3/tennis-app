@@ -35,6 +35,7 @@
 
   <form method="post">
     {% csrf_token %}
+    {% if calendar_source %}<input type="hidden" name="source" value="calendar">{% endif %}
 
     {% if form.non_field_errors %}
       <div class="message error">
@@ -94,4 +95,25 @@
     </div>
   </form>
 </div>
+<script>
+  (function () {
+    const lessonType = document.getElementById("id_lesson_type");
+    const startDate = document.getElementById("id_start_date");
+    const endDate = document.getElementById("id_end_date");
+    const startHour = document.getElementById("id_start_hour");
+    const endHour = document.getElementById("id_end_hour");
+    if (!lessonType || !startDate || !endDate || !startHour || !endHour) return;
+
+    function assistGeneralLessonEnd() {
+      if (lessonType.value !== "{{ general_lesson_type }}" || !startHour.value) return;
+      const suggestedEndHour = Number(startHour.value) + 2;
+      if (suggestedEndHour > 21) return;
+      endDate.value = startDate.value;
+      endHour.value = String(suggestedEndHour);
+    }
+
+    startDate.addEventListener("change", assistGeneralLessonEnd);
+    startHour.addEventListener("change", assistGeneralLessonEnd);
+  }());
+</script>
 {% endblock %}

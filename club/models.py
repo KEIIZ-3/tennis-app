@@ -422,35 +422,25 @@ class CoachAvailability(models.Model, LessonTypeMixin):
             if self.capacity < 1:
                 raise ValidationError("イベントの定員は1以上にしてください。")
 
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        update_fields = kwargs.get("update_fields")
-        if update_fields is not None:
-            update_field_set = set(update_fields)
-            update_field_set.update(
-                {"coach_count", "court_count", "capacity", "target_level_2"}
-            )
-            kwargs["update_fields"] = list(update_field_set)
-        return super().save(*args, **kwargs)
-
         if self.target_level_2 == self.target_level:
             self.target_level_2 = ""
 
         overlap_qs = CoachAvailability.objects.filter(
-            coach=self.coach,
             start_at__lt=self.end_at,
             end_at__gt=self.start_at,
         )
         if self.pk:
             overlap_qs = overlap_qs.exclude(pk=self.pk)
-        if overlap_qs.exists():
+        if overlap_qs.filter(coach=self.coach).exists():
             raise ValidationError("同じコーチで重複する空き時間があります。")
+        if overlap_qs.filter(court=self.court).exists():
+            raise ValidationError("同じコートで重複する空き時間があります。")
 
     def save(self, *args, **kwargs):
         update_fields = kwargs.get("update_fields")
         if update_fields is not None and self.lesson_type == self.LESSON_GENERAL:
             update_field_set = set(update_fields)
-            update_field_set.update({"capacity", "coach_count", "court_count"})
+            update_field_set.update({"capacity", "coach_count", "court_count", "target_level_2"})
             kwargs["update_fields"] = list(update_field_set)
 
         previous_substitute_id = None
