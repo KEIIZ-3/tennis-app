@@ -301,14 +301,17 @@ class FixedOccurrenceCalendarCountTests(TestCase):
             coach=self.coach, court=self.court, lesson_type=Reservation.LESSON_GENERAL,
             start_at=start_at, end_at=end_at, capacity=5,
         )
+        other_coach = User.objects.create_user(
+            username="other-availability-coach", role=User.ROLE_COACH,
+        )
         other = CoachAvailability.objects.create(
-            coach=self.coach, court=self.court, lesson_type=Reservation.LESSON_GENERAL,
+            coach=other_coach, court=self.court, lesson_type=Reservation.LESSON_GENERAL,
             start_at=start_at, end_at=end_at, capacity=5,
         )
         Reservation.objects.filter(pk=self.reservation.pk).update(availability=first)
         other_member = User.objects.create_user(username="other-availability-member", role=User.ROLE_MEMBER)
         Reservation.objects.bulk_create([Reservation(
-            user=other_member, coach=self.coach, court=self.court, availability=other,
+            user=other_member, coach=other_coach, court=self.court, availability=other,
             fixed_lesson=self.fixed_lesson, lesson_type=Reservation.LESSON_GENERAL,
             start_at=start_at, end_at=end_at, status=Reservation.STATUS_ACTIVE,
         )])

@@ -25,10 +25,10 @@ class SettlementWalletCourtAuditTests(TestCase):
         )
         self.court = Court.objects.create(name="Audit Court", is_active=True)
 
-    def availability(self, hour, *, day=5, court=None, court_count=1):
+    def availability(self, hour, *, day=5, coach=None, court=None, court_count=1):
         start = timezone.make_aware(datetime(2026, 8, day, hour))
         return CoachAvailability.objects.create(
-            coach=self.coach,
+            coach=coach or self.coach,
             court=court or self.court,
             lesson_type=Reservation.LESSON_PRIVATE,
             target_level=User.LEVEL_BEGINNER,
@@ -103,12 +103,15 @@ class SettlementWalletCourtAuditTests(TestCase):
             start_hour=19,
         )
         old_availability = self.availability(19)
-        replacement = self.availability(19)
+        replacement_coach = User.objects.create_user(
+            username="replacement-court-coach", role=User.ROLE_COACH,
+        )
+        replacement = self.availability(19, coach=replacement_coach)
         member = User.objects.create_user(username="replacement-court-member")
         Reservation.objects.bulk_create([
             Reservation(
                 user=member,
-                coach=self.coach,
+                coach=availability.coach,
                 court=availability.court,
                 availability=availability,
                 fixed_lesson=fixed,

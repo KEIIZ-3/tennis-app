@@ -422,17 +422,6 @@ class CoachAvailability(models.Model, LessonTypeMixin):
             if self.capacity < 1:
                 raise ValidationError("イベントの定員は1以上にしてください。")
 
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        update_fields = kwargs.get("update_fields")
-        if update_fields is not None:
-            update_field_set = set(update_fields)
-            update_field_set.update(
-                {"coach_count", "court_count", "capacity", "target_level_2"}
-            )
-            kwargs["update_fields"] = list(update_field_set)
-        return super().save(*args, **kwargs)
-
         if self.target_level_2 == self.target_level:
             self.target_level_2 = ""
 
