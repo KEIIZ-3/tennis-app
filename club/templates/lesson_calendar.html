@@ -275,6 +275,35 @@
     border-right:0;
   }
 
+  .single-lesson-create-link{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:34px;
+    margin-top:7px;
+    border:1px dashed #93c5fd;
+    border-radius:10px;
+    background:#eff6ff;
+    color:#1d4ed8;
+    font-size:12px;
+    font-weight:900;
+    text-decoration:none;
+    cursor:pointer;
+  }
+
+  .single-lesson-create-link:hover{
+    border-color:#2563eb;
+    background:#dbeafe;
+  }
+
+  .day-cell-can-create{
+    cursor:pointer;
+  }
+
+  .day-cell-can-create:hover{
+    background:#f8fbff;
+  }
+
   .day-cell-muted{
     background:#f8fafc!important;
     color:#94a3b8;
@@ -1327,9 +1356,12 @@
             {% for week in calendar_weeks %}
               <tr>
                 {% for day in week %}
-                  <td class="{% if not day.is_current_month %}day-cell-muted{% endif %} {% if day.is_past %}day-cell-past{% endif %} {% if day.is_today %}day-cell-today{% endif %} {% if day.is_sunday %}day-cell-sunday{% endif %} {% if day.is_saturday %}day-cell-saturday{% endif %} {% if day.holiday_name %}is-japanese-holiday{% endif %} {% if 'お盆休み' in day.holiday_name %}is-obon-holiday{% endif %}">
+                  <td class="{% if not day.is_current_month %}day-cell-muted{% endif %} {% if day.is_past %}day-cell-past{% endif %} {% if day.is_today %}day-cell-today{% endif %} {% if day.is_sunday %}day-cell-sunday{% endif %} {% if day.is_saturday %}day-cell-saturday{% endif %} {% if day.holiday_name %}is-japanese-holiday{% endif %} {% if 'お盆休み' in day.holiday_name %}is-obon-holiday{% endif %} {% if day.can_create_single_lesson %}day-cell-can-create{% endif %}"{% if day.can_create_single_lesson %} data-create-url="{% url 'club:coach_availability_create' %}?date={{ day.date|date:'Y-m-d' }}"{% endif %}>
                     <div class="day-number">{{ day.day_number }}</div>
                     {% if day.holiday_name %}<div class="holiday-name">{{ day.holiday_name }}</div>{% endif %}
+                    {% if day.can_create_single_lesson %}
+                      <a class="single-lesson-create-link" href="{% url 'club:coach_availability_create' %}?date={{ day.date|date:'Y-m-d' }}">＋ 単発レッスン</a>
+                    {% endif %}
                     {% if day.items %}
                       <div class="calendar-event-list">
                         {% for item in day.items %}
@@ -1488,6 +1520,15 @@
       </div>
     {% endif %}
   </section>
+
+  <script>
+    document.querySelectorAll(".day-cell-can-create[data-create-url]").forEach(function (cell) {
+      cell.addEventListener("click", function (event) {
+        if (event.target.closest("a, button, input, select, textarea, form")) return;
+        window.location.assign(cell.dataset.createUrl);
+      });
+    });
+  </script>
 
 </div>
 

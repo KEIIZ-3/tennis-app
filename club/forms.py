@@ -229,6 +229,9 @@ class CoachAvailabilityForm(forms.ModelForm):
         coach = cleaned_data.get("coach")
         substitute_coach = cleaned_data.get("substitute_coach")
 
+        if self.instance._state.adding and start_date and start_date < timezone.localdate():
+            self.add_error("start_date", "過去の日付には新しい単発レッスンを登録できません。")
+
         if not start_date or start_hour in (None, ""):
             self.add_error("start_date", "開始日時を入力してください。")
             return cleaned_data
