@@ -1356,11 +1356,11 @@
             {% for week in calendar_weeks %}
               <tr>
                 {% for day in week %}
-                  <td class="{% if not day.is_current_month %}day-cell-muted{% endif %} {% if day.is_past %}day-cell-past{% endif %} {% if day.is_today %}day-cell-today{% endif %} {% if day.is_sunday %}day-cell-sunday{% endif %} {% if day.is_saturday %}day-cell-saturday{% endif %} {% if day.holiday_name %}is-japanese-holiday{% endif %} {% if 'お盆休み' in day.holiday_name %}is-obon-holiday{% endif %} {% if day.can_create_single_lesson %}day-cell-can-create{% endif %}"{% if day.can_create_single_lesson %} data-create-url="{% url 'club:coach_availability_create' %}?date={{ day.date|date:'Y-m-d' }}"{% endif %}>
+                  <td class="{% if not day.is_current_month %}day-cell-muted{% endif %} {% if day.is_past %}day-cell-past{% endif %} {% if day.is_today %}day-cell-today{% endif %} {% if day.is_sunday %}day-cell-sunday{% endif %} {% if day.is_saturday %}day-cell-saturday{% endif %} {% if day.holiday_name %}is-japanese-holiday{% endif %} {% if 'お盆休み' in day.holiday_name %}is-obon-holiday{% endif %} {% if day.can_create_single_lesson %}day-cell-can-create{% endif %}"{% if day.can_create_single_lesson %} data-create-url="{% url 'club:coach_availability_create' %}?date={{ day.date|date:'Y-m-d' }}&amp;source=calendar"{% endif %}>
                     <div class="day-number">{{ day.day_number }}</div>
                     {% if day.holiday_name %}<div class="holiday-name">{{ day.holiday_name }}</div>{% endif %}
                     {% if day.can_create_single_lesson %}
-                      <a class="single-lesson-create-link" href="{% url 'club:coach_availability_create' %}?date={{ day.date|date:'Y-m-d' }}">＋ 単発レッスン</a>
+                      <a class="single-lesson-create-link" href="{% url 'club:coach_availability_create' %}?date={{ day.date|date:'Y-m-d' }}&amp;source=calendar">＋ 単発レッスン</a>
                     {% endif %}
                     {% if day.items %}
                       <div class="calendar-event-list">

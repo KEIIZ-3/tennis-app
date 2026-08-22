@@ -144,6 +144,7 @@ class CoachAvailabilityForm(forms.ModelForm):
             "court",
             "lesson_type",
             "target_level",
+            "target_level_2",
             "coach_count",
             "court_count",
             "capacity",
@@ -163,7 +164,7 @@ class CoachAvailabilityForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         self.request_user = kwargs.pop("request_user", None)
         super().__init__(*args, **kwargs)
-        coach_queryset = User.objects.filter(role="coach").order_by("username")
+        coach_queryset = User.objects.filter(role__in=User.COACH_ROLE_VALUES).order_by("username")
         self.fields["coach"].queryset = coach_queryset
         self.fields["substitute_coach"].queryset = coach_queryset
         self.fields["substitute_coach"].required = False
@@ -172,6 +173,8 @@ class CoachAvailabilityForm(forms.ModelForm):
         self.fields["substitute_coach"].label = "代行コーチ（その日だけ）"
         self.fields["lesson_type"].label = "レッスン種別"
         self.fields["target_level"].label = "対象レベル"
+        self.fields["target_level_2"].label = "第2対象レベル"
+        self.fields["target_level_2"].required = False
         self.fields["coach_count"].label = "担当コーチ人数"
         self.fields["court_count"].label = "利用コート面数"
         self.fields["capacity"].label = "定員"
@@ -184,7 +187,11 @@ class CoachAvailabilityForm(forms.ModelForm):
         self.fields["capacity"].help_text = "一般レッスンではコーチ人数から自動計算されます。"
         self.fields["custom_duration_hours"].help_text = "イベントのみ使用します。"
 
-        if self.request_user and not self.request_user.is_superuser and getattr(self.request_user, "role", "") == "coach":
+        if (
+            self.request_user
+            and not self.request_user.is_superuser
+            and getattr(self.request_user, "role", "") in User.COACH_ROLE_VALUES
+        ):
             self.fields["coach"].queryset = User.objects.filter(pk=self.request_user.pk)
             self.fields["coach"].initial = self.request_user
 
@@ -283,6 +290,8 @@ class CoachAvailabilityForm(forms.ModelForm):
 
         cleaned_data["start_at"] = start_at
         cleaned_data["end_at"] = end_at
+        self.instance.start_at = start_at
+        self.instance.end_at = end_at
         return cleaned_data
 
     def save(self, commit=True):

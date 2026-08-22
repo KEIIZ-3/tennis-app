@@ -2348,13 +2348,6 @@ def lesson_calendar_view(request):
         if availability.pk in represented_availability_ids:
             continue
 
-        # レッスンカレンダーは FixedLesson を正とする。
-        # 過去の固定レッスン同期で残った一般レッスンの CoachAvailability をそのまま出すと、
-        # 管理画面の FixedLesson に無い枠まで表示されてしまうため、一般レッスンの単独枠は表示しない。
-        # イベント等を CoachAvailability 単独で登録した場合だけ、追加枠として表示する。
-        if availability.lesson_type == Reservation.LESSON_GENERAL:
-            continue
-
         start_local = _local_dt(availability.start_at)
         target_date = start_local.date()
 
@@ -7792,6 +7785,9 @@ def coach_request_reject(request, pk):
 @login_required
 @require_http_methods(["GET", "POST"])
 def coach_availability_create(request, pk=None):
+    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
+        return HttpResponse("Forbidden", status=403)
+
     instance = None
     if pk is not None:
         instance = get_object_or_404(CoachAvailability, pk=pk)
@@ -7799,6 +7795,9 @@ def coach_availability_create(request, pk=None):
             return HttpResponse("Forbidden", status=403)
 
     initial = {}
+    calendar_source = instance is None and (
+        request.GET.get("source") == "calendar" or request.POST.get("source") == "calendar"
+    )
     if instance is None and request.method == "GET" and request.GET.get("date"):
         try:
             requested_date = date.fromisoformat(request.GET["date"])
@@ -7809,6 +7808,7 @@ def coach_availability_create(request, pk=None):
         initial = {
             "start_date": requested_date,
             "end_date": requested_date,
+            "lesson_type": CoachAvailability.LESSON_GENERAL,
         }
 
     form = CoachAvailabilityForm(
@@ -7829,6 +7829,12 @@ def coach_availability_create(request, pk=None):
                 messages.success(request, "コーチスケジュールを登録しました。")
             else:
                 messages.success(request, "コーチスケジュールを更新しました。")
+            if instance is None and calendar_source:
+                start_local = timezone.localtime(availability.start_at)
+                calendar_url = reverse("club:lesson_calendar")
+                return redirect(
+                    f"{calendar_url}?{urlencode({'year': start_local.year, 'month': start_local.month})}"
+                )
             return redirect("club:coach_availability_list")
 
         messages.error(request, "コーチスケジュールを保存できませんでした。入力内容をご確認ください。")
@@ -7840,6 +7846,8 @@ def coach_availability_create(request, pk=None):
             "form": form,
             "is_edit": instance is not None,
             "availability": instance,
+            "calendar_source": calendar_source,
+            "general_lesson_type": CoachAvailability.LESSON_GENERAL,
         },
     )
 
