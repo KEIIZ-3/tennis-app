@@ -2541,15 +2541,10 @@ class ReservationFlowSmokeTests(TestCase):
         start_at, end_at = fixed_lesson._build_datetimes_for_date(
             self.lesson_date,
         )
-        availability = CoachAvailability.objects.create(
+        availability = CoachAvailability.objects.get(
             coach=self.coach,
-            court=self.court,
-            lesson_type=Reservation.LESSON_GENERAL,
-            target_level=self.User.LEVEL_BEGINNER,
             start_at=start_at,
             end_at=end_at,
-            capacity=6,
-            status=CoachAvailability.STATUS_OPEN,
         )
 
         # 同期元の固定メンバー設定だけが残り、開催回のReservationがない状態は
