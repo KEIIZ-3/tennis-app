@@ -10,6 +10,11 @@ function Set-WorkflowUtf8 {
 }
 
 function Get-RepositoryRoot {
+    param([string]$RepositoryRoot)
+
+    if (-not [string]::IsNullOrWhiteSpace($RepositoryRoot)) {
+        return (Resolve-Path -LiteralPath $RepositoryRoot).Path
+    }
     return (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 }
 
@@ -80,7 +85,7 @@ function Invoke-NativeChecked {
 }
 
 function Initialize-Workflow {
-    param([switch]$RequireCodex)
+    param([switch]$RequireCodex, [string]$RepositoryRoot)
 
     Set-WorkflowUtf8
     Add-GitHubCliToPath
@@ -89,7 +94,7 @@ function Initialize-Workflow {
         Assert-CommandAvailable -Name "codex" -InstallMessage "Codex CLIが見つかりません。インストールとPATHを確認してください。"
     }
 
-    $repoRoot = Get-RepositoryRoot
+    $repoRoot = Get-RepositoryRoot -RepositoryRoot $RepositoryRoot
     Set-Location -LiteralPath $repoRoot
     Invoke-NativeChecked -FilePath "gh" -Arguments @("--version") -FailureMessage "GitHub CLIの確認に失敗しました。" -Quiet | Out-Null
     Invoke-NativeChecked -FilePath "gh" -Arguments @("auth", "status") -FailureMessage "GitHub CLIの認証に失敗しました。gh auth loginを実行してください。" -Quiet | Out-Null

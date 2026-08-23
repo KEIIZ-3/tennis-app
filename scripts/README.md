@@ -72,6 +72,8 @@ OPEN中の既存PRを継続修正する場合は、PR番号を明示します。
 
 start-codex.ps1はcodex-auto.ps1を起動します。Codexが正常終了しhandoff.jsonが存在する場合だけ、start-codex.ps1がpublish-from-handoff.ps1を親PowerShellとして続けて起動します。
 
+開始時に`scripts`一式をrepository外の一時ディレクトリへ固定し、repository rootは別の明示引数として保持します。既存PRのheadへ切り替えた後も、Codex起動からhandoff検出、検証、stage、commit、push、既存PR更新まで開始時点の制御コードを使います。一時コピーは正常終了時と異常終了時のどちらも`finally`で削除を試みます。
+
 1. UTF-8設定
 2. GitHub CLI PATH確認
 3. gh認証確認

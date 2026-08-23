@@ -16,6 +16,13 @@ class ExistingPullRequestWorkflowTests(unittest.TestCase):
         self.assertIn('$publishArguments.PrNumber = $PrNumber', START)
         self.assertIn('Sync-PullRequestBranch -Number $PrNumber', AUTO)
 
+    def test_repository_root_is_separate_from_fixed_control_scripts(self):
+        self.assertIn('$arguments.RepositoryRoot = $repoRoot', START)
+        self.assertIn('$fixedScriptsRoot', START)
+        self.assertIn('"publish-from-handoff.ps1") @publishArguments', START)
+        self.assertIn('-RepositoryRoot $RepositoryRoot', AUTO)
+        self.assertIn('Get-RepositoryRoot -RepositoryRoot $RepositoryRoot', PUBLISH)
+
     def test_normal_mode_remains_intact(self):
         self.assertIn('else {\n        Sync-MainBranch', AUTO)
         self.assertIn('@("switch", "-c", $branch)', PUBLISH)
