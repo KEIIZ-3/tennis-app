@@ -32,6 +32,11 @@ class ExistingPullRequestWorkflowTests(unittest.TestCase):
         self.assertNotIn('@("switch", "main")', function)
         self.assertNotIn('reset --hard', function)
 
+    def test_branch_validation_does_not_leak_native_output(self):
+        function = COMMON[COMMON.index('function Sync-PullRequestBranch'):]
+        validation = function[function.index('@("check-ref-format", "--branch", $branch)'):]
+        self.assertIn('-Quiet | Out-Null', validation.split('\n', 3)[1])
+
     def test_local_branch_paths_are_both_supported(self):
         self.assertIn('"switch", "-c", $branch, "--track", "origin/$branch"', COMMON)
         self.assertIn('refs/remotes/origin/$branch', COMMON)
@@ -49,6 +54,11 @@ class ExistingPullRequestWorkflowTests(unittest.TestCase):
 
     def test_artifacts_are_initialized_and_report_is_preserved(self):
         self.assertIn('Move-Item -LiteralPath $reportPath -Destination $previousReportPath', COMMON)
+        self.assertIn('[System.IO.Path]::GetTempPath()', COMMON)
+        self.assertIn('"tennis-app-workflow-$repositoryKey"', COMMON)
+        self.assertNotIn('Join-Path $RepositoryRoot "report.previous.md"', COMMON)
+        ignore_check = COMMON[COMMON.index('function Assert-LocalArtifactsIgnored'):]
+        self.assertNotIn('"report.previous.md"', ignore_check)
         for name in ('"handoff.json"', '".pr-body.md"', '".codex-prompt.tmp"'):
             self.assertIn(name, COMMON)
         self.assertIn('Initialize-WorkflowArtifacts -RepositoryRoot $repoRoot', AUTO)

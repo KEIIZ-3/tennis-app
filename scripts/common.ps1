@@ -113,7 +113,20 @@ function Initialize-WorkflowArtifacts {
     param([Parameter(Mandatory = $true)][string]$RepositoryRoot)
 
     $reportPath = Join-Path $RepositoryRoot "report.md"
-    $previousReportPath = Join-Path $RepositoryRoot "report.previous.md"
+    $repositoryKeyBytes = [System.Text.Encoding]::UTF8.GetBytes(
+        [System.IO.Path]::GetFullPath($RepositoryRoot).ToUpperInvariant()
+    )
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $repositoryKeyHash = $sha256.ComputeHash($repositoryKeyBytes)
+    }
+    finally {
+        $sha256.Dispose()
+    }
+    $repositoryKey = [System.BitConverter]::ToString($repositoryKeyHash).Replace("-", "").Substring(0, 16).ToLowerInvariant()
+    $artifactDirectory = Join-Path ([System.IO.Path]::GetTempPath()) "tennis-app-workflow-$repositoryKey"
+    [System.IO.Directory]::CreateDirectory($artifactDirectory) | Out-Null
+    $previousReportPath = Join-Path $artifactDirectory "report.previous.md"
     if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
         Move-Item -LiteralPath $reportPath -Destination $previousReportPath -Force
     }
@@ -153,7 +166,7 @@ function Sync-PullRequestBranch {
     $pullRequest = Get-OpenPullRequestHead -Number $Number
     $branch = $pullRequest.headRefName
     Invoke-NativeChecked -FilePath "git" -Arguments @("check-ref-format", "--branch", $branch) `
-        -FailureMessage "PR head branch名が不正です。"
+        -FailureMessage "PR head branch名が不正です。" -Quiet | Out-Null
     Invoke-NativeChecked -FilePath "git" -Arguments @("fetch", "origin", $branch) `
         -FailureMessage "origin/$branch の取得に失敗しました。" -Quiet | Out-Null
 
@@ -267,7 +280,7 @@ function Get-PullRequest {
 }
 
 function Assert-LocalArtifactsIgnored {
-    foreach ($name in @("report.md", "report.previous.md", "handoff.json", ".pr-body.md", ".codex-prompt.tmp")) {
+    foreach ($name in @("report.md", "handoff.json", ".pr-body.md", ".codex-prompt.tmp")) {
         & git check-ignore --quiet -- $name
         if ($LASTEXITCODE -ne 0) {
             throw "$name が.gitignoreに登録されていません。"
