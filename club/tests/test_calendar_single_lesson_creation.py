@@ -228,4 +228,3 @@ class CalendarSingleLessonCreationTests(TestCase):
         self.assertContains(response, reverse("club:reservation_create"))
         self.assertEqual(FixedLesson.objects.count(), 0)
         self.assertEqual(Reservation.objects.count(), 0)
-
