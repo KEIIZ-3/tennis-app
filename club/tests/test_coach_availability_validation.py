@@ -16,13 +16,14 @@ class CoachAvailabilityOverlapValidationTests(TestCase):
             username="availability-overlap-other-coach", role=User.ROLE_COACH
         )
         self.court = Court.objects.create(name="Availability validation court")
+        self.other_court = Court.objects.create(name="Availability validation other court")
         self.start_at = timezone.make_aware(datetime(2026, 8, 24, 10))
 
-    def create_availability(self, *, coach=None, start_at=None, end_at=None):
+    def create_availability(self, *, coach=None, court=None, start_at=None, end_at=None):
         start_at = start_at or self.start_at
         return CoachAvailability.objects.create(
             coach=coach or self.coach,
-            court=self.court,
+            court=court or self.court,
             lesson_type=CoachAvailability.LESSON_PRIVATE,
             target_level=User.LEVEL_BEGINNER,
             start_at=start_at,
@@ -42,10 +43,10 @@ class CoachAvailabilityOverlapValidationTests(TestCase):
                 end_at=self.start_at + timedelta(hours=2),
             )
 
-    def test_different_coach_can_use_same_time(self):
+    def test_different_coach_and_court_can_use_same_time(self):
         self.create_availability()
 
-        availability = self.create_availability(coach=self.other_coach)
+        availability = self.create_availability(coach=self.other_coach, court=self.other_court)
 
         self.assertIsNotNone(availability.pk)
 

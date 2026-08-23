@@ -90,12 +90,12 @@ class ReservationFlowSmokeTests(TestCase):
         user.save()
         return user
 
-    def _create_fixed_lesson(self, *, coach=None, lesson_date=None, title="テスト一般レッスン"):
+    def _create_fixed_lesson(self, *, coach=None, court=None, lesson_date=None, title="テスト一般レッスン"):
         target_date = lesson_date or self.lesson_date
         return FixedLesson.objects.create(
             title=title,
             coach=coach or self.coach,
-            court=self.court,
+            court=court or self.court,
             lesson_type=FixedLesson.LESSON_GENERAL,
             target_level=self.User.LEVEL_BEGINNER,
             target_level_2="",
@@ -687,12 +687,14 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertNotContains(response, "削除済み固定レッスン")
 
     def test_contractor_cannot_execute_other_coach_lesson(self):
+        other_court = Court.objects.create(name="担当外実施対象コート")
         own_lesson = self._create_fixed_lesson(
             coach=self.contractor,
             title="業務委託実施対象",
         )
         other_lesson = self._create_fixed_lesson(
             coach=self.coach,
+            court=other_court,
             title="担当外実施対象",
         )
         own_start, own_end = own_lesson._build_datetimes_for_date(self.lesson_date)

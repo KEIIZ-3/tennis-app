@@ -106,7 +106,7 @@ class SettlementWalletCourtAuditTests(TestCase):
             start_hour=19,
         )
         old_availability = self.availability(19)
-        replacement = CoachAvailability.objects.create(
+        replacement = CoachAvailability(
             coach=replacement_coach,
             court=self.court,
             lesson_type=Reservation.LESSON_PRIVATE,
@@ -115,6 +115,8 @@ class SettlementWalletCourtAuditTests(TestCase):
             end_at=old_availability.end_at,
             capacity=1,
         )
+        # Historical replacement records can share the original occurrence slot.
+        CoachAvailability.objects.bulk_create([replacement])
         member = User.objects.create_user(username="replacement-court-member")
         Reservation.objects.bulk_create([
             Reservation(

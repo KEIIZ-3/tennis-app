@@ -435,6 +435,16 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         if overlap_qs.exists():
             raise ValidationError("同じコーチで重複する空き時間があります。")
 
+        court_overlap_qs = CoachAvailability.objects.filter(
+            court=self.court,
+            start_at__lt=self.end_at,
+            end_at__gt=self.start_at,
+        )
+        if self.pk:
+            court_overlap_qs = court_overlap_qs.exclude(pk=self.pk)
+        if court_overlap_qs.exists():
+            raise ValidationError("同じコートで重複する空き時間があります。")
+
     def save(self, *args, **kwargs):
         update_fields = kwargs.get("update_fields")
         if update_fields is not None and self.lesson_type == self.LESSON_GENERAL:
