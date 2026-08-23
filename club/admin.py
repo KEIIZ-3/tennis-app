@@ -11,6 +11,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Count, Q
 from django.http import HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import path, reverse
@@ -53,8 +54,8 @@ class IdempotentTicketActionForm(ActionForm):
 _MODEL_VERBOSE_NAMES = {
     User: ("ユーザー", "ユーザー"),
     Court: ("コート", "コート"),
-    CoachAvailability: ("コーチスケジュール", "コーチスケジュール"),
-    FixedLesson: ("固定レッスン", "固定レッスン"),
+    CoachAvailability: ("1回開催レッスン", "1回開催レッスン"),
+    FixedLesson: ("定期レッスン設定", "レッスン管理"),
     Reservation: ("予約", "予約"),
     TicketLedger: ("チケット履歴", "チケット履歴"),
     TicketPurchase: ("チケット購入", "チケット購入"),
@@ -762,6 +763,13 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
     ordering = ("-start_at", "-id")
     list_select_related = ("coach", "coach_2", "court")
 
+    def changelist_view(self, request, extra_context=None):
+        context = {
+            "fixed_lesson_admin_url": reverse("admin:club_fixedlesson_changelist"),
+        }
+        context.update(extra_context or {})
+        return super().changelist_view(request, extra_context=context)
+
     @admin.display(description="対象レベル", ordering="target_level")
     def target_level_admin(self, obj):
         if hasattr(obj, "target_level_display_label"):
@@ -772,6 +780,7 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
 @admin.register(FixedLesson)
 class FixedLessonAdmin(admin.ModelAdmin):
     form = FixedLessonAdminForm
+    change_list_template = "admin/club/fixedlesson/change_list.html"
     list_display = (
         "id",
         "operation_status_admin",
@@ -901,6 +910,26 @@ class FixedLessonAdmin(admin.ModelAdmin):
             .select_related("coach", "coach_2", "coach_3", "court")
             .prefetch_related("members")
         )
+
+    def changelist_view(self, request, extra_context=None):
+        one_time_lessons = (
+            CoachAvailability.objects.select_related("coach", "coach_2", "court")
+            .annotate(
+                active_reservation_count=Count(
+                    "reservations",
+                    filter=Q(reservations__status=Reservation.STATUS_ACTIVE),
+                )
+            )
+            .order_by("-start_at", "-id")[:50]
+        )
+        context = {
+            "one_time_lessons": one_time_lessons,
+            "one_time_lesson_admin_url": reverse(
+                "admin:club_coachavailability_changelist"
+            ),
+        }
+        context.update(extra_context or {})
+        return super().changelist_view(request, extra_context=context)
 
     def _future_start(self):
         return timezone.now()

@@ -1,0 +1,47 @@
+{% extends "admin/change_list.html" %}
+{% load i18n admin_urls %}
+
+{% block content %}
+  <section class="module" aria-labelledby="one-time-lessons-heading">
+    <h2 id="one-time-lessons-heading">1回開催レッスン</h2>
+    <p>
+      レッスンカレンダーから作成した通常レッスンです。参加者は予約を正本として管理されます。
+      <a href="{{ one_time_lesson_admin_url }}">すべての1回開催レッスンを表示</a>
+    </p>
+    {% if one_time_lessons %}
+      <div class="results">
+        <table id="one-time-lessons-result-list">
+          <thead>
+            <tr>
+              <th scope="col">開催日時</th>
+              <th scope="col">レッスン種別</th>
+              <th scope="col">担当コーチ</th>
+              <th scope="col">コート</th>
+              <th scope="col">予約数 / 定員</th>
+              <th scope="col">募集状態</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for lesson in one_time_lessons %}
+              <tr>
+                <th scope="row">
+                  <a href="{% url 'admin:club_coachavailability_change' lesson.pk %}">
+                    {{ lesson.start_at|date:"Y-m-d H:i" }}
+                  </a>
+                </th>
+                <td>{{ lesson.get_lesson_type_display }}</td>
+                <td>{{ lesson.coach_display_names }}</td>
+                <td>{{ lesson.court }}</td>
+                <td>{{ lesson.active_reservation_count }} / {{ lesson.effective_capacity }}名</td>
+                <td>{% if lesson.is_recruitment_closed %}募集終了{% else %}募集中{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p>1回開催レッスンはありません。</p>
+    {% endif %}
+  </section>
+  {{ block.super }}
+{% endblock %}
