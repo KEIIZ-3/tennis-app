@@ -144,6 +144,7 @@ class CoachAvailabilityForm(forms.ModelForm):
             "court",
             "lesson_type",
             "target_level",
+            "target_level_2",
             "coach_count",
             "court_count",
             "capacity",
@@ -163,7 +164,7 @@ class CoachAvailabilityForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         self.request_user = kwargs.pop("request_user", None)
         super().__init__(*args, **kwargs)
-        coach_queryset = User.objects.filter(role="coach").order_by("username")
+        coach_queryset = User.objects.filter(role__in=User.COACH_ROLE_VALUES).order_by("username", "id")
         self.fields["coach"].queryset = coach_queryset
         self.fields["substitute_coach"].queryset = coach_queryset
         self.fields["substitute_coach"].required = False
@@ -172,19 +173,26 @@ class CoachAvailabilityForm(forms.ModelForm):
         self.fields["substitute_coach"].label = "代行コーチ（その日だけ）"
         self.fields["lesson_type"].label = "レッスン種別"
         self.fields["target_level"].label = "対象レベル"
+        self.fields["target_level_2"].label = "第2対象レベル"
+        self.fields["target_level_2"].required = False
         self.fields["coach_count"].label = "担当コーチ人数"
         self.fields["court_count"].label = "利用コート面数"
         self.fields["capacity"].label = "定員"
         self.fields["custom_ticket_price"].label = "イベント用チケット価格"
         self.fields["custom_duration_hours"].label = "イベント用時間（時間）"
-        self.fields["lesson_type"].initial = Reservation.LESSON_GENERAL
+        self.fields["lesson_type"].initial = CoachAvailability.LESSON_GENERAL
         self.fields["substitute_coach"].help_text = "その日のみ代行するコーチを設定できます。未設定なら通常担当のままです。"
         self.fields["coach_count"].help_text = "一般レッスンのみ使用。1人増えるごとに定員は6名、コートは1面追加されます。"
         self.fields["court_count"].help_text = "一般レッスンではコーチ人数に合わせて自動調整されます。"
         self.fields["capacity"].help_text = "一般レッスンではコーチ人数から自動計算されます。"
         self.fields["custom_duration_hours"].help_text = "イベントのみ使用します。"
 
-        if self.request_user and not self.request_user.is_superuser and getattr(self.request_user, "role", "") == "coach":
+        if (
+            self.request_user
+            and not self.request_user.is_superuser
+            and not self.request_user.is_staff
+            and getattr(self.request_user, "role", "") in User.COACH_ROLE_VALUES
+        ):
             self.fields["coach"].queryset = User.objects.filter(pk=self.request_user.pk)
             self.fields["coach"].initial = self.request_user
 

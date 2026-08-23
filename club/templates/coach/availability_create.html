@@ -35,6 +35,7 @@
 
   <form method="post">
     {% csrf_token %}
+    {% if is_calendar_source %}<input type="hidden" name="source" value="calendar">{% endif %}
 
     {% if form.non_field_errors %}
       <div class="message error">
@@ -94,4 +95,27 @@
     </div>
   </form>
 </div>
+{% if is_calendar_source %}
+  <script>
+    (function () {
+      const startHour = document.getElementById("id_start_hour");
+      const endHour = document.getElementById("id_end_hour");
+      const startDate = document.getElementById("id_start_date");
+      const endDate = document.getElementById("id_end_date");
+      if (!startHour || !endHour) return;
+      startHour.addEventListener("change", function () {
+        const hour = Number.parseInt(startHour.value, 10);
+        const assistedEndHour = hour + 2;
+        if (Number.isNaN(hour) || assistedEndHour > 21) return;
+        const matchingOption = Array.from(endHour.options).find(function (option) {
+          return Number.parseInt(option.value, 10) === assistedEndHour;
+        });
+        if (matchingOption) {
+          endHour.value = matchingOption.value;
+          if (startDate && endDate) endDate.value = startDate.value;
+        }
+      });
+    })();
+  </script>
+{% endif %}
 {% endblock %}
