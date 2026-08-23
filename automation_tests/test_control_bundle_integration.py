@@ -65,6 +65,7 @@ if ($PSBoundParameters.ContainsKey('PrNumber')) {
     & git -C $RepositoryRoot switch old-pr | Out-Null
 }
 [IO.File]::WriteAllText((Join-Path $RepositoryRoot 'handoff.json'), '{}')
+exit 0
 """,
         )
         self.write(repository, "scripts/common.ps1", "# fixed common marker\n")
