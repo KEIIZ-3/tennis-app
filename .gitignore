@@ -19,6 +19,7 @@ Thumbs.db
 
 # Local Codex workflow artifacts
 report.md
+report.previous.md
 handoff.json
 .pr-body.md
 .codex-prompt.tmp

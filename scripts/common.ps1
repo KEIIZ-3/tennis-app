@@ -109,6 +109,84 @@ function Sync-MainBranch {
     Invoke-NativeChecked -FilePath "git" -Arguments @("pull", "--ff-only", "origin", "main") -FailureMessage "mainをfast-forward同期できませんでした。" -Quiet | Out-Null
 }
 
+function Initialize-WorkflowArtifacts {
+    param([Parameter(Mandatory = $true)][string]$RepositoryRoot)
+
+    $reportPath = Join-Path $RepositoryRoot "report.md"
+    $previousReportPath = Join-Path $RepositoryRoot "report.previous.md"
+    if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+        Move-Item -LiteralPath $reportPath -Destination $previousReportPath -Force
+    }
+    foreach ($name in @("handoff.json", ".pr-body.md", ".codex-prompt.tmp")) {
+        $path = Join-Path $RepositoryRoot $name
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            Remove-Item -LiteralPath $path -Force
+        }
+    }
+}
+
+function Get-OpenPullRequestHead {
+    param([Parameter(Mandatory = $true)][int]$Number)
+
+    $repository = (Get-GitHubRepository).nameWithOwner
+    $json = Invoke-NativeChecked -FilePath "gh" -Arguments @(
+        "pr", "view", [string]$Number, "--repo", $repository, "--json",
+        "number,url,state,headRefName,headRefOid,headRepository"
+    ) -FailureMessage "PR #${Number}を取得できませんでした。" -Quiet
+    $pullRequest = (($json -join [Environment]::NewLine) | ConvertFrom-Json)
+    if ($pullRequest.state -ne "OPEN") {
+        throw "PR #${Number}はOPENではありません: $($pullRequest.state)"
+    }
+    if ([string]::IsNullOrWhiteSpace($pullRequest.headRefName)) {
+        throw "PR #${Number}のhead branchを取得できませんでした。"
+    }
+    if ($null -eq $pullRequest.headRepository -or
+        $pullRequest.headRepository.nameWithOwner -ne $repository) {
+        throw "PR #${Number}のhead repositoryが現在のrepositoryと一致しません。"
+    }
+    return $pullRequest
+}
+
+function Sync-PullRequestBranch {
+    param([Parameter(Mandatory = $true)][int]$Number)
+
+    $pullRequest = Get-OpenPullRequestHead -Number $Number
+    $branch = $pullRequest.headRefName
+    Invoke-NativeChecked -FilePath "git" -Arguments @("check-ref-format", "--branch", $branch) `
+        -FailureMessage "PR head branch名が不正です。"
+    Invoke-NativeChecked -FilePath "git" -Arguments @("fetch", "origin", $branch) `
+        -FailureMessage "origin/$branch の取得に失敗しました。" -Quiet | Out-Null
+
+    & git show-ref --verify --quiet "refs/heads/$branch"
+    $localExists = $LASTEXITCODE -eq 0
+    if ($localExists) {
+        $upstream = @(& git for-each-ref --format="%(upstream)" "refs/heads/$branch")
+        if ($LASTEXITCODE -ne 0 -or ($upstream -join "").Trim() -ne "refs/remotes/origin/$branch") {
+            throw "ローカルbranch $branch のupstreamがorigin/$branchではありません。"
+        }
+        & git merge-base --is-ancestor "refs/heads/$branch" "refs/remotes/origin/$branch"
+        if ($LASTEXITCODE -ne 0) {
+            throw "ローカルbranch $branch はorigin/$branchへfast-forward同期できません。"
+        }
+        Invoke-NativeChecked -FilePath "git" -Arguments @("switch", $branch) `
+            -FailureMessage "$branch への切り替えに失敗しました。" -Quiet | Out-Null
+        Invoke-NativeChecked -FilePath "git" -Arguments @("merge", "--ff-only", "origin/$branch") `
+            -FailureMessage "$branch をfast-forward同期できませんでした。" -Quiet | Out-Null
+    }
+    else {
+        Invoke-NativeChecked -FilePath "git" -Arguments @(
+            "switch", "-c", $branch, "--track", "origin/$branch"
+        ) -FailureMessage "origin/$branch からローカルbranchを作成できませんでした。" -Quiet | Out-Null
+    }
+
+    $localHead = (& git rev-parse HEAD).Trim()
+    $remoteHead = (& git rev-parse "refs/remotes/origin/$branch").Trim()
+    if ($LASTEXITCODE -ne 0 -or $localHead -ne $remoteHead -or $localHead -ne $pullRequest.headRefOid) {
+        throw "同期後のheadがPR #${Number}のheadと一致しません。"
+    }
+    return $pullRequest
+}
+
 function Get-PromptTemplate {
     param([Parameter(Mandatory = $true)][string]$Name)
     $path = Join-Path (Join-Path $PSScriptRoot "prompts") $Name
@@ -189,7 +267,7 @@ function Get-PullRequest {
 }
 
 function Assert-LocalArtifactsIgnored {
-    foreach ($name in @("report.md", ".pr-body.md", ".codex-prompt.tmp")) {
+    foreach ($name in @("report.md", "report.previous.md", "handoff.json", ".pr-body.md", ".codex-prompt.tmp")) {
         & git check-ignore --quiet -- $name
         if ($LASTEXITCODE -ne 0) {
             throw "$name が.gitignoreに登録されていません。"

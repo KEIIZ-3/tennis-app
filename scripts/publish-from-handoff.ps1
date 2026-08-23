@@ -1,5 +1,8 @@
 [CmdletBinding()]
-param([switch]$FunctionsOnly)
+param(
+    [switch]$FunctionsOnly,
+    [ValidateRange(1, [int]::MaxValue)][int]$PrNumber
+)
 
 . (Join-Path $PSScriptRoot "common.ps1")
 
@@ -199,60 +202,109 @@ try {
         throw "handoff.json property files must be a non-empty array."
     }
 
+    $existingPrMode = $PSBoundParameters.ContainsKey("PrNumber")
+    if ($existingPrMode) {
+        if ($handoff.PSObject.Properties.Name -notcontains "publish_mode" -or
+            $handoff.publish_mode -ne "existing_pr" -or
+            $handoff.PSObject.Properties.Name -notcontains "pr_number" -or
+            [int]$handoff.pr_number -ne $PrNumber) {
+            throw "handoff.json does not match existing PR mode for PR #${PrNumber}."
+        }
+        $pullRequest = Get-OpenPullRequestHead -Number $PrNumber
+        if ($handoff.branch.Trim() -ne $pullRequest.headRefName) {
+            throw "handoff branch does not match PR #${PrNumber} head branch."
+        }
+        $currentBranch = (& git branch --show-current).Trim()
+        if ($LASTEXITCODE -ne 0 -or $currentBranch -ne $pullRequest.headRefName) {
+            throw "The current branch does not match PR #${PrNumber} head branch."
+        }
+        $previousHead = $pullRequest.headRefOid
+    }
+    elseif (($handoff.PSObject.Properties.Name -contains "publish_mode" -and
+        $handoff.publish_mode -eq "existing_pr") -or
+        $handoff.PSObject.Properties.Name -contains "pr_number") {
+        throw "Existing PR handoff requires the explicit -PrNumber parameter."
+    }
+
     $branch = $handoff.branch.Trim()
-    if ($branch -notmatch '^agent/[a-z0-9]+(?:-[a-z0-9]+)*$') {
+    if (-not $existingPrMode -and $branch -notmatch '^agent/[a-z0-9]+(?:-[a-z0-9]+)*$') {
         throw "branch must start with agent/ and use lowercase kebab-case."
     }
     Invoke-NativeChecked -FilePath "git" -Arguments @("check-ref-format", "--branch", $branch) `
         -FailureMessage "The branch name is not valid for Git."
 
-    [void](Invoke-HandoffStaging -RepositoryRoot $repoRoot -Files @($handoff.files) -BeforeStage {
-        Invoke-NativeChecked -FilePath "git" -Arguments @("switch", "-c", $branch) `
-            -FailureMessage "The work branch could not be created."
-    })
+    if ($existingPrMode) {
+        [void](Invoke-HandoffStaging -RepositoryRoot $repoRoot -Files @($handoff.files))
+    }
+    else {
+        [void](Invoke-HandoffStaging -RepositoryRoot $repoRoot -Files @($handoff.files) -BeforeStage {
+            Invoke-NativeChecked -FilePath "git" -Arguments @("switch", "-c", $branch) `
+                -FailureMessage "The work branch could not be created."
+        })
+    }
 
     Invoke-NativeChecked -FilePath "git" -Arguments @("commit", "-m", $handoff.commit_message.Trim()) `
         -FailureMessage "The commit failed."
-    Invoke-NativeChecked -FilePath "git" -Arguments @("push", "-u", "origin", $branch) `
-        -FailureMessage "The push failed."
+    if ($existingPrMode) {
+        Invoke-NativeChecked -FilePath "git" -Arguments @("push", "origin", $branch) `
+            -FailureMessage "The existing PR branch push failed."
+    }
+    else {
+        Invoke-NativeChecked -FilePath "git" -Arguments @("push", "-u", "origin", $branch) `
+            -FailureMessage "The push failed."
+    }
 
     $commitSha = (& git rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($commitSha)) {
         throw "The latest commit SHA could not be read."
     }
 
-    [IO.File]::WriteAllText(
-        $prBodyPath,
-        $handoff.pr_body,
-        [Text.UTF8Encoding]::new($false)
-    )
-    $prOutput = & gh pr create --draft --title $handoff.pr_title.Trim() --body-file $prBodyPath
-    if ($LASTEXITCODE -ne 0) {
-        throw "Draft PR creation failed."
+    if ($existingPrMode) {
+        $updatedPullRequest = Get-OpenPullRequestHead -Number $PrNumber
+        if ($updatedPullRequest.headRefName -ne $branch -or
+            $updatedPullRequest.headRefOid -ne $commitSha -or
+            $updatedPullRequest.headRefOid -eq $previousHead) {
+            throw "PR #${PrNumber} head SHA was not updated to the pushed commit."
+        }
+        $prUrl = $updatedPullRequest.url
+        $publishedPrNumber = [string]$PrNumber
     }
-
-    $prUrl = ($prOutput | Select-Object -Last 1).Trim()
-    if ([string]::IsNullOrWhiteSpace($prUrl)) {
-        throw "The Draft PR URL was not returned."
+    else {
+        [IO.File]::WriteAllText(
+            $prBodyPath,
+            $handoff.pr_body,
+            [Text.UTF8Encoding]::new($false)
+        )
+        $prOutput = & gh pr create --draft --title $handoff.pr_title.Trim() --body-file $prBodyPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "Draft PR creation failed."
+        }
+        $prUrl = ($prOutput | Select-Object -Last 1).Trim()
+        if ([string]::IsNullOrWhiteSpace($prUrl)) {
+            throw "The Draft PR URL was not returned."
+        }
+        Invoke-NativeChecked -FilePath "gh" -Arguments @("pr", "ready", $prUrl) `
+            -FailureMessage "The Draft PR could not be marked ready for review."
+        Invoke-NativeChecked -FilePath "gh" -Arguments @(
+            "pr", "merge", $prUrl, "--auto", "--squash", "--match-head-commit", $commitSha
+        ) -FailureMessage "Auto-merge could not be enabled for the PR."
+        $publishedPrNumber = [IO.Path]::GetFileName($prUrl.TrimEnd('/'))
     }
-
-    Invoke-NativeChecked -FilePath "gh" -Arguments @("pr", "ready", $prUrl) `
-        -FailureMessage "The Draft PR could not be marked ready for review."
-    Invoke-NativeChecked -FilePath "gh" -Arguments @(
-        "pr", "merge", $prUrl, "--auto", "--squash", "--match-head-commit", $commitSha
-    ) -FailureMessage "Auto-merge could not be enabled for the PR."
-
-    $prNumber = [IO.Path]::GetFileName($prUrl.TrimEnd('/'))
     $reportPath = Join-Path $repoRoot "report.md"
     if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
         $report = Get-Content -Raw -Encoding utf8 -LiteralPath $reportPath
-        $report = $report.Replace("{{PR_NUMBER}}", $prNumber)
+        $report = $report.Replace("{{PR_NUMBER}}", $publishedPrNumber)
         $report = $report.Replace("{{PR_URL}}", $prUrl)
         $report = $report.Replace("{{COMMIT_SHA}}", $commitSha)
         [IO.File]::WriteAllText($reportPath, $report, [Text.UTF8Encoding]::new($false))
     }
 
-    Write-Host "Auto-merge enabled: $prUrl" -ForegroundColor Green
+    if ($existingPrMode) {
+        Write-Host "Existing PR updated: $prUrl" -ForegroundColor Green
+    }
+    else {
+        Write-Host "Auto-merge enabled: $prUrl" -ForegroundColor Green
+    }
     if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
         Write-Host ""
         Get-Content -Raw -Encoding utf8 -LiteralPath $reportPath

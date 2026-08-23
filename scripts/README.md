@@ -62,6 +62,12 @@ PowerShellから直接実行する場合:
 
     .\scripts\start-codex.ps1 -Request "改善内容"
 
+OPEN中の既存PRを継続修正する場合は、PR番号を明示します。本文からPR番号を推測しません。
+
+    .\scripts\start-codex.ps1 -PrNumber 264 -Request "CIのEOF空行を修正"
+
+このモードは対象PRが現在のrepositoryに属するOPENなPRであることを確認し、head branchを`origin`から取得します。ローカルbranchがなければtracking branchを作成し、存在する場合はupstream一致とfast-forward可能性を検証して同期します。Codex終了後は同じhead branchへ通常pushし、新規branchや新規PRを作成しません。
+
 ## 内部フロー
 
 start-codex.ps1はcodex-auto.ps1を起動します。Codexが正常終了しhandoff.jsonが存在する場合だけ、start-codex.ps1がpublish-from-handoff.ps1を親PowerShellとして続けて起動します。
@@ -70,7 +76,7 @@ start-codex.ps1はcodex-auto.ps1を起動します。Codexが正常終了しhand
 2. GitHub CLI PATH確認
 3. gh認証確認
 4. Git状態確認
-5. mainとorigin/mainのfast-forward同期
+5. 通常モードはmain、`-PrNumber`指定時は検証済みPR headをfast-forward同期
 6. 改善内容の1回入力
 7. prompts/prompt-dev.txt読込
 8. {{IMPROVEMENT}}への改善内容埋込
@@ -79,7 +85,7 @@ start-codex.ps1はcodex-auto.ps1を起動します。Codexが正常終了しhand
 11. Codexが調査、編集、テスト、差分確認、report.md、handoff.json作成を実施
 12. Codex終了後に一時promptを削除
 13. 正常終了時だけhandoff.jsonを検証
-14. 親PowerShellが専用ブランチ作成、許可ファイルだけのステージ、commit、push、Draft PR作成、Ready化を実施
+14. 親PowerShellが許可ファイルだけをstage・commitし、通常モードは新規PR作成、既存PRモードは同じhead branchへpush
 15. pushしたhead commitを固定してsquash auto-mergeを登録
 16. report.mdのPR情報を更新し、一時的なhandoff.jsonと.pr-body.mdを削除
 
@@ -89,7 +95,7 @@ handoff.jsonの`files`には、新規・変更・削除したパスをリポジ�
 
 検証とstageは`Invoke-HandoffStaging`へ集約されています。統合テストは`publish-from-handoff.ps1 -FunctionsOnly`をdot-sourceし、一時Gitリポジトリでこの本番関数だけを呼び出します。GitHub CLI、remote、PR、auto-mergeは統合テストの対象に含めません。
 
-公開処理は新しい`agent/`ブランチと新規PRの作成専用です。同名remoteブランチや既存PRの更新は自動判定しません。既存PRへ追加する必要がある場合は、OPEN状態、base、head、remote履歴を個別に確認する別フローが必要です。履歴の分岐をforce push、rebase、resetで解消することはありません。
+既存PRモードは`-PrNumber`だけを正本とし、handoff.jsonの`publish_mode: existing_pr`、`pr_number`、`branch`との一致も検証します。push後にPRがOPENのまま同じbranchを指し、head SHAが新しいcommitへ更新されたことを確認します。既存のauto-merge設定はGitHub側に保持させ、直接mergeや不要な再登録は行いません。履歴の分岐をforce push、rebase、resetで解消することはありません。
 
 ## PRマージ
 
@@ -123,10 +129,11 @@ handoff.jsonの`files`には、新規・変更・削除したパスをリポジ�
 次は.gitignoreで除外され、Git管理されません。
 
 - report.md
+- report.previous.md
 - .pr-body.md
 - .codex-prompt.tmp
 
-handoff.jsonもコミット対象外ですが、auto-merge登録まで成功した場合だけpublish-from-handoff.ps1がhandoff.jsonと.pr-body.mdを削除します。途中で失敗した場合は診断と再実行判断のため両方を残します。スクリプトは作成済みブランチやstage済み変更をreset・削除しません。
+Codex開始前に前回のreport.mdはreport.previous.mdへ退避し、古いhandoff.json、.pr-body.md、.codex-prompt.tmpは削除します。これにより前回記録を残しつつ、残骸を今回の成果物と誤認しません。handoff.jsonもコミット対象外ですが、公開成功時だけpublish-from-handoff.ps1がhandoff.jsonと.pr-body.mdを削除します。途中で失敗した場合は診断と再実行判断のため両方を残します。
 
 ## トラブル対応
 

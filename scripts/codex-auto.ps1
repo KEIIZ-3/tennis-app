@@ -1,5 +1,8 @@
 ﻿[CmdletBinding()]
-param([string]$Request)
+param(
+    [string]$Request,
+    [ValidateRange(1, [int]::MaxValue)][int]$PrNumber
+)
 
 . (Join-Path $PSScriptRoot "common.ps1")
 
@@ -8,7 +11,13 @@ try {
     $repoRoot = Initialize-Workflow -RequireCodex
     Assert-CleanWorktree
     Assert-LocalArtifactsIgnored
-    Sync-MainBranch
+    Initialize-WorkflowArtifacts -RepositoryRoot $repoRoot
+    if ($PSBoundParameters.ContainsKey("PrNumber")) {
+        $pullRequest = Sync-PullRequestBranch -Number $PrNumber
+    }
+    else {
+        Sync-MainBranch
+    }
 
     if ([string]::IsNullOrWhiteSpace($Request)) {
         $Request = Read-ImprovementRequest
@@ -20,6 +29,16 @@ try {
     }
 
     $prompt = $template.Replace("{{IMPROVEMENT}}", $Request.Trim())
+    if ($PSBoundParameters.ContainsKey("PrNumber")) {
+        $prompt += @"
+
+## 既存PR継続モード
+
+親PowerShellが検証・同期した既存PR #$PrNumber のheadで作業しています。
+handoff.jsonには `"publish_mode": "existing_pr"`、`"pr_number": $PrNumber` を追加し、branchには現在のPR head branch `"$($pullRequest.headRefName)"` を記載してください。
+新規PR用branchを考案しないでください。
+"@
+    }
     $promptPath = Join-Path $repoRoot ".codex-prompt.tmp"
     [System.IO.File]::WriteAllText(
         $promptPath,
