@@ -94,6 +94,9 @@ class SettlementWalletCourtAuditTests(TestCase):
         self.assertEqual(sum(row["canonical_cost"] for row in rows), 2600)
 
     def test_replacement_availabilities_for_fixed_occurrence_share_canonical_expense(self):
+        replacement_coach = User.objects.create_user(
+            username="replacement-court-coach", role=User.ROLE_COACH
+        )
         fixed = FixedLesson.objects.create(
             title="Replacement court lesson",
             coach=self.coach,
@@ -103,12 +106,20 @@ class SettlementWalletCourtAuditTests(TestCase):
             start_hour=19,
         )
         old_availability = self.availability(19)
-        replacement = self.availability(19)
+        replacement = CoachAvailability.objects.create(
+            coach=replacement_coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=User.LEVEL_BEGINNER,
+            start_at=old_availability.start_at,
+            end_at=old_availability.end_at,
+            capacity=1,
+        )
         member = User.objects.create_user(username="replacement-court-member")
         Reservation.objects.bulk_create([
             Reservation(
                 user=member,
-                coach=self.coach,
+                coach=availability.coach,
                 court=availability.court,
                 availability=availability,
                 fixed_lesson=fixed,
