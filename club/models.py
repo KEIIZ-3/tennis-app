@@ -4,6 +4,7 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from .capacity_policy import general_lesson_capacity
@@ -258,6 +259,14 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         related_name="coach_availabilities",
         limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
     )
+    coach_2 = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="coach_availabilities_as_coach_2",
+        limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
+    )
     substitute_coach = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -318,6 +327,24 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         if self.lesson_type == self.LESSON_GENERAL:
             return general_lesson_capacity(self.coach_count, self.start_at)
         return int(self.capacity or 0)
+
+    def all_coaches(self):
+        seen = set()
+        coaches = []
+        for coach in (self.coach, self.coach_2):
+            if coach and coach.pk not in seen:
+                coaches.append(coach)
+                seen.add(coach.pk)
+        return coaches
+
+    def includes_coach(self, user):
+        if not user or not getattr(user, "pk", None):
+            return False
+        return any(coach.pk == user.pk for coach in self.all_coaches())
+
+    def coach_display_names(self):
+        coaches = self.all_coaches()
+        return " / ".join(coach.display_name() for coach in coaches) if coaches else "-"
 
     def assigned_coach(self):
         return self.substitute_coach or self.coach
@@ -395,7 +422,11 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         if self.substitute_coach_id and self.substitute_coach_id == self.coach_id:
             self.substitute_coach = None
 
+        if self.coach_2_id and self.coach_2_id == self.coach_id:
+            raise ValidationError({"coach_2": "担当コーチ1と担当コーチ2に同じコーチは指定できません。"})
+
         if self.lesson_type == self.LESSON_GENERAL:
+            self.coach_count = len(self.all_coaches())
             if int(self.coach_count or 0) < 1:
                 raise ValidationError("一般レッスンのコーチ人数は1以上にしてください。")
             self.court_count = int(self.coach_count or 1)
@@ -425,8 +456,9 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         if self.target_level_2 == self.target_level:
             self.target_level_2 = ""
 
+        selected_coach_ids = [coach.pk for coach in self.all_coaches()]
         overlap_qs = CoachAvailability.objects.filter(
-            coach=self.coach,
+            Q(coach_id__in=selected_coach_ids) | Q(coach_2_id__in=selected_coach_ids),
             start_at__lt=self.end_at,
             end_at__gt=self.start_at,
         )

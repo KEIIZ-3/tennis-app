@@ -8,6 +8,9 @@ from django.utils import timezone
 
 from club.forms import CoachAvailabilityForm
 from club.models import CoachAvailability, Court, FixedLesson, Reservation, User
+from club.admin import CoachAvailabilityAdmin
+from django.contrib import admin
+from club.settlement_calculator import reservation_coaches_for_split
 
 
 class CalendarSingleLessonCreationTests(TestCase):
@@ -44,6 +47,7 @@ class CalendarSingleLessonCreationTests(TestCase):
         return {
             "source": "calendar",
             "coach": (coach or self.coach).pk,
+            "coach_2": "",
             "substitute_coach": "",
             "court": (court or self.court).pk,
             "lesson_type": CoachAvailability.LESSON_GENERAL,
@@ -228,3 +232,102 @@ class CalendarSingleLessonCreationTests(TestCase):
         self.assertContains(response, reverse("club:reservation_create"))
         self.assertEqual(FixedLesson.objects.count(), 0)
         self.assertEqual(Reservation.objects.count(), 0)
+
+    def test_two_coaches_are_canonical_and_totals_use_capacity_policy(self):
+        data = self._post_data()
+        data.update({"coach_2": self.other_coach.pk, "coach_count": 99, "court_count": 99, "capacity": 99})
+        form = CoachAvailabilityForm(data=data, request_user=self.staff)
+        self.assertTrue(form.is_valid(), form.errors)
+        availability = form.save()
+        self.assertEqual((availability.coach_count, availability.court_count, availability.capacity), (2, 2, 10))
+        self.assertEqual(availability.coach_display_names(), f"{self.coach.display_name()} / {self.other_coach.display_name()}")
+
+    def test_one_coach_totals_are_normalized(self):
+        form = CoachAvailabilityForm(data=self._post_data(), request_user=self.staff)
+        self.assertTrue(form.is_valid(), form.errors)
+        availability = form.save()
+        self.assertEqual((availability.coach_count, availability.court_count, availability.capacity), (1, 1, 5))
+
+    def test_duplicate_second_coach_is_rejected(self):
+        with self.assertRaises(ValidationError):
+            CoachAvailability.objects.create(
+                coach=self.coach, coach_2=self.coach, court=self.court,
+                start_at=self._aware(self.target_date, 9), end_at=self._aware(self.target_date, 11),
+            )
+
+    def test_overlap_checks_both_formal_coach_positions(self):
+        CoachAvailability.objects.create(
+            coach=self.coach, coach_2=self.other_coach, court=self.court,
+            start_at=self._aware(self.target_date, 9), end_at=self._aware(self.target_date, 11),
+        )
+        with self.assertRaises(ValidationError):
+            CoachAvailability.objects.create(
+                coach=self.contractor, coach_2=self.coach, court=self.other_court,
+                start_at=self._aware(self.target_date, 10), end_at=self._aware(self.target_date, 12),
+            )
+
+    def test_calendar_and_member_list_show_both_coaches(self):
+        availability = CoachAvailability.objects.create(
+            coach=self.coach, coach_2=self.other_coach, court=self.court,
+            start_at=self._aware(self.target_date, 9), end_at=self._aware(self.target_date, 11),
+        )
+        self.client.force_login(self.coach)
+        calendar = self.client.get(reverse("club:lesson_calendar"), {"year": self.target_date.year, "month": self.target_date.month})
+        members = self.client.get(reverse("club:lesson_calendar_member_list"), {"availability_id": availability.pk})
+        self.assertContains(calendar, self.coach.display_name())
+        self.assertContains(calendar, self.other_coach.display_name())
+        self.assertContains(members, availability.coach_display_names())
+
+    def test_2026_09_26_is_in_admin_queryset_and_visible(self):
+        target = date(2026, 9, 26)
+        availability = CoachAvailability.objects.create(
+            coach=self.coach, coach_2=self.other_coach, court=self.court,
+            start_at=self._aware(target, 9), end_at=self._aware(target, 11),
+        )
+        model_admin = CoachAvailabilityAdmin(CoachAvailability, admin.site)
+        request = self.client.request().wsgi_request
+        self.assertIn(availability, model_admin.get_queryset(request))
+        self.client.force_login(self.superuser)
+        response = self.client.get(reverse("admin:club_coachavailability_changelist"))
+        self.assertContains(response, "2026年9月26日")
+        self.assertContains(response, self.other_coach.username)
+
+    def test_two_coach_availability_is_used_by_existing_revenue_split(self):
+        availability = CoachAvailability.objects.create(
+            coach=self.coach, coach_2=self.other_coach, court=self.court,
+            start_at=self._aware(self.target_date, 9), end_at=self._aware(self.target_date, 11),
+        )
+        reservation = Reservation.objects.create(
+            user=self.member, coach=self.coach, court=self.court, availability=availability,
+            start_at=availability.start_at, end_at=availability.end_at,
+        )
+        self.assertEqual(reservation_coaches_for_split(reservation), [self.coach, self.other_coach])
+
+    def test_delete_permissions_reservations_and_redirect(self):
+        availability = CoachAvailability.objects.create(
+            coach=self.coach, coach_2=self.other_coach, court=self.court,
+            start_at=self._aware(self.target_date, 9), end_at=self._aware(self.target_date, 11),
+        )
+        url = reverse("club:coach_availability_delete", args=[availability.pk])
+        self.client.force_login(self.member)
+        self.assertEqual(self.client.post(url).status_code, 403)
+        self.assertEqual(self.client.get(url).status_code, 405)
+        self.client.force_login(self.other_coach)
+        response = self.client.post(url)
+        self.assertRedirects(response, f"{reverse('club:lesson_calendar')}?year={self.target_date.year}&month={self.target_date.month}")
+        self.assertFalse(CoachAvailability.objects.filter(pk=availability.pk).exists())
+
+    def test_delete_is_blocked_when_any_reservation_history_exists(self):
+        availability = CoachAvailability.objects.create(
+            coach=self.coach, court=self.court,
+            start_at=self._aware(self.target_date, 9), end_at=self._aware(self.target_date, 11),
+        )
+        Reservation.objects.create(
+            user=self.member, coach=self.coach, court=self.court, availability=availability,
+            start_at=availability.start_at, end_at=availability.end_at,
+            status=Reservation.STATUS_CANCELED,
+        )
+        self.client.force_login(self.coach)
+        response = self.client.post(reverse("club:coach_availability_delete", args=[availability.pk]))
+        self.assertRedirects(response, f"{reverse('club:lesson_calendar_member_list')}?availability_id={availability.pk}")
+        self.assertTrue(CoachAvailability.objects.filter(pk=availability.pk).exists())

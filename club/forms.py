@@ -1,10 +1,12 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import uuid
 
 from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import UserCreationForm
 from django.utils import timezone
+
+from .capacity_policy import general_lesson_capacity
 
 from .models import (
     STRINGING_BASE_PRICE,
@@ -140,6 +142,7 @@ class CoachAvailabilityForm(forms.ModelForm):
         model = CoachAvailability
         fields = [
             "coach",
+            "coach_2",
             "substitute_coach",
             "court",
             "lesson_type",
@@ -166,10 +169,15 @@ class CoachAvailabilityForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         coach_queryset = User.objects.filter(role__in=User.COACH_ROLE_VALUES).order_by("username", "id")
         self.fields["coach"].queryset = coach_queryset
+        self.fields["coach_2"].queryset = coach_queryset
+        self.fields["coach_2"].required = False
+        self.fields["coach_2"].label = "担当コーチ2"
+        for field_name in ("coach_count", "court_count", "capacity"):
+            self.fields[field_name].widget.attrs["readonly"] = True
         self.fields["substitute_coach"].queryset = coach_queryset
         self.fields["substitute_coach"].required = False
         self.fields["court"].queryset = Court.objects.filter(is_active=True).order_by("name")
-        self.fields["coach"].label = "担当コーチ"
+        self.fields["coach"].label = "担当コーチ1"
         self.fields["substitute_coach"].label = "代行コーチ（その日だけ）"
         self.fields["lesson_type"].label = "レッスン種別"
         self.fields["target_level"].label = "対象レベル"
@@ -182,7 +190,7 @@ class CoachAvailabilityForm(forms.ModelForm):
         self.fields["custom_duration_hours"].label = "イベント用時間（時間）"
         self.fields["lesson_type"].initial = CoachAvailability.LESSON_GENERAL
         self.fields["substitute_coach"].help_text = "その日のみ代行するコーチを設定できます。未設定なら通常担当のままです。"
-        self.fields["coach_count"].help_text = "一般レッスンのみ使用。1人増えるごとに定員は6名、コートは1面追加されます。"
+        self.fields["coach_count"].help_text = "一般レッスンは担当コーチ1名につきコート1面・定員5名です。2名選択時は2面・10名になります。"
         self.fields["court_count"].help_text = "一般レッスンではコーチ人数に合わせて自動調整されます。"
         self.fields["capacity"].help_text = "一般レッスンではコーチ人数から自動計算されます。"
         self.fields["custom_duration_hours"].help_text = "イベントのみ使用します。"
@@ -198,6 +206,15 @@ class CoachAvailabilityForm(forms.ModelForm):
 
         start_at = self.initial.get("start_at") or getattr(self.instance, "start_at", None)
         end_at = self.initial.get("end_at") or getattr(self.instance, "end_at", None)
+        policy_date = self.data.get("start_date") if self.is_bound else self.initial.get("start_date")
+        try:
+            policy_date = date.fromisoformat(str(policy_date))
+        except (TypeError, ValueError):
+            policy_date = timezone.localdate()
+        self.fields["coach_2"].widget.attrs.update({
+            "data-capacity-one": general_lesson_capacity(1, policy_date),
+            "data-capacity-two": general_lesson_capacity(2, policy_date),
+        })
 
         if start_at:
             if timezone.is_aware(start_at):
@@ -235,6 +252,7 @@ class CoachAvailabilityForm(forms.ModelForm):
         custom_duration_hours = cleaned_data.get("custom_duration_hours") or 0
         coach_count = int(cleaned_data.get("coach_count") or 1)
         coach = cleaned_data.get("coach")
+        coach_2 = cleaned_data.get("coach_2")
         substitute_coach = cleaned_data.get("substitute_coach")
 
         if self.instance._state.adding and start_date and start_date < timezone.localdate():
@@ -272,10 +290,12 @@ class CoachAvailabilityForm(forms.ModelForm):
             cleaned_data["substitute_coach"] = None
 
         if lesson_type == Reservation.LESSON_GENERAL:
+            coach_count = 2 if coach_2 else 1
+            cleaned_data["coach_count"] = coach_count
             if coach_count < 1:
                 self.add_error("coach_count", "一般レッスンの担当コーチ人数は1以上にしてください。")
             cleaned_data["court_count"] = coach_count
-            cleaned_data["capacity"] = coach_count * 6
+            cleaned_data["capacity"] = general_lesson_capacity(coach_count, start_at)
         elif lesson_type == Reservation.LESSON_PRIVATE:
             cleaned_data["coach_count"] = 1
             cleaned_data["court_count"] = 1
@@ -301,6 +321,7 @@ class CoachAvailabilityForm(forms.ModelForm):
         instance.court_count = self.cleaned_data.get("court_count") or 1
         instance.capacity = self.cleaned_data.get("capacity") or instance.capacity
         instance.substitute_coach = self.cleaned_data.get("substitute_coach")
+        instance.coach_2 = self.cleaned_data.get("coach_2")
         if commit:
             instance.save()
         return instance

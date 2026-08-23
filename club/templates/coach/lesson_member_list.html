@@ -81,6 +81,12 @@
       </p>
     {% endif %}
     <div class="member-list-actions">
+      {% if can_delete_availability %}
+        <form method="post" action="{% url 'club:coach_availability_delete' availability.pk %}" onsubmit="return confirm('この単発レッスンを削除しますか？');">
+          {% csrf_token %}
+          <button type="submit" class="btn" style="background:#dc2626;color:#fff;border-color:#b91c1c;">この単発レッスンを削除</button>
+        </form>
+      {% endif %}
       {% if is_coach_view %}
         <form method="post">
           {% csrf_token %}

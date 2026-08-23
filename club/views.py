@@ -2378,7 +2378,7 @@ def lesson_calendar_view(request):
             start_at=availability.start_at,
             end_at=availability.end_at,
             coach=availability.coach,
-            assigned_coach_name=_display_name(assigned_coach),
+            assigned_coach_name=availability.coach_display_names(),
             substitute_coach=availability.substitute_coach,
             court=availability.court,
             capacity=capacity,
@@ -2388,7 +2388,7 @@ def lesson_calendar_view(request):
             status=availability.status,
             is_recruitment_closed=availability.is_recruitment_closed,
             color_class=_coach_color_class(availability),
-            color_combo_class=_coach_combo_class_from_names(_display_name(assigned_coach)),
+            color_combo_class=_coach_combo_class_from_names(availability.coach_display_names()),
         )
 
         day_event_map.setdefault(target_date, [])
@@ -4303,7 +4303,7 @@ def coach_today_lessons(request):
             end_at=availability.end_at,
             lesson_type_label=availability.get_lesson_type_display(),
             target_level_label=_lesson_level_label(availability) or availability.get_target_level_display(),
-            coach_name=_display_name(assigned_coach),
+            coach_name=availability.coach_display_names(),
             court_name=str(availability.court),
             capacity=capacity,
             title=availability.get_lesson_type_display(),
@@ -7855,15 +7855,18 @@ def coach_availability_create(request, pk=None):
 @login_required
 @require_POST
 def coach_availability_delete(request, pk):
-    availability = get_object_or_404(CoachAvailability, pk=pk)
+    from .coach_availability_service import delete_single_lesson
 
-    if not _is_staff_like(request.user):
-        if availability.coach != request.user:
-            return HttpResponse("Forbidden", status=403)
+    try:
+        year, month = delete_single_lesson(availability_id=pk, actor=request.user)
+    except PermissionError:
+        return HttpResponse("Forbidden", status=403)
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+        return redirect(f"{reverse('club:lesson_calendar_member_list')}?availability_id={pk}")
 
-    availability.delete()
     messages.success(request, "コーチスケジュールを削除しました。")
-    return redirect("club:coach_availability_list")
+    return redirect(f"{reverse('club:lesson_calendar')}?year={year}&month={month}")
 
 
 @require_GET
