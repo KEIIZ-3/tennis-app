@@ -239,6 +239,15 @@ def _reservation_coaches(reservation):
         except Exception:
             pass
 
+    availability = getattr(reservation, "availability", None)
+    if availability and hasattr(availability, "all_coaches"):
+        coaches = [
+            coach for coach in availability.all_coaches()
+            if getattr(coach, "role", "") in ("coach", "contractor_coach")
+        ]
+        if coaches:
+            return coaches
+
     try:
         assigned = reservation.assigned_coach()
     except Exception:

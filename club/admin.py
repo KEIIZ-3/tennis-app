@@ -351,6 +351,10 @@ class CoachAvailabilityAdminForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        coach_qs = coach_user_queryset()
+        self.fields["coach"].queryset = coach_qs
+        self.fields["coach_2"].queryset = coach_qs
+        self.fields["coach_2"].required = False
 
         if self.instance and self.instance.pk:
             if getattr(self.instance, "start_at", None):
@@ -741,6 +745,7 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "coach",
+        "coach_2",
         "court",
         "lesson_type",
         "target_level_admin",
@@ -749,9 +754,13 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
         "capacity",
         "start_at",
         "end_at",
+        "status",
     )
-    list_filter = ("coach", "court", "lesson_type", "target_level", "target_level_2")
-    search_fields = ("coach__username", "coach__full_name", "court__name")
+    list_filter = ("status", "coach", "coach_2", "court", "lesson_type", "target_level", "target_level_2")
+    search_fields = ("coach__username", "coach__full_name", "coach_2__username", "coach_2__full_name", "court__name")
+    date_hierarchy = "start_at"
+    ordering = ("-start_at", "-id")
+    list_select_related = ("coach", "coach_2", "court")
 
     @admin.display(description="対象レベル", ordering="target_level")
     def target_level_admin(self, obj):

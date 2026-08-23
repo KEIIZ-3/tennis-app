@@ -45,6 +45,7 @@ def _contractor_can_access_lesson(user, *, fixed_lesson=None, availability=None)
     if availability:
         return (
             getattr(availability, "coach_id", None) == user.pk
+            or getattr(availability, "coach_2_id", None) == user.pk
             or getattr(availability, "substitute_coach_id", None) == user.pk
         )
     return False
@@ -729,9 +730,7 @@ def lesson_calendar_member_list(request):
             )
         )
     elif availability:
-        coach_name = _display_name(
-            availability.assigned_coach()
-        )
+        coach_name = availability.coach_display_names()
     else:
         coach_name = _display_name(coach)
 
@@ -815,6 +814,13 @@ def lesson_calendar_member_list(request):
                 end_at
             ),
             "capacity": capacity,
+            "availability": availability,
+            "can_delete_availability": bool(
+                availability
+                and not fixed_lesson
+                and not availability.reservations.exists()
+                and (request.user.is_staff or request.user.is_superuser or availability.includes_coach(request.user))
+            ),
             "active_count": active_count,
             "remaining_count": max(
                 capacity - active_count,

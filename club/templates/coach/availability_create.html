@@ -103,6 +103,18 @@
       const startDate = document.getElementById("id_start_date");
       const endDate = document.getElementById("id_end_date");
       if (!startHour || !endHour) return;
+      const coach2 = document.getElementById("id_coach_2");
+      const coachCount = document.getElementById("id_coach_count");
+      const courtCount = document.getElementById("id_court_count");
+      const capacity = document.getElementById("id_capacity");
+      function updateGeneralLessonTotals() {
+        const count = coach2 && coach2.value ? 2 : 1;
+        if (coachCount) coachCount.value = count;
+        if (courtCount) courtCount.value = count;
+        if (capacity && coach2) capacity.value = count === 2 ? coach2.dataset.capacityTwo : coach2.dataset.capacityOne;
+      }
+      if (coach2) coach2.addEventListener("change", updateGeneralLessonTotals);
+      updateGeneralLessonTotals();
       startHour.addEventListener("change", function () {
         const hour = Number.parseInt(startHour.value, 10);
         const assistedEndHour = hour + 2;
