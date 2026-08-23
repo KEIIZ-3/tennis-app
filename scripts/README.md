@@ -133,7 +133,7 @@ handoff.jsonの`files`には、新規・変更・削除したパスをリポジ�
 - .pr-body.md
 - .codex-prompt.tmp
 
-Codex開始前に前回のreport.mdはreport.previous.mdへ退避し、古いhandoff.json、.pr-body.md、.codex-prompt.tmpは削除します。これにより前回記録を残しつつ、残骸を今回の成果物と誤認しません。handoff.jsonもコミット対象外ですが、公開成功時だけpublish-from-handoff.ps1がhandoff.jsonと.pr-body.mdを削除します。途中で失敗した場合は診断と再実行判断のため両方を残します。
+Codex開始前に前回のreport.mdは、リポジトリの絶対パスから識別した一時ディレクトリ内のreport.previous.mdへ退避し、古いhandoff.json、.pr-body.md、.codex-prompt.tmpは削除します。これにより切り替え先branchの.gitignoreに依存せず前回記録を残しつつ、残骸を今回の成果物と誤認しません。handoff.jsonもコミット対象外ですが、公開成功時だけpublish-from-handoff.ps1がhandoff.jsonと.pr-body.mdを削除します。途中で失敗した場合は診断と再実行判断のため両方を残します。
 
 ## トラブル対応
 
