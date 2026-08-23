@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [switch]$FunctionsOnly,
-    [ValidateRange(1, [int]::MaxValue)][int]$PrNumber
+    [ValidateRange(1, [int]::MaxValue)][int]$PrNumber,
+    [string]$RepositoryRoot
 )
 
 . (Join-Path $PSScriptRoot "common.ps1")
@@ -165,7 +166,7 @@ try {
     Set-WorkflowUtf8
     Add-GitHubCliToPath
     Assert-CommandAvailable -Name "git" -InstallMessage "Git was not found. Check the installation and PATH."
-    $repoRoot = Get-RepositoryRoot
+    $repoRoot = Get-RepositoryRoot -RepositoryRoot $RepositoryRoot
     Set-Location -LiteralPath $repoRoot
     Invoke-NativeChecked -FilePath "gh" -Arguments @("--version") `
         -FailureMessage "GitHub CLI validation failed."

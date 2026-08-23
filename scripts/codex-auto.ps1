@@ -1,14 +1,15 @@
 ﻿[CmdletBinding()]
 param(
     [string]$Request,
-    [ValidateRange(1, [int]::MaxValue)][int]$PrNumber
+    [ValidateRange(1, [int]::MaxValue)][int]$PrNumber,
+    [Parameter(Mandatory = $true)][string]$RepositoryRoot
 )
 
 . (Join-Path $PSScriptRoot "common.ps1")
 
 $promptPath = $null
 try {
-    $repoRoot = Initialize-Workflow -RequireCodex
+    $repoRoot = Initialize-Workflow -RequireCodex -RepositoryRoot $RepositoryRoot
     Assert-CleanWorktree
     Assert-LocalArtifactsIgnored
     Initialize-WorkflowArtifacts -RepositoryRoot $repoRoot
