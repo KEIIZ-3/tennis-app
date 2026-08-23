@@ -380,8 +380,17 @@ def _fixed_coach_names(fixed_lesson):
 
 
 def _availability_coach_names(availability):
-    assigned = availability.substitute_coach or availability.coach
-    return [_display_name(assigned)]
+    if availability.substitute_coach:
+        return [_display_name(availability.substitute_coach)]
+    try:
+        coaches = availability.all_coaches()
+    except Exception:
+        coaches = [
+            getattr(availability, "coach", None),
+            getattr(availability, "coach_2", None),
+        ]
+    names = [_display_name(coach) for coach in coaches if coach]
+    return names or ["-"]
 
 
 def _reservation_queryset(slot):
@@ -498,9 +507,8 @@ def _canonical_slots(year, month):
             start_at__date__gte=month_start,
             start_at__date__lt=next_month,
         )
-        .exclude(lesson_type=Reservation.LESSON_GENERAL)
         .exclude(pk__in=represented_availability_ids)
-        .select_related("coach", "substitute_coach", "court")
+        .select_related("coach", "coach_2", "substitute_coach", "court")
         .order_by("start_at", "id")
     )
 

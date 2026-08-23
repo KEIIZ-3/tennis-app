@@ -10,6 +10,7 @@ from club.forms import CoachAvailabilityForm
 from club.models import CoachAvailability, Court, FixedLesson, Reservation, User
 from club.admin import CoachAvailabilityAdmin
 from django.contrib import admin
+from club import lesson_execution
 from club.settlement_calculator import reservation_coaches_for_split
 
 
@@ -291,6 +292,46 @@ class CalendarSingleLessonCreationTests(TestCase):
         response = self.client.get(reverse("admin:club_coachavailability_changelist"))
         self.assertContains(response, "2026年9月26日")
         self.assertContains(response, self.other_coach.username)
+
+    def test_one_time_lesson_is_visible_from_the_regular_lesson_admin(self):
+        availability = CoachAvailability.objects.create(
+            coach=self.coach, coach_2=self.other_coach, court=self.court,
+            start_at=self._aware(self.target_date, 9), end_at=self._aware(self.target_date, 11),
+        )
+        Reservation.objects.create(
+            user=self.member, coach=self.coach, court=self.court,
+            availability=availability, start_at=availability.start_at,
+            end_at=availability.end_at,
+        )
+
+        self.client.force_login(self.superuser)
+        response = self.client.get(reverse("admin:club_fixedlesson_changelist"))
+
+        self.assertContains(response, "1回開催レッスン")
+        self.assertContains(
+            response,
+            reverse("admin:club_coachavailability_change", args=[availability.pk]),
+        )
+        self.assertContains(response, availability.coach_display_names())
+        self.assertContains(response, "1 / 10名")
+
+    def test_general_one_time_lesson_uses_common_execution_slots(self):
+        availability = CoachAvailability.objects.create(
+            coach=self.coach, coach_2=self.other_coach, court=self.court,
+            start_at=self._aware(self.target_date, 9), end_at=self._aware(self.target_date, 11),
+        )
+
+        slots = lesson_execution._canonical_slots(
+            self.target_date.year, self.target_date.month
+        )
+
+        slot = next(row for row in slots if row["availability"].pk == availability.pk)
+        self.assertIsNone(slot["fixed_lesson"])
+        self.assertEqual(slot["source_kind"], "availability")
+        self.assertEqual(
+            slot["coach_names"],
+            [self.coach.display_name(), self.other_coach.display_name()],
+        )
 
     def test_two_coach_availability_is_used_by_existing_revenue_split(self):
         availability = CoachAvailability.objects.create(
