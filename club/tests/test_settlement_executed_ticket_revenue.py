@@ -4,7 +4,10 @@ from types import SimpleNamespace
 from django.test import SimpleTestCase
 from django.utils import timezone
 
-from club.lesson_execution_storage import is_held_finished_reservation
+from club.lesson_execution_storage import (
+    is_held_finished_reservation,
+    reservation_slot_key,
+)
 from club.settlement_calculator import aggregate_reservations
 
 
@@ -81,9 +84,9 @@ class ExecutedTicketRevenueTests(SimpleTestCase):
         active_unheld = self._reservation(2)
         future_held = self._reservation(3, end_at=self.now + timedelta(days=1))
         statuses = {
-            "fixed:1:%s" % held.start_at.date(): {"status": "held"},
-            "fixed:2:%s" % active_unheld.start_at.date(): {"status": "scheduled"},
-            "fixed:3:%s" % future_held.start_at.date(): {"status": "held"},
+            reservation_slot_key(held): {"status": "held"},
+            reservation_slot_key(active_unheld): {"status": "scheduled"},
+            reservation_slot_key(future_held): {"status": "held"},
         }
 
         rows = self._aggregate([held, active_unheld, future_held], statuses)
@@ -101,7 +104,7 @@ class ExecutedTicketRevenueTests(SimpleTestCase):
             coaches=[self.coach_1, self.coach_2],
             guest_name="ゲスト",
         )
-        statuses = {"fixed:4:%s" % guest.start_at.date(): {"status": "held"}}
+        statuses = {reservation_slot_key(guest): {"status": "held"}}
 
         rows = self._aggregate([guest], statuses)
 
@@ -112,9 +115,10 @@ class ExecutedTicketRevenueTests(SimpleTestCase):
 
     def test_revenue_summary_and_settlement_share_the_same_execution_predicate(self):
         reservation = self._reservation(5, price=2345)
-        held = {"fixed:5:%s" % reservation.start_at.date(): {"status": "held"}}
-        canceled = {"fixed:5:%s" % reservation.start_at.date(): {"status": "canceled"}}
-        rain_canceled = {"fixed:5:%s" % reservation.start_at.date(): {"status": "rain_canceled"}}
+        slot_key = reservation_slot_key(reservation)
+        held = {slot_key: {"status": "held"}}
+        canceled = {slot_key: {"status": "canceled"}}
+        rain_canceled = {slot_key: {"status": "rain_canceled"}}
 
         self.assertTrue(is_held_finished_reservation(reservation, held))
         self.assertFalse(is_held_finished_reservation(reservation, canceled))
