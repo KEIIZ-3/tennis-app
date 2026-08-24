@@ -6,6 +6,7 @@ from unittest.mock import patch
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.db.models import Sum
+from django.db.models.query import QuerySet
 from django.test import TestCase
 from django.utils import timezone
 
@@ -69,6 +70,27 @@ class HistoricalTicketConsumptionRepairTests(TestCase):
         self.assertEqual(reservation.court_id, court_before)
         self.assertEqual(list(TicketLedger.objects.values_list("id", "change_amount")), ledger_before)
         self.assertEqual((settlement.cash_in_total, settlement.cash_out_total, settlement.closing_balance), (9000, 1000, 8000))
+
+    def test_apply_locks_reservation_without_nullable_user_join(self):
+        reservation = self.make_reservation()
+        purchase = self.make_purchase()
+        locked_reservation_queries = []
+        original_fetch_all = QuerySet._fetch_all
+
+        def capture_fetch_all(queryset):
+            if queryset.model is Reservation and queryset.query.select_for_update:
+                locked_reservation_queries.append(queryset.query)
+            return original_fetch_all(queryset)
+
+        with patch("django.db.models.query.QuerySet._fetch_all", capture_fetch_all):
+            result = repair_historical_ticket_consumption(
+                reservation.id, candidate_purchase_id=purchase.id
+            )
+
+        self.assertEqual(result.status, "repaired")
+        self.assertTrue(locked_reservation_queries)
+        for query in locked_reservation_queries:
+            self.assertNotIn("JOIN", str(query).upper())
 
     def test_confirmed_price_without_purchase_and_no_fake_purchase(self):
         reservation = self.make_reservation(reservation_id=1525)

@@ -75,9 +75,11 @@ def _month_is_closed(reservation):
 def inspect_historical_ticket_consumption_repair(
     reservation_id, *, candidate_purchase_id=None, confirmed_unit_price=None, lock=False
 ):
-    reservations = Reservation.objects.select_related("user")
-    if lock:
-        reservations = reservations.select_for_update()
+    reservations = (
+        Reservation.objects.select_for_update()
+        if lock
+        else Reservation.objects.select_related("user")
+    )
     reservation = reservations.get(pk=reservation_id)
     balance = int(reservation.user.ticket_balance or 0)
     ledger_count, ledger_delta = _ledger_state(reservation.user_id)

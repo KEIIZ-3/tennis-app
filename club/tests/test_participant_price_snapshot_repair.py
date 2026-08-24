@@ -130,11 +130,14 @@ class ParticipantPriceSnapshotRepairTests(TestCase):
     def test_apply_locks_consumptions_without_locking_nullable_purchase_join(self):
         reservation = self.reservation()
         self.evidence(reservation, 3500)
+        locked_reservation_queries = []
         observed_queries = []
 
         original_fetch_all = QuerySet._fetch_all
 
         def capture_fetch_all(queryset):
+            if queryset.model is Reservation and queryset.query.select_for_update:
+                locked_reservation_queries.append(queryset.query)
             if queryset.model is TicketConsumption and queryset.query.select_for_update:
                 observed_queries.append(queryset.query)
             return original_fetch_all(queryset)
@@ -143,6 +146,9 @@ class ParticipantPriceSnapshotRepairTests(TestCase):
             result = repair_participant_price_snapshot(reservation.pk)
 
         self.assertTrue(result.candidate)
+        self.assertTrue(locked_reservation_queries)
+        for query in locked_reservation_queries:
+            self.assertNotIn("JOIN", str(query).upper())
         self.assertTrue(observed_queries)
         for query in observed_queries:
             self.assertEqual(query.select_for_update_of, ("self",))

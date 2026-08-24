@@ -6,6 +6,7 @@ import json
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.db.models import Sum
+from django.db.models.query import QuerySet
 from django.test import TestCase
 from django.utils import timezone
 
@@ -71,6 +72,23 @@ class LegacyTicketConsumptionRepairTests(TestCase):
         result = repair_legacy_ticket_consumption(self.reservation.id)
         self.assertEqual(result.status, "noop")
         self.assertEqual(TicketConsumption.objects.filter(reservation=self.reservation).count(), 1)
+
+    def test_apply_locks_reservation_without_nullable_user_join(self):
+        locked_reservation_queries = []
+        original_fetch_all = QuerySet._fetch_all
+
+        def capture_fetch_all(queryset):
+            if queryset.model is Reservation and queryset.query.select_for_update:
+                locked_reservation_queries.append(queryset.query)
+            return original_fetch_all(queryset)
+
+        with patch("django.db.models.query.QuerySet._fetch_all", capture_fetch_all):
+            result = repair_legacy_ticket_consumption(self.reservation.id)
+
+        self.assertEqual(result.status, "repaired")
+        self.assertTrue(locked_reservation_queries)
+        for query in locked_reservation_queries:
+            self.assertNotIn("JOIN", str(query).upper())
 
     def test_exception_rolls_back_completely(self):
         with patch("club.legacy_ticket_consumption_repair._assert_invariants", side_effect=RepairRejected("forced")):

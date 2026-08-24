@@ -84,9 +84,11 @@ def candidate_purchases(reservation, consumption_ledger):
 
 
 def inspect_legacy_ticket_consumption_repair(reservation_id, *, lock=False):
-    queryset = Reservation.objects.select_related("user")
-    if lock:
-        queryset = queryset.select_for_update()
+    queryset = (
+        Reservation.objects.select_for_update()
+        if lock
+        else Reservation.objects.select_related("user")
+    )
     reservation = queryset.get(pk=reservation_id)
     balance = int(reservation.user.ticket_balance or 0)
     ledger_count, ledger_delta = _ledger_state(reservation.user_id)
