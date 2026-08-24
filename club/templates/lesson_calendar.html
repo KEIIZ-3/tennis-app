@@ -1375,6 +1375,7 @@
                               {% if item.is_recruitment_closed %}<div class="event-meta recruitment-closed-label">募集終了</div>{% endif %}
                               <div class="event-level">{{ item.target_level_label }}</div>
                               {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
+                              {% if item.pending_ticket_purchase_count %}<div class="event-meta">🎫 購入予約 {{ item.pending_ticket_purchase_count }}件</div>{% endif %}
                               {% if item.is_reserved_by_user %}<div class="event-meta">予約済み</div>{% elif item.is_waitlisted_by_user %}<div class="event-meta">キャンセル待ち中</div>{% endif %}
                               <div class="event-coach">
                                 {% if item.coach_name_parts %}
@@ -1398,6 +1399,7 @@
                               {% if item.is_recruitment_closed %}<div class="event-meta recruitment-closed-label">募集終了</div>{% endif %}
                               <div class="event-level">{{ item.target_level_label }}</div>
                               {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
+                              {% if item.pending_ticket_purchase_count %}<div class="event-meta">🎫 購入予約 {{ item.pending_ticket_purchase_count }}件</div>{% endif %}
                               {% if item.is_reserved_by_user %}<div class="event-meta">予約済み</div>{% elif item.is_waitlisted_by_user %}<div class="event-meta">キャンセル待ち中</div>{% endif %}
                               <div class="event-coach">
                                 {% if item.coach_name_parts %}
@@ -1421,6 +1423,7 @@
                               {% if item.is_recruitment_closed %}<div class="event-meta recruitment-closed-label">募集終了</div>{% endif %}
                               <div class="event-level">{{ item.target_level_label }}</div>
                               {% if item.waitlist_count %}<div class="event-meta">待ち{{ item.waitlist_count }}名</div>{% endif %}
+                              {% if item.pending_ticket_purchase_count %}<div class="event-meta">🎫 購入予約 {{ item.pending_ticket_purchase_count }}件</div>{% endif %}
                               {% if item.is_reserved_by_user %}<div class="event-meta">予約済み</div>{% elif item.is_waitlisted_by_user %}<div class="event-meta">キャンセル待ち中</div>{% endif %}
                               <div class="event-coach">
                                 {% if item.coach_name_parts %}
@@ -1484,8 +1487,8 @@
             {% if user.is_authenticated %}
               {% if item.pending_ticket_purchase_count %}
                 <div class="ticket-purchase-reservation-action" style="margin-bottom:10px;padding:10px;border:1px solid #f59e0b;border-radius:12px;background:#fffbeb;">
-                  <div style="font-weight:800;margin-bottom:8px;">チケット購入予約 {{ item.pending_ticket_purchase_count }}件</div>
-                  <a href="{{ item.ticket_purchase_confirm_url }}" class="btn btn-primary reserve-button">チケット購入確認</a>
+                  <div style="font-weight:800;margin-bottom:8px;">🎫 購入予約 {{ item.pending_ticket_purchase_count }}件</div>
+                  <a href="{{ item.member_list_url }}" class="btn btn-primary reserve-button">購入確認</a>
                 </div>
               {% endif %}
               {% if item.court_expense_url and user.role == "coach" or item.court_expense_url and user.role == "contractor_coach" or item.court_expense_url and user.is_staff or item.court_expense_url and user.is_superuser %}

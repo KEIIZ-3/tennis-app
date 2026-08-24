@@ -15,6 +15,10 @@ from .lesson_participants import (
     reservations_for_lesson,
 )
 from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation
+from .ticket_purchase_reservation_service import (
+    is_main_coach,
+    pending_purchase_reservations_for_participants,
+)
 
 
 def _display_name(user):
@@ -633,6 +637,23 @@ def lesson_calendar_member_list(request):
         )
     )
 
+    purchase_reservations = []
+    if is_main_coach(request.user):
+        purchase_reservations = list(
+            pending_purchase_reservations_for_participants(
+                reservations_for_lesson(
+                    fixed_lesson=fixed_lesson,
+                    availability=availability,
+                    coach=coach,
+                    court=court,
+                    lesson_type=lesson_type,
+                    start_at=start_at,
+                    end_at=end_at,
+                    statuses=(Reservation.STATUS_ACTIVE,),
+                )
+            )
+        )
+
     pending_reservations = list(
         reservations_for_lesson(
             fixed_lesson=fixed_lesson,
@@ -829,6 +850,9 @@ def lesson_calendar_member_list(request):
             "pending_count": pending_count,
             "waitlist_count": waitlist_count,
             "active_rows": active_rows,
+            "purchase_reservations": purchase_reservations,
+            "purchase_reservation_count": len(purchase_reservations),
+            "is_main_coach": is_main_coach(request.user),
             "pending_rows": [
                 _member_row_from_reservation(
                     reservation,

@@ -14,6 +14,7 @@ from .ticket_purchase_reservation_service import (
     cancel_purchase_reservation,
     create_purchase_reservation,
     is_main_coach,
+    pending_purchase_reservations_for_participants,
 )
 
 
@@ -70,10 +71,7 @@ def _lesson_reservations(request):
 def confirm(request):
     if not is_main_coach(request.user):
         raise PermissionDenied
-    user_ids = _lesson_reservations(request).exclude(user_id=None).values_list("user_id", flat=True)
-    pending = TicketPurchaseReservation.objects.filter(
-        user_id__in=user_ids, status=TicketPurchaseReservation.STATUS_PENDING,
-    ).select_related("user").order_by("user__full_name", "user__username", "requested_at", "id")
+    pending = pending_purchase_reservations_for_participants(_lesson_reservations(request))
     return render(request, "coach/ticket_purchase_confirm.html", {"purchase_reservations": pending})
 
 
@@ -87,9 +85,16 @@ def approve(request, pk):
     if purchase_reservation.user_id not in allowed_ids:
         raise PermissionDenied
     try:
-        _reservation, created = approve_purchase_reservation(reservation_id=pk, coach=request.user)
-        messages.success(request, "現金受領を確認し、チケットを付与しました。" if created else "この購入予約はすでに承認済みです。")
+        approved, created = approve_purchase_reservation(reservation_id=pk, coach=request.user)
+        messages.success(
+            request,
+            f"現金受領を確認し、{approved.ticket_count}枚のチケットを付与しました。"
+            if created else "この購入予約はすでに承認済みです。",
+        )
     except ValidationError as exc:
         messages.error(request, exc.messages[0])
-    query = request.GET.urlencode()
-    return redirect(f"{reverse('club:ticket_purchase_confirm')}?{query}")
+    lesson_query = request.GET.copy()
+    lesson_query.pop("next", None)
+    return redirect(
+        f"{reverse('club:lesson_calendar_member_list')}?{lesson_query.urlencode()}"
+    )
