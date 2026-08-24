@@ -8,7 +8,8 @@ from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
-from club.models import Court, Reservation, TicketLedger, TicketPurchase, User
+from club.models import Court, Reservation, TicketConsumption, TicketLedger, TicketPurchase, User
+from club.settlement_models import MonthlySettlement
 
 
 class MissingTicketPurchaseEvidenceAuditTests(TestCase):
@@ -82,4 +83,28 @@ class MissingTicketPurchaseEvidenceAuditTests(TestCase):
         self.assertEqual(row["fifo_position"], 1)
         self.assertTrue(row["linkage_possible"])
         self.assertIsNone(row["block_reason"])
+        self.assertTrue(all(query["sql"].lstrip().upper().startswith("SELECT") for query in queries.captured_queries))
+
+    def test_all_pending_candidates_applies_strict_conditions_with_selects_only(self):
+        candidate, _ = self.reservation()
+        excluded, _ = self.reservation()
+        TicketConsumption.objects.create(user=self.user, reservation=excluded, tickets_used=1)
+        closed, _ = self.reservation()
+        closed_start = closed.start_at + timedelta(days=35)
+        Reservation.objects.filter(pk=closed.pk).update(
+            start_at=closed_start,
+            end_at=closed_start + timedelta(hours=1),
+            ticket_consumed_at=closed_start,
+        )
+        MonthlySettlement.objects.create(
+            year=closed_start.year, month=closed_start.month,
+            status=MonthlySettlement.STATUS_CLOSED,
+        )
+        stdout = StringIO()
+        with CaptureQueriesContext(connection) as queries:
+            call_command("audit_missing_ticket_purchase_evidence", "--all-pending-evidence-candidates", stdout=stdout)
+        ids = [row["reservation_id"] for row in json.loads(stdout.getvalue())["rows"]]
+        self.assertIn(candidate.id, ids)
+        self.assertNotIn(excluded.id, ids)
+        self.assertNotIn(closed.id, ids)
         self.assertTrue(all(query["sql"].lstrip().upper().startswith("SELECT") for query in queries.captured_queries))

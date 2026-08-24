@@ -2159,13 +2159,11 @@ class Reservation(models.Model, LessonTypeMixin):
 
             pending_tickets = unknown_tickets_consumed + remaining_to_consume
             if pending_tickets > 0:
-                TicketConsumption.objects.create(
-                    user=locked_user,
-                    purchase=None,
+                from .deferred_ticket_consumption import create_pending_ticket_consumption
+
+                create_pending_ticket_consumption(
                     reservation=locked_self,
-                    fixed_lesson=locked_self.fixed_lesson,
                     tickets_used=pending_tickets,
-                    unit_price_snapshot=None,
                 )
 
             from .participant_price_snapshot import set_participant_ticket_price_snapshot
