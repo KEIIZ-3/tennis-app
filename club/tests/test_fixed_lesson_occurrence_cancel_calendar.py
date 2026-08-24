@@ -15,6 +15,9 @@ from club.models import FixedLesson, Reservation, ReservationParticipant, User
 class FixedLessonOccurrenceCancelCalendarTests(TestCase):
     def setUp(self):
         self.today = timezone.localdate()
+        fixture_month_start = (
+            self.today.replace(day=28) + timedelta(days=4)
+        ).replace(day=1)
         self.coach = User.objects.create_user(
             username="occurrence-cancel-coach",
             password="test-password",
@@ -33,13 +36,13 @@ class FixedLessonOccurrenceCancelCalendarTests(TestCase):
             phone_number="08000000000",
             email="occurrence@example.com",
         )
-        target_weekday = (self.today.weekday() + 1) % 7
+        target_weekday = fixture_month_start.weekday()
         self.fixed_lesson = FixedLesson.objects.create(
             title="開催回キャンセル検証",
             coach=self.coach,
             lesson_type=FixedLesson.LESSON_GENERAL,
             target_level=User.LEVEL_BEGINNER,
-            start_date=self.today,
+            start_date=fixture_month_start,
             weekday=target_weekday,
             start_hour=19,
             capacity=3,

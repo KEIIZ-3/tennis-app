@@ -35,6 +35,7 @@ from .models import (
     TicketConsumption,
     TicketLedger,
     TicketPurchase,
+    TicketPurchaseReservation,
     User,
     purchase_tickets,
 )
@@ -1240,10 +1241,28 @@ class TicketPurchaseAdmin(TicketAuditAdmin):
         "remaining_tickets",
         "label",
         "purchased_at",
+        "expires_at",
     )
-    list_filter = ("purchase_type", "unit_price", "purchased_at")
+    list_filter = ("purchase_type", "unit_price", "purchased_at", "expires_at")
     search_fields = ("user__username", "user__full_name", "label", "note")
     autocomplete_fields = ("user", "created_by")
+
+
+@admin.register(TicketPurchaseReservation)
+class TicketPurchaseReservationAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "ticket_count", "total_amount", "status", "requested_at", "approved_at", "approved_by", "ticket_purchase")
+    list_filter = ("status", "purchase_type", "requested_at")
+    search_fields = ("user__username", "user__full_name")
+    readonly_fields = (
+        "user", "purchase_type", "ticket_count", "unit_price", "total_amount", "status",
+        "requested_at", "approved_at", "approved_by", "canceled_at", "ticket_purchase",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(TicketConsumption)

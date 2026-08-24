@@ -833,6 +833,7 @@ class TicketPurchase(models.Model):
         related_name="created_ticket_purchases",
     )
     purchased_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     idempotency_key = models.CharField(max_length=255, null=True, blank=True, unique=True)
 
@@ -857,6 +858,35 @@ class TicketPurchase(models.Model):
         if self.unit_price > 0:
             return f"{self.unit_price}円券"
         return "価格不明券"
+
+
+class TicketPurchaseReservation(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_CANCELED = "canceled"
+    STATUS_CHOICES = (
+        (STATUS_PENDING, "承認待ち"),
+        (STATUS_APPROVED, "購入完了"),
+        (STATUS_CANCELED, "キャンセル"),
+    )
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="ticket_purchase_reservations")
+    purchase_type = models.CharField(max_length=20, choices=TicketPurchase.PURCHASE_TYPE_CHOICES)
+    ticket_count = models.PositiveIntegerField()
+    unit_price = models.PositiveIntegerField()
+    total_amount = models.PositiveIntegerField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    requested_at = models.DateTimeField(auto_now_add=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="approved_ticket_purchase_reservations")
+    canceled_at = models.DateTimeField(null=True, blank=True)
+    ticket_purchase = models.OneToOneField(TicketPurchase, on_delete=models.PROTECT, null=True, blank=True, related_name="purchase_reservation")
+
+    class Meta:
+        ordering = ["-requested_at", "-id"]
+
+    def __str__(self):
+        return f"{self.user} / {self.ticket_count}枚 / {self.total_amount}円 / {self.get_status_display()}"
 
 
 class TicketLedger(models.Model):
@@ -1347,6 +1377,7 @@ def purchase_tickets(
     purchased_at=None,
     label="",
     idempotency_key=None,
+    expires_at=None,
 ):
     if tickets <= 0:
         raise ValidationError("購入枚数は1以上にしてください。")
@@ -1382,6 +1413,7 @@ def purchase_tickets(
                 note=note,
                 created_by=created_by if created_by and getattr(created_by, "pk", None) else None,
                 purchased_at=purchased_at or timezone.now(),
+                expires_at=expires_at,
                 idempotency_key=normalized_key,
             )
 

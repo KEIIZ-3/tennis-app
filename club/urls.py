@@ -14,6 +14,7 @@ from . import today_lesson_actions
 from . import analytics_dashboard
 from . import court_expense_transfer
 from . import reservation_cancellation
+from . import ticket_purchase_reservation_views
 
 app_name = "club"
 
@@ -32,6 +33,10 @@ urlpatterns = [
     path("calendar/events/", views.calendar_events, name="calendar_events"),
     path("api/calendar/events/", views.calendar_events, name="calendar_events_api"),
     path("tickets/", views.tickets_view, name="tickets"),
+    path("tickets/purchase-reservations/", ticket_purchase_reservation_views.create, name="ticket_purchase_reservation_create"),
+    path("tickets/purchase-reservations/<int:pk>/cancel/", ticket_purchase_reservation_views.cancel, name="ticket_purchase_reservation_cancel"),
+    path("coach/ticket-purchases/confirm/", ticket_purchase_reservation_views.confirm, name="ticket_purchase_confirm"),
+    path("coach/ticket-purchases/<int:pk>/approve/", ticket_purchase_reservation_views.approve, name="ticket_purchase_approve"),
     path("family/", family_members.family_member_manage, name="family_member_manage"),
     path("help/", views.help_view, name="help"),
     path("terms/", views.terms_view, name="terms"),

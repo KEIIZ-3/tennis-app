@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}チケット購入確認{% endblock %}
+{% block content %}
+<div class="card">
+  <h1 style="margin-top:0;">チケット購入確認</h1>
+  <p>レッスンの有効な参加者について、現金を受領した購入予約だけを個別に承認してください。</p>
+</div>
+{% for row in purchase_reservations %}
+<div class="card">
+  <h2 style="margin-top:0;">{{ row.user.display_name }}</h2>
+  <p><strong>{{ row.ticket_count }}枚・{{ row.total_amount }}円</strong></p>
+  <p>状態：{{ row.get_status_display }} / 予約番号 #{{ row.id }}</p>
+  <form method="post" action="{% url 'club:ticket_purchase_approve' row.id %}?{{ request.GET.urlencode }}">
+    {% csrf_token %}
+    <button class="btn btn-primary" type="submit">現金受領・承認</button>
+  </form>
+</div>
+{% empty %}
+<div class="card"><p>承認待ちのチケット購入予約はありません。</p></div>
+{% endfor %}
+{% endblock %}
