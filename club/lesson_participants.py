@@ -116,6 +116,7 @@ def participant_details_by_reservation(reservations):
             "participant_level_label": snapshot.participant_level_label or "",
             "relationship_label": snapshot.relationship_label or "",
             "parent_id": snapshot.parent_id,
+            "family_member_id": snapshot.family_member_id,
         }
         for snapshot in ReservationParticipant.objects.filter(
             reservation_id__in=reservation_ids

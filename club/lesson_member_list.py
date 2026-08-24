@@ -15,6 +15,7 @@ from .lesson_participants import (
     reservations_for_lesson,
 )
 from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation
+from .participant_levels import current_participant_level_label
 from .ticket_purchase_reservation_service import (
     completed_purchase_reservations_for_participants,
     is_main_coach,
@@ -212,11 +213,12 @@ def _member_row_from_reservation(
         participant_snapshot.get("participant_name")
         or _display_name(user)
     )
-    participant_level = (
-        participant_snapshot.get("participant_level_label")
-        or _level_label(
-            getattr(user, "member_level", "")
-        )
+    participant_level = current_participant_level_label(
+        user,
+        participant_type=participant_type,
+        family_member_id=participant_snapshot.get("family_member_id"),
+        snapshot_level_label=participant_snapshot.get("participant_level_label", ""),
+        is_guest=bool(reservation.guest_name),
     )
     relationship_label = (
         participant_snapshot.get("relationship_label")

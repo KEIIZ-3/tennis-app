@@ -73,6 +73,7 @@ from .lesson_participants import (
     reservations_for_lesson,
     reservations_for_object,
 )
+from .participant_levels import current_participant_level_label
 from .reservation_service import create_reservation
 from .ticket_purchase_reservation_service import (
     is_main_coach,
@@ -3799,7 +3800,13 @@ def coach_today_lessons(request):
             "relationship_label": participant_details.get("relationship_label") or "本人",
             "is_family_participant": is_family_participant,
             "phone": _safe_phone(reservation.user),
-            "level": participant_details.get("participant_level_label") or _safe_level(reservation.user),
+            "level": current_participant_level_label(
+                reservation.user,
+                participant_type=participant_details.get("participant_type", "self"),
+                family_member_id=participant_details.get("family_member_id"),
+                snapshot_level_label=participant_details.get("participant_level_label", ""),
+                is_guest=bool(reservation.guest_name),
+            ),
             "status_label": reservation.get_status_display(),
             "detail_url": reverse("club:reservation_detail", kwargs={"pk": reservation.pk}),
             "payment_required": reservation.is_payment_tracking_required(),
