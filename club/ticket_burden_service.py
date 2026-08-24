@@ -60,23 +60,28 @@ def _consume_for_payer(*, reservation, payer, tickets, created_by, purchases):
     )
 
 
+def _locked_reservations_queryset(reservation_ids):
+    # Keep nullable relations out of this locking query. PostgreSQL rejects
+    # FOR UPDATE when select_related() adds their outer joins.
+    return (
+        Reservation.objects.select_for_update()
+        .filter(pk__in=reservation_ids)
+        .order_by("pk")
+    )
+
+
 @transaction.atomic
 def change_lesson_ticket_burden(*, reservation_payers, created_by):
     """Set one actual payer for each active reservation in a lesson occurrence."""
     if not reservation_payers:
         raise ValidationError("負担内容を指定してください。")
     requested_ids = sorted(int(pk) for pk in reservation_payers)
-    reservations = list(
-        Reservation.objects.select_for_update()
-        .select_related("availability", "fixed_lesson")
-        .filter(pk__in=requested_ids)
-        .order_by("pk")
-    )
+    reservations = list(_locked_reservations_queryset(requested_ids))
     if len(reservations) != len(requested_ids):
         raise ValidationError("対象予約が見つかりません。")
     canonical_ids = list(
         reservations_for_object(reservations[0])
-        .filter(tickets_used__gt=0)
+        .filter(user_id__isnull=False, tickets_used__gt=0)
         .values_list("pk", flat=True)
     )
     if requested_ids != sorted(canonical_ids):
@@ -95,8 +100,23 @@ def change_lesson_ticket_burden(*, reservation_payers, created_by):
         )
         for reservation in reservations
     }
+    participant_payer_ids = {row.user_id for row in reservations}
+    latest_formal_payer_ids = set()
+    for reservation_id in requested_ids:
+        latest_change = (
+            TicketBurdenChange.objects.filter(reservation_id=reservation_id)
+            .order_by("-created_at", "-id")
+            .values_list("new_payer_id", flat=True)
+            .first()
+        )
+        if latest_change:
+            latest_formal_payer_ids.add(latest_change)
+    allowed_payer_ids = participant_payer_ids | latest_formal_payer_ids
+    requested_payer_ids = {int(value) for value in reservation_payers.values()}
+    if not requested_payer_ids <= allowed_payer_ids:
+        raise ValidationError("負担者はこのレッスンの参加者または正式な負担者から指定してください。")
     payer_ids = sorted(
-        {int(value) for value in reservation_payers.values()}
+        requested_payer_ids
         | {
             consumption.user_id
             for rows in active_by_reservation.values()
