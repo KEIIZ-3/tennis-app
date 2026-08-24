@@ -7,6 +7,7 @@ from .models import (
     Reservation,
     ReservationParticipant,
     TicketConsumption,
+    TicketBurdenChange,
     TicketLedger,
     TicketPurchase,
     User,
@@ -50,6 +51,9 @@ def diagnose_ticket_integrity():
         ReservationParticipant.objects.filter(participant_type="family")
         .values_list("reservation_id", flat=True)
     )
+    formal_cross_payers = set(
+        TicketBurdenChange.objects.values_list("reservation_id", "new_payer_id")
+    )
 
     purchase_by_id = {row["id"]: row for row in purchases}
     reservation_by_id = {row["id"]: row for row in reservations}
@@ -90,7 +94,11 @@ def diagnose_ticket_integrity():
         reservation = reservation_by_id.get(row["reservation_id"])
         if purchase and row["user_id"] != purchase["user_id"]:
             consumption_findings.append(_finding("purchase_user_mismatch", consumption_id=row["id"], purchase_id=row["purchase_id"], user_id=row["user_id"]))
-        if reservation and row["user_id"] != reservation["user_id"]:
+        if (
+            reservation
+            and row["user_id"] != reservation["user_id"]
+            and (row["reservation_id"], row["user_id"]) not in formal_cross_payers
+        ):
             consumption_findings.append(_finding("reservation_user_mismatch", consumption_id=row["id"], reservation_id=row["reservation_id"], user_id=row["user_id"]))
         if not row["reservation_id"] and not row["fixed_lesson_id"]:
             consumption_findings.append(_finding("missing_consumption_target", consumption_id=row["id"]))
@@ -129,7 +137,7 @@ def diagnose_ticket_integrity():
             reservation_special["zero_ticket"] += 1
             continue
         active_rows = [item for item in rows if item["refunded_at"] is None]
-        total = sum(int(item["tickets_used"]) for item in rows)
+        total = sum(int(item["tickets_used"]) for item in active_rows)
         is_canceled = row["status"] in canceled_statuses
         if is_canceled and active_rows:
             reservation_findings.append(_finding("canceled_with_unrefunded_consumption", reservation_id=row["id"], tickets_used=sum(int(item["tickets_used"]) for item in active_rows)))
@@ -145,7 +153,7 @@ def diagnose_ticket_integrity():
             ))
         if row["ticket_refunded_at"] and active_rows:
             reservation_findings.append(_finding("refunded_at_with_unrefunded_consumption", reservation_id=row["id"]))
-        if rows and total != int(row["tickets_used"]):
+        if not is_canceled and rows and total != int(row["tickets_used"]):
             reservation_findings.append(_finding("reservation_consumption_ticket_mismatch", reservation_id=row["id"], expected_tickets=row["tickets_used"], actual_tickets=total))
         if row["ticket_consumed_at"] and not rows:
             reservation_unverifiable.append(_finding("consumed_at_without_consumption_evidence", reservation_id=row["id"], tickets_used=row["tickets_used"]))

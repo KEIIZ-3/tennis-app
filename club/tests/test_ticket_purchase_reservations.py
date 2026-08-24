@@ -242,8 +242,9 @@ class TicketPurchaseReservationCoachFlowTests(TestCase):
         response = self._member_list()
 
         self.assertContains(response, "チケット購入予約")
-        self.assertContains(response, "飯塚セカンド", count=3)
-        self.assertContains(response, "購入 二人目", count=2)
+        # Main coaches also see both participants in each burden-payer selector.
+        self.assertContains(response, "飯塚セカンド", count=6)
+        self.assertContains(response, "購入 二人目", count=5)
         self.assertContains(response, "1枚")
         self.assertContains(response, "4000円")
         self.assertContains(response, "4枚セット")

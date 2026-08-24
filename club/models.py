@@ -1014,6 +1014,37 @@ class TicketConsumption(models.Model):
         return bool(self.refunded_at)
 
 
+class TicketBurdenChange(models.Model):
+    reservation = models.ForeignKey(
+        "Reservation",
+        on_delete=models.PROTECT,
+        related_name="ticket_burden_changes",
+    )
+    previous_payer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="ticket_burden_changes_from",
+    )
+    new_payer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="ticket_burden_changes_to",
+    )
+    tickets = models.PositiveIntegerField()
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_ticket_burden_changes",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"{self.reservation_id}: {self.previous_payer_id} -> {self.new_payer_id} ({self.tickets})"
+
+
 class CoachExpense(models.Model):
     CATEGORY_COURT = "court"
     CATEGORY_BALL = "ball"
@@ -1742,7 +1773,14 @@ class Reservation(models.Model, LessonTypeMixin):
                 end_at=self.end_at,
                 status=self.STATUS_ACTIVE,
             ).count()
-            if self.pk and self.status == self.STATUS_ACTIVE:
+            persisted_as_active = bool(
+                self.pk
+                and Reservation.objects.filter(
+                    pk=self.pk,
+                    status=self.STATUS_ACTIVE,
+                ).exists()
+            )
+            if self.status == self.STATUS_ACTIVE and not persisted_as_active:
                 active_count += 1
             participant_count = max(active_count, 1)
             return max(duration_hours, 1) * participant_count
@@ -2170,6 +2208,11 @@ class Reservation(models.Model, LessonTypeMixin):
                 for consumption in consumptions
                 if consumption.purchase_id is not None
             }
+            payer_ids = sorted({row.user_id for row in consumptions})
+            locked_users = {
+                user.pk: user
+                for user in User.objects.select_for_update().filter(pk__in=payer_ids).order_by("pk")
+            }
             locked_purchases = {
                 purchase.pk: purchase
                 for purchase in TicketPurchase.objects.select_for_update().filter(
@@ -2204,20 +2247,28 @@ class Reservation(models.Model, LessonTypeMixin):
                 consumption.refund_note = note or "予約返却"
                 consumption.save(update_fields=["refunded_at", "refund_note"])
 
-            ledger = apply_ticket_change(
-                user=locked_self.user,
-                amount=locked_self.tickets_used,
-                reason=reason,
-                note=note or f"チケット返却: {self.start_at:%Y-%m-%d %H:%M}",
-                created_by=created_by,
-                reservation=locked_self,
-                fixed_lesson=locked_self.fixed_lesson,
-            )
+            refund_totals = {}
+            for consumption in consumptions:
+                refund_totals[consumption.user_id] = (
+                    refund_totals.get(consumption.user_id, 0)
+                    + int(consumption.tickets_used or 0)
+                )
+            ledgers = []
+            for payer_id in sorted(refund_totals):
+                ledgers.append(apply_ticket_change(
+                    user=locked_users[payer_id],
+                    amount=refund_totals[payer_id],
+                    reason=reason,
+                    note=note or f"チケット返却: {self.start_at:%Y-%m-%d %H:%M}",
+                    created_by=created_by,
+                    reservation=locked_self,
+                    fixed_lesson=locked_self.fixed_lesson,
+                ))
 
             refunded_at = timezone.now()
             Reservation.objects.filter(pk=locked_self.pk).update(ticket_refunded_at=refunded_at)
             self.ticket_refunded_at = refunded_at
-            return ledger
+            return ledgers[0] if len(ledgers) == 1 else ledgers
 
     def activate_after_approval(self, created_by=None, approved_note=""):
         ensure_accounting_month_is_open(self.start_at)
