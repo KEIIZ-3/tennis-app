@@ -40,6 +40,24 @@ def is_main_coach(user):
     return bool(user and user.is_authenticated and user.role == User.ROLE_COACH)
 
 
+def pending_purchase_reservations_for_participants(reservations):
+    """Return each pending purchase reservation owned by an active participant.
+
+    The caller supplies the canonical Reservation queryset for one occurrence.
+    Keeping this boundary explicit prevents recurring membership or waitlists from
+    being mistaken for attendance, while preserving multiple purchases per user.
+    """
+    participant_user_ids = reservations.exclude(user_id=None).values_list(
+        "user_id", flat=True
+    )
+    return TicketPurchaseReservation.objects.filter(
+        user_id__in=participant_user_ids,
+        status=TicketPurchaseReservation.STATUS_PENDING,
+    ).select_related("user").order_by(
+        "user__full_name", "user__username", "requested_at", "id"
+    )
+
+
 def create_purchase_reservation(*, user, product_code):
     product = TICKET_PRODUCTS_BY_CODE.get((product_code or "").strip())
     if product is None:

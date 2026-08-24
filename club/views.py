@@ -74,7 +74,10 @@ from .lesson_participants import (
     reservations_for_object,
 )
 from .reservation_service import create_reservation
-from .ticket_purchase_reservation_service import is_main_coach
+from .ticket_purchase_reservation_service import (
+    is_main_coach,
+    pending_purchase_reservations_for_participants,
+)
 from .stringing_service import (
     STRINGING_BASE_PRICE,
     STRINGING_DELIVERY_FEE,
@@ -2134,14 +2137,13 @@ def lesson_calendar_view(request):
         pending_ticket_purchase_count = 0
         ticket_purchase_confirm_url = ""
         if is_main_coach(request.user) and source_kind in ("fixed_lesson", "availability"):
-            participant_user_ids = reservations_for_lesson(
+            participant_reservations = reservations_for_lesson(
                 fixed_lesson=fixed_lesson, availability=availability, coach=coach, court=court,
                 lesson_type=lesson_type, start_at=start_at, end_at=end_at,
                 statuses=(Reservation.STATUS_ACTIVE,),
-            ).exclude(user_id=None).values_list("user_id", flat=True)
-            pending_ticket_purchase_count = TicketPurchaseReservation.objects.filter(
-                user_id__in=participant_user_ids,
-                status=TicketPurchaseReservation.STATUS_PENDING,
+            )
+            pending_ticket_purchase_count = pending_purchase_reservations_for_participants(
+                participant_reservations
             ).count()
             if pending_ticket_purchase_count:
                 ticket_purchase_confirm_url = f"{reverse('club:ticket_purchase_confirm')}?{urlencode({'availability_id': availability_id, 'fixed_lesson_id': fixed_lesson_id, 'lesson_date': lesson_date})}"

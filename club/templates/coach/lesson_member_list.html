@@ -18,12 +18,14 @@
   .summary-value{margin-top:5px;color:#0f172a;font-size:26px;line-height:1;font-weight:1000;}
   .section-card{padding:15px;border:1px solid #e5e7eb;background:#fff;border-radius:18px;box-shadow:0 8px 20px rgba(15,23,42,.05);}
   .section-card.waiting{border-color:#fed7aa;background:#fffaf5;}
+  .section-card.ticket-purchases{border-color:#f59e0b;background:#fffbeb;box-shadow:0 8px 20px rgba(217,119,6,.12);}
   .section-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px;color:#0f172a;font-size:20px;line-height:1.35;font-weight:1000;}
   .count-badge{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;padding:0 9px;border-radius:999px;background:#0f172a;color:#fff;font-size:12px;font-weight:1000;}
   .person-list{display:grid;gap:8px;}
   .person-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:12px;border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;}
   .person-row.waiting{background:#fff7ed;border-color:#fed7aa;}
   .person-row.pending{background:#eff6ff;border-color:#bfdbfe;}
+  .person-row.ticket-purchase{background:#fff;border-color:#fbbf24;}
   .person-row.fixed{background:#f0fdf4;border-color:#bbf7d0;}
   .person-name{color:#0f172a;font-size:16px;line-height:1.35;font-weight:1000;}
   .person-meta{margin-top:4px;display:flex;gap:7px;flex-wrap:wrap;color:#64748b;font-size:12px;line-height:1.4;font-weight:850;}
@@ -226,6 +228,37 @@
   {% endif %}
 
   {% if is_coach_view %}
+    {% if is_main_coach %}
+      <section class="section-card ticket-purchases">
+        <h2 class="section-title"><span>🎫 チケット購入予約</span><span class="count-badge">{{ purchase_reservation_count }}</span></h2>
+        {% if purchase_reservations %}
+          <div class="person-list">
+            {% for row in purchase_reservations %}
+              <div class="person-row ticket-purchase">
+                <div>
+                  <div class="person-name">{{ row.user.display_name }}</div>
+                  <div class="person-meta">
+                    <span>{% if row.ticket_count == 4 %}4枚セット{% else %}{{ row.ticket_count }}枚{% endif %}</span>
+                    <span>{{ row.total_amount }}円</span>
+                    <span class="status-badge">{{ row.get_status_display }}</span>
+                    <span>予約番号 #{{ row.id }}</span>
+                  </div>
+                </div>
+                <div class="person-actions">
+                  <form method="post" action="{% url 'club:ticket_purchase_approve' row.id %}?{{ request.GET.urlencode }}" onsubmit="return confirm('現金受領を確認し、この購入予約を承認しますか？');">
+                    {% csrf_token %}
+                    <button class="mini-btn primary" type="submit">現金受領・承認</button>
+                  </form>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty-box">チケット購入予約はありません。</div>
+        {% endif %}
+      </section>
+    {% endif %}
+
     <section class="section-card">
       <h2 class="section-title"><span>承認待ち</span><span class="count-badge">{{ pending_count }}</span></h2>
       {% if pending_rows %}

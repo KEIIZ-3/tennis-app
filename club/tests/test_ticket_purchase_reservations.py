@@ -1,11 +1,20 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from club.models import TicketLedger, TicketPurchase, TicketPurchaseReservation, User
+from club.models import (
+    CoachAvailability,
+    Court,
+    FixedLesson,
+    Reservation,
+    TicketLedger,
+    TicketPurchase,
+    TicketPurchaseReservation,
+    User,
+)
 from club.ticket_purchase_reservation_service import (
     approve_purchase_reservation,
     cancel_purchase_reservation,
@@ -76,6 +85,9 @@ class TicketPurchaseReservationServiceTests(TestCase):
         self.assertRedirects(response, reverse("club:tickets"), fetch_redirect_response=False)
         self.assertEqual(TicketPurchaseReservation.objects.filter(user=self.member).count(), 1)
         self.assertFalse(TicketPurchase.objects.exists())
+        tickets = self.client.get(reverse("club:tickets"))
+        self.assertContains(tickets, "承認待ち")
+        self.assertContains(tickets, "1枚・4000円")
 
     def test_other_customer_cannot_cancel_via_direct_post(self):
         pending = create_purchase_reservation(user=self.member, product_code="single")
@@ -91,3 +103,229 @@ class TicketPurchaseReservationServiceTests(TestCase):
         self.assertEqual(self.client.get(reverse("club:ticket_purchase_confirm")).status_code, 403)
         self.assertEqual(self.client.post(reverse("club:ticket_purchase_approve", args=[pending.pk])).status_code, 403)
         self.assertFalse(TicketPurchase.objects.exists())
+
+
+class TicketPurchaseReservationCoachFlowTests(TestCase):
+    def setUp(self):
+        self.main_coach = User.objects.create_user(
+            username="purchase-main-coach", role=User.ROLE_COACH
+        )
+        self.contractor = User.objects.create_user(
+            username="purchase-contractor", role=User.ROLE_CONTRACTOR_COACH
+        )
+        self.member = User.objects.create_user(
+            username="purchase-member", role=User.ROLE_MEMBER, full_name="飯塚セカンド"
+        )
+        self.other_member = User.objects.create_user(
+            username="purchase-other-member", role=User.ROLE_MEMBER, full_name="購入 二人目"
+        )
+        self.non_participant = User.objects.create_user(
+            username="purchase-non-participant", role=User.ROLE_MEMBER
+        )
+        self.court = Court.objects.create(name="購入予約テストコート")
+        self.start_at = timezone.make_aware(
+            datetime.combine(timezone.localdate(), datetime.min.time()).replace(hour=10)
+        )
+        self.end_at = self.start_at + timedelta(hours=2)
+        self.availability = CoachAvailability.objects.create(
+            coach=self.main_coach,
+            coach_2=self.contractor,
+            court=self.court,
+            lesson_type=Reservation.LESSON_GENERAL,
+            start_at=self.start_at,
+            end_at=self.end_at,
+            capacity=6,
+        )
+        self.reservation = self._reservation(self.member)
+
+    def _reservation(self, user, *, status=Reservation.STATUS_ACTIVE, **extra):
+        values = {
+            "user": user,
+            "coach": self.main_coach,
+            "court": self.court,
+            "availability": self.availability,
+            "lesson_type": Reservation.LESSON_GENERAL,
+            "target_level": User.LEVEL_BEGINNER,
+            "start_at": self.start_at,
+            "end_at": self.end_at,
+            "status": status,
+        }
+        values.update(extra)
+        return Reservation.objects.create(**values)
+
+    def _member_list(self, user=None, **query):
+        self.client.force_login(user or self.main_coach)
+        params = {"availability_id": self.availability.pk}
+        params.update(query)
+        return self.client.get(reverse("club:lesson_calendar_member_list"), params)
+
+    def test_member_list_shows_each_pending_product_and_customer(self):
+        create_purchase_reservation(user=self.member, product_code="single")
+        create_purchase_reservation(user=self.member, product_code="set4")
+        self._reservation(self.other_member)
+        create_purchase_reservation(user=self.other_member, product_code="single")
+
+        response = self._member_list()
+
+        self.assertContains(response, "チケット購入予約")
+        self.assertContains(response, "飯塚セカンド", count=3)
+        self.assertContains(response, "購入 二人目", count=2)
+        self.assertContains(response, "1枚")
+        self.assertContains(response, "4000円")
+        self.assertContains(response, "4枚セット")
+        self.assertContains(response, "14000円")
+        self.assertContains(response, "現金受領・承認", count=3)
+        self.assertEqual(response.context["purchase_reservation_count"], 3)
+
+    def test_only_pending_purchases_of_active_reservation_users_are_shown(self):
+        visible = create_purchase_reservation(user=self.member, product_code="single")
+        canceled_participant = User.objects.create_user(
+            username="canceled-participant", role=User.ROLE_MEMBER
+        )
+        self._reservation(canceled_participant, status=Reservation.STATUS_CANCELED)
+        canceled_participant_purchase = create_purchase_reservation(
+            user=canceled_participant, product_code="single"
+        )
+        non_participant_purchase = create_purchase_reservation(
+            user=self.non_participant, product_code="single"
+        )
+        canceled_purchase = create_purchase_reservation(
+            user=self.member, product_code="single"
+        )
+        cancel_purchase_reservation(
+            reservation_id=canceled_purchase.pk, user=self.member
+        )
+        approved_purchase = create_purchase_reservation(
+            user=self.member, product_code="single"
+        )
+        approve_purchase_reservation(
+            reservation_id=approved_purchase.pk, coach=self.main_coach
+        )
+
+        response = self._member_list()
+
+        self.assertEqual(
+            [row.pk for row in response.context["purchase_reservations"]],
+            [visible.pk],
+        )
+        displayed_ids = response.content.decode()
+        self.assertNotIn(f"予約番号 #{canceled_participant_purchase.pk}", displayed_ids)
+        self.assertNotIn(f"予約番号 #{non_participant_purchase.pk}", displayed_ids)
+        self.assertNotIn(f"予約番号 #{canceled_purchase.pk}", displayed_ids)
+        self.assertNotIn(f"予約番号 #{approved_purchase.pk}", displayed_ids)
+
+    def test_fixed_membership_alone_is_excluded_but_fixed_occurrence_is_supported(self):
+        fixed = FixedLesson.objects.create(
+            title="購入予約固定レッスン",
+            coach=self.main_coach,
+            court=self.court,
+            lesson_type=FixedLesson.LESSON_GENERAL,
+            target_level=User.LEVEL_BEGINNER,
+            start_date=timezone.localdate(),
+            weekday=timezone.localdate().weekday(),
+            start_hour=14,
+            capacity=6,
+            is_active=True,
+        )
+        fixed.members.through.objects.create(
+            fixedlesson_id=fixed.pk, user_id=self.non_participant.pk
+        )
+        fixed_start, fixed_end = fixed._build_datetimes_for_date(timezone.localdate())
+        fixed_participant = User.objects.create_user(
+            username="fixed-purchase-participant", role=User.ROLE_MEMBER
+        )
+        Reservation.objects.bulk_create([Reservation(
+            user=fixed_participant,
+            coach=self.main_coach,
+            court=self.court,
+            fixed_lesson=fixed,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=User.LEVEL_BEGINNER,
+            start_at=fixed_start,
+            end_at=fixed_end,
+            status=Reservation.STATUS_ACTIVE,
+        )])
+        included = create_purchase_reservation(
+            user=fixed_participant, product_code="set4"
+        )
+        excluded = create_purchase_reservation(
+            user=self.non_participant, product_code="single"
+        )
+
+        response = self._member_list(
+            fixed_lesson_id=fixed.pk,
+            lesson_date=timezone.localdate().isoformat(),
+            availability_id="",
+        )
+
+        ids = [row.pk for row in response.context["purchase_reservations"]]
+        self.assertEqual(ids, [included.pk])
+        self.assertNotIn(excluded.pk, ids)
+
+    def test_calendar_card_shows_pending_count_and_links_to_member_list(self):
+        create_purchase_reservation(user=self.member, product_code="single")
+        self.client.force_login(self.main_coach)
+
+        response = self.client.get(
+            reverse("club:lesson_calendar"),
+            {"year": self.start_at.year, "month": self.start_at.month},
+        )
+
+        row = next(
+            item
+            for item in response.context["schedule_rows"]
+            if item["availability_id"] == str(self.availability.pk)
+        )
+        self.assertEqual(row["pending_ticket_purchase_count"], 1)
+        self.assertContains(response, "🎫 購入予約 1件")
+        self.assertContains(response, row["member_list_url"].replace("&", "&amp;"))
+
+    def test_contractor_sees_no_purchase_section_and_direct_post_is_forbidden(self):
+        pending = create_purchase_reservation(user=self.member, product_code="single")
+
+        response = self._member_list(user=self.contractor)
+
+        self.assertNotContains(response, "チケット購入予約")
+        approve_url = reverse("club:ticket_purchase_approve", args=[pending.pk])
+        post_response = self.client.post(
+            approve_url, {"availability_id": self.availability.pk}
+        )
+        self.assertEqual(post_response.status_code, 403)
+
+    def test_approval_redirects_to_member_list_grants_once_and_removes_pending(self):
+        pending = create_purchase_reservation(user=self.member, product_code="set4")
+        self.client.force_login(self.main_coach)
+        approve_url = reverse("club:ticket_purchase_approve", args=[pending.pk])
+        query = f"?availability_id={self.availability.pk}"
+
+        first = self.client.post(approve_url + query, follow=True)
+        second = self.client.post(approve_url + query)
+
+        expected = f"{reverse('club:lesson_calendar_member_list')}{query}"
+        self.assertEqual(first.redirect_chain, [(expected, 302)])
+        self.assertContains(first, "現金受領を確認し、4枚のチケットを付与しました。")
+        self.assertContains(first, "チケット購入予約はありません。")
+        self.assertRedirects(second, expected, fetch_redirect_response=False)
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.ticket_balance, 4)
+        self.assertEqual(TicketPurchase.objects.count(), 1)
+        member_list = self._member_list()
+        self.assertEqual(member_list.context["purchase_reservation_count"], 0)
+        self.assertContains(member_list, "チケット購入予約はありません。")
+
+    def test_lesson_without_purchase_does_not_show_calendar_badge(self):
+        response = self._member_list()
+        self.assertEqual(response.context["purchase_reservation_count"], 0)
+        self.assertContains(response, "チケット購入予約はありません。")
+
+        calendar = self.client.get(
+            reverse("club:lesson_calendar"),
+            {"year": self.start_at.year, "month": self.start_at.month},
+        )
+        row = next(
+            item
+            for item in calendar.context["schedule_rows"]
+            if item["availability_id"] == str(self.availability.pk)
+        )
+        self.assertEqual(row["pending_ticket_purchase_count"], 0)
+        self.assertNotContains(calendar, "🎫 購入予約")
