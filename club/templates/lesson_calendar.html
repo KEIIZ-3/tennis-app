@@ -1482,6 +1482,12 @@
             </div>
 
             {% if user.is_authenticated %}
+              {% if item.pending_ticket_purchase_count %}
+                <div class="ticket-purchase-reservation-action" style="margin-bottom:10px;padding:10px;border:1px solid #f59e0b;border-radius:12px;background:#fffbeb;">
+                  <div style="font-weight:800;margin-bottom:8px;">チケット購入予約 {{ item.pending_ticket_purchase_count }}件</div>
+                  <a href="{{ item.ticket_purchase_confirm_url }}" class="btn btn-primary reserve-button">チケット購入確認</a>
+                </div>
+              {% endif %}
               {% if item.court_expense_url and user.role == "coach" or item.court_expense_url and user.role == "contractor_coach" or item.court_expense_url and user.is_staff or item.court_expense_url and user.is_superuser %}
                 <div class="reserve-form">
                   <a href="{{ item.court_expense_url }}" class="btn reserve-button">コート代・支払者登録</a>

@@ -397,6 +397,35 @@
   {% endif %}
 </div>
 
+<div class="card" id="ticket-purchase-reservation">
+  <h2 style="margin-top:0;">チケット購入予約</h2>
+  <p>レッスン当日に現金でお支払いください。コーチが現金受領を確認して承認後、チケットへ反映されます。</p>
+  <form method="post" action="{% url 'club:ticket_purchase_reservation_create' %}">
+    {% csrf_token %}
+    <label style="display:block;margin-bottom:8px;font-weight:700;" for="ticket-product">購入する商品</label>
+    <select id="ticket-product" name="product" required style="width:100%;min-height:48px;margin-bottom:12px;">
+      <option value="single">1枚（{{ single_ticket_price|default:4000 }}円）</option>
+      <option value="set4">4枚セット（{{ set4_ticket_price|default:14000 }}円）</option>
+    </select>
+    <button class="btn btn-primary" type="submit" style="width:100%;min-height:48px;">購入予約する</button>
+  </form>
+</div>
+
+<div class="card" id="ticket-purchase-reservation-history">
+  <h2 style="margin-top:0;">購入予約履歴</h2>
+  {% for row in purchase_reservations %}
+    <div style="padding:12px 0;border-bottom:1px solid #e5e7eb;">
+      <div><strong>{{ row.ticket_count }}枚・{{ row.total_amount }}円</strong></div>
+      <div class="muted">{{ row.requested_at|date:"Y-m-d H:i" }} / {{ row.get_status_display }} / 予約番号 #{{ row.id }}</div>
+      {% if row.status == "pending" %}
+      <form method="post" action="{% url 'club:ticket_purchase_reservation_cancel' row.id %}" style="margin-top:8px;">
+        {% csrf_token %}<button class="btn" type="submit">購入予約をキャンセル</button>
+      </form>
+      {% endif %}
+    </div>
+  {% empty %}<p>購入予約はありません。</p>{% endfor %}
+</div>
+
 <div class="card" id="ticket-prices">
   <h2 style="margin-top:0;">チケット料金</h2>
 

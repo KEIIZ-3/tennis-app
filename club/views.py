@@ -54,6 +54,7 @@ from .models import (
     TicketConsumption,
     TicketLedger,
     TicketPurchase,
+    TicketPurchaseReservation,
     PREOPEN_CASH_PRICE,
     is_preopen_cash_lesson_date,
 )
@@ -73,6 +74,7 @@ from .lesson_participants import (
     reservations_for_object,
 )
 from .reservation_service import create_reservation
+from .ticket_purchase_reservation_service import is_main_coach
 from .stringing_service import (
     STRINGING_BASE_PRICE,
     STRINGING_DELIVERY_FEE,
@@ -2129,6 +2131,20 @@ def lesson_calendar_view(request):
             if availability_id
             else ""
         )
+        pending_ticket_purchase_count = 0
+        ticket_purchase_confirm_url = ""
+        if is_main_coach(request.user) and source_kind in ("fixed_lesson", "availability"):
+            participant_user_ids = reservations_for_lesson(
+                fixed_lesson=fixed_lesson, availability=availability, coach=coach, court=court,
+                lesson_type=lesson_type, start_at=start_at, end_at=end_at,
+                statuses=(Reservation.STATUS_ACTIVE,),
+            ).exclude(user_id=None).values_list("user_id", flat=True)
+            pending_ticket_purchase_count = TicketPurchaseReservation.objects.filter(
+                user_id__in=participant_user_ids,
+                status=TicketPurchaseReservation.STATUS_PENDING,
+            ).count()
+            if pending_ticket_purchase_count:
+                ticket_purchase_confirm_url = f"{reverse('club:ticket_purchase_confirm')}?{urlencode({'availability_id': availability_id, 'fixed_lesson_id': fixed_lesson_id, 'lesson_date': lesson_date})}"
         calendar_url = (
             member_list_url
             if target_year == 2026 and target_month == 7
@@ -2143,6 +2159,8 @@ def lesson_calendar_view(request):
             "reserve_url": reserve_url,
             "member_list_url": member_list_url,
             "court_expense_url": court_expense_url,
+            "pending_ticket_purchase_count": pending_ticket_purchase_count,
+            "ticket_purchase_confirm_url": ticket_purchase_confirm_url,
             "calendar_url": calendar_url,
             "calendar_login_url": (
                 member_list_url
@@ -3079,6 +3097,7 @@ def tickets_view(request):
 
     ledgers = TicketLedger.objects.filter(user=request.user).select_related("reservation", "fixed_lesson")[:30]
     purchases = TicketPurchase.objects.filter(user=request.user).order_by("-purchased_at", "-id")[:30]
+    purchase_reservations = TicketPurchaseReservation.objects.filter(user=request.user).select_related("ticket_purchase")[:30]
     consumptions = (
         TicketConsumption.objects.filter(user=request.user)
         .select_related("reservation", "purchase")
@@ -3099,6 +3118,7 @@ def tickets_view(request):
         {
             "ticket_ledgers": ledgers,
             "ticket_purchases": purchases,
+            "purchase_reservations": purchase_reservations,
             "ticket_consumptions": consumptions,
             "planned_ticket_count": planned_ticket_count,
             "single_ticket_price": 4000,
