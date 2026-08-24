@@ -13,41 +13,42 @@ from .models import (
     apply_ticket_change,
     ensure_accounting_month_is_open,
 )
+from .participant_price_snapshot import set_participant_ticket_price_snapshot
 
 
 def _consume_for_payer(*, reservation, payer, tickets, created_by, purchases):
     purchases = [row for row in purchases if row.remaining_tickets > 0]
-    evidenced = sum(int(row.remaining_tickets or 0) for row in purchases)
-    unknown = max(int(payer.ticket_balance or 0) - evidenced, 0)
     remaining = int(tickets)
-    unknown_used = min(unknown, remaining)
-    remaining -= unknown_used
+    created_consumptions = []
     for purchase in purchases:
         used = min(int(purchase.remaining_tickets), remaining)
         if used <= 0:
             continue
         purchase.remaining_tickets -= used
         purchase.save(update_fields=["remaining_tickets"])
-        TicketConsumption.objects.create(
-            user=payer,
-            purchase=purchase,
-            reservation=reservation,
-            fixed_lesson=reservation.fixed_lesson,
-            tickets_used=used,
-            unit_price_snapshot=purchase.unit_price,
+        created_consumptions.append(
+            TicketConsumption.objects.create(
+                user=payer,
+                purchase=purchase,
+                reservation=reservation,
+                fixed_lesson=reservation.fixed_lesson,
+                tickets_used=used,
+                unit_price_snapshot=purchase.unit_price,
+            )
         )
         remaining -= used
         if remaining == 0:
             break
-    pending = unknown_used + remaining
-    if pending:
-        TicketConsumption.objects.create(
-            user=payer,
-            purchase=None,
-            reservation=reservation,
-            fixed_lesson=reservation.fixed_lesson,
-            tickets_used=pending,
-            unit_price_snapshot=None,
+    if remaining:
+        created_consumptions.append(
+            TicketConsumption.objects.create(
+                user=payer,
+                purchase=None,
+                reservation=reservation,
+                fixed_lesson=reservation.fixed_lesson,
+                tickets_used=remaining,
+                unit_price_snapshot=None,
+            )
         )
     apply_ticket_change(
         user=payer,
@@ -58,6 +59,7 @@ def _consume_for_payer(*, reservation, payer, tickets, created_by, purchases):
         reservation=reservation,
         fixed_lesson=reservation.fixed_lesson,
     )
+    set_participant_ticket_price_snapshot(reservation, created_consumptions)
 
 
 def _locked_reservations_queryset(reservation_ids):
