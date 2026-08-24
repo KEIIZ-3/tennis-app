@@ -262,7 +262,8 @@ def audit_wallet_month(year, month):
     purchase_total = 0
     excluded_purchase_rows = []
     purchases = TicketPurchase.objects.filter(
-        purchased_at__date__gte=start, purchased_at__date__lt=end
+        purchased_at__date__gte=start, purchased_at__date__lt=end,
+        reversed_at__isnull=True,
     ).select_related("user").order_by("purchased_at", "id")
     for purchase in purchases:
         amount = _money(purchase.total_tickets) * _money(purchase.unit_price)

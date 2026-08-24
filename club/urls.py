@@ -37,6 +37,7 @@ urlpatterns = [
     path("tickets/purchase-reservations/<int:pk>/cancel/", ticket_purchase_reservation_views.cancel, name="ticket_purchase_reservation_cancel"),
     path("coach/ticket-purchases/confirm/", ticket_purchase_reservation_views.confirm, name="ticket_purchase_confirm"),
     path("coach/ticket-purchases/<int:pk>/approve/", ticket_purchase_reservation_views.approve, name="ticket_purchase_approve"),
+    path("coach/ticket-purchases/<int:pk>/reverse/", ticket_purchase_reservation_views.reverse_approval, name="ticket_purchase_reverse"),
     path("family/", family_members.family_member_manage, name="family_member_manage"),
     path("help/", views.help_view, name="help"),
     path("terms/", views.terms_view, name="terms"),

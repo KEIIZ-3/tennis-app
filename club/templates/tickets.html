@@ -499,7 +499,7 @@
             {% for purchase in ticket_purchases %}
               <tr>
                 <td>{{ purchase.purchased_at|date:"Y-m-d H:i" }}</td>
-                <td>{{ purchase.get_purchase_type_display }}</td>
+                <td>{{ purchase.get_purchase_type_display }}{% if purchase.reversed_at %}<br><strong>承認取消済み</strong>{% endif %}</td>
                 <td>
                   {% if purchase.unit_price > 0 %}
                     <span class="ticket-chip">{{ purchase.unit_price }}円券</span>
@@ -522,7 +522,7 @@
         {% for purchase in ticket_purchases %}
           <div class="mobile-data-card">
             <div class="mobile-data-title">
-              残り {{ purchase.remaining_tickets }}枚 / 購入 {{ purchase.total_tickets }}枚
+              {% if purchase.reversed_at %}承認取消済み / {% endif %}残り {{ purchase.remaining_tickets }}枚 / 購入 {{ purchase.total_tickets }}枚
             </div>
             <div class="mobile-data-sub">{{ purchase.purchased_at|date:"Y-m-d H:i" }} / {{ purchase.get_purchase_type_display }}</div>
 
