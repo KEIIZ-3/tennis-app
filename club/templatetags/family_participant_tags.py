@@ -1,6 +1,6 @@
 from django import template
 
-from club.models import LessonWaitlistParticipant, ReservationParticipant
+from club.models import FamilyMember, LessonWaitlistParticipant, ReservationParticipant
 
 register = template.Library()
 
@@ -29,13 +29,38 @@ def _fallback_participant_from_parent(parent):
     parent_name = _safe_display_name(parent)
     return {
         "name": parent_name,
-        "level_label": "",
+        "level_label": _current_user_level_label(parent),
         "relationship_label": "本人",
         "parent_name": parent_name,
         "parent_phone": _safe_phone(parent),
         "is_family": False,
         "has_snapshot": False,
     }
+
+
+def _current_user_level_label(user):
+    if not user:
+        return ""
+    try:
+        return user.get_member_level_display()
+    except Exception:
+        return getattr(user, "member_level", "") or ""
+
+
+def _current_participant_level_label(parent, snapshot):
+    """Return the participant's current level without rewriting history snapshots."""
+    is_family = snapshot.participant_type == "family" or bool(snapshot.family_member_id)
+    if not is_family:
+        return _current_user_level_label(parent)
+
+    if snapshot.family_member_id:
+        member = FamilyMember.objects.filter(
+            pk=snapshot.family_member_id,
+            parent=parent,
+        ).first()
+        if member:
+            return member.get_member_level_display()
+    return snapshot.participant_level_label
 
 
 def _fallback_participant(reservation):
@@ -91,7 +116,15 @@ def participant_for_reservation(reservation):
     snapshot = ReservationParticipant.objects.filter(reservation_id=reservation_id).first()
     if not snapshot:
         return fallback
-    return _normalize_participant_row((snapshot.participant_name, snapshot.participant_level_label, snapshot.relationship_label, snapshot.participant_type), fallback)
+    return _normalize_participant_row(
+        (
+            snapshot.participant_name,
+            _current_participant_level_label(getattr(reservation, "user", None), snapshot),
+            snapshot.relationship_label,
+            snapshot.participant_type,
+        ),
+        fallback,
+    )
 
 
 @register.simple_tag
@@ -108,4 +141,12 @@ def participant_for_waitlist(waitlist):
     snapshot = LessonWaitlistParticipant.objects.filter(waitlist_id=waitlist_id).first()
     if not snapshot:
         return fallback
-    return _normalize_participant_row((snapshot.participant_name, snapshot.participant_level_label, snapshot.relationship_label, snapshot.participant_type), fallback)
+    return _normalize_participant_row(
+        (
+            snapshot.participant_name,
+            _current_participant_level_label(parent, snapshot),
+            snapshot.relationship_label,
+            snapshot.participant_type,
+        ),
+        fallback,
+    )
