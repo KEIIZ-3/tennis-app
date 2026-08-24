@@ -71,9 +71,11 @@ def _execution_status(reservation):
 
 
 def inspect_participant_price_snapshot_repair(reservation_id, *, lock=False):
-    query = Reservation.objects.select_related("user")
-    if lock:
-        query = query.select_for_update()
+    query = (
+        Reservation.objects.select_for_update()
+        if lock
+        else Reservation.objects.select_related("user")
+    )
     reservation = query.get(pk=reservation_id)
     rows_query = reservation.ticket_consumptions.select_related("purchase").order_by("id")
     if lock:
