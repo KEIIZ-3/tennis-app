@@ -1,6 +1,10 @@
 from django import template
 
-from club.models import FamilyMember, LessonWaitlistParticipant, ReservationParticipant
+from club.models import LessonWaitlistParticipant, ReservationParticipant
+from club.participant_levels import (
+    current_participant_level_label,
+    current_user_level_label,
+)
 
 register = template.Library()
 
@@ -29,38 +33,13 @@ def _fallback_participant_from_parent(parent):
     parent_name = _safe_display_name(parent)
     return {
         "name": parent_name,
-        "level_label": _current_user_level_label(parent),
+        "level_label": current_user_level_label(parent),
         "relationship_label": "本人",
         "parent_name": parent_name,
         "parent_phone": _safe_phone(parent),
         "is_family": False,
         "has_snapshot": False,
     }
-
-
-def _current_user_level_label(user):
-    if not user:
-        return ""
-    try:
-        return user.get_member_level_display()
-    except Exception:
-        return getattr(user, "member_level", "") or ""
-
-
-def _current_participant_level_label(parent, snapshot):
-    """Return the participant's current level without rewriting history snapshots."""
-    is_family = snapshot.participant_type == "family" or bool(snapshot.family_member_id)
-    if not is_family:
-        return _current_user_level_label(parent)
-
-    if snapshot.family_member_id:
-        member = FamilyMember.objects.filter(
-            pk=snapshot.family_member_id,
-            parent=parent,
-        ).first()
-        if member:
-            return member.get_member_level_display()
-    return snapshot.participant_level_label
 
 
 def _fallback_participant(reservation):
@@ -119,7 +98,13 @@ def participant_for_reservation(reservation):
     return _normalize_participant_row(
         (
             snapshot.participant_name,
-            _current_participant_level_label(getattr(reservation, "user", None), snapshot),
+            current_participant_level_label(
+                getattr(reservation, "user", None),
+                participant_type=snapshot.participant_type,
+                family_member_id=snapshot.family_member_id,
+                snapshot_level_label=snapshot.participant_level_label,
+                is_guest=bool(getattr(reservation, "guest_name", "")),
+            ),
             snapshot.relationship_label,
             snapshot.participant_type,
         ),
@@ -144,7 +129,12 @@ def participant_for_waitlist(waitlist):
     return _normalize_participant_row(
         (
             snapshot.participant_name,
-            _current_participant_level_label(parent, snapshot),
+            current_participant_level_label(
+                parent,
+                participant_type=snapshot.participant_type,
+                family_member_id=snapshot.family_member_id,
+                snapshot_level_label=snapshot.participant_level_label,
+            ),
             snapshot.relationship_label,
             snapshot.participant_type,
         ),

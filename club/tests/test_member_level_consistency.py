@@ -7,8 +7,17 @@ from django.urls import reverse
 from django.utils import timezone
 
 from club.admin import CustomUserChangeForm
-from club.family_reservations import save_reservation_participant_snapshot
-from club.models import CoachAvailability, Court, FamilyMember, Reservation
+from club.family_reservations import (
+    save_reservation_participant_snapshot,
+    save_waitlist_participant_snapshot,
+)
+from club.models import (
+    CoachAvailability,
+    Court,
+    FamilyMember,
+    LessonWaitlist,
+    Reservation,
+)
 
 
 class MemberLevelConsistencyTests(TestCase):
@@ -77,6 +86,28 @@ class MemberLevelConsistencyTests(TestCase):
                     "month": self.start_at.month,
                 },
             )
+
+    def _member_list(self):
+        self.client.force_login(self.coach)
+        return self.client.get(
+            reverse("club:lesson_calendar_member_list"),
+            {"availability_id": self.availability.pk},
+        )
+
+    def _reservation(self, **overrides):
+        values = {
+            "user": self.member,
+            "coach": self.coach,
+            "court": self.court,
+            "availability": self.availability,
+            "lesson_type": Reservation.LESSON_GENERAL,
+            "target_level": self.User.LEVEL_BEGINNER,
+            "start_at": self.start_at,
+            "end_at": self.start_at + timedelta(hours=2),
+            "status": Reservation.STATUS_ACTIVE,
+        }
+        values.update(overrides)
+        return Reservation.objects.create(**values)
 
     def test_admin_level_change_is_visible_without_relogin_and_controls_booking(self):
         beginner_response = self._confirm()
@@ -157,3 +188,107 @@ class MemberLevelConsistencyTests(TestCase):
 
         self.assertContains(response, child.get_member_level_display())
         self.assertNotContains(response, self.User.level_label(self.User.LEVEL_ADVANCED))
+
+    def test_lesson_member_list_uses_current_self_level_without_rewriting_snapshot(self):
+        reservation = self._reservation()
+        save_reservation_participant_snapshot(
+            reservation,
+            {
+                "type": "self",
+                "name": self.member.display_name(),
+                "level": self.User.LEVEL_BEGINNER,
+                "level_label": self.User.level_label(self.User.LEVEL_BEGINNER),
+                "relationship_label": "本人",
+            },
+        )
+
+        beginner_response = self._member_list()
+        self.assertEqual(beginner_response.context["active_rows"][0]["level"], "初級")
+
+        self._admin_form_save(self.User.LEVEL_INTERMEDIATE)
+        upgraded_response = self._member_list()
+        self.assertEqual(upgraded_response.context["active_rows"][0]["level"], "中級")
+
+        snapshot = reservation.participant_snapshot
+        snapshot.refresh_from_db()
+        reservation.refresh_from_db()
+        self.assertEqual(snapshot.participant_level, self.User.LEVEL_BEGINNER)
+        self.assertEqual(snapshot.participant_level_label, "初級")
+        self.assertEqual(reservation.target_level, self.User.LEVEL_INTERMEDIATE)
+        self.assertEqual(self.availability.target_level, self.User.LEVEL_INTERMEDIATE)
+
+        self._admin_form_save(self.User.LEVEL_BEGINNER)
+        downgraded_response = self._member_list()
+        self.assertEqual(downgraded_response.context["active_rows"][0]["level"], "初級")
+
+    def test_lesson_member_list_uses_family_profile_and_preserves_guest_snapshot(self):
+        child = FamilyMember.objects.create(
+            parent=self.member,
+            full_name="Family Child",
+            relationship="child",
+            member_level=self.User.LEVEL_INTERMEDIATE,
+        )
+        family_reservation = self._reservation()
+        save_reservation_participant_snapshot(
+            family_reservation,
+            {
+                "type": "family",
+                "family_member_id": child.pk,
+                "name": child.full_name,
+                "level": self.User.LEVEL_BEGINNER,
+                "level_label": "初級",
+                "relationship_label": child.get_relationship_display(),
+            },
+        )
+        guest_reservation = self._reservation(guest_name="Snapshot Guest")
+        save_reservation_participant_snapshot(
+            guest_reservation,
+            {
+                "type": "self",
+                "name": "Snapshot Guest",
+                "level": self.User.LEVEL_BEGINNER,
+                "level_label": "ゲスト初級",
+                "relationship_label": "ゲスト",
+            },
+        )
+
+        self._admin_form_save(self.User.LEVEL_ADVANCED)
+        response = self._member_list()
+        rows = {row["name"]: row for row in response.context["active_rows"]}
+        self.assertEqual(rows[child.full_name]["level"], "中級")
+        self.assertEqual(rows["ゲスト：Snapshot Guest"]["level"], "ゲスト初級")
+
+        child.member_level = self.User.LEVEL_BEGINNER
+        child.save(update_fields=["member_level", "updated_at"])
+        updated_response = self._member_list()
+        updated_rows = {row["name"]: row for row in updated_response.context["active_rows"]}
+        self.assertEqual(updated_rows[child.full_name]["level"], "初級")
+
+    def test_lesson_member_list_waitlist_uses_current_self_level(self):
+        waitlist = LessonWaitlist.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            availability=self.availability,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=self.start_at,
+            end_at=self.start_at + timedelta(hours=2),
+        )
+        save_waitlist_participant_snapshot(
+            waitlist,
+            {
+                "type": "self",
+                "name": self.member.display_name(),
+                "level": self.User.LEVEL_BEGINNER,
+                "level_label": "初級",
+                "relationship_label": "本人",
+            },
+        )
+        self._admin_form_save(self.User.LEVEL_INTERMEDIATE)
+
+        response = self._member_list()
+
+        self.assertEqual(response.context["waitlist_rows"][0]["level"], "中級")
+        waitlist.participant_snapshot.refresh_from_db()
+        self.assertEqual(waitlist.participant_snapshot.participant_level_label, "初級")
