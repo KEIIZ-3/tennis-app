@@ -6222,7 +6222,7 @@ def coach_admin_settlement(request):
     ticket_amount_total = sum(row["ticket_amount"] for row in coach_rows)
     ticket_purchase_total = sum(
         _money(purchase.total_tickets) * _money(purchase.unit_price)
-        for purchase in TicketPurchase.objects.filter(purchased_at__date__gte=month_start, purchased_at__date__lt=next_month)
+        for purchase in TicketPurchase.objects.filter(purchased_at__date__gte=month_start, purchased_at__date__lt=next_month, reversed_at__isnull=True)
     )
     salary_due_total = sum(row["salary_due"] for row in coach_rows)
     reimbursement_due_total = sum(row["reimbursement_due"] for row in coach_rows)
@@ -9150,6 +9150,7 @@ def coach_revenue_summary(request):
         TicketPurchase.objects.filter(
             purchased_at__date__gte=month_start,
             purchased_at__date__lt=month_next,
+            reversed_at__isnull=True,
         )
         .select_related("user", "created_by")
         .order_by("purchased_at", "id")

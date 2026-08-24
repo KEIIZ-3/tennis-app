@@ -836,6 +836,15 @@ class TicketPurchase(models.Model):
     expires_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     idempotency_key = models.CharField(max_length=255, null=True, blank=True, unique=True)
+    reversed_at = models.DateTimeField(null=True, blank=True)
+    reversed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="reversed_ticket_purchases",
+    )
+    reversal_reason = models.CharField(max_length=30, blank=True, default="")
 
     class Meta:
         ordering = ["purchased_at", "id"]
@@ -864,10 +873,12 @@ class TicketPurchaseReservation(models.Model):
     STATUS_PENDING = "pending"
     STATUS_APPROVED = "approved"
     STATUS_CANCELED = "canceled"
+    STATUS_REVERSED = "reversed"
     STATUS_CHOICES = (
         (STATUS_PENDING, "承認待ち"),
         (STATUS_APPROVED, "購入完了"),
         (STATUS_CANCELED, "キャンセル"),
+        (STATUS_REVERSED, "承認取消済み"),
     )
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="ticket_purchase_reservations")
@@ -881,6 +892,10 @@ class TicketPurchaseReservation(models.Model):
     approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="approved_ticket_purchase_reservations")
     canceled_at = models.DateTimeField(null=True, blank=True)
     ticket_purchase = models.OneToOneField(TicketPurchase, on_delete=models.PROTECT, null=True, blank=True, related_name="purchase_reservation")
+    approved_for_reservation = models.ForeignKey("Reservation", on_delete=models.PROTECT, null=True, blank=True, related_name="approved_ticket_purchase_reservations")
+    reversed_at = models.DateTimeField(null=True, blank=True)
+    reversed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="reversed_ticket_purchase_reservations")
+    reversal_reason = models.CharField(max_length=30, blank=True, default="")
 
     class Meta:
         ordering = ["-requested_at", "-id"]
@@ -897,6 +912,7 @@ class TicketLedger(models.Model):
     REASON_CANCEL_REFUND = "cancel_refund"
     REASON_RAIN_REFUND = "rain_refund"
     REASON_ADMIN_ADJUST = "admin_adjust"
+    REASON_PURCHASE_REVERSAL = "purchase_reversal"
 
     REASON_CHOICES = (
         (REASON_PURCHASE_SINGLE, "チケット1枚購入"),
@@ -906,6 +922,7 @@ class TicketLedger(models.Model):
         (REASON_CANCEL_REFUND, "キャンセル返却"),
         (REASON_RAIN_REFUND, "雨天中止返却"),
         (REASON_ADMIN_ADJUST, "管理画面調整"),
+        (REASON_PURCHASE_REVERSAL, "チケット購入承認取消"),
     )
 
     user = models.ForeignKey(

@@ -257,6 +257,38 @@
           <div class="empty-box">チケット購入予約はありません。</div>
         {% endif %}
       </section>
+      <section class="section-card ticket-purchases">
+        <h2 class="section-title"><span>購入完了・取消履歴</span><span class="count-badge">{{ completed_purchase_reservations|length }}</span></h2>
+        {% if completed_purchase_reservations %}
+          <div class="person-list">
+            {% for row in completed_purchase_reservations %}
+              <div class="person-row ticket-purchase">
+                <div>
+                  <div class="person-name">{{ row.user.display_name }}</div>
+                  <div class="person-meta">
+                    <span>{% if row.ticket_count == 4 %}4枚セット{% else %}{{ row.ticket_count }}枚{% endif %}</span>
+                    <span>{{ row.total_amount }}円</span>
+                    <span class="status-badge">{{ row.get_status_display }}</span>
+                    <span>承認：{{ row.approved_at|date:"Y/m/d H:i" }}</span>
+                    <span>承認者：{{ row.approved_by.display_name }}</span>
+                    {% if row.reversed_at %}<span>取消：{{ row.reversed_at|date:"Y/m/d H:i" }}（{{ row.reversed_by.display_name }}）</span>{% endif %}
+                  </div>
+                </div>
+                <div class="person-actions">
+                  {% if row.can_reverse %}
+                    <a class="mini-btn danger" href="{% url 'club:ticket_purchase_reverse' row.id %}?{{ request.GET.urlencode }}">承認取消</a>
+                  {% elif row.status == 'approved' %}
+                    <span class="person-meta">{{ row.reversal_block_reason }}</span>
+                  {% endif %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+          <div class="empty-box">購入内容を訂正する場合は、一度承認取消後に正しい内容で再登録してください。</div>
+        {% else %}
+          <div class="empty-box">購入完了履歴はありません。</div>
+        {% endif %}
+      </section>
     {% endif %}
 
     <section class="section-card">

@@ -61,6 +61,7 @@ def load_monthly_settlement_data(*, month_start, next_month):
         TicketPurchase.objects.filter(
             purchased_at__date__gte=month_start,
             purchased_at__date__lt=next_month,
+            reversed_at__isnull=True,
         ).exclude(purchase_type=TicketPurchase.PURCHASE_TYPE_LEGACY)
     )
 

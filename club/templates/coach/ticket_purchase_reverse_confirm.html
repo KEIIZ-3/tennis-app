@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}チケット購入承認取消{% endblock %}
+{% block content %}
+<div class="card" style="max-width:640px;margin:24px auto;">
+  <h1>この承認を取り消しますか？</h1>
+  <p><strong>顧客：</strong>{{ purchase_reservation.user.display_name }}</p>
+  <p><strong>購入：</strong>{% if purchase_reservation.ticket_count == 4 %}4枚セット{% else %}{{ purchase_reservation.ticket_count }}枚{% endif %}</p>
+  <p><strong>金額：</strong>{{ purchase_reservation.total_amount }}円</p>
+  <p>この操作により、チケット{{ purchase_reservation.ticket_count }}枚と売上{{ purchase_reservation.total_amount }}円の計上が取り消されます。</p>
+  <form method="post">
+    {% csrf_token %}
+    <label for="reason">取消理由</label>
+    <select id="reason" name="reason" required>
+      <option value="">選択してください</option>
+      {% for value, label in reversal_reason_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+    </select>
+    <div style="display:flex;gap:12px;margin-top:20px;">
+      <button class="btn danger" type="submit">取消を実行</button>
+      <a class="btn" href="{{ back_url }}">戻る</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

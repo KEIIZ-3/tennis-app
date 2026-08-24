@@ -11,6 +11,7 @@ from club.models import (
     FixedLesson,
     Reservation,
     TicketLedger,
+    TicketConsumption,
     TicketPurchase,
     TicketPurchaseReservation,
     User,
@@ -19,6 +20,7 @@ from club.ticket_purchase_reservation_service import (
     approve_purchase_reservation,
     cancel_purchase_reservation,
     create_purchase_reservation,
+    reverse_purchase_reservation,
     ticket_expiration_from,
 )
 
@@ -65,6 +67,71 @@ class TicketPurchaseReservationServiceTests(TestCase):
         with self.assertRaises(PermissionDenied):
             approve_purchase_reservation(reservation_id=pending.pk, coach=self.contractor)
         self.assertFalse(TicketPurchase.objects.exists())
+
+    def test_unused_single_and_set4_can_be_reversed_with_audit_and_no_net_sales(self):
+        for product_code, tickets, amount in (("single", 1, 4000), ("set4", 4, 14000)):
+            before_balance = self.member.ticket_balance
+            row = create_purchase_reservation(user=self.member, product_code=product_code)
+            approved, _ = approve_purchase_reservation(reservation_id=row.pk, coach=self.main_coach)
+            self.member.refresh_from_db()
+            self.assertEqual(self.member.ticket_balance, before_balance + tickets)
+            reversed_row, changed = reverse_purchase_reservation(
+                reservation_id=approved.pk, coach=self.main_coach, reason="test"
+            )
+            self.assertTrue(changed)
+            self.member.refresh_from_db()
+            reversed_row.refresh_from_db()
+            purchase = reversed_row.ticket_purchase
+            purchase.refresh_from_db()
+            self.assertEqual(self.member.ticket_balance, before_balance)
+            self.assertEqual(reversed_row.status, TicketPurchaseReservation.STATUS_REVERSED)
+            self.assertIsNotNone(reversed_row.reversed_at)
+            self.assertEqual(reversed_row.reversed_by, self.main_coach)
+            self.assertEqual(reversed_row.reversal_reason, "test")
+            self.assertEqual((purchase.total_tickets, purchase.unit_price, purchase.remaining_tickets), (tickets, amount // tickets, 0))
+            self.assertIsNotNone(purchase.reversed_at)
+            self.assertEqual(
+                sum(p.total_tickets * p.unit_price for p in TicketPurchase.objects.filter(reversed_at__isnull=True)),
+                0,
+            )
+            self.assertTrue(TicketLedger.objects.filter(reason=TicketLedger.REASON_PURCHASE_REVERSAL, change_amount=-tickets).exists())
+
+    def test_reversal_is_idempotent_and_reapproval_is_forbidden(self):
+        row = create_purchase_reservation(user=self.member, product_code="set4")
+        approve_purchase_reservation(reservation_id=row.pk, coach=self.main_coach)
+        _row, first = reverse_purchase_reservation(reservation_id=row.pk, coach=self.main_coach, reason="mistake")
+        _row, second = reverse_purchase_reservation(reservation_id=row.pk, coach=self.main_coach, reason="mistake")
+        self.assertTrue(first)
+        self.assertFalse(second)
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.ticket_balance, 0)
+        self.assertEqual(TicketLedger.objects.filter(reason=TicketLedger.REASON_PURCHASE_REVERSAL).count(), 1)
+        with self.assertRaises(ValidationError):
+            approve_purchase_reservation(reservation_id=row.pk, coach=self.main_coach)
+
+    def test_consumed_purchase_cannot_be_reversed_and_nothing_changes(self):
+        row = create_purchase_reservation(user=self.member, product_code="set4")
+        approved, _ = approve_purchase_reservation(reservation_id=row.pk, coach=self.main_coach)
+        purchase = approved.ticket_purchase
+        purchase.remaining_tickets = 3
+        purchase.save(update_fields=["remaining_tickets"])
+        consumption = TicketConsumption.objects.create(user=self.member, purchase=purchase, tickets_used=1, unit_price_snapshot=3500)
+        self.member.refresh_from_db()
+        before = (self.member.ticket_balance, purchase.remaining_tickets, TicketConsumption.objects.count(), TicketLedger.objects.count())
+        with self.assertRaisesMessage(ValidationError, "既に使用されているため"):
+            reverse_purchase_reservation(reservation_id=row.pk, coach=self.main_coach, reason="mistake")
+        self.member.refresh_from_db()
+        purchase.refresh_from_db()
+        consumption.refresh_from_db()
+        row.refresh_from_db()
+        self.assertEqual((self.member.ticket_balance, purchase.remaining_tickets, TicketConsumption.objects.count(), TicketLedger.objects.count()), before)
+        self.assertEqual(row.status, TicketPurchaseReservation.STATUS_APPROVED)
+
+    def test_contractor_cannot_reverse(self):
+        row = create_purchase_reservation(user=self.member, product_code="single")
+        approve_purchase_reservation(reservation_id=row.pk, coach=self.main_coach)
+        with self.assertRaises(PermissionDenied):
+            reverse_purchase_reservation(reservation_id=row.pk, coach=self.contractor, reason="test")
 
     def test_canceled_reservation_cannot_be_approved(self):
         pending = create_purchase_reservation(user=self.member, product_code="single")

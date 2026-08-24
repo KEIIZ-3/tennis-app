@@ -1243,7 +1243,7 @@ class TicketPurchaseAdmin(TicketAuditAdmin):
         "purchased_at",
         "expires_at",
     )
-    list_filter = ("purchase_type", "unit_price", "purchased_at", "expires_at")
+    list_filter = ("purchase_type", "unit_price", "purchased_at", "expires_at", "reversed_at")
     search_fields = ("user__username", "user__full_name", "label", "note")
     autocomplete_fields = ("user", "created_by")
 
@@ -1255,7 +1255,8 @@ class TicketPurchaseReservationAdmin(admin.ModelAdmin):
     search_fields = ("user__username", "user__full_name")
     readonly_fields = (
         "user", "purchase_type", "ticket_count", "unit_price", "total_amount", "status",
-        "requested_at", "approved_at", "approved_by", "canceled_at", "ticket_purchase",
+        "requested_at", "approved_at", "approved_by", "canceled_at", "ticket_purchase", "approved_for_reservation",
+        "reversed_at", "reversed_by", "reversal_reason",
     )
 
     def has_add_permission(self, request):

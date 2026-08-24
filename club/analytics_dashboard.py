@@ -65,6 +65,7 @@ def analytics_dashboard(request):
     ticket_purchases = TicketPurchase.objects.filter(
         purchased_at__date__gte=start_date,
         purchased_at__date__lte=end_date,
+        reversed_at__isnull=True,
     )
     ticket_sales = sum(
         int(item.total_tickets or 0) * int(item.unit_price or 0)
