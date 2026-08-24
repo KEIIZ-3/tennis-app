@@ -561,7 +561,7 @@ def lesson_calendar_member_list(request):
                     reservation_payers={
                         row.pk: request.POST.get(f"payer_{row.pk}")
                         for row in lesson_reservations
-                        if row.tickets_used > 0
+                        if row.user_id and row.tickets_used > 0
                     },
                     created_by=request.user,
                 )

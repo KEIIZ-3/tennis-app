@@ -51,9 +51,13 @@ def diagnose_ticket_integrity():
         ReservationParticipant.objects.filter(participant_type="family")
         .values_list("reservation_id", flat=True)
     )
-    formal_cross_payers = set(
-        TicketBurdenChange.objects.values_list("reservation_id", "new_payer_id")
-    )
+    latest_formal_payers = {}
+    for reservation_id, new_payer_id in (
+        TicketBurdenChange.objects.order_by(
+            "reservation_id", "-created_at", "-id"
+        ).values_list("reservation_id", "new_payer_id")
+    ):
+        latest_formal_payers.setdefault(reservation_id, new_payer_id)
 
     purchase_by_id = {row["id"]: row for row in purchases}
     reservation_by_id = {row["id"]: row for row in reservations}
@@ -96,8 +100,9 @@ def diagnose_ticket_integrity():
             consumption_findings.append(_finding("purchase_user_mismatch", consumption_id=row["id"], purchase_id=row["purchase_id"], user_id=row["user_id"]))
         if (
             reservation
+            and row["refunded_at"] is None
             and row["user_id"] != reservation["user_id"]
-            and (row["reservation_id"], row["user_id"]) not in formal_cross_payers
+            and latest_formal_payers.get(row["reservation_id"]) != row["user_id"]
         ):
             consumption_findings.append(_finding("reservation_user_mismatch", consumption_id=row["id"], reservation_id=row["reservation_id"], user_id=row["user_id"]))
         if not row["reservation_id"] and not row["fixed_lesson_id"]:

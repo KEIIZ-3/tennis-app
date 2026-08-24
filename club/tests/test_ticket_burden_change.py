@@ -14,7 +14,10 @@ from club.models import (
     User,
     purchase_tickets,
 )
-from club.ticket_burden_service import change_lesson_ticket_burden
+from club.ticket_burden_service import (
+    _locked_reservations_queryset,
+    change_lesson_ticket_burden,
+)
 from club.ticket_integrity_diagnostic import diagnose_ticket_integrity
 
 
@@ -88,6 +91,27 @@ class TicketBurdenChangeTests(TestCase):
         self.a.refresh_from_db(); self.b.refresh_from_db()
         self.assertEqual((self.a.ticket_balance, self.b.ticket_balance), (3, 4))
 
+    def test_guest_is_not_required_in_payer_mapping(self):
+        self._reservation(None, tickets=1)
+        changes = change_lesson_ticket_burden(
+            reservation_payers={self.ra.pk: self.a.pk, self.rb.pk: self.a.pk},
+            created_by=self.coach,
+        )
+        self.assertEqual(len(changes), 1)
+
+    def test_rejects_payer_outside_lesson_participants(self):
+        outsider = User.objects.create_user(username="outsider")
+        with self.assertRaises(ValidationError):
+            change_lesson_ticket_burden(
+                reservation_payers={self.ra.pk: outsider.pk, self.rb.pk: self.b.pk},
+                created_by=self.coach,
+            )
+
+    def test_locked_reservation_query_has_no_nullable_related_join(self):
+        queryset = _locked_reservations_queryset([self.ra.pk, self.rb.pk])
+        self.assertTrue(queryset.query.select_for_update)
+        self.assertNotIn("JOIN", str(queryset.query).upper())
+
     def test_balance_floor_rolls_back_everything(self):
         self.a.ticket_balance = -4
         self.a.save(update_fields=["ticket_balance"])
@@ -125,6 +149,25 @@ class TicketBurdenChangeTests(TestCase):
         self.assertNotIn("reservation_user_mismatch", reasons)
         TicketBurdenChange.objects.all().delete()
         reasons = {row["reason"] for row in diagnose_ticket_integrity()["consumption_findings"]}
+        self.assertIn("reservation_user_mismatch", reasons)
+
+    def test_diagnostic_uses_latest_formal_payer(self):
+        change_lesson_ticket_burden(
+            reservation_payers={self.ra.pk: self.a.pk, self.rb.pk: self.a.pk},
+            created_by=self.coach,
+        )
+        TicketBurdenChange.objects.create(
+            reservation=self.rb,
+            previous_payer=self.a,
+            new_payer=self.b,
+            tickets=1,
+            created_by=self.coach,
+        )
+        reasons = {
+            row["reason"]
+            for row in diagnose_ticket_integrity()["consumption_findings"]
+            if row.get("reservation_id") == self.rb.pk
+        }
         self.assertIn("reservation_user_mismatch", reasons)
 
 
