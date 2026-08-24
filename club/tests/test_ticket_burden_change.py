@@ -82,6 +82,45 @@ class TicketBurdenChangeTests(TestCase):
         self.assertEqual((self.a.ticket_balance, self.b.ticket_balance), (3, 3))
         self.assertEqual(TicketBurdenChange.objects.count(), 2)
 
+    def test_existing_payer_purchase_prices_both_participants_after_burden_change(self):
+        # Reproduce reservations #1533/#1534: the payer has a purchased lot,
+        # but part of the account balance predates purchase-level evidence.
+        self.a.ticket_balance += 1
+        self.a.save(update_fields=["ticket_balance"])
+        Reservation.objects.filter(pk=self.rb.pk).update(
+            participant_ticket_price_snapshot=None
+        )
+        self.rb.participant_ticket_price_snapshot = None
+
+        change_lesson_ticket_burden(
+            reservation_payers={self.ra.pk: self.a.pk, self.rb.pk: self.a.pk},
+            created_by=self.coach,
+        )
+
+        active_a = self.ra.ticket_consumptions.get(refunded_at__isnull=True)
+        active_b = self.rb.ticket_consumptions.get(refunded_at__isnull=True)
+        self.ra.refresh_from_db(); self.rb.refresh_from_db()
+        purchase = TicketPurchase.objects.get(user=self.a)
+        self.assertEqual(
+            (active_a.user_id, active_a.tickets_used, active_a.unit_price_snapshot),
+            (self.a.pk, 1, 3500),
+        )
+        self.assertEqual(
+            (
+                active_b.user_id,
+                active_b.purchase_id,
+                active_b.tickets_used,
+                active_b.unit_price_snapshot,
+            ),
+            (self.a.pk, purchase.pk, 1, 3500),
+        )
+        self.assertEqual(purchase.remaining_tickets, 2)
+        self.assertEqual(
+            self.ra.participant_ticket_price_snapshot
+            + self.rb.participant_ticket_price_snapshot,
+            7000,
+        )
+
     def test_cross_payer_cancel_refunds_actual_payer(self):
         change_lesson_ticket_burden(
             reservation_payers={self.ra.pk: self.a.pk, self.rb.pk: self.a.pk},
