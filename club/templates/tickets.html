@@ -4,49 +4,6 @@
 {% block content %}
 <style>
 
-  .ticket-jump-grid{
-    display:grid;
-    grid-template-columns:repeat(4, minmax(0, 1fr));
-    gap:8px;
-  }
-
-  .ticket-jump-link{
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    min-height:42px;
-    padding:9px 10px;
-    border:1px solid #dbeafe;
-    background:#eff6ff;
-    color:#1d4ed8;
-    border-radius:12px;
-    font-size:13px;
-    font-weight:900;
-    text-decoration:none;
-  }
-
-  @media (max-width: 768px){
-    .ticket-jump-grid{
-      grid-template-columns:repeat(2, minmax(0, 1fr));
-    }
-  }
-
-
-  .ticket-title{
-    margin:0;
-    font-size:28px;
-    font-weight:900;
-    line-height:1.25;
-    letter-spacing:-0.02em;
-  }
-
-  .ticket-lead{
-    margin:8px 0 0;
-    color:var(--muted);
-    font-size:14px;
-    line-height:1.7;
-  }
-
   .ticket-stat-grid{
     display:grid;
     grid-template-columns:repeat(4, minmax(0, 1fr));
@@ -264,10 +221,6 @@
   }
 
   @media (max-width: 768px){
-    .ticket-title{
-      font-size:23px;
-    }
-
     .ticket-stat{
       padding:14px;
       border-radius:15px;
@@ -312,43 +265,6 @@
     }
   }
 </style>
-
-<div class="card">
-  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
-    <div>
-      <h1 class="ticket-title">チケット</h1>
-      <p class="ticket-lead">
-        {{ user.display_name }} さんの現在のチケット残数、予約時に差し引かれた内訳、返却履歴を確認できます。
-      </p>
-    </div>
-    <a href="{% url 'club:reservation_list' %}" class="btn">予約一覧へ</a>
-  </div>
-</div>
-
-
-<div class="card">
-  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
-    <div>
-      <h2 style="margin:0;">チケットで確認すること</h2>
-      <p class="muted" style="margin:6px 0 0;">現在の保有チケットと、今後の予約で使用予定のチケット枚数を確認できます。</p>
-    </div>
-    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-      <a href="{% url 'club:reservation_create' %}" class="btn btn-primary">予約する</a>
-      <a href="{% url 'club:reservation_list' %}" class="btn">予約確認</a>
-    </div>
-  </div>
-</div>
-
-
-<div class="card">
-  <h2 style="margin-top:0;">すぐ確認する</h2>
-  <div class="ticket-jump-grid">
-    <a href="#ticket-prices" class="ticket-jump-link">料金</a>
-    <a href="#ticket-purchases" class="ticket-jump-link">保有内訳</a>
-    <a href="#ticket-consumptions" class="ticket-jump-link">予約分の差し引き</a>
-    <a href="#ticket-ledgers" class="ticket-jump-link">履歴</a>
-  </div>
-</div>
 
 <div class="card customer-ticket-explanation">
   <div class="customer-ticket-explanation-title">予約済みレッスンのチケットについて</div>
