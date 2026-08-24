@@ -35,6 +35,16 @@ REVERSAL_REASON_CHOICES = (
 REVERSAL_REASON_VALUES = {value for value, _label in REVERSAL_REASON_CHOICES}
 
 
+def _locked_purchase_reservations():
+    """Lock reservation rows without joining nullable related tables.
+
+    PostgreSQL rejects ``FOR UPDATE`` when a nullable ``select_related`` join
+    puts the related table on the nullable side of an outer join.  Related
+    records needed by the workflow are therefore fetched separately.
+    """
+    return TicketPurchaseReservation.objects.select_for_update()
+
+
 def ticket_expiration_from(approved_at):
     month_index = approved_at.month - 1 + TICKET_VALIDITY_MONTHS
     year = approved_at.year + month_index // 12
@@ -77,8 +87,9 @@ def completed_purchase_reservations_for_participants(reservations):
     ).select_related("user", "approved_by", "reversed_by", "ticket_purchase").order_by("-approved_at", "-id")
 
 
-def purchase_reversal_availability(purchase_reservation):
-    purchase = purchase_reservation.ticket_purchase
+def purchase_reversal_availability(purchase_reservation, *, purchase=None):
+    if purchase is None:
+        purchase = purchase_reservation.ticket_purchase
     if purchase_reservation.status == TicketPurchaseReservation.STATUS_REVERSED:
         return False, "すでに承認取消済みです"
     if purchase_reservation.status != TicketPurchaseReservation.STATUS_APPROVED or purchase is None:
@@ -115,7 +126,7 @@ def cancel_purchase_reservation(*, reservation_id, user):
 def approve_purchase_reservation(*, reservation_id, coach, approved_for_reservation=None):
     if not is_main_coach(coach):
         raise PermissionDenied("メインコーチだけがチケット購入を承認できます。")
-    reservation = TicketPurchaseReservation.objects.select_for_update().select_related("user", "ticket_purchase").get(pk=reservation_id)
+    reservation = _locked_purchase_reservations().get(pk=reservation_id)
     if reservation.status == TicketPurchaseReservation.STATUS_APPROVED and reservation.ticket_purchase_id:
         return reservation, False
     if reservation.status != TicketPurchaseReservation.STATUS_PENDING:
@@ -144,7 +155,7 @@ def reverse_purchase_reservation(*, reservation_id, coach, reason):
         raise PermissionDenied("メインコーチだけがチケット購入承認を取り消せます。")
     if reason not in REVERSAL_REASON_VALUES:
         raise ValidationError("取消理由を選択してください。")
-    reservation = TicketPurchaseReservation.objects.select_for_update().select_related("user", "ticket_purchase").get(pk=reservation_id)
+    reservation = _locked_purchase_reservations().get(pk=reservation_id)
     if reservation.status == TicketPurchaseReservation.STATUS_REVERSED:
         return reservation, False
     if reservation.status != TicketPurchaseReservation.STATUS_APPROVED or not reservation.ticket_purchase_id:
@@ -152,7 +163,7 @@ def reverse_purchase_reservation(*, reservation_id, coach, reason):
     purchase = TicketPurchase.objects.select_for_update().get(pk=reservation.ticket_purchase_id)
     ensure_accounting_month_is_open(purchase.purchased_at)
     User.objects.select_for_update().get(pk=reservation.user_id)
-    can_reverse, error = purchase_reversal_availability(reservation)
+    can_reverse, error = purchase_reversal_availability(reservation, purchase=purchase)
     if not can_reverse:
         raise ValidationError(error)
     reversed_at = timezone.now()

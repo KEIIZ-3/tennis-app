@@ -17,6 +17,7 @@ from club.models import (
     User,
 )
 from club.ticket_purchase_reservation_service import (
+    _locked_purchase_reservations,
     approve_purchase_reservation,
     cancel_purchase_reservation,
     create_purchase_reservation,
@@ -61,6 +62,12 @@ class TicketPurchaseReservationServiceTests(TestCase):
         self.assertEqual(pending.ticket_purchase, purchase)
         self.assertEqual(pending.approved_by, self.main_coach)
         self.assertIsNotNone(pending.approved_at)
+
+    def test_reservation_lock_query_does_not_join_nullable_relations(self):
+        queryset = _locked_purchase_reservations()
+
+        self.assertTrue(queryset.query.select_for_update)
+        self.assertFalse(queryset.query.select_related)
 
     def test_contractor_cannot_approve(self):
         pending = create_purchase_reservation(user=self.member, product_code="single")
