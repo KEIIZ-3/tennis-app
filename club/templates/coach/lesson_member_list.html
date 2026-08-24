@@ -221,6 +221,24 @@
             </div>
           {% endfor %}
         </div>
+        {% if is_main_coach and ticket_payer_options %}
+          <form method="post" style="margin-top:14px;padding:12px;border:1px solid #bfdbfe;border-radius:14px;background:#eff6ff;display:grid;gap:10px;">
+            {% csrf_token %}<input type="hidden" name="action" value="change_ticket_burden">
+            <strong>チケット負担変更</strong>
+            <span class="person-meta">参加者ごとの必要枚数は変えず、実際にチケットを負担する会員を選択します。</span>
+            {% for row in active_rows %}
+              {% if row.tickets_used and not row.is_guest %}
+                <label style="display:grid;grid-template-columns:minmax(0,1fr) minmax(140px,1fr);gap:8px;align-items:center;">
+                  <span>{{ row.name }}（{{ row.tickets_used }}枚）</span>
+                  <select name="payer_{{ row.reservation.pk }}" required style="min-height:42px;padding:8px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;">
+                    {% for payer in ticket_payer_options %}<option value="{{ payer.id }}" {% if payer.id == row.current_payer_id %}selected{% endif %}>{{ payer.name }}</option>{% endfor %}
+                  </select>
+                </label>
+              {% endif %}
+            {% endfor %}
+            <button class="btn btn-primary" type="submit" onclick="return confirm('チケット負担を変更しますか？');">チケット負担を保存</button>
+          </form>
+        {% endif %}
       {% else %}
         <div class="empty-box">参加者はまだいません。</div>
       {% endif %}

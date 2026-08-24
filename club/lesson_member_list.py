@@ -14,7 +14,7 @@ from .lesson_participants import (
     participant_details_by_reservation,
     reservations_for_lesson,
 )
-from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation
+from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation, User
 from .participant_levels import current_participant_level_label
 from .ticket_purchase_reservation_service import (
     completed_purchase_reservations_for_participants,
@@ -543,6 +543,32 @@ def lesson_calendar_member_list(request):
             return HttpResponse("Forbidden", status=403)
 
         action = (request.POST.get("action") or "").strip()
+        if action == "change_ticket_burden":
+            if not is_main_coach(request.user):
+                return HttpResponse("Forbidden", status=403)
+            from .ticket_burden_service import change_lesson_ticket_burden
+            lesson_reservations = list(reservations_for_lesson(
+                fixed_lesson=fixed_lesson,
+                availability=availability,
+                coach=coach,
+                court=court,
+                lesson_type=lesson_type,
+                start_at=start_at,
+                end_at=end_at,
+            ))
+            try:
+                change_lesson_ticket_burden(
+                    reservation_payers={
+                        row.pk: request.POST.get(f"payer_{row.pk}")
+                        for row in lesson_reservations
+                        if row.tickets_used > 0
+                    },
+                    created_by=request.user,
+                )
+                messages.success(request, "チケット負担を変更しました。")
+            except (ValidationError, Reservation.DoesNotExist, User.DoesNotExist, ValueError, TypeError) as exc:
+                messages.error(request, "; ".join(getattr(exc, "messages", [str(exc)])))
+            return redirect(request.get_full_path())
         if action in ("add_guest", "change_amount", "cancel_guest"):
             from .participant_accounting import add_guest, cancel_guest, change_participation_amount
             try:
@@ -757,6 +783,32 @@ def lesson_calendar_member_list(request):
         )
         for reservation in active_reservations
     ]
+    ticket_payer_options = []
+    if is_main_coach(request.user):
+        payer_users = {
+            row.user_id: row.user
+            for row in active_reservations
+            if row.user_id
+        }
+        current_payer_by_reservation = {
+            reservation.pk: reservation.ticket_consumptions.filter(
+                refunded_at__isnull=True
+            ).values_list("user_id", flat=True).first()
+            for reservation in active_reservations
+        }
+        current_payer_ids = {
+            payer_id for payer_id in current_payer_by_reservation.values() if payer_id
+        }
+        for payer in User.objects.filter(pk__in=current_payer_ids):
+            payer_users.setdefault(payer.pk, payer)
+        ticket_payer_options = [
+            {"id": user_id, "name": _display_name(user)}
+            for user_id, user in sorted(payer_users.items())
+        ]
+        for row in active_rows:
+            row["current_payer_id"] = current_payer_by_reservation.get(
+                row["reservation"].pk
+            ) or row["reservation"].user_id
     capacity = _capacity_for_slot(
         availability=availability,
         fixed_lesson=fixed_lesson,
@@ -872,6 +924,7 @@ def lesson_calendar_member_list(request):
             "pending_count": pending_count,
             "waitlist_count": waitlist_count,
             "active_rows": active_rows,
+            "ticket_payer_options": ticket_payer_options,
             "purchase_reservations": purchase_reservations,
             "purchase_reservation_count": len(purchase_reservations),
             "completed_purchase_reservations": completed_purchase_reservations,

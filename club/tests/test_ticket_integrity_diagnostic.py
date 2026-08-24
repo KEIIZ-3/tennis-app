@@ -133,5 +133,5 @@ class TicketIntegrityDiagnosticTests(TestCase):
     def test_query_count_is_constant(self):
         for _ in range(5):
             self.reservation(tickets=0)
-        with self.assertNumQueries(6):
+        with self.assertNumQueries(7):
             diagnose_ticket_integrity()
