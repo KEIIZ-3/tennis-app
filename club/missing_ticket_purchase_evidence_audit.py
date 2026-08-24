@@ -4,8 +4,39 @@ from django.db.models import Sum
 
 from .legacy_ticket_consumption_repair import candidate_purchases, inspect_legacy_ticket_consumption_repair
 from .models import Reservation, TicketConsumption, TicketLedger, TicketPurchase, User
+from .settlement_models import MonthlySettlement
 
 DEFAULT_RESERVATION_IDS = (1505, 1506, 1523, 1525, 1498, 1501, 1493, 1503, 1504, 1526, 1531, 1541, 1552, 1553, 1495)
+
+
+def pending_evidence_candidate_ids():
+    """Return SELECT-only candidates for formal unallocated consumption evidence."""
+    broad_candidates = Reservation.objects.filter(
+        ticket_consumed_at__isnull=False,
+        tickets_used__gt=0,
+        ticket_refunded_at__isnull=True,
+        status=Reservation.STATUS_ACTIVE,
+        ticket_consumptions__isnull=True,
+    ).order_by("id")
+    candidate_ids = []
+    for reservation in broad_candidates:
+        if MonthlySettlement.objects.filter(
+            year=reservation.start_at.year,
+            month=reservation.start_at.month,
+            status=MonthlySettlement.STATUS_CLOSED,
+        ).exists():
+            continue
+        ledgers = TicketLedger.objects.filter(
+            reservation_id=reservation.id,
+            user_id=reservation.user_id,
+            reason=TicketLedger.REASON_RESERVATION_USE,
+        )
+        if ledgers.count() != 1:
+            continue
+        if int(ledgers.values_list("change_amount", flat=True).get()) != -int(reservation.tickets_used):
+            continue
+        candidate_ids.append(reservation.id)
+    return candidate_ids
 
 
 def _iso(value):

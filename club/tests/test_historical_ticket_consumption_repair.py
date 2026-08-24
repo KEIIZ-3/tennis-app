@@ -143,6 +143,48 @@ class HistoricalTicketConsumptionRepairTests(TestCase):
         self.assertEqual((result.status, purchase.remaining_tickets), ("noop", 1))
         self.assertEqual(TicketConsumption.objects.filter(reservation=reservation).count(), 1)
 
+    def test_restores_pending_evidence_without_changing_accounting_and_second_run_is_noop(self):
+        reservation = self.make_reservation(reservation_id=1534)
+        ledger_before = list(TicketLedger.objects.values())
+
+        result = repair_historical_ticket_consumption(reservation.id)
+        consumption = TicketConsumption.objects.get(reservation=reservation)
+        self.assertEqual(result.repair_mode, "pending_purchase_evidence")
+        self.assertEqual((consumption.purchase_id, consumption.unit_price_snapshot), (None, None))
+
+        second = repair_historical_ticket_consumption(reservation.id)
+        self.user.refresh_from_db(); reservation.refresh_from_db()
+        self.assertEqual(second.status, "noop")
+        self.assertEqual(self.user.ticket_balance, -1)
+        self.assertEqual(reservation.tickets_used, 1)
+        self.assertIsNone(reservation.participant_ticket_price_snapshot)
+        self.assertEqual(list(TicketLedger.objects.values()), ledger_before)
+        self.assertEqual(TicketConsumption.objects.filter(reservation=reservation).count(), 1)
+
+    def test_pending_evidence_rejects_refunded_canceled_and_wrong_ledger_amount(self):
+        refunded = self.make_reservation()
+        Reservation.objects.filter(pk=refunded.pk).update(ticket_refunded_at=self.start)
+        self.assertEqual(inspect_historical_ticket_consumption_repair(refunded.id).reason, "usage_refunded")
+        canceled = self.make_reservation()
+        Reservation.objects.filter(pk=canceled.pk).update(status=Reservation.STATUS_CANCELED)
+        self.assertEqual(inspect_historical_ticket_consumption_repair(canceled.id).reason, "reservation_not_active")
+        wrong_amount = self.make_reservation()
+        TicketLedger.objects.filter(reservation=wrong_amount).update(change_amount=-2)
+        self.assertEqual(inspect_historical_ticket_consumption_repair(wrong_amount.id).reason, "reservation_use_ledger_amount_mismatch")
+
+    def test_pending_evidence_command_accepts_explicit_unapproved_id_and_defaults_to_dry_run(self):
+        reservation = self.make_reservation(reservation_id=1534)
+        stdout = StringIO()
+        call_command(
+            "repair_historical_ticket_consumptions",
+            "--pending-evidence", "--reservation-id", str(reservation.id),
+            stdout=stdout,
+        )
+        row = json.loads(stdout.getvalue())["rows"][0]
+        self.assertEqual(row["repair_mode"], "pending_purchase_evidence")
+        self.assertEqual(row["status"], "candidate")
+        self.assertFalse(TicketConsumption.objects.filter(reservation=reservation).exists())
+
     def test_closed_month_is_rejected(self):
         reservation = self.make_reservation()
         purchase = self.make_purchase()

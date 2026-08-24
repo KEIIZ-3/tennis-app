@@ -29,18 +29,26 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--reservation-id", action="append", type=int)
         parser.add_argument("--apply", action="store_true")
+        parser.add_argument("--pending-evidence", action="store_true")
 
     def handle(self, *args, **options):
         reservation_ids = options["reservation_id"] or list(DEFAULT_RESERVATION_IDS)
-        unknown = sorted(set(reservation_ids) - set(DEFAULT_RESERVATION_IDS))
+        unknown = [] if options["pending_evidence"] else sorted(set(reservation_ids) - set(DEFAULT_RESERVATION_IDS))
         if unknown:
             raise CommandError(f"not an approved historical reservation: {unknown}")
 
-        audit = audit_missing_ticket_purchase_evidence(DEFAULT_RESERVATION_IDS)
+        audit = (
+            {"rows": []}
+            if options["pending_evidence"]
+            else audit_missing_ticket_purchase_evidence(DEFAULT_RESERVATION_IDS)
+        )
         audited = {row["reservation_id"]: row for row in audit["rows"]}
         inputs = []
         failures = []
         for reservation_id in reservation_ids:
+            if options["pending_evidence"]:
+                inputs.append((reservation_id, None, None))
+                continue
             row = audited.get(reservation_id)
             purchase_id = None if row is None else row["candidate_later_purchase_id"]
             confirmed_price = CONFIRMED_PRICE_WITHOUT_PURCHASE.get(reservation_id)

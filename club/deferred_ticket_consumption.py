@@ -7,6 +7,18 @@ from .participant_price_snapshot import set_participant_ticket_price_snapshot
 from .settlement_models import MonthlySettlement
 
 
+def create_pending_ticket_consumption(*, reservation, tickets_used=None):
+    """Persist already-accounted usage awaiting a later purchase allocation."""
+    return TicketConsumption.objects.create(
+        user_id=reservation.user_id,
+        purchase=None,
+        reservation=reservation,
+        fixed_lesson_id=reservation.fixed_lesson_id,
+        tickets_used=reservation.tickets_used if tickets_used is None else tickets_used,
+        unit_price_snapshot=None,
+    )
+
+
 def _month_is_closed(reservation):
     return MonthlySettlement.objects.filter(
         year=reservation.start_at.year,

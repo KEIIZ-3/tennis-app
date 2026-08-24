@@ -7,6 +7,7 @@ from django.db import transaction
 from django.db.models import Count, Sum
 
 from .models import Reservation, TicketConsumption, TicketLedger, TicketPurchase, User
+from .deferred_ticket_consumption import create_pending_ticket_consumption
 from .participant_price_snapshot import set_participant_ticket_price_snapshot
 from .settlement_models import MonthlySettlement
 
@@ -86,7 +87,11 @@ def inspect_historical_ticket_consumption_repair(
     consumption_count = TicketConsumption.objects.filter(
         reservation_id=reservation.id
     ).count()
-    mode = "confirmed_price_without_purchase" if candidate_purchase_id is None else "purchase_linkage"
+    mode = (
+        "purchase_linkage" if candidate_purchase_id is not None
+        else "confirmed_price_without_purchase" if confirmed_unit_price is not None
+        else "pending_purchase_evidence"
+    )
     price = confirmed_unit_price
     purchase = None
     if candidate_purchase_id is not None:
@@ -128,19 +133,24 @@ def inspect_historical_ticket_consumption_repair(
         reservation_id=reservation.id,
         user_id=reservation.user_id,
         reason=TicketLedger.REASON_RESERVATION_USE,
-        change_amount=-tickets_used,
     )
     if ledgers.count() != 1:
         return HistoricalRepairPreview(**base, reason="single_reservation_use_ledger_required")
+    if int(ledgers.values_list("change_amount", flat=True).get()) != -tickets_used:
+        return HistoricalRepairPreview(**base, reason="reservation_use_ledger_amount_mismatch")
+    if reservation.ticket_refunded_at is not None:
+        return HistoricalRepairPreview(**base, reason="usage_refunded")
+    if reservation.status != Reservation.STATUS_ACTIVE:
+        return HistoricalRepairPreview(**base, reason="reservation_not_active")
     if _month_is_closed(reservation):
         return HistoricalRepairPreview(**base, reason="accounting_month_closed")
     if reservation.participant_ticket_price_snapshot not in (None, price_after):
         return HistoricalRepairPreview(**base, reason="participant_price_snapshot_conflict")
-    if candidate_purchase_id is None:
+    if mode == "confirmed_price_without_purchase":
         approved_price = CONFIRMED_PRICE_WITHOUT_PURCHASE.get(reservation.id)
         if approved_price is None or int(confirmed_unit_price or 0) != approved_price:
             return HistoricalRepairPreview(**base, reason="confirmed_price_evidence_required")
-    else:
+    elif mode == "purchase_linkage":
         if purchase is None:
             return HistoricalRepairPreview(**base, reason="candidate_purchase_not_found")
         if purchase.user_id != reservation.user_id:
@@ -196,15 +206,20 @@ def repair_historical_ticket_consumption(
             purchase.remaining_tickets -= int(reservation.tickets_used)
             purchase.save(update_fields=["remaining_tickets"])
 
-        consumption = TicketConsumption.objects.create(
-            user_id=reservation.user_id,
-            purchase=purchase,
-            reservation=reservation,
-            fixed_lesson_id=reservation.fixed_lesson_id,
-            tickets_used=reservation.tickets_used,
-            unit_price_snapshot=preview.candidate_purchase_unit_price,
+        consumption = (
+            create_pending_ticket_consumption(reservation=reservation)
+            if preview.repair_mode == "pending_purchase_evidence"
+            else TicketConsumption.objects.create(
+                user_id=reservation.user_id,
+                purchase=purchase,
+                reservation=reservation,
+                fixed_lesson_id=reservation.fixed_lesson_id,
+                tickets_used=reservation.tickets_used,
+                unit_price_snapshot=preview.candidate_purchase_unit_price,
+            )
         )
-        set_participant_ticket_price_snapshot(reservation, [consumption])
+        if preview.repair_mode != "pending_purchase_evidence":
+            set_participant_ticket_price_snapshot(reservation, [consumption])
 
         if int(User.objects.get(pk=reservation.user_id).ticket_balance or 0) != balance_before:
             raise HistoricalRepairRejected("ticket_balance_changed")
