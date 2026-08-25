@@ -72,7 +72,7 @@ def split_amount_by_participant_count(
 
     difference = total_amount - sum(allocations.values())
     adjustment_order = sorted(
-        unique_ids,
+        (coach_id for coach_id in unique_ids if weights[coach_id] > 0),
         key=lambda coach_id: (weights[coach_id], unique_ids.index(coach_id)),
     )
     step = 1 if difference > 0 else -1

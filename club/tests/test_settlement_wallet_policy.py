@@ -401,6 +401,10 @@ class SettlementWalletCourtCostTests(TestCase):
         self.assertEqual(policy["reimbursement_total"], 3900)
         self.assertEqual(sum(policy["burden_by_coach"].values()), 7801)
         self.assertEqual(
+            policy["detail_rows"][0]["burden_by_coach"],
+            policy["ball_burden_by_coach"],
+        )
+        self.assertEqual(
             policy["detail_rows"][0]["burden_rule"],
             "利益（参加費－コート代）比例",
         )
