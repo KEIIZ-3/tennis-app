@@ -3,6 +3,7 @@ from datetime import date
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -19,6 +20,7 @@ from .settlement_service import (
     reopen_monthly_settlement,
     reverse_settlement_payment,
 )
+from .rain_refund_service import confirm_rain_refund
 
 
 def _month_url(year, month):
@@ -91,6 +93,27 @@ def coach_admin_settlement(request):
 
     if request.method == "POST":
         action = (request.POST.get("action") or "").strip()
+
+        if action == "confirm_rain_refund":
+            expense_id = (request.POST.get("expense_id") or "").strip()
+            try:
+                refund = confirm_rain_refund(
+                    expense_id,
+                    confirmed_by=request.user,
+                )
+            except (ValidationError, ValueError, TypeError) as exc:
+                message = (
+                    exc.messages[0]
+                    if isinstance(exc, ValidationError) and exc.messages
+                    else "返金状態を更新できませんでした。"
+                )
+                messages.error(request, message)
+            else:
+                if refund is None:
+                    messages.error(request, "対象の雨天中止返金が見つかりません。")
+                elif refund.status == refund.STATUS_REFUNDED:
+                    messages.success(request, "返金済みに更新しました。")
+            return redirect(redirect_url)
 
         if action == "create_payout":
             if settlement.is_closed:
