@@ -8,6 +8,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from club.cross_payer_consumption_repair import (
+    _locked_displaced_consumptions,
     inspect_cross_payer_consumption_repair,
     repair_cross_payer_consumption,
 )
@@ -209,3 +210,12 @@ class CrossPayerConsumptionRepairTests(TestCase):
         purchase.refresh_from_db()
         self.assertEqual((second.status, second.reason), ("noop", "consumption_already_priced"))
         self.assertEqual(purchase.remaining_tickets, 0)
+
+    def test_displaced_lock_query_does_not_join_nullable_reservation(self):
+        queryset = _locked_displaced_consumptions([self.pending.pk])
+
+        sql = str(queryset.query).upper()
+
+        self.assertTrue(queryset.query.select_for_update)
+        self.assertNotIn(" JOIN ", sql)
+        self.assertNotIn("CLUB_RESERVATION", sql)

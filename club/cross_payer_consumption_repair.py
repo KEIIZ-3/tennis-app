@@ -44,6 +44,18 @@ def _month_is_closed(reservation):
     ).exists()
 
 
+def _locked_displaced_consumptions(consumption_ids):
+    # Reservations participating in the repair are locked separately, in
+    # primary-key order. Keep this lock query on TicketConsumption itself:
+    # reservation is nullable, so joining it would make PostgreSQL reject
+    # FOR UPDATE on the nullable side of the outer join.
+    return (
+        TicketConsumption.objects.select_for_update()
+        .filter(pk__in=consumption_ids)
+        .order_by("id")
+    )
+
+
 def inspect_cross_payer_consumption_repair(reservation_id, *, lock=False):
     reservations = Reservation.objects.select_for_update() if lock else Reservation.objects
     reservation = reservations.get(pk=reservation_id)
@@ -214,12 +226,7 @@ def repair_cross_payer_consumption(reservation_id):
 
     purchase = TicketPurchase.objects.select_for_update().get(pk=preview.purchase_id)
     consumption = TicketConsumption.objects.select_for_update().get(pk=preview.consumption_id)
-    displaced = list(
-        TicketConsumption.objects.select_for_update()
-        .select_related("reservation")
-        .filter(pk__in=preview.displaced_consumption_ids)
-        .order_by(*TICKET_CONSUMPTION_FIFO_ORDER)
-    )
+    displaced = list(_locked_displaced_consumptions(preview.displaced_consumption_ids))
     if displaced:
         if sum(int(row.tickets_used or 0) for row in displaced) != int(consumption.tickets_used or 0):
             raise CrossPayerRepairRejected("fifo_evidence_changed")
