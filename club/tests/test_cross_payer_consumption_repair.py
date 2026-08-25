@@ -129,3 +129,83 @@ class CrossPayerConsumptionRepairTests(TestCase):
         self.pending.save(update_fields=["unit_price_snapshot"])
         result = inspect_cross_payer_consumption_repair(self.reservation.id)
         self.assertEqual((result.status, result.reason), ("noop", "consumption_already_priced"))
+
+    def test_reallocates_full_purchase_to_restored_fifo_without_accounting_changes(self):
+        owner = User.objects.create_user(username="fifo-owner", ticket_balance=9)
+        payer = User.objects.create_user(username="fifo-payer", ticket_balance=11)
+        tz = timezone.get_current_timezone()
+        consumed_at = [
+            timezone.make_aware(datetime(2026, 7, 22, 10), tz),
+            timezone.make_aware(datetime(2026, 8, 3, 10), tz),
+            timezone.make_aware(datetime(2026, 8, 4, 10), tz),
+            timezone.make_aware(datetime(2026, 8, 16, 14, 20), tz),
+            timezone.make_aware(datetime(2026, 8, 24, 13, 55), tz),
+        ]
+        reservations = []
+        for index, consumed in enumerate(consumed_at):
+            lesson_at = timezone.make_aware(datetime(2026, 8, 24, 9 + index), tz)
+            reservations.append(Reservation(
+                user=owner, coach=self.coach, court=self.court,
+                start_at=lesson_at, end_at=lesson_at + timedelta(hours=2),
+                tickets_used=1, ticket_consumed_at=consumed,
+                participant_ticket_price_snapshot=None if index == 2 else 3500,
+            ))
+        Reservation.objects.bulk_create(reservations)
+        purchase = TicketPurchase.objects.create(
+            user=payer, total_tickets=4, remaining_tickets=0, unit_price=3500,
+            purchased_at=timezone.make_aware(datetime(2026, 8, 16, 9, 51), tz),
+        )
+        consumptions = []
+        for index, reservation in enumerate(reservations):
+            linked = index != 2
+            consumptions.append(TicketConsumption.objects.create(
+                user=payer, reservation=reservation, tickets_used=1,
+                purchase=purchase if linked else None,
+                unit_price_snapshot=3500 if linked else None,
+            ))
+        change = TicketBurdenChange.objects.create(
+            reservation=reservations[2], previous_payer=owner, new_payer=payer,
+            tickets=1, created_by=self.coach,
+        )
+        user_state = list(User.objects.filter(pk__in=[owner.pk, payer.pk]).values_list("pk", "ticket_balance"))
+        ledger_state = list(TicketLedger.objects.values())
+        burden_state = list(TicketBurdenChange.objects.filter(pk=change.pk).values())
+        consumption_ids = list(TicketConsumption.objects.filter(pk__in=[row.pk for row in consumptions]).values_list("pk", flat=True))
+
+        preview = inspect_cross_payer_consumption_repair(reservations[2].pk)
+        self.assertEqual(preview.reason, "formal_cross_payer_fifo_reallocation_confirmed")
+        self.assertEqual(preview.displaced_consumption_ids, (consumptions[4].pk,))
+        result = repair_cross_payer_consumption(reservations[2].pk)
+
+        for row in consumptions:
+            row.refresh_from_db()
+        for reservation in reservations:
+            reservation.refresh_from_db()
+        purchase.refresh_from_db()
+        self.assertEqual(result.status, "repaired")
+        self.assertEqual(
+            [row.purchase_id for row in consumptions],
+            [purchase.pk, purchase.pk, purchase.pk, purchase.pk, None],
+        )
+        self.assertEqual(
+            [row.unit_price_snapshot for row in consumptions],
+            [3500, 3500, 3500, 3500, None],
+        )
+        self.assertEqual(reservations[2].participant_ticket_price_snapshot, 3500)
+        self.assertIsNone(reservations[4].participant_ticket_price_snapshot)
+        self.assertEqual(
+            reservations[1].participant_ticket_price_snapshot
+            + reservations[2].participant_ticket_price_snapshot,
+            7000,
+        )
+        self.assertEqual(purchase.remaining_tickets, 0)
+        self.assertEqual(list(User.objects.filter(pk__in=[owner.pk, payer.pk]).values_list("pk", "ticket_balance")), user_state)
+        self.assertEqual(list(TicketLedger.objects.values()), ledger_state)
+        self.assertEqual(list(TicketBurdenChange.objects.filter(pk=change.pk).values()), burden_state)
+        self.assertEqual(list(TicketConsumption.objects.filter(pk__in=consumption_ids).values_list("pk", flat=True)), consumption_ids)
+        self.assertEqual([reservation.tickets_used for reservation in reservations], [1] * 5)
+
+        second = repair_cross_payer_consumption(reservations[2].pk)
+        purchase.refresh_from_db()
+        self.assertEqual((second.status, second.reason), ("noop", "consumption_already_priced"))
+        self.assertEqual(purchase.remaining_tickets, 0)
