@@ -6,6 +6,8 @@ from .models import Reservation, TicketConsumption, TicketPurchase, User
 from .participant_price_snapshot import set_participant_ticket_price_snapshot
 from .settlement_models import MonthlySettlement
 
+TICKET_CONSUMPTION_FIFO_ORDER = ("reservation__ticket_consumed_at", "id")
+
 
 def create_pending_ticket_consumption(*, reservation, tickets_used=None):
     """Persist already-accounted usage awaiting a later purchase allocation."""
@@ -49,7 +51,7 @@ def allocate_pending_ticket_consumptions(purchase):
                 reservation__ticket_refunded_at__isnull=True,
                 reservation__ticket_consumed_at__lt=locked_purchase.purchased_at,
             )
-            .order_by("reservation__ticket_consumed_at", "id")
+            .order_by(*TICKET_CONSUMPTION_FIFO_ORDER)
         )
         linked = []
         affected_reservation_ids = set()
