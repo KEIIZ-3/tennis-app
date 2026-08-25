@@ -371,7 +371,7 @@ class SettlementWalletCourtCostTests(TestCase):
         self.assertEqual([row["expense_id"] for row in policy["detail_rows"]], [21])
 
     @patch("club.settlement_balance_policy._approved_monthly_expenses")
-    def test_ball_expense_is_split_by_held_participant_count(self, expenses_mock):
+    def test_ball_expense_is_split_by_profit(self, expenses_mock):
         expenses_mock.return_value = [
             {
                 "expense": SimpleNamespace(pk=22, category="ball"),
@@ -402,11 +402,11 @@ class SettlementWalletCourtCostTests(TestCase):
         self.assertEqual(sum(policy["burden_by_coach"].values()), 7801)
         self.assertEqual(
             policy["detail_rows"][0]["burden_rule"],
-            "完了済みレッスンの担当参加人数に比例",
+            "利益（参加費－コート代）比例",
         )
 
     @patch("club.settlement_balance_policy._approved_monthly_expenses")
-    def test_july_ball_expense_7568_uses_participant_ratio(self, expenses_mock):
+    def test_july_ball_expense_7568_uses_profit_ratio(self, expenses_mock):
         expenses_mock.return_value = [
             {
                 "expense": SimpleNamespace(pk=23, category="ball"),
@@ -686,7 +686,6 @@ class SettlementWalletCourtCostTests(TestCase):
             "refunded_total": 0,
         },
     )
-    @patch("club.settlement_balance_policy._held_participant_count_by_coach", return_value={1: 1})
     @patch("club.settlement_balance_policy._build_other_expense_policy")
     @patch("club.settlement_balance_policy._build_court_cost_policy")
     @patch("club.settlement_balance_policy.main_coaches")
@@ -697,7 +696,6 @@ class SettlementWalletCourtCostTests(TestCase):
         main_coaches_mock,
         court_policy_mock,
         other_expense_policy_mock,
-        _held_lesson_count_mock,
         _rain_refund_mock,
         _negative_carry_mock,
         _unpaid_salary_carry_mock,

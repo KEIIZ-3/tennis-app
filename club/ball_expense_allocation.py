@@ -80,3 +80,16 @@ def split_amount_by_participant_count(
         coach_id = adjustment_order[index % len(adjustment_order)]
         allocations[coach_id] += step
     return allocations
+
+
+def split_amount_by_profit(
+    amount, coach_ids, profit_by_coach, *, money, split_evenly
+):
+    """Allocate by non-negative lesson profit while preserving every yen."""
+    return split_amount_by_participant_count(
+        amount,
+        coach_ids,
+        profit_by_coach,
+        money=money,
+        split_evenly=split_evenly,
+    )

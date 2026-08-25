@@ -10,6 +10,7 @@ from .lesson_execution_storage import reservation_slot_key
 from .ball_expense_allocation import (
     held_participant_count_by_coach,
     split_amount_by_participant_count,
+    split_amount_by_profit,
 )
 from .settlement_coach_calculation import calculate_coach_wallets
 from .court_cost_allocation import allocate_court_cost
@@ -277,8 +278,19 @@ def _split_amount(amount, coach_ids):
     }
 
 
-def _split_amount_by_lesson_count(amount, coach_ids, lesson_count_by_coach):
+def _split_amount_by_profit(amount, coach_ids, profit_by_coach):
     """合計額を担当人数比で四捨五入し、差額は最少担当者から調整する。"""
+    return split_amount_by_profit(
+        amount,
+        coach_ids,
+        profit_by_coach,
+        money=_money,
+        split_evenly=_split_amount,
+    )
+
+
+def _split_amount_by_lesson_count(amount, coach_ids, lesson_count_by_coach):
+    """Keep the historical participant allocation API for diagnostics."""
     return split_amount_by_participant_count(
         amount,
         coach_ids,
@@ -919,12 +931,12 @@ def _build_other_expense_policy(
         target_ids = list(main_coach_ids)
         is_ball_expense = getattr(row["expense"], "category", "") == "ball"
         if is_ball_expense:
-            allocations = _split_amount_by_lesson_count(
+            allocations = _split_amount_by_profit(
                 amount,
                 target_ids,
                 participant_count_by_coach,
             )
-            rule = "完了済みレッスンの担当参加人数に比例"
+            rule = "利益（参加費－コート代）比例"
         else:
             allocations = _split_amount(amount, target_ids)
             rule = "メインコーチ3人均等負担"
@@ -1093,7 +1105,15 @@ def _apply_wallet_policy(result, year, month):
         ],
         build_court_cost_policy=_build_court_cost_policy,
         build_other_expense_policy=_build_other_expense_policy,
-        held_participant_count_by_coach=_held_participant_count_by_coach,
+        lesson_revenue_by_coach={
+            coach_id: sum(
+                _money(row.get("ticket_amount"))
+                + _money(row.get("preopen_paid_amount"))
+                for row in coach_rows
+                if getattr(row.get("coach"), "pk", None) == coach_id
+            )
+            for coach_id in main_coach_ids
+        },
         build_rain_refund_policy=_rain_refund_policy,
     )
     court_policy = expense_policies["court_policy"]
