@@ -102,7 +102,14 @@ def _common_expense_rows(snapshot, coach_id=None):
             for value in detail.get("burden_target_ids") or []
             if _money(value) > 0
         ]
-        allocations = _split_amount(amount, target_ids)
+        saved_allocations = detail.get("burden_by_coach") or {}
+        allocations = {
+            _money(target_id): _money(allocated)
+            for target_id, allocated in saved_allocations.items()
+            if _money(target_id) > 0
+        }
+        if not allocations:
+            allocations = _split_amount(amount, target_ids)
         own_amount = _money(allocations.get(coach_id)) if coach_id else amount
         if coach_id and own_amount <= 0:
             continue

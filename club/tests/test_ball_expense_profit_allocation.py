@@ -32,6 +32,15 @@ class BallExpenseProfitAllocationTests(TestCase):
         self.assertEqual(allocation, {1: 3334, 2: 3333, 3: 3333})
         self.assertEqual(sum(allocation.values()), 10000)
 
+    def test_zero_profit_coach_never_receives_rounding_adjustment(self):
+        allocation = self.allocate([1, 1, 0], amount=7801)
+        self.assertEqual(allocation[3], 0)
+        self.assertEqual(sum(allocation.values()), 7801)
+
+    def test_production_august_profit_ratio(self):
+        allocation = self.allocate([15850, 14150, 20700], amount=7568)
+        self.assertEqual(allocation, {1: 2366, 2: 2112, 3: 3090})
+
     def test_rounding_always_preserves_total(self):
         for amount in range(101):
             self.assertEqual(sum(self.allocate([7, 3, 1], amount).values()), amount)

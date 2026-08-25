@@ -968,6 +968,7 @@ def _build_other_expense_policy(
                 "amount": amount,
                 "payer_id": payer_id,
                 "burden_target_ids": target_ids,
+                "burden_by_coach": allocations,
                 "burden_rule": rule,
             }
         )
