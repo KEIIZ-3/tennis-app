@@ -5,7 +5,7 @@ from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
 from club.admin import TicketConsumptionAdmin, TicketLedgerAdmin, TicketPurchaseAdmin
-from club.models import TicketConsumption, TicketLedger, TicketPurchase
+from club.models import TicketCashReceipt, TicketConsumption, TicketLedger, TicketPurchase
 
 
 class TicketAdminSafetyTests(TestCase):
@@ -176,6 +176,8 @@ class TicketAdminSafetyTests(TestCase):
             TicketLedger.objects.filter(user=self.member, change_amount=4).count(),
             2,
         )
+        receipt = TicketCashReceipt.objects.get(ticket_purchase__user=self.member)
+        self.assertEqual(receipt.amount, 14000)
 
     def test_grant_form_different_tokens_create_distinct_purchases(self):
         self.client.force_login(self.superuser)
@@ -194,6 +196,7 @@ class TicketAdminSafetyTests(TestCase):
         self.member.refresh_from_db()
         self.assertEqual(self.member.ticket_balance, 6)
         self.assertEqual(TicketPurchase.objects.filter(user=self.member).count(), 3)
+        self.assertEqual(TicketCashReceipt.objects.filter(ticket_purchase__user=self.member).count(), 2)
 
     def test_repeated_admin_action_post_is_idempotent(self):
         self.client.force_login(self.superuser)
@@ -211,3 +214,20 @@ class TicketAdminSafetyTests(TestCase):
         self.assertEqual(self.member.ticket_balance, 8)
         self.assertEqual(TicketPurchase.objects.filter(user=self.member).count(), 2)
         self.assertEqual(TicketLedger.objects.filter(user=self.member).count(), 2)
+        receipt = TicketCashReceipt.objects.get(ticket_purchase__user=self.member)
+        self.assertEqual(receipt.amount, 14000)
+
+    def test_free_admin_grant_does_not_create_cash_receipt(self):
+        self.client.force_login(self.superuser)
+        url = reverse("admin:club_user_grant_tickets")
+        data = {
+            "ids": str(self.member.pk),
+            "idempotency_token": "44444444-4444-4444-8444-444444444444",
+            "grant_kind": "formal_free",
+            "tickets": 1,
+            "unit_price": 0,
+            "label": "free",
+            "note": "formal free grant",
+        }
+        self.assertEqual(self.client.post(url, data).status_code, 302)
+        self.assertFalse(TicketCashReceipt.objects.exists())

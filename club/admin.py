@@ -639,6 +639,7 @@ class UserAdmin(UserAdminTicketSummaryMixin, BaseUserAdmin):
                             created_by=request.user,
                             label=label,
                             idempotency_key=f"admin-grant:{idempotency_token}:{user.pk}",
+                            cash_received_at=timezone.now() if unit_price > 0 else None,
                         )
                         success_count += 1
                     except Exception as e:
@@ -702,6 +703,7 @@ class UserAdmin(UserAdminTicketSummaryMixin, BaseUserAdmin):
                     created_by=request.user,
                     label="1枚券",
                     idempotency_key=f"admin-single:{idempotency_token}:{user.pk}" if idempotency_token else None,
+                    cash_received_at=timezone.now(),
                 )
                 count += 1
             except Exception as e:
@@ -727,6 +729,7 @@ class UserAdmin(UserAdminTicketSummaryMixin, BaseUserAdmin):
                     created_by=request.user,
                     label="4枚セット",
                     idempotency_key=f"admin-set4:{idempotency_token}:{user.pk}" if idempotency_token else None,
+                    cash_received_at=timezone.now(),
                 )
                 count += 1
             except Exception as e:

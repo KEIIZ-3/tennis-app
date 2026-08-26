@@ -18,14 +18,22 @@ def record_ticket_cash_receipt(
         raise ValidationError("対応していない支払方法です。")
     ensure_accounting_month_is_open(received_at)
     normalized_key = (idempotency_key or "").strip() or None
-    if normalized_key:
-        existing = TicketCashReceipt.objects.filter(idempotency_key=normalized_key).first()
-        if existing:
-            return existing, False
     try:
         with transaction.atomic():
+            locked_purchase = TicketPurchase.objects.select_for_update().get(pk=ticket_purchase.pk)
+            existing = TicketCashReceipt.objects.filter(
+                ticket_purchase=locked_purchase, reversed_at__isnull=True
+            ).first()
+            if existing:
+                if (
+                    existing.amount == int(amount)
+                    and existing.received_at == received_at
+                    and existing.payment_method == payment_method
+                ):
+                    return existing, False
+                raise ValidationError("An active cash receipt already exists for this ticket purchase.")
             receipt = TicketCashReceipt.objects.create(
-                ticket_purchase=ticket_purchase,
+                ticket_purchase=locked_purchase,
                 amount=amount,
                 received_at=received_at,
                 payment_method=payment_method,
