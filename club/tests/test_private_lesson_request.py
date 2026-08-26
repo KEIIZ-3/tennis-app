@@ -57,7 +57,8 @@ class PrivateLessonRequestTests(TestCase):
             is_active=True,
             court_type=Court.COURT_SONO,
         )
-        lesson_date = timezone.localdate() + timedelta(days=5)
+        next_month = timezone.localdate().replace(day=1) + timedelta(days=32)
+        lesson_date = next_month.replace(day=1)
         self.start_at = timezone.make_aware(datetime.combine(lesson_date, time(18)))
         self.end_at = self.start_at + timedelta(hours=2)
 
