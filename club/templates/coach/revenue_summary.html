@@ -557,7 +557,7 @@
           <tbody>
             {% for row in ticket_purchase_rows %}
               <tr>
-                <td>{{ row.purchase.purchased_at|date:"m/d" }}</td>
+                <td>{{ row.receipt.received_at|date:"m/d" }}</td>
                 <td>{{ row.member_name }}</td>
                 <td>{{ row.label }}</td>
                 <td>{{ row.tickets }}枚</td>

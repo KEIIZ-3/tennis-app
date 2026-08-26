@@ -5,7 +5,7 @@ from django.db.models import Count, Max, Q, Sum
 from django.shortcuts import render
 from django.utils import timezone
 
-from .models import Reservation, TicketPurchase, User
+from .models import Reservation, TicketCashReceipt, User
 
 
 def _can_view_analytics(user):
@@ -62,15 +62,12 @@ def analytics_dashboard(request):
         payment_status=Reservation.PAYMENT_STATUS_PAID,
     ).aggregate(total=Sum("payment_amount"))["total"] or 0
 
-    ticket_purchases = TicketPurchase.objects.filter(
-        purchased_at__date__gte=start_date,
-        purchased_at__date__lte=end_date,
+    ticket_cash_receipts = TicketCashReceipt.objects.filter(
+        received_at__date__gte=start_date,
+        received_at__date__lte=end_date,
         reversed_at__isnull=True,
     )
-    ticket_sales = sum(
-        int(item.total_tickets or 0) * int(item.unit_price or 0)
-        for item in ticket_purchases.only("total_tickets", "unit_price")
-    )
+    ticket_sales = sum(int(item.amount or 0) for item in ticket_cash_receipts.only("amount"))
 
     lesson_keys = set()
     lesson_hours = 0
@@ -176,7 +173,7 @@ def analytics_dashboard(request):
             "cash_sales": int(cash_paid),
             "ticket_sales": int(ticket_sales),
             "recorded_sales": int(cash_paid) + int(ticket_sales),
-            "ticket_purchase_count": ticket_purchases.count(),
+            "ticket_purchase_count": ticket_cash_receipts.count(),
             "member_count": members.count(),
             "inactive_member_count": inactive_member_count,
             "low_ticket_count": low_ticket_count,

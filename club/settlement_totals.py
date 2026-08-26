@@ -1,7 +1,7 @@
 def calculate_settlement_totals(
     *,
     coach_rows,
-    ticket_purchases,
+    ticket_cash_receipts,
     stringing_total,
     approved_common_expense_total,
     submitted_personal_expense_rows,
@@ -12,10 +12,7 @@ def calculate_settlement_totals(
     preopen_unpaid_total = sum(row["preopen_unpaid_amount"] for row in coach_rows)
     ticket_amount_total = sum(row["ticket_amount"] for row in coach_rows)
 
-    ticket_purchase_total = sum(
-        money(purchase.total_tickets) * money(purchase.unit_price)
-        for purchase in ticket_purchases
-    )
+    ticket_purchase_total = sum(money(receipt.amount) for receipt in ticket_cash_receipts)
 
     salary_due_total = sum(row["salary_due"] for row in coach_rows)
     reimbursement_due_total = sum(

@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 
 from .lesson_participants import CONFIRMED_PARTICIPANT_STATUSES
 from .lesson_execution_storage import read_status_map
-from .models import CoachExpense, Reservation, StringingOrder, TicketPurchase
+from .models import CoachExpense, Reservation, StringingOrder, TicketCashReceipt
 from .settlement_models import MonthlySettlement
 from .stringing_service import recognized_stringing_orders
 
@@ -57,12 +57,12 @@ def load_monthly_settlement_data(*, month_start, next_month):
         .order_by("expense_date", "id")
     )
 
-    ticket_purchases = list(
-        TicketPurchase.objects.filter(
-            purchased_at__date__gte=month_start,
-            purchased_at__date__lt=next_month,
+    ticket_cash_receipts = list(
+        TicketCashReceipt.objects.filter(
+            received_at__date__gte=month_start,
+            received_at__date__lt=next_month,
             reversed_at__isnull=True,
-        ).exclude(purchase_type=TicketPurchase.PURCHASE_TYPE_LEGACY)
+        ).select_related("ticket_purchase")
     )
 
     settlement = MonthlySettlement.objects.filter(
@@ -75,6 +75,6 @@ def load_monthly_settlement_data(*, month_start, next_month):
         "reservations": reservations,
         "stringing_orders": stringing_orders,
         "all_expenses": all_expenses,
-        "ticket_purchases": ticket_purchases,
+        "ticket_cash_receipts": ticket_cash_receipts,
         "execution_status_map": read_status_map(settlement) if settlement else {},
     }

@@ -33,6 +33,7 @@ from .models import (
     ShopProductMaster,
     StringingOrder,
     TicketConsumption,
+    TicketCashReceipt,
     TicketLedger,
     TicketPurchase,
     TicketPurchaseReservation,
@@ -1246,6 +1247,24 @@ class TicketPurchaseAdmin(TicketAuditAdmin):
     list_filter = ("purchase_type", "unit_price", "purchased_at", "expires_at", "reversed_at")
     search_fields = ("user__username", "user__full_name", "label", "note")
     autocomplete_fields = ("user", "created_by")
+
+
+@admin.register(TicketCashReceipt)
+class TicketCashReceiptAdmin(admin.ModelAdmin):
+    list_display = ("id", "ticket_purchase", "amount", "payment_method", "received_at", "reversed_at")
+    list_filter = ("payment_method", "received_at", "reversed_at")
+    search_fields = ("ticket_purchase__user__username", "ticket_purchase__user__full_name", "idempotency_key")
+    autocomplete_fields = ("ticket_purchase", "created_by", "reversed_by")
+    readonly_fields = (
+        "ticket_purchase", "amount", "payment_method", "received_at", "created_by",
+        "created_at", "idempotency_key", "reversed_at", "reversed_by", "reversal_reason",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(TicketPurchaseReservation)

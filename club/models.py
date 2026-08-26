@@ -869,6 +869,46 @@ class TicketPurchase(models.Model):
         return "価格不明券"
 
 
+class TicketCashReceipt(models.Model):
+    PAYMENT_METHOD_CASH = "cash"
+    PAYMENT_METHOD_CHOICES = ((PAYMENT_METHOD_CASH, "現金"),)
+
+    ticket_purchase = models.ForeignKey(
+        TicketPurchase, on_delete=models.PROTECT, related_name="cash_receipts"
+    )
+    amount = models.PositiveIntegerField()
+    received_at = models.DateTimeField()
+    payment_method = models.CharField(
+        max_length=20, choices=PAYMENT_METHOD_CHOICES, default=PAYMENT_METHOD_CASH
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_ticket_cash_receipts",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    idempotency_key = models.CharField(max_length=255, null=True, blank=True, unique=True)
+    reversed_at = models.DateTimeField(null=True, blank=True)
+    reversed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="reversed_ticket_cash_receipts",
+    )
+    reversal_reason = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        ordering = ["received_at", "id"]
+
+    def __str__(self):
+        return f"{self.ticket_purchase} / {self.amount}円 / {self.received_at}"
+
+    def clean(self):
+        if self.amount <= 0:
+            raise ValidationError("現金受領額は1円以上にしてください。")
+
+
 class TicketPurchaseReservation(models.Model):
     STATUS_PENDING = "pending"
     STATUS_APPROVED = "approved"
