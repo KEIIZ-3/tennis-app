@@ -2,6 +2,7 @@ from datetime import date, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
@@ -19,6 +20,107 @@ from club.settlement_balance_policy import (
     _unpaid_salary_carry_in_by_coach,
 )
 from club.settlement_service import matching_active_payment
+from club.settlement_models import (
+    CoachMonthlySettlement,
+    MonthlySettlement,
+    SettlementPayment,
+)
+
+
+class SettlementCarryInDatabaseTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.coaches = [
+            User.objects.create_user(
+                username=f"carry_coach_{index}", role=User.ROLE_COACH
+            )
+            for index in range(3)
+        ]
+        self.july = MonthlySettlement.objects.create(
+            year=2026,
+            month=7,
+            status=MonthlySettlement.STATUS_DRAFT,
+        )
+
+    def _row(self, coach, *, entitlement, unpaid, negative_carry=0):
+        return CoachMonthlySettlement.objects.create(
+            monthly_settlement=self.july,
+            coach=coach,
+            salary_due=max(entitlement, 0),
+            salary_unpaid=unpaid,
+            calculation_snapshot={
+                "wallet_final_entitlement": entitlement,
+                "negative_carry": negative_carry,
+            },
+        )
+
+    def _payment(self, coach, amount, *, reversed=False, payment_type="salary"):
+        SettlementPayment.objects.bulk_create([
+            SettlementPayment(
+                monthly_settlement=self.july,
+                coach=coach,
+                payment_type=payment_type,
+                amount=amount,
+                paid_date=date(2026, 7, 31),
+                is_reversed=reversed,
+            )
+        ])
+
+    def test_production_equivalent_draft_month_carries_salary_and_negative_balances(self):
+        self._row(self.coaches[0], entitlement=19034, unpaid=19034)
+        self._row(
+            self.coaches[1], entitlement=-17281, unpaid=0,
+            negative_carry=17281,
+        )
+        self._row(self.coaches[2], entitlement=30781, unpaid=30781)
+        coach_ids = [coach.pk for coach in self.coaches]
+
+        self.assertEqual(
+            _unpaid_salary_carry_in_by_coach(2026, 8, coach_ids),
+            {self.coaches[0].pk: 19034, self.coaches[2].pk: 30781},
+        )
+        self.assertEqual(
+            _negative_carry_in_by_coach(2026, 8, coach_ids),
+            {self.coaches[1].pk: 17281},
+        )
+        self.assertEqual(
+            _negative_carry_in_by_coach(2026, 8, coach_ids),
+            {self.coaches[1].pk: 17281},
+        )
+
+    def test_active_partial_and_full_payments_leave_only_salary_remainder(self):
+        self._row(self.coaches[0], entitlement=19034, unpaid=19034)
+        self._row(self.coaches[1], entitlement=19034, unpaid=19034)
+        self._payment(self.coaches[0], 12000)
+        self._payment(self.coaches[1], 19034)
+
+        self.assertEqual(
+            _unpaid_salary_carry_in_by_coach(
+                2026, 8, [coach.pk for coach in self.coaches]
+            ),
+            {self.coaches[0].pk: 7034},
+        )
+
+    def test_reversed_payment_does_not_reduce_carry(self):
+        self._row(self.coaches[0], entitlement=19034, unpaid=7034)
+        self._payment(self.coaches[0], 12000, reversed=True)
+
+        self.assertEqual(
+            _unpaid_salary_carry_in_by_coach(2026, 8, [self.coaches[0].pk]),
+            {self.coaches[0].pk: 19034},
+        )
+
+    def test_reimbursement_payment_reduces_combined_wallet_balance_once(self):
+        self._row(self.coaches[0], entitlement=19034, unpaid=19034)
+        self._payment(
+            self.coaches[0], 3000,
+            payment_type=SettlementPayment.PAYMENT_TYPE_REIMBURSEMENT,
+        )
+
+        self.assertEqual(
+            _unpaid_salary_carry_in_by_coach(2026, 8, [self.coaches[0].pk]),
+            {self.coaches[0].pk: 16034},
+        )
 
 
 class SettlementWalletCourtCostTests(TestCase):
@@ -108,7 +210,7 @@ class SettlementWalletCourtCostTests(TestCase):
         self.assertEqual(_automatic_court_cost(reservation), 6400)
 
     @patch("club.settlement_models.CoachMonthlySettlement.objects.filter")
-    def test_negative_carry_uses_only_previous_closed_month(self, filter_mock):
+    def test_negative_carry_uses_previous_month_regardless_of_status(self, filter_mock):
         filter_mock.return_value.values.return_value = [
             {
                 "coach_id": 2,
@@ -122,7 +224,6 @@ class SettlementWalletCourtCostTests(TestCase):
         filter_mock.assert_called_once_with(
             monthly_settlement__year=2026,
             monthly_settlement__month=7,
-            monthly_settlement__status="closed",
             coach_id__in=[1, 2, 3],
         )
 
@@ -136,15 +237,32 @@ class SettlementWalletCourtCostTests(TestCase):
         filter_mock.assert_called_once_with(
             monthly_settlement__year=2026,
             monthly_settlement__month=12,
-            monthly_settlement__status="closed",
             coach_id__in=[2],
         )
 
+    @patch("club.settlement_models.SettlementPayment.objects.filter")
     @patch("club.settlement_models.CoachMonthlySettlement.objects.filter")
-    def test_unpaid_salary_carry_uses_previous_closed_month(self, filter_mock):
+    def test_unpaid_salary_carry_uses_previous_month_payment_balance(
+        self, filter_mock, payment_filter_mock
+    ):
         filter_mock.return_value.values.return_value = [
-            {"coach_id": 1, "salary_unpaid": 221},
-            {"coach_id": 2, "salary_unpaid": 0},
+            {
+                "monthly_settlement_id": 10,
+                "coach_id": 1,
+                "salary_due": 221,
+                "salary_unpaid": 221,
+                "calculation_snapshot": {"wallet_final_entitlement": 221},
+            },
+            {
+                "monthly_settlement_id": 10,
+                "coach_id": 2,
+                "salary_due": 100,
+                "salary_unpaid": 0,
+                "calculation_snapshot": {"wallet_final_entitlement": 100},
+            },
+        ]
+        payment_filter_mock.return_value.values.return_value.annotate.return_value = [
+            {"monthly_settlement_id": 10, "coach_id": 2, "total": 100}
         ]
 
         carry = _unpaid_salary_carry_in_by_coach(2026, 8, [1, 2, 3])
@@ -153,7 +271,6 @@ class SettlementWalletCourtCostTests(TestCase):
         filter_mock.assert_called_once_with(
             monthly_settlement__year=2026,
             monthly_settlement__month=7,
-            monthly_settlement__status="closed",
             coach_id__in=[1, 2, 3],
         )
 
