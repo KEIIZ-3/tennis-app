@@ -1,0 +1,73 @@
+{% extends "admin/base_site.html" %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">ホーム</a> &rsaquo;
+  <a href="{% url 'admin:club_ticketpurchase_changelist' %}">チケット付与履歴</a> &rsaquo; 修正
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main" style="max-width:760px;">
+  <h1>チケット付与履歴の修正</h1>
+  <div class="module" style="padding:16px; margin-bottom:16px;">
+    <h2>現在の付与内容</h2>
+    <p><strong>会員名:</strong> {{ purchase.user.display_name }}</p>
+    <p><strong>付与日時:</strong> {{ purchase.purchased_at|date:"Y-m-d H:i" }}</p>
+    <p><strong>種別:</strong> {{ purchase.get_purchase_type_display }}</p>
+    <p><strong>枚数・単価・合計:</strong> {{ purchase.total_tickets }}枚 × {{ purchase.unit_price }}円 = {% widthratio purchase.total_tickets 1 purchase.unit_price %}円</p>
+    <p><strong>残枚数:</strong> {{ purchase.remaining_tickets }}枚</p>
+    <p><strong>メモ:</strong> {{ purchase.note|default:"-" }}</p>
+    <p><strong>付与者:</strong> {{ purchase.created_by|default:"-" }}</p>
+    {% if receipt %}
+      <p><strong>現金受領:</strong> {{ receipt.amount }}円 / {{ receipt.received_at|date:"Y-m-d H:i" }}</p>
+    {% else %}
+      <p><strong>現金受領:</strong> 記録なし</p>
+    {% endif %}
+  </div>
+
+  {% if is_confirmation %}
+    <div style="padding:16px; border:2px solid #ba2121; border-radius:8px; margin-bottom:16px;">
+      <h2>最終確認</h2>
+      <p><strong>会員名:</strong> {{ purchase.user.display_name }}</p>
+      <p><strong>現在:</strong> {{ purchase.total_tickets }}枚 × {{ purchase.unit_price }}円（{{ purchase.get_purchase_type_display }}）</p>
+      <p><strong>修正後:</strong> {{ form.cleaned_data.tickets }}枚 × {{ form.cleaned_data.unit_price }}円</p>
+      <p><strong>残高への影響:</strong> {{ impact.balance_change|stringformat:"+d" }}枚</p>
+      <p><strong>使用済みチケットへの影響:</strong> {{ impact.used_tickets }}枚を含む全有効消費をFIFOで再配賦（予約の使用枚数は不変）</p>
+      <p><strong>現金受領への影響:</strong>
+        {% if receipt %}旧 {{ receipt.amount }}円 → 新 {{ form.cleaned_data.cash_amount }}円（差額 {{ impact.cash_difference|stringformat:"+d" }}円）{% else %}なし{% endif %}
+      </p>
+      <p><strong>修正理由:</strong> {{ form.cleaned_data.correction_reason }}</p>
+    </div>
+    <form method="post">
+      {% csrf_token %}
+      {% for field in form %}{{ field.as_hidden }}{% endfor %}
+      <input type="hidden" name="action" value="confirm">
+      <div class="submit-row">
+        <input type="submit" class="default" value="修正を確定する">
+        <a class="button" href="{% url 'admin:club_ticketpurchase_correct' purchase.pk %}">入力へ戻る</a>
+      </div>
+    </form>
+  {% else %}
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+      <fieldset class="module aligned">
+        {% for field in form %}
+          <div class="form-row">
+            {{ field.errors }}
+            {{ field.label_tag }} {{ field }}
+          </div>
+        {% endfor %}
+      </fieldset>
+      {% if receipt %}
+        <p class="help">現金受領記録は元履歴で取消し、新しい付与履歴へ再作成されます。金額変更時は「明示した内容へ変更」を選び、受領額と受領日を確認してください。</p>
+      {% endif %}
+      <div class="submit-row">
+        <input type="submit" class="default" value="確認画面へ">
+        <a class="button" href="{% url 'admin:club_ticketpurchase_changelist' %}">キャンセル</a>
+      </div>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

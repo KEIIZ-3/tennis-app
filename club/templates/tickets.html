@@ -407,8 +407,11 @@
               <th>種別</th>
               <th>価格帯</th>
               <th>購入枚数</th>
+              <th>合計額</th>
               <th>残数</th>
               <th>メモ</th>
+              <th>付与者</th>
+              <th>状態・修正履歴</th>
             </tr>
           </thead>
           <tbody>
@@ -424,8 +427,21 @@
                   {% endif %}
                 </td>
                 <td>{{ purchase.total_tickets }}枚</td>
+                <td>{% widthratio purchase.total_tickets 1 purchase.unit_price %}円</td>
                 <td><strong>{{ purchase.remaining_tickets }}枚</strong></td>
                 <td>{{ purchase.note|default:purchase.label|default:"-" }}</td>
+                <td>{{ purchase.created_by|default:"-" }}</td>
+                <td>
+                  {% if purchase.reversed_at and purchase.corrected_to %}
+                    修正済み（修正先 #{{ purchase.corrected_to_id }}）<br>{{ purchase.corrected_to.correction_reason }}
+                  {% elif purchase.reversed_at %}
+                    取消済み<br>{{ purchase.reversal_reason|default:"-" }}
+                  {% elif purchase.corrected_from_id %}
+                    有効（修正元 #{{ purchase.corrected_from_id }}）<br>{{ purchase.correction_reason }}
+                  {% else %}
+                    有効
+                  {% endif %}
+                </td>
               </tr>
             {% endfor %}
           </tbody>
@@ -450,6 +466,22 @@
                 {% else %}
                   <span class="ticket-chip unknown">価格不明券</span>
                 {% endif %}
+              </div>
+            </div>
+            <div class="mobile-info-row">
+              <div class="mobile-info-label">合計額・付与者</div>
+              <div class="mobile-info-value">{% widthratio purchase.total_tickets 1 purchase.unit_price %}円 / {{ purchase.created_by|default:"-" }}</div>
+            </div>
+            <div class="mobile-info-row">
+              <div class="mobile-info-label">状態</div>
+              <div class="mobile-info-value">
+                {% if purchase.reversed_at and purchase.corrected_to %}
+                  修正済み（修正先 #{{ purchase.corrected_to_id }}）<br>{{ purchase.corrected_to.correction_reason }}
+                {% elif purchase.reversed_at %}
+                  取消済み / {{ purchase.reversal_reason|default:"-" }}
+                {% elif purchase.corrected_from_id %}
+                  有効（修正元 #{{ purchase.corrected_from_id }}）<br>{{ purchase.correction_reason }}
+                {% else %}有効{% endif %}
               </div>
             </div>
             <div class="mobile-info-row">
