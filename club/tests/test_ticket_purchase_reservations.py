@@ -12,6 +12,7 @@ from club.models import (
     Reservation,
     TicketLedger,
     TicketConsumption,
+    TicketCashReceipt,
     TicketPurchase,
     TicketPurchaseReservation,
     User,
@@ -56,6 +57,10 @@ class TicketPurchaseReservationServiceTests(TestCase):
         purchase = TicketPurchase.objects.get()
         self.assertEqual((purchase.total_tickets, purchase.unit_price), (4, 3500))
         self.assertEqual(purchase.created_by, self.main_coach)
+        receipt = TicketCashReceipt.objects.get(ticket_purchase=purchase)
+        self.assertEqual(receipt.amount, 14000)
+        self.assertEqual(receipt.received_at, approved.approved_at)
+        self.assertEqual(receipt.created_by, self.main_coach)
         self.assertAlmostEqual(purchase.expires_at, ticket_expiration_from(purchase.purchased_at), delta=timedelta(seconds=1))
         pending.refresh_from_db()
         self.assertEqual(pending.status, TicketPurchaseReservation.STATUS_APPROVED)
@@ -75,7 +80,7 @@ class TicketPurchaseReservationServiceTests(TestCase):
             approve_purchase_reservation(reservation_id=pending.pk, coach=self.contractor)
         self.assertFalse(TicketPurchase.objects.exists())
 
-    def test_unused_single_and_set4_can_be_reversed_with_audit_and_no_net_sales(self):
+    def test_unused_single_and_set4_can_be_reversed_without_erasing_cash_audit(self):
         for product_code, tickets, amount in (("single", 1, 4000), ("set4", 4, 14000)):
             before_balance = self.member.ticket_balance
             row = create_purchase_reservation(user=self.member, product_code=product_code)
@@ -97,6 +102,7 @@ class TicketPurchaseReservationServiceTests(TestCase):
             self.assertEqual(reversed_row.reversal_reason, "test")
             self.assertEqual((purchase.total_tickets, purchase.unit_price, purchase.remaining_tickets), (tickets, amount // tickets, 0))
             self.assertIsNotNone(purchase.reversed_at)
+            self.assertTrue(TicketCashReceipt.objects.filter(ticket_purchase=purchase, reversed_at__isnull=True).exists())
             self.assertEqual(
                 sum(p.total_tickets * p.unit_price for p in TicketPurchase.objects.filter(reversed_at__isnull=True)),
                 0,

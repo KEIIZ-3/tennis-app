@@ -627,7 +627,7 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
 
     totals = calculate_settlement_totals(
         coach_rows=coach_rows,
-        ticket_purchases=monthly_data["ticket_purchases"],
+        ticket_cash_receipts=monthly_data["ticket_cash_receipts"],
         stringing_total=stringing_total,
         approved_common_expense_total=approved_common_expense_total,
         submitted_personal_expense_rows=submitted_personal_expense_rows,

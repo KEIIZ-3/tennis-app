@@ -52,6 +52,7 @@ from .models import (
     ShopProductMaster,
     StringingOrder,
     TicketConsumption,
+    TicketCashReceipt,
     TicketLedger,
     TicketPurchase,
     TicketPurchaseReservation,
@@ -6228,8 +6229,12 @@ def coach_admin_settlement(request):
     preopen_unpaid_total = sum(row["preopen_unpaid_amount"] for row in coach_rows)
     ticket_amount_total = sum(row["ticket_amount"] for row in coach_rows)
     ticket_purchase_total = sum(
-        _money(purchase.total_tickets) * _money(purchase.unit_price)
-        for purchase in TicketPurchase.objects.filter(purchased_at__date__gte=month_start, purchased_at__date__lt=next_month, reversed_at__isnull=True)
+        _money(receipt.amount)
+        for receipt in TicketCashReceipt.objects.filter(
+            received_at__date__gte=month_start,
+            received_at__date__lt=next_month,
+            reversed_at__isnull=True,
+        )
     )
     salary_due_total = sum(row["salary_due"] for row in coach_rows)
     reimbursement_due_total = sum(row["reimbursement_due"] for row in coach_rows)
@@ -9154,19 +9159,21 @@ def coach_revenue_summary(request):
     ticket_purchase_rows = []
     ticket_purchase_total = 0
     ticket_purchase_qs = (
-        TicketPurchase.objects.filter(
-            purchased_at__date__gte=month_start,
-            purchased_at__date__lt=month_next,
+        TicketCashReceipt.objects.filter(
+            received_at__date__gte=month_start,
+            received_at__date__lt=month_next,
             reversed_at__isnull=True,
         )
-        .select_related("user", "created_by")
-        .order_by("purchased_at", "id")
+        .select_related("ticket_purchase__user", "ticket_purchase__created_by")
+        .order_by("received_at", "id")
     )
-    for purchase in ticket_purchase_qs:
-        amount = _money(purchase.unit_price) * _money(purchase.total_tickets)
+    for receipt in ticket_purchase_qs:
+        purchase = receipt.ticket_purchase
+        amount = _money(receipt.amount)
         ticket_purchase_total += amount
         ticket_purchase_rows.append(
             {
+                "receipt": receipt,
                 "purchase": purchase,
                 "member_name": _display_name(purchase.user),
                 "label": purchase.label or purchase.get_purchase_type_display(),
