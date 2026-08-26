@@ -3100,7 +3100,11 @@ def tickets_view(request):
         return survey_redirect
 
     ledgers = TicketLedger.objects.filter(user=request.user).select_related("reservation", "fixed_lesson")[:30]
-    purchases = TicketPurchase.objects.filter(user=request.user).order_by("-purchased_at", "-id")[:30]
+    purchases = (
+        TicketPurchase.objects.filter(user=request.user)
+        .select_related("created_by", "reversed_by", "corrected_from", "corrected_to")
+        .order_by("-purchased_at", "-id")[:30]
+    )
     purchase_reservations = TicketPurchaseReservation.objects.filter(user=request.user).select_related("ticket_purchase")[:30]
     consumptions = (
         TicketConsumption.objects.filter(user=request.user)

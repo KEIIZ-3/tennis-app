@@ -845,6 +845,14 @@ class TicketPurchase(models.Model):
         related_name="reversed_ticket_purchases",
     )
     reversal_reason = models.CharField(max_length=30, blank=True, default="")
+    corrected_from = models.OneToOneField(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="corrected_to",
+    )
+    correction_reason = models.CharField(max_length=255, blank=True, default="")
 
     class Meta:
         ordering = ["purchased_at", "id"]

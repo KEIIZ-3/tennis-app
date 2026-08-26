@@ -34,6 +34,54 @@ class LoginForm(forms.Form):
     password = forms.CharField(label="パスワード", widget=forms.PasswordInput)
 
 
+class TicketPurchaseCorrectionForm(forms.Form):
+    tickets = forms.IntegerField(label="チケット枚数", min_value=1)
+    unit_price = forms.IntegerField(label="単価", min_value=0)
+    purchase_type = forms.ChoiceField(
+        label="購入種別", choices=TicketPurchase.PURCHASE_TYPE_CHOICES
+    )
+    purchased_at = forms.DateTimeField(
+        label="購入日時／受領日",
+        widget=forms.DateTimeInput(attrs={"type": "datetime-local"}),
+        input_formats=["%Y-%m-%dT%H:%M"],
+    )
+    note = forms.CharField(label="メモ", max_length=255, required=False)
+    correction_reason = forms.CharField(
+        label="修正理由", max_length=255, widget=forms.Textarea(attrs={"rows": 3})
+    )
+    cash_mode = forms.ChoiceField(
+        label="現金受領記録",
+        choices=(("none", "受領記録なし"), ("preserve", "金額・受領日を維持"), ("replace", "明示した内容へ変更")),
+    )
+    cash_amount = forms.IntegerField(label="修正後の現金受領額", min_value=1, required=False)
+    cash_received_at = forms.DateTimeField(
+        label="修正後の現金受領日",
+        required=False,
+        widget=forms.DateTimeInput(attrs={"type": "datetime-local"}),
+        input_formats=["%Y-%m-%dT%H:%M"],
+    )
+    idempotency_key = forms.UUIDField(widget=forms.HiddenInput)
+
+    def __init__(self, *args, purchase, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.purchase = purchase
+        receipt = purchase.cash_receipts.filter(reversed_at__isnull=True).first()
+        if receipt is None:
+            self.fields["cash_mode"].choices = (("none", "受領記録なし"),)
+
+    def clean(self):
+        cleaned = super().clean()
+        receipt = self.purchase.cash_receipts.filter(reversed_at__isnull=True).first()
+        mode = cleaned.get("cash_mode")
+        if receipt and mode == "replace":
+            if cleaned.get("cash_amount") is None or cleaned.get("cash_received_at") is None:
+                raise forms.ValidationError("現金受領額を変更する場合は、金額と受領日を明示してください。")
+        if receipt and mode == "preserve":
+            cleaned["cash_amount"] = receipt.amount
+            cleaned["cash_received_at"] = receipt.received_at
+        return cleaned
+
+
 class MemberRegistrationForm(UserCreationForm):
     full_name = forms.CharField(label="お名前", max_length=150, required=True)
     email = forms.EmailField(label="メールアドレス", required=True)

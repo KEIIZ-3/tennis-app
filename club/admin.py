@@ -13,12 +13,13 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, Q
 from django.http import HttpResponseRedirect
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse
+from django.utils.html import format_html
 from django.utils import timezone
 
 from .expense_admin_type_editor import ExpenseTypeAdminMixin
-from .forms import TicketGrantAdminForm
+from .forms import TicketGrantAdminForm, TicketPurchaseCorrectionForm
 from .models import (
     CoachAvailability,
     CoachExpense,
@@ -42,6 +43,7 @@ from .models import (
 )
 from .reservation_admin_history import ReservationAdminHistoryMixin
 from .user_admin_ticket_summary import UserAdminTicketSummaryMixin
+from .ticket_purchase_correction_service import correct_ticket_purchase, correction_impact
 
 
 admin.site.site_header = "Play Design Tennis 管理サイト"
@@ -1243,13 +1245,143 @@ class TicketPurchaseAdmin(TicketAuditAdmin):
         "unit_price",
         "total_tickets",
         "remaining_tickets",
+        "total_amount_display",
         "label",
+        "created_by",
+        "status_display",
+        "correction_link_display",
+        "reason_display",
+        "correction_action",
         "purchased_at",
         "expires_at",
     )
     list_filter = ("purchase_type", "unit_price", "purchased_at", "expires_at", "reversed_at")
     search_fields = ("user__username", "user__full_name", "label", "note")
     autocomplete_fields = ("user", "created_by")
+    readonly_fields = (
+        "user", "purchase_type", "total_tickets", "remaining_tickets", "unit_price",
+        "label", "note", "created_by", "purchased_at", "expires_at", "created_at",
+        "idempotency_key", "reversed_at", "reversed_by", "reversal_reason",
+        "corrected_from", "correction_reason",
+    )
+
+    def get_urls(self):
+        return [
+            path(
+                "<int:pk>/correct/",
+                self.admin_site.admin_view(self.correct_view),
+                name="club_ticketpurchase_correct",
+            )
+        ] + super().get_urls()
+
+    @admin.display(description="合計額")
+    def total_amount_display(self, obj):
+        return f"{obj.total_tickets * obj.unit_price:,}円"
+
+    @admin.display(description="状態")
+    def status_display(self, obj):
+        if obj.reversed_at:
+            return "修正済み" if hasattr(obj, "corrected_to") else "取消済み"
+        return "有効"
+
+    @admin.display(description="修正元／修正先")
+    def correction_link_display(self, obj):
+        related = obj.corrected_from_id
+        label = "修正元"
+        if not related:
+            try:
+                related = obj.corrected_to.pk
+                label = "修正先"
+            except TicketPurchase.DoesNotExist:
+                return "-"
+        url = reverse("admin:club_ticketpurchase_change", args=[related])
+        return format_html('<a href="{}">{} #{}</a>', url, label, related)
+
+    @admin.display(description="操作")
+    def correction_action(self, obj):
+        if obj.reversed_at:
+            return "-"
+        url = reverse("admin:club_ticketpurchase_correct", args=[obj.pk])
+        return format_html('<a class="button" href="{}">修正</a>', url)
+
+    @admin.display(description="取消／修正理由")
+    def reason_display(self, obj):
+        if obj.correction_reason:
+            return obj.correction_reason
+        try:
+            return obj.corrected_to.correction_reason
+        except TicketPurchase.DoesNotExist:
+            return obj.reversal_reason or "-"
+
+    def correct_view(self, request, pk):
+        purchase = get_object_or_404(
+            TicketPurchase.objects.select_related("user", "created_by", "reversed_by"), pk=pk
+        )
+        receipt = purchase.cash_receipts.filter(reversed_at__isnull=True).first()
+        initial = {
+            "tickets": purchase.total_tickets,
+            "unit_price": purchase.unit_price,
+            "purchase_type": purchase.purchase_type,
+            "purchased_at": timezone.localtime(purchase.purchased_at).strftime("%Y-%m-%dT%H:%M"),
+            "note": purchase.note,
+            "cash_mode": "preserve" if receipt else "none",
+            "cash_amount": receipt.amount if receipt else None,
+            "cash_received_at": (
+                timezone.localtime(receipt.received_at).strftime("%Y-%m-%dT%H:%M") if receipt else None
+            ),
+            "idempotency_key": uuid.uuid4(),
+        }
+        form = TicketPurchaseCorrectionForm(
+            request.POST or None, purchase=purchase, initial=initial
+        )
+        is_confirmation = False
+        impact = None
+        if request.method == "POST" and form.is_valid():
+            impact = correction_impact(
+                purchase,
+                tickets=form.cleaned_data["tickets"],
+                unit_price=form.cleaned_data["unit_price"],
+                cash_amount=form.cleaned_data.get("cash_amount"),
+            )
+            if request.POST.get("action") == "confirm":
+                try:
+                    replacement, changed = correct_ticket_purchase(
+                        purchase_id=purchase.pk,
+                        actor=request.user,
+                        tickets=form.cleaned_data["tickets"],
+                        unit_price=form.cleaned_data["unit_price"],
+                        purchase_type=form.cleaned_data["purchase_type"],
+                        purchased_at=form.cleaned_data["purchased_at"],
+                        note=form.cleaned_data["note"],
+                        reason=form.cleaned_data["correction_reason"],
+                        idempotency_key=str(form.cleaned_data["idempotency_key"]),
+                        cash_mode=form.cleaned_data["cash_mode"],
+                        cash_amount=form.cleaned_data.get("cash_amount"),
+                        cash_received_at=form.cleaned_data.get("cash_received_at"),
+                    )
+                except ValidationError as exc:
+                    form.add_error(None, exc)
+                else:
+                    self.message_user(
+                        request,
+                        f"付与履歴 #{purchase.pk} を修正し、#{replacement.pk} を作成しました。"
+                        if changed else "この修正はすでに確定済みです。",
+                        level=messages.SUCCESS,
+                    )
+                    return redirect("admin:club_ticketpurchase_changelist")
+            else:
+                is_confirmation = True
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": "チケット付与履歴の修正",
+            "purchase": purchase,
+            "receipt": receipt,
+            "form": form,
+            "impact": impact,
+            "is_confirmation": is_confirmation,
+        }
+        return render(request, "admin/club/ticketpurchase/correct.html", context)
 
 
 @admin.register(TicketCashReceipt)
