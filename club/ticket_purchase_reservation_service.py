@@ -6,7 +6,6 @@ from django.db import models, transaction
 from django.utils import timezone
 
 from .models import TicketConsumption, TicketLedger, TicketPurchase, TicketPurchaseReservation, User, apply_ticket_change, ensure_accounting_month_is_open, purchase_tickets
-from .ticket_cash_receipt_service import record_ticket_cash_receipt
 
 
 @dataclass(frozen=True)
@@ -140,6 +139,7 @@ def approve_purchase_reservation(*, reservation_id, coach, approved_for_reservat
         note=f"現金受領確認（購入予約 #{reservation.pk}）", created_by=coach,
         purchased_at=approved_at, expires_at=ticket_expiration_from(approved_at),
         idempotency_key=f"ticket-purchase-reservation:{reservation.pk}",
+        cash_received_at=approved_at,
     )
     reservation.status = TicketPurchaseReservation.STATUS_APPROVED
     reservation.approved_at = approved_at
@@ -147,13 +147,6 @@ def approve_purchase_reservation(*, reservation_id, coach, approved_for_reservat
     reservation.ticket_purchase = purchase
     reservation.approved_for_reservation = approved_for_reservation
     reservation.save(update_fields=["status", "approved_at", "approved_by", "ticket_purchase", "approved_for_reservation"])
-    record_ticket_cash_receipt(
-        ticket_purchase=purchase,
-        amount=reservation.total_amount,
-        received_at=approved_at,
-        created_by=coach,
-        idempotency_key=f"ticket-purchase-reservation:{reservation.pk}",
-    )
     return reservation, True
 
 

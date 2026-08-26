@@ -1466,6 +1466,7 @@ def purchase_tickets(
     label="",
     idempotency_key=None,
     expires_at=None,
+    cash_received_at=None,
 ):
     if tickets <= 0:
         raise ValidationError("購入枚数は1以上にしてください。")
@@ -1504,6 +1505,22 @@ def purchase_tickets(
                 expires_at=expires_at,
                 idempotency_key=normalized_key,
             )
+
+            if cash_received_at is not None:
+                if unit_price <= 0 or purchase_type in (
+                    TicketPurchase.PURCHASE_TYPE_FORMAL_FREE,
+                    TicketPurchase.PURCHASE_TYPE_LEGACY,
+                ):
+                    raise ValidationError("Cash receipts can only be recorded for paid ticket purchases.")
+                from .ticket_cash_receipt_service import record_ticket_cash_receipt
+
+                record_ticket_cash_receipt(
+                    ticket_purchase=purchase,
+                    amount=tickets * unit_price,
+                    received_at=cash_received_at,
+                    created_by=created_by,
+                    idempotency_key=(f"{normalized_key}:cash" if normalized_key else f"ticket-purchase:{purchase.pk}:cash"),
+                )
 
             from .deferred_ticket_consumption import allocate_pending_ticket_consumptions
 
