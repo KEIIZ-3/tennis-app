@@ -1013,7 +1013,7 @@ def _active_reimbursement_payment_total(settlement, coach):
 
 def _negative_carry_in_by_coach(year, month, coach_ids):
     """直前の締め済み月からコーチ別のマイナス残高を引き継ぐ。"""
-    from .settlement_models import CoachMonthlySettlement, MonthlySettlement
+    from .settlement_models import CoachMonthlySettlement
 
     if month == 1:
         previous_year, previous_month = year - 1, 12
@@ -1023,7 +1023,6 @@ def _negative_carry_in_by_coach(year, month, coach_ids):
     previous_rows = CoachMonthlySettlement.objects.filter(
         monthly_settlement__year=previous_year,
         monthly_settlement__month=previous_month,
-        monthly_settlement__status=MonthlySettlement.STATUS_CLOSED,
         coach_id__in=coach_ids,
     ).values("coach_id", "calculation_snapshot")
 
@@ -1041,7 +1040,7 @@ def _negative_carry_in_by_coach(year, month, coach_ids):
 
 def _unpaid_salary_carry_in_by_coach(year, month, coach_ids):
     """直前の締め済み月からコーチ別の給与未払い残高を引き継ぐ。"""
-    from .settlement_models import CoachMonthlySettlement, MonthlySettlement
+    from .settlement_models import CoachMonthlySettlement, SettlementPayment
 
     if month == 1:
         previous_year, previous_month = year - 1, 12
@@ -1051,16 +1050,45 @@ def _unpaid_salary_carry_in_by_coach(year, month, coach_ids):
     previous_rows = CoachMonthlySettlement.objects.filter(
         monthly_settlement__year=previous_year,
         monthly_settlement__month=previous_month,
-        monthly_settlement__status=MonthlySettlement.STATUS_CLOSED,
         coach_id__in=coach_ids,
-    ).values("coach_id", "salary_unpaid")
+    ).values(
+        "monthly_settlement_id",
+        "coach_id",
+        "salary_due",
+        "salary_unpaid",
+        "calculation_snapshot",
+    )
+
+    previous_rows = list(previous_rows)
+    settlement_ids = {
+        row["monthly_settlement_id"] for row in previous_rows
+    }
+    active_payments = SettlementPayment.objects.filter(
+        monthly_settlement_id__in=settlement_ids,
+        coach_id__in=coach_ids,
+        is_reversed=False,
+    ).values("monthly_settlement_id", "coach_id").annotate(total=Sum("amount"))
+    paid_by_row = {
+        (payment["monthly_settlement_id"], payment["coach_id"]): _money(
+            payment.get("total")
+        )
+        for payment in active_payments
+    }
 
     carry_by_coach = {}
     for previous_row in previous_rows:
-        unpaid_salary = max(
-            _money(previous_row.get("salary_unpaid")),
+        snapshot = dict(previous_row.get("calculation_snapshot") or {})
+        entitlement = snapshot.get("wallet_final_entitlement")
+        if entitlement is None:
+            entitlement = previous_row.get("salary_due")
+        paid_total = paid_by_row.get(
+            (
+                previous_row["monthly_settlement_id"],
+                previous_row["coach_id"],
+            ),
             0,
         )
+        unpaid_salary = max(_money(entitlement) - paid_total, 0)
         if unpaid_salary:
             carry_by_coach[previous_row["coach_id"]] = unpaid_salary
     return carry_by_coach
