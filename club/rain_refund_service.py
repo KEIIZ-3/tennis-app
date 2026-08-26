@@ -54,4 +54,3 @@ def confirm_rain_refund(expense_id, *, confirmed_by):
         update_fields=["status", "confirmed_at", "confirmed_by", "updated_at"]
     )
     return refund
-
