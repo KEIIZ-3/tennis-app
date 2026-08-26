@@ -25,22 +25,23 @@ def confirm_rain_refund(expense_id, *, confirmed_by):
     )
     if refund is None:
         return None
-    if refund.status == RainRefund.STATUS_REFUNDED:
-        return refund
-    if refund.status != RainRefund.STATUS_PENDING:
+    already_refunded = refund.status == RainRefund.STATUS_REFUNDED
+    if not already_refunded and refund.status != RainRefund.STATUS_PENDING:
         raise ValidationError("返金待ちの雨天中止返金だけを返金済みにできます。")
 
-    ensure_accounting_month_is_open(refund.lesson_date)
+    if not already_refunded:
+        ensure_accounting_month_is_open(refund.lesson_date)
     expense = CoachExpense.objects.select_for_update().get(pk=refund.expense_id)
 
-    confirmed_at = timezone.now()
+    confirmed_at = refund.confirmed_at or timezone.now()
+    confirmation_user = refund.confirmed_by if already_refunded else confirmed_by
     meta = parse_expense_note(expense.note)
     meta.update(
         {
             "approval_status": "refunded",
             "court_refunded_at": confirmed_at.isoformat(),
-            "court_refunded_by_id": getattr(confirmed_by, "pk", None),
-            "court_refunded_by_name": _display_name(confirmed_by),
+            "court_refunded_by_id": getattr(confirmation_user, "pk", None),
+            "court_refunded_by_name": _display_name(confirmation_user),
         }
     )
     expense.note = build_expense_note(meta, meta.get("plain_note", ""))
@@ -48,8 +49,9 @@ def confirm_rain_refund(expense_id, *, confirmed_by):
 
     refund.status = RainRefund.STATUS_REFUNDED
     refund.confirmed_at = confirmed_at
-    refund.confirmed_by = confirmed_by
+    refund.confirmed_by = confirmation_user
     refund.save(
         update_fields=["status", "confirmed_at", "confirmed_by", "updated_at"]
     )
     return refund
+

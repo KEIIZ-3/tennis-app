@@ -7,10 +7,12 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from club.court_rain_integrity_diagnostic import diagnose_court_rain_integrity
 from club.expense_metadata import build_expense_note, parse_expense_note
 from club.models import MAIN_COACH_NAMES, CoachAvailability, CoachExpense, Court, RainRefund, Reservation
 from club.rain_refund_service import confirm_rain_refund
 from club.settlement_models import MonthlySettlement
+from club.settlement_balance_policy import _rain_refund_policy
 
 
 class RainRefundServiceTests(TestCase):
@@ -78,12 +80,45 @@ class RainRefundServiceTests(TestCase):
         confirm_rain_refund(self.expense.pk, confirmed_by=self.coach)
         self.refund.refresh_from_db()
         first_confirmed_at = self.refund.confirmed_at
+        first_policy = _rain_refund_policy(
+            self.refund.lesson_date.year,
+            self.refund.lesson_date.month,
+            [self.coach.pk],
+        )
 
         confirm_rain_refund(self.expense.pk, confirmed_by=self.coach)
 
         self.refund.refresh_from_db()
+        second_policy = _rain_refund_policy(
+            self.refund.lesson_date.year,
+            self.refund.lesson_date.month,
+            [self.coach.pk],
+        )
         self.assertEqual(self.refund.confirmed_at, first_confirmed_at)
         self.assertEqual(RainRefund.objects.filter(expense=self.expense).count(), 1)
+        self.assertEqual(second_policy, first_policy)
+
+    def test_refunded_refund_repairs_pending_expense_metadata(self):
+        original_confirmed_at = timezone.now() - timedelta(days=1)
+        self.refund.status = RainRefund.STATUS_REFUNDED
+        self.refund.confirmed_at = original_confirmed_at
+        self.refund.confirmed_by = self.coach
+        self.refund.save(
+            update_fields=["status", "confirmed_at", "confirmed_by", "updated_at"]
+        )
+        self.assertEqual(diagnose_court_rain_integrity()["finding_count"], 1)
+
+        confirm_rain_refund(self.expense.pk, confirmed_by=None)
+
+        self.refund.refresh_from_db()
+        self.expense.refresh_from_db()
+        meta = parse_expense_note(self.expense.note)
+        self.assertEqual(self.refund.confirmed_at, original_confirmed_at)
+        self.assertEqual(self.refund.confirmed_by, self.coach)
+        self.assertEqual(meta["approval_status"], "refunded")
+        self.assertEqual(meta["court_refunded_at"], original_confirmed_at.isoformat())
+        self.assertEqual(meta["court_refunded_by_id"], self.coach.pk)
+        self.assertEqual(diagnose_court_rain_integrity()["finding_count"], 0)
 
     def test_expense_write_failure_rolls_back_confirmation(self):
         with patch.object(CoachExpense, "save", side_effect=RuntimeError("write failed")):
