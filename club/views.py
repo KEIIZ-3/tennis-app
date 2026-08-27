@@ -7863,18 +7863,25 @@ def coach_availability_create(request, pk=None):
             availability = form.save(commit=False)
             if _is_coach_user(request.user) and not _is_staff_like(request.user):
                 availability.coach = request.user
-            availability.save()
-
-            if instance is None:
-                messages.success(request, "コーチスケジュールを登録しました。")
+            try:
+                availability.save()
+            except ValidationError as exc:
+                form.add_error(None, exc)
             else:
-                messages.success(request, "コーチスケジュールを更新しました。")
-            if is_calendar_source:
-                local_start = timezone.localtime(availability.start_at) if timezone.is_aware(availability.start_at) else availability.start_at
-                return redirect(
-                    f"{reverse('club:lesson_calendar')}?year={local_start.year}&month={local_start.month}"
-                )
-            return redirect("club:coach_availability_list")
+                if instance is None:
+                    messages.success(request, "コーチスケジュールを登録しました。")
+                else:
+                    messages.success(request, "コーチスケジュールを更新しました。")
+                if is_calendar_source:
+                    local_start = (
+                        timezone.localtime(availability.start_at)
+                        if timezone.is_aware(availability.start_at)
+                        else availability.start_at
+                    )
+                    return redirect(
+                        f"{reverse('club:lesson_calendar')}?year={local_start.year}&month={local_start.month}"
+                    )
+                return redirect("club:coach_availability_list")
 
         messages.error(request, "コーチスケジュールを保存できませんでした。入力内容をご確認ください。")
 
