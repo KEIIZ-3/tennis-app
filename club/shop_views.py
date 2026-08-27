@@ -8,7 +8,8 @@ from .models import ShopEstimateRequest, ShopInquiry, ShopPurchase, ShopQuote, U
 from .shop_forms import DirectPurchaseForm, ShopInquiryForm, ShopQuoteForm, ShopQuoteItemFormSet
 from .shop_pdf import build_quote_pdf
 from .shop_service import (allocation_summary, confirm_quote_purchase, create_direct_purchase,
-                           create_inquiry, create_quote, request_purchase, save_allocations)
+                           create_inquiry, create_quote, request_purchase, save_allocations,
+                           update_quote)
 
 
 def _staff(user): return bool(user.is_staff or user.is_superuser)
@@ -80,7 +81,38 @@ def quote_create(request):
             form.add_error(None, "; ".join(exc.messages))
         else:
             return redirect("club:shop_quote_detail", pk=quote.pk)
-    return render(request, "shop/quote_form.html", {"form": form, "formset": formset})
+    return render(request, "shop/quote_form.html", {"form": form, "formset": formset, "is_edit": False})
+
+
+@login_required
+def quote_edit(request, pk):
+    if not _coach(request.user): return HttpResponseForbidden()
+    quote = get_object_or_404(ShopQuote.objects.prefetch_related("items"), pk=pk)
+    if quote.status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED) or hasattr(quote, "purchase"):
+        messages.error(request, "購入確定済みまたは取消済みの見積は編集できません。")
+        return redirect("club:shop_quote_detail", pk=pk)
+    initial = {"customer": quote.customer, "inquiry": quote.inquiry, "note": quote.note}
+    item_initial = [{
+        "description": item.description, "quantity": item.quantity,
+        "list_price": item.list_price, "sale_price": item.sale_price,
+        "discount_rate": item.discount_rate, "cost_price": item.cost_price,
+        "pricing_source": "sale",
+    } for item in quote.items.all()]
+    form = ShopQuoteForm(request.POST or None, initial=initial)
+    formset = ShopQuoteItemFormSet(request.POST or None, prefix="items", initial=item_initial)
+    if request.method == "POST" and form.is_valid() and formset.is_valid():
+        items = [row for row in formset.cleaned_data if row and not row.get("DELETE")]
+        try:
+            update_quote(quote=quote, customer=form.cleaned_data["customer"],
+                         note=form.cleaned_data["note"], items=items)
+        except ValidationError as exc:
+            form.add_error(None, "; ".join(exc.messages))
+        else:
+            messages.success(request, "見積を更新しました。購入希望済みの場合は、お客様の再確認が必要です。")
+            return redirect("club:shop_quote_detail", pk=quote.pk)
+    return render(request, "shop/quote_form.html", {
+        "form": form, "formset": formset, "is_edit": True, "quote": quote,
+    })
 
 
 @login_required
@@ -88,7 +120,11 @@ def quote_confirm(request, pk):
     if not _coach(request.user): return HttpResponseForbidden()
     if request.method != "POST": return HttpResponse(status=405)
     quote = get_object_or_404(ShopQuote, pk=pk)
-    confirm_quote_purchase(quote=quote, actor=request.user)
+    try:
+        confirm_quote_purchase(quote=quote, actor=request.user)
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+        return redirect("club:shop_quote_detail", pk=pk)
     return redirect("club:shop_coach")
 
 

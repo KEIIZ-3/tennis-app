@@ -98,19 +98,53 @@ def create_quote(*, customer, creator, items, inquiry=None, note=""):
 @transaction.atomic
 def request_purchase(*, quote, customer):
     quote = ShopQuote.objects.select_for_update().get(pk=quote.pk, customer=customer)
-    if quote.status == ShopQuote.STATUS_CANCELED:
-        raise ValidationError("取消済みの見積です。")
-    if quote.status != ShopQuote.STATUS_PURCHASED:
-        quote.status = ShopQuote.STATUS_PURCHASE_REQUESTED
-        quote.save(update_fields=["status", "updated_at"])
-        if quote.inquiry_id:
-            ShopInquiry.objects.filter(pk=quote.inquiry_id).update(status=ShopInquiry.STATUS_PURCHASE_REQUESTED)
+    if quote.status != ShopQuote.STATUS_SENT:
+        raise ValidationError("購入希望を送信できる見積ではありません。")
+    quote.status = ShopQuote.STATUS_PURCHASE_REQUESTED
+    quote.save(update_fields=["status", "updated_at"])
+    if quote.inquiry_id:
+        ShopInquiry.objects.filter(pk=quote.inquiry_id).update(status=ShopInquiry.STATUS_PURCHASE_REQUESTED)
+    return quote
+
+
+@transaction.atomic
+def update_quote(*, quote, customer, items, note=""):
+    quote = ShopQuote.objects.select_for_update().prefetch_related("items").get(pk=quote.pk)
+    if quote.status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED) or hasattr(quote, "purchase"):
+        raise ValidationError("購入確定済みまたは取消済みの見積は編集できません。")
+    rows = []
+    for order, data in enumerate(items):
+        item_data = {key: data.get(key) for key in (
+            "description", "quantity", "list_price", "sale_price", "cost_price",
+        )}
+        item = ShopQuoteItem(quote=quote, sort_order=order, **item_data)
+        item.full_clean()
+        rows.append(item)
+    if not rows:
+        raise ValidationError("見積明細を1件以上入力してください。")
+    quote.customer = customer
+    quote.note = (note or "").strip()
+    if quote.status == ShopQuote.STATUS_PURCHASE_REQUESTED:
+        quote.status = ShopQuote.STATUS_SENT
+    quote.save(update_fields=["customer", "note", "status", "updated_at"])
+    quote.items.all().delete()
+    ShopQuoteItem.objects.bulk_create(rows)
+    quote._prefetched_objects_cache.pop("items", None)
+    if quote.inquiry_id:
+        ShopInquiry.objects.filter(pk=quote.inquiry_id).update(
+            status=ShopInquiry.STATUS_QUOTED, quoted_amount=quote.total,
+        )
     return quote
 
 
 @transaction.atomic
 def confirm_quote_purchase(*, quote, actor):
     quote = ShopQuote.objects.select_for_update().prefetch_related("items").get(pk=quote.pk)
+    existing = ShopPurchase.objects.filter(quote=quote).first()
+    if existing:
+        return existing, False
+    if quote.status != ShopQuote.STATUS_PURCHASE_REQUESTED:
+        raise ValidationError("購入希望済みの見積のみ購入確定できます。")
     purchase, created = ShopPurchase.objects.get_or_create(
         quote=quote,
         defaults={"customer": quote.customer, "description": "\n".join(i.description for i in quote.items.all()),
