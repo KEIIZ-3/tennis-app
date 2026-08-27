@@ -13,7 +13,7 @@ from club.shop_pdf import build_quote_pdf
 from club.shop_service import (allocation_summary, confirm_quote_purchase,
     create_direct_purchase, create_inquiry, create_quote, monthly_shop_allocations,
     one_month_after, request_purchase, save_allocations, sale_price_from_discount,
-    discount_rate_from_prices, profit_summary)
+    discount_rate_from_prices, profit_summary, update_quote)
 from club.shop_forms import ShopQuoteItemForm
 
 
@@ -103,6 +103,7 @@ class ShopWorkflowTests(TestCase):
         item = quote.items.first()
         self.assertEqual((item.unit_profit, item.profit_rate, item.line_profit), (7200, 20.5, 14400))
         self.assertEqual(profit_summary(quote.items.all()), {"revenue": 78400, "cost": 61000, "profit": 17400, "margin": Decimal("22.2")})
+        request_purchase(quote=quote, customer=self.customer)
         purchase, _ = confirm_quote_purchase(quote=quote, actor=self.coach)
         self.assertEqual(purchase.cost_total, 61000)
 
@@ -154,6 +155,126 @@ class ShopWorkflowTests(TestCase):
         pdf = build_quote_pdf(quote)
         self.assertTrue(pdf.startswith(b"%PDF"))
         self.assertIn("304A898B7A4D66F8", pdf.decode("latin1"))  # お見積書 UTF-16BE
+
+    def test_purchase_request_actions_are_customer_only(self):
+        quote = self.make_quote()
+        url = reverse("club:shop_quote_detail", args=[quote.pk])
+        action = reverse("club:shop_quote_purchase_request", args=[quote.pk])
+        self.client.force_login(self.coach)
+        self.assertNotContains(self.client.get(url), "この内容で購入を希望する")
+        self.assertEqual(self.client.post(action).status_code, 404)
+        quote.refresh_from_db()
+        self.assertEqual(quote.status, ShopQuote.STATUS_SENT)
+        self.client.force_login(self.customer)
+        self.assertContains(self.client.get(url), "この内容で購入を希望する")
+        self.assertRedirects(self.client.post(action), url)
+        quote.refresh_from_db()
+        self.assertEqual(quote.status, ShopQuote.STATUS_PURCHASE_REQUESTED)
+        self.client.force_login(self.coach)
+        self.assertContains(self.client.get(url), "購入確定")
+
+    def test_other_customer_cannot_request_purchase(self):
+        quote = self.make_quote()
+        self.client.force_login(self.other)
+        response = self.client.post(reverse("club:shop_quote_purchase_request", args=[quote.pk]))
+        self.assertEqual(response.status_code, 404)
+        quote.refresh_from_db()
+        self.assertEqual(quote.status, ShopQuote.STATUS_SENT)
+
+    def test_customer_pdf_contains_public_japanese_fields_only(self):
+        quote = create_quote(customer=self.customer, creator=self.coach, note="ご検討ください", items=[
+            {"description": "HEAD SPEED MP", "quantity": 1, "list_price": 44000,
+             "sale_price": 32600, "cost_price": 25000},
+            {"description": "グリップテープ", "quantity": 2, "list_price": 1000,
+             "sale_price": 800, "cost_price": 400},
+        ])
+        raw = build_quote_pdf(quote)
+        source = raw.decode("latin1")
+        encoded = lambda value: str(value).encode("utf-16-be").hex().upper()
+        for value in ("Play Design Tennis", "お見積書", "見積番号", quote.quote_number,
+                      "見積日", "有効期限", "お客様名", self.customer.display_name(),
+                      "商品名・内容", "HEAD SPEED MP", "グリップテープ", "数量",
+                      "定価", "値引き", "販売価格", "明細金額", "定価合計",
+                      "お値引き", "お見積合計", "備考"):
+            self.assertIn(encoded(value), source)
+        for private in ("原価", "利益", "利益率", "内部利益集計"):
+            self.assertNotIn(encoded(private), source)
+        self.assertIn("/MediaBox [0 0 595 842]", source)
+        self.assertEqual(source.count("/Type /Page "), 1)
+
+    def _edit_post(self, quote, rows, **form_overrides):
+        data = {
+            "customer": str(form_overrides.get("customer", self.customer.pk)),
+            "inquiry": "", "note": form_overrides.get("note", "更新備考"),
+            "items-TOTAL_FORMS": str(len(rows)), "items-INITIAL_FORMS": str(min(2, len(rows))),
+            "items-MIN_NUM_FORMS": "1", "items-MAX_NUM_FORMS": "1000",
+        }
+        for index, row in enumerate(rows):
+            for key, value in row.items():
+                data[f"items-{index}-{key}"] = value
+        return self.client.post(reverse("club:shop_quote_edit", args=[quote.pk]), data)
+
+    def test_quote_edit_permissions_fields_and_number_are_preserved(self):
+        quote = self.make_quote()
+        number, quote_date = quote.quote_number, quote.quote_date
+        detail = reverse("club:shop_quote_detail", args=[quote.pk])
+        self.client.force_login(self.customer)
+        self.assertNotContains(self.client.get(detail), "見積を編集")
+        self.assertEqual(self.client.get(reverse("club:shop_quote_edit", args=[quote.pk])).status_code, 403)
+        self.client.force_login(self.coach)
+        self.assertContains(self.client.get(detail), "見積を編集")
+        edit_page = self.client.get(reverse("club:shop_quote_edit", args=[quote.pk]))
+        self.assertContains(edit_page, "HEAD", count=0)
+        self.assertContains(edit_page, "items-0-discount_rate")
+        self.assertContains(edit_page, "data-unit-profit")
+        response = self._edit_post(quote, [
+            {"description": "HEAD SPEED MP", "quantity": "2", "list_price": "44000",
+             "sale_price": "1", "discount_rate": "25", "cost_price": "25000", "pricing_source": "discount"},
+            {"description": "グリップ", "quantity": "3", "list_price": "1000",
+             "sale_price": "700", "discount_rate": "30", "cost_price": "400", "pricing_source": "sale"},
+            {"description": "バッグ", "quantity": "1", "list_price": "10000",
+             "sale_price": "8000", "discount_rate": "20", "cost_price": "5000", "pricing_source": "sale"},
+        ])
+        self.assertRedirects(response, detail)
+        quote.refresh_from_db()
+        self.assertEqual((quote.quote_number, quote.quote_date), (number, quote_date))
+        self.assertEqual(quote.items.count(), 3)
+        first = quote.items.first()
+        self.assertEqual((first.description, first.quantity, first.sale_price, first.cost_price),
+                         ("HEAD SPEED MP", 2, 33000, 25000))
+        self.assertEqual(first.line_profit, 16000)
+
+    def test_editing_requested_quote_requires_customer_reconfirmation(self):
+        quote = self.make_quote()
+        request_purchase(quote=quote, customer=self.customer)
+        self.client.force_login(self.coach)
+        response = self._edit_post(quote, [
+            {"description": "再提示商品", "quantity": "1", "list_price": "50000",
+             "sale_price": "40000", "discount_rate": "20", "cost_price": "30000", "pricing_source": "sale"},
+        ])
+        self.assertEqual(response.status_code, 302)
+        quote.refresh_from_db()
+        self.assertEqual(quote.status, ShopQuote.STATUS_SENT)
+        self.client.force_login(self.customer)
+        self.assertContains(self.client.get(reverse("club:shop_quote_detail", args=[quote.pk])),
+                            "この内容で購入を希望する")
+        self.client.post(reverse("club:shop_quote_purchase_request", args=[quote.pk]))
+        quote.refresh_from_db()
+        self.assertEqual(quote.status, ShopQuote.STATUS_PURCHASE_REQUESTED)
+
+    def test_purchased_and_canceled_quotes_cannot_be_edited(self):
+        for status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED):
+            quote = self.make_quote()
+            quote.status = status
+            quote.save(update_fields=["status"])
+            self.client.force_login(self.coach)
+            response = self.client.get(reverse("club:shop_quote_edit", args=[quote.pk]))
+            self.assertRedirects(response, reverse("club:shop_quote_detail", args=[quote.pk]))
+            with self.assertRaises(ValidationError):
+                update_quote(quote=quote, customer=self.customer, note="", items=[{
+                    "description": "x", "quantity": 1, "list_price": 1, "sale_price": 1,
+                    "cost_price": 1,
+                }])
 
 
 class ShopAllocationTests(TestCase):

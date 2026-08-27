@@ -52,7 +52,9 @@ class ShopQuoteItemForm(forms.Form):
         return data
 
 
-ShopQuoteItemFormSet = formset_factory(ShopQuoteItemForm, extra=3, min_num=1, validate_min=True)
+ShopQuoteItemFormSet = formset_factory(
+    ShopQuoteItemForm, extra=3, min_num=1, validate_min=True, can_delete=True,
+)
 
 
 class DirectPurchaseForm(forms.Form):

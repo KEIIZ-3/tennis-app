@@ -54,6 +54,7 @@ urlpatterns = [
     path("shop/quotes/<int:pk>/pdf/", shop_views.quote_pdf, name="shop_quote_pdf"),
     path("coach/shop/", shop_views.coach_shop, name="shop_coach"),
     path("coach/shop/quotes/new/", shop_views.quote_create, name="shop_quote_create"),
+    path("coach/shop/quotes/<int:pk>/edit/", shop_views.quote_edit, name="shop_quote_edit"),
     path("coach/shop/quotes/<int:pk>/confirm/", shop_views.quote_confirm, name="shop_quote_confirm"),
     path("coach/shop/purchases/new/", shop_views.direct_purchase, name="shop_direct_purchase"),
     path("coach/shop/purchases/<int:pk>/allocation/", shop_views.allocation_edit, name="shop_allocation"),
