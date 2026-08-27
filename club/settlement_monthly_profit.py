@@ -5,8 +5,9 @@ def _money(value):
         return 0
 
 
-def build_monthly_profit_rows(coach_rows):
+def build_monthly_profit_rows(coach_rows, shop_revenue_by_coach=None):
     """Build display-only operating profit from official settlement amounts."""
+    shop_revenue_by_coach = shop_revenue_by_coach or {}
     profit_rows = []
     for row in coach_rows:
         if not row.get("is_main_coach"):
@@ -15,7 +16,9 @@ def build_monthly_profit_rows(coach_rows):
         ticket_revenue = _money(row.get("ticket_amount"))
         cash_revenue = _money(row.get("preopen_paid_amount"))
         stringing_revenue = _money(row.get("stringing_amount"))
-        revenue_total = ticket_revenue + cash_revenue + stringing_revenue
+        coach = row.get("coach")
+        shop_revenue = _money(shop_revenue_by_coach.get(getattr(coach, "pk", None)))
+        revenue_total = ticket_revenue + cash_revenue + stringing_revenue + shop_revenue
 
         court_cost_burden = _money(row.get("court_cost_burden"))
         common_expense_burden = (
@@ -35,6 +38,7 @@ def build_monthly_profit_rows(coach_rows):
                 "ticket_revenue": ticket_revenue,
                 "cash_revenue": cash_revenue,
                 "stringing_revenue": stringing_revenue,
+                "shop_revenue": shop_revenue,
                 "revenue_total": revenue_total,
                 "court_cost_burden": court_cost_burden,
                 "common_expense_burden": common_expense_burden,

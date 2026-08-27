@@ -15,6 +15,7 @@ from . import analytics_dashboard
 from . import court_expense_transfer
 from . import reservation_cancellation
 from . import ticket_purchase_reservation_views
+from . import shop_views
 
 app_name = "club"
 
@@ -45,9 +46,17 @@ urlpatterns = [
     path("stringing/record/new/", views.stringing_order_record_create, name="stringing_order_record_create"),
     path("stringing/", views.stringing_order_list, name="stringing_order_list"),
     path("stringing/<int:pk>/", views.stringing_order_detail, name="stringing_order_detail"),
-    path("shop/estimate/", views.shop_estimate_view, name="shop_estimate"),
-    path("shop/history/", views.shop_estimate_history_view, name="shop_estimate_history"),
+    path("shop/estimate/", shop_views.shop_top, name="shop_estimate"),
+    path("shop/history/", shop_views.shop_history, name="shop_estimate_history"),
     path("shop/estimate/complete/<int:pk>/", views.shop_estimate_complete_view, name="shop_estimate_complete"),
+    path("shop/quotes/<int:pk>/", shop_views.quote_detail, name="shop_quote_detail"),
+    path("shop/quotes/<int:pk>/purchase-request/", shop_views.quote_purchase_request, name="shop_quote_purchase_request"),
+    path("shop/quotes/<int:pk>/pdf/", shop_views.quote_pdf, name="shop_quote_pdf"),
+    path("coach/shop/", shop_views.coach_shop, name="shop_coach"),
+    path("coach/shop/quotes/new/", shop_views.quote_create, name="shop_quote_create"),
+    path("coach/shop/quotes/<int:pk>/confirm/", shop_views.quote_confirm, name="shop_quote_confirm"),
+    path("coach/shop/purchases/new/", shop_views.direct_purchase, name="shop_direct_purchase"),
+    path("coach/shop/purchases/<int:pk>/allocation/", shop_views.allocation_edit, name="shop_allocation"),
     path("survey/", views.schedule_survey_view, name="schedule_survey"),
     path("reservations/new/", views.reservation_create, name="reservation_create"),
     path("reservations/", views.reservation_list, name="reservation_list"),
