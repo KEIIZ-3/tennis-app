@@ -1,4 +1,6 @@
 from datetime import date
+from decimal import Decimal
+from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -10,7 +12,9 @@ from club.models import (ShopInquiry, ShopPurchase, ShopQuote,
 from club.shop_pdf import build_quote_pdf
 from club.shop_service import (allocation_summary, confirm_quote_purchase,
     create_direct_purchase, create_inquiry, create_quote, monthly_shop_allocations,
-    one_month_after, request_purchase, save_allocations)
+    one_month_after, request_purchase, save_allocations, sale_price_from_discount,
+    discount_rate_from_prices, profit_summary)
+from club.shop_forms import ShopQuoteItemForm
 
 
 class ShopWorkflowTests(TestCase):
@@ -28,6 +32,27 @@ class ShopWorkflowTests(TestCase):
         response = self.client.post(reverse("club:shop_estimate"), {"wanted_item": " "})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(ShopInquiry.objects.count(), 1)
+
+    @patch("club.notification_service.deliver")
+    def test_inquiry_notification_is_after_commit_and_contains_details(self, deliver):
+        self.admin.email = "admin@example.com"
+        self.admin.save(update_fields=["email"])
+        with self.captureOnCommitCallbacks(execute=False) as callbacks:
+            inquiry = create_inquiry(customer=self.customer, wanted_item="HEAD SPEED MP")
+        deliver.assert_not_called()
+        self.assertEqual(len(callbacks), 1)
+        callbacks[0]()
+        message = deliver.call_args.kwargs["message"]
+        self.assertIn(self.customer.display_name(), message)
+        self.assertIn(inquiry.wanted_item, message)
+        self.assertIn(reverse("club:shop_coach"), message)
+
+    @patch("club.notification_service.deliver")
+    def test_failed_inquiry_transaction_sends_no_notification(self, deliver):
+        with self.captureOnCommitCallbacks(execute=True):
+            with self.assertRaises(ValidationError):
+                create_inquiry(customer=self.customer, wanted_item=" ")
+        deliver.assert_not_called()
 
     def test_history_is_customer_scoped_and_coach_dashboard_is_protected(self):
         inquiry = create_inquiry(customer=self.other, wanted_item="他人の商品")
@@ -54,6 +79,43 @@ class ShopWorkflowTests(TestCase):
         self.assertEqual((inquiry.status, inquiry.quoted_amount), (ShopInquiry.STATUS_QUOTED, 36100))
         second = self.make_quote()
         self.assertNotEqual(quote.quote_number, second.quote_number)
+
+    def test_bidirectional_pricing_is_server_validated(self):
+        self.assertEqual(sale_price_from_discount(44000, Decimal("20")), 35200)
+        self.assertEqual(discount_rate_from_prices(44000, 35200), Decimal("20.0"))
+        form = ShopQuoteItemForm({"description": "ラケット", "quantity": 1, "list_price": 44000,
+                                  "sale_price": 1, "discount_rate": "20", "pricing_source": "discount"})
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["sale_price"], 35200)
+        for rate in ("-1", "100.1"):
+            invalid = ShopQuoteItemForm({"description": "x", "quantity": 1, "list_price": 44000,
+                                         "sale_price": 0, "discount_rate": rate, "pricing_source": "discount"})
+            self.assertFalse(invalid.is_valid())
+        zero = ShopQuoteItemForm({"description": "x", "quantity": 1, "list_price": 0,
+                                  "sale_price": 1, "pricing_source": "sale"})
+        self.assertFalse(zero.is_valid())
+
+    def test_cost_profit_totals_and_purchase_snapshot(self):
+        quote = create_quote(customer=self.customer, creator=self.coach, items=[
+            {"description": "ラケット", "quantity": 2, "list_price": 44000, "sale_price": 35200, "cost_price": 28000},
+            {"description": "バッグ", "quantity": 1, "list_price": 10000, "sale_price": 8000, "cost_price": 5000},
+        ])
+        item = quote.items.first()
+        self.assertEqual((item.unit_profit, item.profit_rate, item.line_profit), (7200, 20.5, 14400))
+        self.assertEqual(profit_summary(quote.items.all()), {"revenue": 78400, "cost": 61000, "profit": 17400, "margin": Decimal("22.2")})
+        purchase, _ = confirm_quote_purchase(quote=quote, actor=self.coach)
+        self.assertEqual(purchase.cost_total, 61000)
+
+    def test_missing_cost_is_not_treated_as_zero_and_customer_outputs_hide_profit(self):
+        quote = self.make_quote()
+        self.assertIsNone(profit_summary(quote.items.all())["profit"])
+        self.client.force_login(self.customer)
+        html = self.client.get(reverse("club:shop_quote_detail", args=[quote.pk])).content.decode()
+        self.assertNotIn("原価", html)
+        self.assertNotIn("利益率", html)
+        pdf = build_quote_pdf(quote).decode("latin1")
+        self.assertNotIn("539F4FA1", pdf)  # 原価 UTF-16BE
+        self.assertNotIn("522976CA", pdf)  # 利益 UTF-16BE
 
     def test_zero_list_price_and_month_end_are_safe(self):
         quote = create_quote(customer=self.customer, creator=self.coach,

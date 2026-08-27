@@ -1,7 +1,9 @@
 from django import forms
 from django.forms import formset_factory
+from decimal import Decimal
 
 from .models import ShopInquiry, User
+from .shop_service import discount_rate_from_prices, sale_price_from_discount
 
 
 def customer_queryset():
@@ -32,10 +34,20 @@ class ShopQuoteItemForm(forms.Form):
     quantity = forms.IntegerField(label="数量", min_value=1, initial=1)
     list_price = forms.IntegerField(label="定価", min_value=0)
     sale_price = forms.IntegerField(label="販売価格", min_value=0)
+    discount_rate = forms.DecimalField(label="値引率 (%)", required=False, min_value=Decimal("0"), max_value=Decimal("100"), decimal_places=1, max_digits=4)
+    cost_price = forms.IntegerField(label="原価", required=False, min_value=0)
+    pricing_source = forms.ChoiceField(required=False, choices=(("sale", "sale"), ("discount", "discount")), widget=forms.HiddenInput(), initial="sale")
 
     def clean(self):
         data = super().clean()
-        if data.get("list_price") is not None and data.get("sale_price") is not None and data["list_price"] > 0 and data["sale_price"] > data["list_price"]:
+        list_price, sale_price = data.get("list_price"), data.get("sale_price")
+        if data.get("pricing_source") == "discount" and list_price is not None and data.get("discount_rate") is not None:
+            sale_price = data["sale_price"] = sale_price_from_discount(list_price, data["discount_rate"])
+        elif list_price and sale_price is not None:
+            data["discount_rate"] = discount_rate_from_prices(list_price, sale_price)
+        elif sale_price not in (None, 0):
+            self.add_error("sale_price", "定価が0円の場合、販売価格は0円にしてください。")
+        if list_price is not None and sale_price is not None and sale_price > list_price:
             self.add_error("sale_price", "販売価格は定価以下にしてください。")
         return data
 
