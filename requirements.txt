@@ -5,6 +5,8 @@ dj-database-url
 psycopg[binary]
 openpyxl
 jpholiday
+reportlab
+pypdf
 
 # background jobs / notifications
 celery
