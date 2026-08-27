@@ -44,6 +44,14 @@ class MonthlyProfitCalculationTests(SimpleTestCase):
         self.assertEqual(result["expense_total"], 2400)
         self.assertEqual(result["monthly_profit"], 12600)
 
+    def test_shop_allocation_is_added_once(self):
+        row = self.row()
+        row["coach"] = type("Coach", (), {"pk": 7})()
+        result = build_monthly_profit_rows([row], {7: 36100})[0]
+        self.assertEqual(result["shop_revenue"], 36100)
+        self.assertEqual(result["revenue_total"], 46100)
+        self.assertEqual(result["monthly_profit"], 46100)
+
     def test_settlement_cash_flow_fields_do_not_change_profit(self):
         base = self.row()
         expected = build_monthly_profit_rows([base])
@@ -85,6 +93,7 @@ class MonthlyProfitTemplateTests(SimpleTestCase):
                         "ticket_revenue": 1000,
                         "cash_revenue": 200,
                         "stringing_revenue": 300,
+                        "shop_revenue": 0,
                         "revenue_total": 1500,
                         "court_cost_burden": 400,
                         "common_expense_burden": 100,

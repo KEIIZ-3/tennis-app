@@ -3179,3 +3179,151 @@ class ShopEstimateRequest(models.Model):
     @property
     def estimated_total(self):
         return int(self.main_sale_price) + int(self.string_sale_price) + int(self.stringing_fee)
+
+
+class ShopInquiry(models.Model):
+    STATUS_INQUIRING = "inquiring"
+    STATUS_QUOTED = "quoted"
+    STATUS_PURCHASE_REQUESTED = "purchase_requested"
+    STATUS_PURCHASED = "purchased"
+    STATUS_CANCELED = "canceled"
+    STATUS_CHOICES = (
+        (STATUS_INQUIRING, "問い合わせ中"),
+        (STATUS_QUOTED, "見積済み"),
+        (STATUS_PURCHASE_REQUESTED, "購入希望"),
+        (STATUS_PURCHASED, "購入確定"),
+        (STATUS_CANCELED, "取消"),
+    )
+
+    customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="shop_inquiries")
+    wanted_item = models.TextField()
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_INQUIRING)
+    assigned_coach = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="assigned_shop_inquiries", limit_choices_to={"role__in": User.COACH_ROLE_VALUES})
+    quoted_amount = models.PositiveIntegerField(null=True, blank=True)
+    response_note = models.TextField(blank=True, default="")
+    purchased_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def clean(self):
+        self.wanted_item = (self.wanted_item or "").strip()
+        self.response_note = (self.response_note or "").strip()
+        if not self.wanted_item:
+            raise ValidationError("欲しいものを入力してください。")
+
+
+class ShopQuote(models.Model):
+    STATUS_DRAFT = "draft"
+    STATUS_SENT = "sent"
+    STATUS_PURCHASE_REQUESTED = "purchase_requested"
+    STATUS_PURCHASED = "purchased"
+    STATUS_CANCELED = "canceled"
+    STATUS_CHOICES = (
+        (STATUS_DRAFT, "下書き"), (STATUS_SENT, "見積済み"),
+        (STATUS_PURCHASE_REQUESTED, "購入希望"), (STATUS_PURCHASED, "購入確定"),
+        (STATUS_CANCELED, "取消"),
+    )
+    quote_number = models.CharField(max_length=24, unique=True)
+    customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="shop_quotes")
+    inquiry = models.ForeignKey(ShopInquiry, null=True, blank=True, on_delete=models.PROTECT, related_name="quotes")
+    quote_date = models.DateField(default=timezone.localdate)
+    valid_until = models.DateField()
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_SENT)
+    note = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_shop_quotes")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-quote_date", "-id"]
+
+    @property
+    def list_total(self):
+        return sum(item.list_total for item in self.items.all())
+
+    @property
+    def total(self):
+        return sum(item.line_total for item in self.items.all())
+
+    @property
+    def discount_total(self):
+        return self.list_total - self.total
+
+
+class ShopQuoteItem(models.Model):
+    quote = models.ForeignKey(ShopQuote, on_delete=models.CASCADE, related_name="items")
+    description = models.CharField(max_length=255)
+    quantity = models.PositiveIntegerField(default=1)
+    list_price = models.PositiveIntegerField(default=0)
+    sale_price = models.PositiveIntegerField(default=0)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+
+    def clean(self):
+        self.description = (self.description or "").strip()
+        if not self.description:
+            raise ValidationError("商品名・内容を入力してください。")
+        if int(self.quantity or 0) < 1:
+            raise ValidationError("数量は1以上にしてください。")
+        if self.sale_price > self.list_price and self.list_price > 0:
+            raise ValidationError("販売価格は定価以下にしてください。")
+
+    @property
+    def list_total(self): return int(self.list_price) * int(self.quantity)
+    @property
+    def line_total(self): return int(self.sale_price) * int(self.quantity)
+    @property
+    def discount_amount(self): return max(int(self.list_price) - int(self.sale_price), 0)
+    @property
+    def discount_rate(self):
+        return round(self.discount_amount * 100 / self.list_price, 1) if self.list_price else None
+
+
+class ShopPurchase(models.Model):
+    STATUS_CONFIRMED = "confirmed"
+    STATUS_CANCELED = "canceled"
+    STATUS_CHOICES = ((STATUS_CONFIRMED, "購入確定"), (STATUS_CANCELED, "取消"))
+    customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="shop_purchases")
+    quote = models.OneToOneField(ShopQuote, null=True, blank=True, on_delete=models.PROTECT, related_name="purchase")
+    description = models.TextField()
+    quantity = models.PositiveIntegerField(default=1)
+    amount = models.PositiveIntegerField()
+    note = models.TextField(blank=True, default="")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_CONFIRMED)
+    registered_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="registered_shop_purchases")
+    purchased_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def clean(self):
+        self.description = (self.description or "").strip()
+        if not self.description: raise ValidationError("商品内容を入力してください。")
+        if int(self.quantity or 0) < 1: raise ValidationError("数量は1以上にしてください。")
+
+
+class ShopRevenueAllocation(models.Model):
+    purchase = models.ForeignKey(ShopPurchase, on_delete=models.PROTECT, related_name="allocations")
+    coach = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="shop_revenue_allocations", limit_choices_to={"role__in": User.COACH_ROLE_VALUES})
+    amount = models.PositiveIntegerField(default=0)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_shop_allocations")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["purchase", "coach"], name="unique_shop_purchase_coach_allocation")]
+
+    @property
+    def percentage(self):
+        return round(self.amount * 100 / self.purchase.amount, 1) if self.purchase.amount else 0
+
+
+class ShopRevenueAllocationAudit(models.Model):
+    purchase = models.ForeignKey(ShopPurchase, on_delete=models.PROTECT, related_name="allocation_audits")
+    allocation_snapshot = models.JSONField(default=list)
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="shop_allocation_audits")
+    changed_at = models.DateTimeField(auto_now_add=True)

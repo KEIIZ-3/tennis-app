@@ -724,7 +724,8 @@ def calculate_monthly_settlement(year, month, *, force=False):
         force=force,
     )
     result = _apply_wallet_policy(result, year, month)
+    from .shop_service import monthly_shop_allocations
     result["monthly_profit_rows"] = build_monthly_profit_rows(
-        result.get("coach_rows", [])
+        result.get("coach_rows", []), monthly_shop_allocations(year, month)
     )
     return MonthlySettlementResult.from_mapping(result)
