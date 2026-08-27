@@ -7,7 +7,10 @@ from .shop_service import discount_rate_from_prices, sale_price_from_discount
 
 
 def customer_queryset():
-    return User.objects.filter(is_active=True, role__in=User.LESSON_PARTICIPANT_ROLE_VALUES).order_by("full_name", "username")
+    purchasable_roles = set(User.LESSON_PARTICIPANT_ROLE_VALUES) | set(User.COACH_ROLE_VALUES)
+    return User.objects.filter(
+        is_active=True, is_staff=False, is_superuser=False, role__in=purchasable_roles,
+    ).order_by("full_name", "username")
 
 
 class ShopInquiryForm(forms.ModelForm):

@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from .models import (
     ShopInquiry, ShopPurchase, ShopQuote, ShopQuoteItem,
+    ShopQuoteRevenueAllocation, ShopQuoteRevenueAllocationAudit,
     ShopRevenueAllocation, ShopRevenueAllocationAudit, User,
 )
 from .notification_service import freeze_recipients, schedule_delivery
@@ -71,7 +72,7 @@ def create_inquiry(*, customer, wanted_item):
 
 
 @transaction.atomic
-def create_quote(*, customer, creator, items, inquiry=None, note=""):
+def create_quote(*, customer, creator, items, inquiry=None, note="", allocation_amounts=None):
     quote_date = timezone.localdate()
     quote = ShopQuote.objects.create(
         quote_number=f"PENDING-{uuid.uuid4().hex[:12]}", customer=customer,
@@ -92,6 +93,8 @@ def create_quote(*, customer, creator, items, inquiry=None, note=""):
         inquiry.quoted_amount = quote.total
         inquiry.assigned_coach = creator if creator.role in User.COACH_ROLE_VALUES else inquiry.assigned_coach
         inquiry.save(update_fields=["status", "quoted_amount", "assigned_coach", "updated_at"])
+    if allocation_amounts is not None:
+        save_quote_allocations(quote=quote, actor=creator, amounts=allocation_amounts)
     return quote
 
 
@@ -108,10 +111,11 @@ def request_purchase(*, quote, customer):
 
 
 @transaction.atomic
-def update_quote(*, quote, customer, items, note=""):
+def update_quote(*, quote, customer, items, note="", actor=None, allocation_amounts=None):
     quote = ShopQuote.objects.select_for_update().prefetch_related("items").get(pk=quote.pk)
     if quote.status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED) or hasattr(quote, "purchase"):
         raise ValidationError("購入確定済みまたは取消済みの見積は編集できません。")
+    previous_allocations = {row.coach_id: row.amount for row in quote.planned_allocations.all()}
     rows = []
     for order, data in enumerate(items):
         item_data = {key: data.get(key) for key in (
@@ -134,6 +138,11 @@ def update_quote(*, quote, customer, items, note=""):
         ShopInquiry.objects.filter(pk=quote.inquiry_id).update(
             status=ShopInquiry.STATUS_QUOTED, quoted_amount=quote.total,
         )
+    normalized_input = ({int(key): int(value or 0) for key, value in allocation_amounts.items()}
+                        if allocation_amounts is not None else None)
+    if normalized_input is not None and not (
+            normalized_input == previous_allocations and sum(normalized_input.values()) > quote.total):
+        save_quote_allocations(quote=quote, actor=actor, amounts=allocation_amounts)
     return quote
 
 
@@ -143,8 +152,8 @@ def confirm_quote_purchase(*, quote, actor):
     existing = ShopPurchase.objects.filter(quote=quote).first()
     if existing:
         return existing, False
-    if quote.status != ShopQuote.STATUS_PURCHASE_REQUESTED:
-        raise ValidationError("購入希望済みの見積のみ購入確定できます。")
+    if quote.status not in (ShopQuote.STATUS_SENT, ShopQuote.STATUS_PURCHASE_REQUESTED):
+        raise ValidationError("購入確定前の有効な見積のみ購入確定できます。")
     purchase, created = ShopPurchase.objects.get_or_create(
         quote=quote,
         defaults={"customer": quote.customer, "description": "\n".join(i.description for i in quote.items.all()),
@@ -154,6 +163,25 @@ def confirm_quote_purchase(*, quote, actor):
     )
     if created:
         purchase.full_clean()
+        planned = {row.coach_id: row.amount for row in quote.planned_allocations.all()}
+        applied = False
+        if planned and sum(planned.values()) <= purchase.amount:
+            try:
+                _save_purchase_allocations(purchase=purchase, actor=actor, amounts=planned,
+                                           require_admin=False)
+                applied = True
+            except ValidationError:
+                # A coach may have become inactive after the plan was saved. Purchase remains valid.
+                pass
+        if planned and not applied:
+            ShopRevenueAllocationAudit.objects.create(
+                purchase=purchase,
+                allocation_snapshot=[
+                    {"coach_id": coach_id, "amount": amount, "not_applied": True}
+                    for coach_id, amount in planned.items()
+                ],
+                changed_by=actor,
+            )
         quote.status = ShopQuote.STATUS_PURCHASED
         quote.save(update_fields=["status", "updated_at"])
         if quote.inquiry_id:
@@ -171,20 +199,56 @@ def create_direct_purchase(*, customer, actor, description, quantity, amount, no
 
 
 @transaction.atomic
-def save_allocations(*, purchase, actor, amounts):
-    if not (actor.is_staff or actor.is_superuser):
+def _normalize_allocations(*, amounts, maximum):
+    try:
+        normalized = {int(coach_id): int(amount or 0) for coach_id, amount in amounts.items()}
+    except (TypeError, ValueError):
+        raise ValidationError("按分額は0以上の整数で入力してください。")
+    if any(amount < 0 for amount in normalized.values()):
+        raise ValidationError("按分額は0円以上にしてください。")
+    if sum(normalized.values()) > maximum:
+        raise ValidationError("按分合計がShop売上を超えています。")
+    coaches = {u.pk: u for u in User.objects.filter(
+        pk__in=normalized, role__in=User.COACH_ROLE_VALUES, is_active=True,
+    )}
+    if set(normalized) != set(coaches):
+        raise ValidationError("按分対象にできないユーザーが含まれています。")
+    return normalized, coaches
+
+
+@transaction.atomic
+def save_quote_allocations(*, quote, actor, amounts):
+    if not actor or not (actor.is_staff or actor.is_superuser):
+        raise PermissionError("adminのみ見積時の売上按分を変更できます。")
+    quote = ShopQuote.objects.select_for_update().get(pk=quote.pk)
+    if quote.status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED) or hasattr(quote, "purchase"):
+        raise ValidationError("購入確定済みまたは取消済みの見積按分は変更できません。")
+    normalized, coaches = _normalize_allocations(amounts=amounts, maximum=quote.total)
+    snapshot = []
+    for coach_id, amount in normalized.items():
+        ShopQuoteRevenueAllocation.objects.update_or_create(
+            quote=quote, coach=coaches[coach_id], defaults={"amount": amount, "created_by": actor},
+        )
+        snapshot.append({"coach_id": coach_id, "amount": amount})
+    ShopQuoteRevenueAllocationAudit.objects.create(
+        quote=quote, allocation_snapshot=snapshot, changed_by=actor,
+    )
+    return quote_allocation_summary(quote)
+
+
+def quote_allocation_summary(quote):
+    allocated = quote.planned_allocations.aggregate(total=Sum("amount"))["total"] or 0
+    remaining = int(quote.total) - int(allocated)
+    return {"allocated": allocated, "remaining": remaining, "complete": remaining == 0}
+
+
+def _save_purchase_allocations(*, purchase, actor, amounts, require_admin):
+    if require_admin and not (actor.is_staff or actor.is_superuser):
         raise PermissionError("adminのみ売上按分を変更できます。")
     purchase = ShopPurchase.objects.select_for_update().get(pk=purchase.pk)
     if purchase.status != ShopPurchase.STATUS_CONFIRMED:
         raise ValidationError("購入確定済みのShop売上だけ按分できます。")
-    normalized = {int(coach_id): int(amount or 0) for coach_id, amount in amounts.items()}
-    if any(amount < 0 for amount in normalized.values()):
-        raise ValidationError("按分額は0円以上にしてください。")
-    if sum(normalized.values()) > purchase.amount:
-        raise ValidationError("按分合計がShop売上を超えています。")
-    coaches = {u.pk: u for u in User.objects.filter(pk__in=normalized, role__in=User.COACH_ROLE_VALUES, is_active=True)}
-    if set(normalized) != set(coaches):
-        raise ValidationError("按分対象にできないユーザーが含まれています。")
+    normalized, coaches = _normalize_allocations(amounts=amounts, maximum=purchase.amount)
     snapshot = []
     for coach_id, amount in normalized.items():
         allocation, _ = ShopRevenueAllocation.objects.update_or_create(
@@ -192,6 +256,13 @@ def save_allocations(*, purchase, actor, amounts):
         snapshot.append({"coach_id": coach_id, "amount": amount})
     ShopRevenueAllocationAudit.objects.create(purchase=purchase, allocation_snapshot=snapshot, changed_by=actor)
     return allocation_summary(purchase)
+
+
+@transaction.atomic
+def save_allocations(*, purchase, actor, amounts):
+    return _save_purchase_allocations(
+        purchase=purchase, actor=actor, amounts=amounts, require_admin=True,
+    )
 
 
 def allocation_summary(purchase):

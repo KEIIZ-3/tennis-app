@@ -8,12 +8,29 @@ from .models import ShopEstimateRequest, ShopInquiry, ShopPurchase, ShopQuote, U
 from .shop_forms import DirectPurchaseForm, ShopInquiryForm, ShopQuoteForm, ShopQuoteItemFormSet
 from .shop_pdf import build_quote_pdf
 from .shop_service import (allocation_summary, confirm_quote_purchase, create_direct_purchase,
-                           create_inquiry, create_quote, request_purchase, save_allocations,
-                           update_quote)
+                           create_inquiry, create_quote, quote_allocation_summary,
+                           request_purchase, save_allocations, update_quote)
 
 
 def _staff(user): return bool(user.is_staff or user.is_superuser)
 def _coach(user): return _staff(user) or user.role in User.COACH_ROLE_VALUES
+
+
+def _allocation_context(quote=None):
+    coaches = list(User.objects.filter(
+        is_active=True, role__in=User.COACH_ROLE_VALUES,
+    ).order_by("full_name", "username"))
+    current = {row.coach_id: row.amount for row in quote.planned_allocations.all()} if quote else {}
+    rows = [{"coach": coach, "amount": current.get(coach.pk)} for coach in coaches]
+    summary = quote_allocation_summary(quote) if quote else {"allocated": 0, "remaining": 0, "complete": False}
+    return coaches, rows, summary
+
+
+def _posted_allocations(request, coaches, *, has_existing=False):
+    values = {coach.pk: request.POST.get(f"allocation_coach_{coach.pk}", "") for coach in coaches}
+    if not has_existing and not any(value.strip() for value in values.values()):
+        return None
+    return {coach_id: value or 0 for coach_id, value in values.items()}
 
 
 @login_required
@@ -65,6 +82,9 @@ def coach_shop(request):
 @login_required
 def quote_create(request):
     if not _coach(request.user): return HttpResponseForbidden()
+    if request.method == "POST" and not _staff(request.user) and any(
+            key.startswith("allocation_coach_") for key in request.POST):
+        return HttpResponseForbidden()
     initial = {}
     inquiry = None
     if request.GET.get("inquiry"):
@@ -72,21 +92,30 @@ def quote_create(request):
         initial = {"customer": inquiry.customer, "inquiry": inquiry}
     form = ShopQuoteForm(request.POST or None, initial=initial)
     formset = ShopQuoteItemFormSet(request.POST or None, prefix="items")
+    coaches, allocation_rows, allocation_summary_data = _allocation_context()
     if request.method == "POST" and form.is_valid() and formset.is_valid():
         items = [row for row in formset.cleaned_data if row]
         try:
             quote = create_quote(customer=form.cleaned_data["customer"], creator=request.user,
-                inquiry=form.cleaned_data.get("inquiry"), note=form.cleaned_data["note"], items=items)
+                inquiry=form.cleaned_data.get("inquiry"), note=form.cleaned_data["note"], items=items,
+                allocation_amounts=_posted_allocations(request, coaches) if _staff(request.user) else None)
         except ValidationError as exc:
             form.add_error(None, "; ".join(exc.messages))
         else:
             return redirect("club:shop_quote_detail", pk=quote.pk)
-    return render(request, "shop/quote_form.html", {"form": form, "formset": formset, "is_edit": False})
+    return render(request, "shop/quote_form.html", {
+        "form": form, "formset": formset, "is_edit": False,
+        "show_allocations": _staff(request.user), "allocation_rows": allocation_rows,
+        "allocation_summary": allocation_summary_data,
+    })
 
 
 @login_required
 def quote_edit(request, pk):
     if not _coach(request.user): return HttpResponseForbidden()
+    if request.method == "POST" and not _staff(request.user) and any(
+            key.startswith("allocation_coach_") for key in request.POST):
+        return HttpResponseForbidden()
     quote = get_object_or_404(ShopQuote.objects.prefetch_related("items"), pk=pk)
     if quote.status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED) or hasattr(quote, "purchase"):
         messages.error(request, "購入確定済みまたは取消済みの見積は編集できません。")
@@ -100,11 +129,15 @@ def quote_edit(request, pk):
     } for item in quote.items.all()]
     form = ShopQuoteForm(request.POST or None, initial=initial)
     formset = ShopQuoteItemFormSet(request.POST or None, prefix="items", initial=item_initial)
+    coaches, allocation_rows, allocation_summary_data = _allocation_context(quote)
     if request.method == "POST" and form.is_valid() and formset.is_valid():
         items = [row for row in formset.cleaned_data if row and not row.get("DELETE")]
         try:
             update_quote(quote=quote, customer=form.cleaned_data["customer"],
-                         note=form.cleaned_data["note"], items=items)
+                         note=form.cleaned_data["note"], items=items, actor=request.user,
+                         allocation_amounts=_posted_allocations(
+                             request, coaches, has_existing=quote.planned_allocations.exists(),
+                         ) if _staff(request.user) else None)
         except ValidationError as exc:
             form.add_error(None, "; ".join(exc.messages))
         else:
@@ -112,6 +145,8 @@ def quote_edit(request, pk):
             return redirect("club:shop_quote_detail", pk=quote.pk)
     return render(request, "shop/quote_form.html", {
         "form": form, "formset": formset, "is_edit": True, "quote": quote,
+        "show_allocations": _staff(request.user), "allocation_rows": allocation_rows,
+        "allocation_summary": allocation_summary_data,
     })
 
 
