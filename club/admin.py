@@ -742,7 +742,7 @@ class UserAdmin(UserAdminTicketSummaryMixin, BaseUserAdmin):
 
 @admin.register(Court)
 class CourtAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "court_type", "is_active")
+    list_display = ("id", "name", "court_type", "available_court_count", "is_active")
     list_filter = ("court_type", "is_active")
     search_fields = ("name",)
 

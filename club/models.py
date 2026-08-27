@@ -4,7 +4,7 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, models, transaction
-from django.db.models import Q
+from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .capacity_policy import general_lesson_capacity
@@ -193,6 +193,10 @@ class Court(models.Model):
 
     name = models.CharField(max_length=100, unique=True)
     is_active = models.BooleanField(default=True)
+    available_court_count = models.PositiveIntegerField(
+        default=2,
+        verbose_name="利用可能コート面数",
+    )
     court_type = models.CharField(
         max_length=20,
         choices=COURT_TYPE_CHOICES,
@@ -474,8 +478,15 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         )
         if self.pk:
             court_overlap_qs = court_overlap_qs.exclude(pk=self.pk)
-        if court_overlap_qs.exists():
-            raise ValidationError("同じコートで重複する空き時間があります。")
+        used_court_count = court_overlap_qs.aggregate(total=Sum("court_count"))["total"] or 0
+        added_court_count = int(self.court_count or 0)
+        available_court_count = int(self.court.available_court_count or 0)
+        if used_court_count + added_court_count > available_court_count:
+            raise ValidationError(
+                f"この時間帯は{self.court.name}の利用可能コート面数を超えています。"
+                f"利用中 {used_court_count}面 / 追加 {added_court_count}面 / "
+                f"利用可能 {available_court_count}面"
+            )
 
     def save(self, *args, **kwargs):
         update_fields = kwargs.get("update_fields")
