@@ -170,6 +170,72 @@ class CalendarSingleLessonCreationTests(TestCase):
         response = self.client.post(reverse("club:coach_availability_create"), data)
         self.assertRedirects(response, reverse("club:coach_availability_list"))
 
+    def test_court_overlap_is_rendered_as_form_error_without_saving(self):
+        CoachAvailability.objects.create(
+            coach=self.other_coach,
+            court=self.court,
+            start_at=self._aware(self.target_date, 9),
+            end_at=self._aware(self.target_date, 11),
+        )
+        self.client.force_login(self.coach)
+
+        response = self.client.post(
+            reverse("club:coach_availability_create"), self._post_data()
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(CoachAvailability.objects.count(), 1)
+        self.assertContains(response, "同じコートで重複する空き時間があります。")
+        self.assertContains(response, 'name="source" value="calendar"')
+        self.assertEqual(
+            response.context["form"]["start_date"].value(),
+            self.target_date.isoformat(),
+        )
+
+    def test_coach_overlap_is_rendered_as_form_error_without_saving(self):
+        CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.other_court,
+            start_at=self._aware(self.target_date, 9),
+            end_at=self._aware(self.target_date, 11),
+        )
+        self.client.force_login(self.coach)
+
+        response = self.client.post(
+            reverse("club:coach_availability_create"), self._post_data()
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(CoachAvailability.objects.count(), 1)
+        self.assertContains(response, "同じコーチで重複する空き時間があります。")
+
+    def test_edit_overlap_is_rendered_as_form_error_without_updating(self):
+        existing = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.other_court,
+            start_at=self._aware(self.target_date, 9),
+            end_at=self._aware(self.target_date, 11),
+        )
+        edited = CoachAvailability.objects.create(
+            coach=self.other_coach,
+            court=self.court,
+            start_at=self._aware(self.target_date, 11),
+            end_at=self._aware(self.target_date, 13),
+        )
+        self.client.force_login(self.staff)
+        data = self._post_data(coach=self.other_coach, court=self.other_court)
+
+        response = self.client.post(
+            reverse("club:coach_availability_edit", args=[edited.pk]), data
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(CoachAvailability.objects.count(), 2)
+        self.assertContains(response, "同じコートで重複する空き時間があります。")
+        edited.refresh_from_db()
+        self.assertEqual(edited.court, self.court)
+        self.assertEqual(existing.court, self.other_court)
+
     def test_start_hour_script_assists_only_valid_two_hour_end_times(self):
         self.client.force_login(self.coach)
         response = self.client.get(
