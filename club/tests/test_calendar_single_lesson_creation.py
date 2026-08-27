@@ -37,7 +37,9 @@ class CalendarSingleLessonCreationTests(TestCase):
         self.other_coach = User.objects.create_user(
             username="calendar-other-coach", password="password", role=User.ROLE_COACH
         )
-        self.court = Court.objects.create(name="カレンダー単発コート")
+        self.court = Court.objects.create(
+            name="カレンダー単発コート", available_court_count=12
+        )
         self.other_court = Court.objects.create(name="カレンダー単発第2コート")
 
     def _aware(self, target_date, hour):
@@ -170,13 +172,14 @@ class CalendarSingleLessonCreationTests(TestCase):
         response = self.client.post(reverse("club:coach_availability_create"), data)
         self.assertRedirects(response, reverse("club:coach_availability_list"))
 
-    def test_court_overlap_is_rendered_as_form_error_without_saving(self):
-        CoachAvailability.objects.create(
+    def test_court_capacity_error_is_rendered_as_form_error_without_saving(self):
+        existing = CoachAvailability.objects.create(
             coach=self.other_coach,
             court=self.court,
             start_at=self._aware(self.target_date, 9),
             end_at=self._aware(self.target_date, 11),
         )
+        CoachAvailability.objects.filter(pk=existing.pk).update(court_count=12)
         self.client.force_login(self.coach)
 
         response = self.client.post(
@@ -185,7 +188,7 @@ class CalendarSingleLessonCreationTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(CoachAvailability.objects.count(), 1)
-        self.assertContains(response, "同じコートで重複する空き時間があります。")
+        self.assertContains(response, "利用可能コート面数を超えています")
         self.assertContains(response, 'name="source" value="calendar"')
         self.assertEqual(
             response.context["form"]["start_date"].value(),
@@ -216,6 +219,8 @@ class CalendarSingleLessonCreationTests(TestCase):
             start_at=self._aware(self.target_date, 9),
             end_at=self._aware(self.target_date, 11),
         )
+        self.other_court.available_court_count = 1
+        self.other_court.save(update_fields=["available_court_count"])
         edited = CoachAvailability.objects.create(
             coach=self.other_coach,
             court=self.court,
@@ -231,7 +236,7 @@ class CalendarSingleLessonCreationTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(CoachAvailability.objects.count(), 2)
-        self.assertContains(response, "同じコートで重複する空き時間があります。")
+        self.assertContains(response, "利用可能コート面数を超えています")
         edited.refresh_from_db()
         self.assertEqual(edited.court, self.court)
         self.assertEqual(existing.court, self.other_court)
@@ -245,7 +250,7 @@ class CalendarSingleLessonCreationTests(TestCase):
         self.assertContains(response, "const assistedEndHour = hour + 2;")
         self.assertContains(response, "assistedEndHour > 21")
 
-    def test_model_rejects_coach_and_court_overlaps_but_allows_distinct_resources(self):
+    def test_model_rejects_coach_overlap_and_allows_court_sharing_within_capacity(self):
         CoachAvailability.objects.create(
             coach=self.coach,
             court=self.court,
@@ -261,15 +266,15 @@ class CalendarSingleLessonCreationTests(TestCase):
                 start_at=self._aware(self.target_date, 10),
                 end_at=self._aware(self.target_date, 12),
             )
-        with self.assertRaisesMessage(ValidationError, "同じコートで重複する空き時間があります。"):
-            CoachAvailability.objects.create(
-                coach=self.other_coach,
-                court=self.court,
-                start_at=self._aware(self.target_date, 10),
-                end_at=self._aware(self.target_date, 12),
-            )
-        allowed = CoachAvailability.objects.create(
+        same_court = CoachAvailability.objects.create(
             coach=self.other_coach,
+            court=self.court,
+            start_at=self._aware(self.target_date, 10),
+            end_at=self._aware(self.target_date, 12),
+        )
+        self.assertIsNotNone(same_court.pk)
+        allowed = CoachAvailability.objects.create(
+            coach=self.contractor,
             court=self.other_court,
             start_at=self._aware(self.target_date, 9),
             end_at=self._aware(self.target_date, 11),
