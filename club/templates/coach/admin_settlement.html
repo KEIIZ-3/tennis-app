@@ -44,6 +44,13 @@
   .money-row.plus strong{color:#047857}.money-row.minus strong{color:#b91c1c}
   .money-row.total{margin-top:3px;padding-top:11px;border-top:2px solid #cbd5e1;font-size:15px}.money-row.total span,.money-row.total strong{color:#0f172a;font-weight:1000}
   .money-row.unpaid strong{color:#c2410c}
+  .profit-total{margin-top:12px;padding:12px;border-radius:13px;background:#f8fafc;text-align:center}
+  .profit-total span{display:block;color:#64748b;font-size:12px;font-weight:900}
+  .profit-total strong{display:block;margin-top:3px;color:#0f172a;font-size:24px;font-weight:1000}
+  .profit-total.negative{background:#fef2f2}.profit-total.negative strong{color:#b91c1c}
+  .profit-details{margin-top:10px;border-top:1px solid #e2e8f0}
+  .profit-details summary{padding:10px 0;color:#475569;font-size:13px;font-weight:900;cursor:pointer}
+  .profit-formula{margin:9px 0 0;padding:9px;border-radius:10px;background:#eff6ff;color:#1e3a8a;font-size:12px;font-weight:900;text-align:center}
   .payment-list{display:grid;gap:8px}.payment-row{display:grid;grid-template-columns:120px 1fr 150px 1.5fr auto;gap:10px;align-items:center;padding:10px;border:1px solid #e5e7eb;border-radius:13px}
   .muted{color:#64748b;font-size:11px;font-weight:700}
   .danger-button{border:1px solid #fecaca;background:#fff;color:#b91c1c}.success-button{border:1px solid #86efac;background:#f0fdf4;color:#166534}
@@ -164,6 +171,36 @@
         <button type="submit" class="btn btn-primary">支払いを記録</button>
       </form>
     {% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="section-head"><div><h2 class="section-title">コーチ別 月間利益</h2><p class="help">月間利益は当月の売上から当月負担経費を差し引いた金額です。前月繰越・立替返金・支払状況は含みません。</p></div></div>
+    <div class="coach-grid">
+      {% for row in monthly_profit_rows %}
+        <article class="coach-card">
+          <h3 class="coach-name">{{ row.coach_name }}</h3>
+          <div class="money-list">
+            <div class="money-row plus"><span>売上合計</span><strong>+{{ row.revenue_total }}円</strong></div>
+            <div class="money-row minus"><span>経費負担合計</span><strong>-{{ row.expense_total }}円</strong></div>
+          </div>
+          <div class="profit-total{% if row.monthly_profit < 0 %} negative{% endif %}"><span>月間利益</span><strong>{{ row.monthly_profit }}円</strong></div>
+          <details class="profit-details">
+            <summary>内訳を表示</summary>
+            <div class="money-list">
+              <div class="money-row plus"><span>実施済みチケット売上</span><strong>+{{ row.ticket_revenue }}円</strong></div>
+              <div class="money-row plus"><span>現金回収売上</span><strong>+{{ row.cash_revenue }}円</strong></div>
+              <div class="money-row plus"><span>ガット張り売上</span><strong>+{{ row.stringing_revenue }}円</strong></div>
+              <div class="money-row minus"><span>コート代負担</span><strong>-{{ row.court_cost_burden }}円</strong></div>
+              <div class="money-row minus"><span>共通経費負担</span><strong>-{{ row.common_expense_burden }}円</strong></div>
+              <div class="money-row minus"><span>業務委託負担</span><strong>-{{ row.contractor_burden }}円</strong></div>
+            </div>
+            <p class="profit-formula">売上合計 {{ row.revenue_total }}円 − 経費負担合計 {{ row.expense_total }}円 = 月間利益 {{ row.monthly_profit }}円</p>
+          </details>
+        </article>
+      {% empty %}
+        <div class="notice info">対象となるメインコーチのデータはありません。</div>
+      {% endfor %}
+    </div>
   </section>
 
   <section class="panel">
