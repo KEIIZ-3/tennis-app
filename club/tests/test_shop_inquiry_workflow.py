@@ -159,22 +159,63 @@ class ShopWorkflowTests(TestCase):
         text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(pdf)).pages)
         self.assertIn("お見積書", text)
 
-    def test_purchase_request_actions_are_customer_only(self):
+    def test_quote_purchase_actions_are_separated_by_role(self):
         quote = self.make_quote()
         url = reverse("club:shop_quote_detail", args=[quote.pk])
-        action = reverse("club:shop_quote_purchase_request", args=[quote.pk])
+        request_action = reverse("club:shop_quote_purchase_request", args=[quote.pk])
+        confirm_action = reverse("club:shop_quote_confirm", args=[quote.pk])
+
+        self.client.force_login(self.other)
+        self.assertEqual(self.client.get(url).status_code, 404)
+        self.assertEqual(self.client.post(request_action).status_code, 404)
+        self.assertEqual(self.client.post(confirm_action).status_code, 403)
+
         self.client.force_login(self.coach)
-        self.assertNotContains(self.client.get(url), "この内容で購入を希望する")
-        self.assertEqual(self.client.post(action).status_code, 404)
+        coach_detail = self.client.get(url)
+        self.assertEqual(coach_detail.status_code, 200)
+        self.assertNotContains(coach_detail, "この内容で購入を希望する")
+        self.assertEqual(self.client.post(request_action).status_code, 404)
         quote.refresh_from_db()
         self.assertEqual(quote.status, ShopQuote.STATUS_SENT)
+
         self.client.force_login(self.customer)
-        self.assertContains(self.client.get(url), "この内容で購入を希望する")
-        self.assertRedirects(self.client.post(action), url)
+        customer_detail = self.client.get(url)
+        self.assertEqual(customer_detail.status_code, 200)
+        self.assertContains(customer_detail, "この内容で購入を希望する")
+        self.assertNotContains(customer_detail, "購入を確定する")
+        self.assertRedirects(self.client.post(request_action), url)
         quote.refresh_from_db()
         self.assertEqual(quote.status, ShopQuote.STATUS_PURCHASE_REQUESTED)
+
         self.client.force_login(self.coach)
-        self.assertContains(self.client.get(url), "購入確定")
+        self.assertContains(self.client.get(url), "購入を確定する")
+        self.assertRedirects(self.client.post(confirm_action), reverse("club:shop_coach"))
+        purchase = ShopPurchase.objects.get(quote=quote)
+
+        allocation_url = reverse("club:shop_allocation", args=[purchase.pk])
+        self.assertEqual(self.client.get(allocation_url).status_code, 403)
+        self.assertEqual(self.client.post(allocation_url, {f"coach_{self.coach.pk}": purchase.amount}).status_code, 403)
+
+        admin_quote = self.make_quote()
+        request_purchase(quote=admin_quote, customer=self.customer)
+        self.client.force_login(self.admin)
+        admin_url = reverse("club:shop_quote_detail", args=[admin_quote.pk])
+        self.assertEqual(self.client.get(admin_url).status_code, 200)
+        self.assertContains(self.client.get(admin_url), "購入を確定する")
+        self.assertRedirects(
+            self.client.post(reverse("club:shop_quote_confirm", args=[admin_quote.pk])),
+            reverse("club:shop_coach"),
+        )
+        self.assertContains(self.client.get(reverse("club:shop_coach")), "売上按分")
+        self.assertEqual(self.client.get(allocation_url).status_code, 200)
+        self.assertRedirects(
+            self.client.post(allocation_url, {f"coach_{self.coach.pk}": purchase.amount}),
+            allocation_url,
+        )
+        self.assertEqual(
+            ShopRevenueAllocation.objects.get(purchase=purchase, coach=self.coach).amount,
+            purchase.amount,
+        )
 
     def test_other_customer_cannot_request_purchase(self):
         quote = self.make_quote()
