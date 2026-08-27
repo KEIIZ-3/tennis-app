@@ -1,16 +1,53 @@
 import calendar
 import uuid
 from datetime import date
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.db import models
 from django.db.models import Sum
+from django.urls import reverse
 from django.utils import timezone
 
 from .models import (
     ShopInquiry, ShopPurchase, ShopQuote, ShopQuoteItem,
     ShopRevenueAllocation, ShopRevenueAllocationAudit, User,
 )
+from .notification_service import freeze_recipients, schedule_delivery
+
+
+def sale_price_from_discount(list_price, discount_rate):
+    price = Decimal(str(list_price)) * (Decimal("1") - Decimal(str(discount_rate)) / Decimal("100"))
+    return int(price.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def discount_rate_from_prices(list_price, sale_price):
+    if not list_price:
+        return None
+    return ((Decimal(str(list_price)) - Decimal(str(sale_price))) * Decimal("100") / Decimal(str(list_price))).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+
+
+def profit_summary(items):
+    rows = list(items)
+    revenue = sum(int(item.sale_price) * int(item.quantity) for item in rows)
+    if any(item.cost_price is None for item in rows):
+        return {"revenue": revenue, "cost": None, "profit": None, "margin": None}
+    cost = sum(int(item.cost_price) * int(item.quantity) for item in rows)
+    profit = revenue - cost
+    margin = (Decimal(profit) * 100 / Decimal(revenue)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP) if revenue else None
+    return {"revenue": revenue, "cost": cost, "profit": profit, "margin": margin}
+
+
+def _schedule_inquiry_admin_notification(inquiry):
+    admins = User.objects.filter(is_active=True).filter(models.Q(is_staff=True) | models.Q(is_superuser=True))
+    message = "\n".join([
+        "Shop価格問い合わせが届きました。", f"顧客名: {inquiry.customer.display_name()}",
+        f"欲しいもの: {inquiry.wanted_item}",
+        f"問い合わせ日時: {timezone.localtime(inquiry.created_at):%Y/%m/%d %H:%M}",
+        f"確認画面: {reverse('club:shop_coach')}",
+    ])
+    schedule_delivery(freeze_recipients(admins), subject="Shop価格問い合わせ", message=message, media=("line", "email"), email_fallback=True)
 
 
 def one_month_after(value):
@@ -29,6 +66,7 @@ def create_inquiry(*, customer, wanted_item):
     inquiry = ShopInquiry(customer=customer, wanted_item=wanted_item)
     inquiry.full_clean()
     inquiry.save()
+    _schedule_inquiry_admin_notification(inquiry)
     return inquiry
 
 
@@ -43,7 +81,8 @@ def create_quote(*, customer, creator, items, inquiry=None, note=""):
     quote.quote_number = quote_number_for(quote)
     quote.save(update_fields=["quote_number"])
     for order, data in enumerate(items):
-        item = ShopQuoteItem(quote=quote, sort_order=order, **data)
+        item_data = {key: data.get(key) for key in ("description", "quantity", "list_price", "sale_price", "cost_price")}
+        item = ShopQuoteItem(quote=quote, sort_order=order, **item_data)
         item.full_clean()
         item.save()
     if not quote.items.exists():
@@ -76,6 +115,7 @@ def confirm_quote_purchase(*, quote, actor):
         quote=quote,
         defaults={"customer": quote.customer, "description": "\n".join(i.description for i in quote.items.all()),
                   "quantity": sum(i.quantity for i in quote.items.all()), "amount": quote.total,
+                  "cost_total": profit_summary(quote.items.all())["cost"],
                   "note": quote.note, "registered_by": actor},
     )
     if created:

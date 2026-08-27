@@ -3252,6 +3252,11 @@ class ShopQuote(models.Model):
     def discount_total(self):
         return self.list_total - self.total
 
+    @property
+    def profit_summary(self):
+        from .shop_service import profit_summary
+        return profit_summary(self.items.all())
+
 
 class ShopQuoteItem(models.Model):
     quote = models.ForeignKey(ShopQuote, on_delete=models.CASCADE, related_name="items")
@@ -3259,6 +3264,7 @@ class ShopQuoteItem(models.Model):
     quantity = models.PositiveIntegerField(default=1)
     list_price = models.PositiveIntegerField(default=0)
     sale_price = models.PositiveIntegerField(default=0)
+    cost_price = models.PositiveIntegerField(null=True, blank=True)
     sort_order = models.PositiveIntegerField(default=0)
 
     class Meta:
@@ -3282,6 +3288,12 @@ class ShopQuoteItem(models.Model):
     @property
     def discount_rate(self):
         return round(self.discount_amount * 100 / self.list_price, 1) if self.list_price else None
+    @property
+    def unit_profit(self): return None if self.cost_price is None else int(self.sale_price) - int(self.cost_price)
+    @property
+    def line_profit(self): return None if self.unit_profit is None else self.unit_profit * int(self.quantity)
+    @property
+    def profit_rate(self): return round(self.unit_profit * 100 / self.sale_price, 1) if self.unit_profit is not None and self.sale_price else None
 
 
 class ShopPurchase(models.Model):
@@ -3293,6 +3305,7 @@ class ShopPurchase(models.Model):
     description = models.TextField()
     quantity = models.PositiveIntegerField(default=1)
     amount = models.PositiveIntegerField()
+    cost_total = models.PositiveIntegerField(null=True, blank=True)
     note = models.TextField(blank=True, default="")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_CONFIRMED)
     registered_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="registered_shop_purchases")
