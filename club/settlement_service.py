@@ -33,6 +33,7 @@ from .settlement_models import (
     SettlementPayment,
 )
 from .settlement_loader import load_monthly_settlement_data
+from .settlement_monthly_profit import build_monthly_profit_rows
 from .settlement_persistence import persist_monthly_settlement
 from .settlement_reimbursement import apply_reimbursement_amounts
 from .settlement_result import MonthlySettlementResult
@@ -418,6 +419,9 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
                     "coach": saved.coach,
                     "coach_name": display_name(saved.coach),
                     "is_contractor_coach": saved.is_contractor_coach,
+                    "is_main_coach": bool(
+                        saved.calculation_snapshot.get("is_main_coach")
+                    ),
                     "reservation_count": saved.lesson_count,
                     "ticket_amount": saved.ticket_revenue,
                     "preopen_paid_amount": saved.preopen_paid_revenue,
@@ -719,6 +723,8 @@ def calculate_monthly_settlement(year, month, *, force=False):
         month,
         force=force,
     )
-    return MonthlySettlementResult.from_mapping(
-        _apply_wallet_policy(result, year, month)
+    result = _apply_wallet_policy(result, year, month)
+    result["monthly_profit_rows"] = build_monthly_profit_rows(
+        result.get("coach_rows", [])
     )
+    return MonthlySettlementResult.from_mapping(result)

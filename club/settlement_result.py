@@ -8,6 +8,7 @@ class MonthlySettlementResult(dict):
 
     settlement: Any
     coach_rows: list
+    monthly_profit_rows: list
     is_closed: bool
     approved_common_expense_rows: list
     approved_personal_expense_rows: list
