@@ -9,13 +9,14 @@ from django.urls import reverse
 from django.utils import timezone
 
 from club.models import (ShopInquiry, ShopPurchase, ShopQuote,
-                         ShopRevenueAllocation, User)
+                         ShopQuoteRevenueAllocation, ShopRevenueAllocation, User)
 from club.shop_pdf import build_quote_pdf
 from club.shop_service import (allocation_summary, confirm_quote_purchase,
     create_direct_purchase, create_inquiry, create_quote, monthly_shop_allocations,
     one_month_after, request_purchase, save_allocations, sale_price_from_discount,
-    discount_rate_from_prices, profit_summary, update_quote)
-from club.shop_forms import ShopQuoteItemForm
+    discount_rate_from_prices, profit_summary, quote_allocation_summary,
+    save_quote_allocations, update_quote)
+from club.shop_forms import ShopQuoteItemForm, customer_queryset
 from pypdf import PdfReader
 
 
@@ -63,6 +64,14 @@ class ShopWorkflowTests(TestCase):
         self.assertEqual(self.client.get(reverse("club:shop_coach")).status_code, 403)
         self.client.force_login(self.coach)
         self.assertContains(self.client.get(reverse("club:shop_coach")), inquiry.wanted_item)
+
+    def test_quote_customer_choices_include_members_and_coaches_only(self):
+        contractor = User.objects.create_user("shop-contractor", role=User.ROLE_CONTRACTOR_COACH)
+        inactive = User.objects.create_user("shop-inactive", is_active=False)
+        ids = set(customer_queryset().values_list("pk", flat=True))
+        self.assertTrue({self.customer.pk, self.coach.pk, contractor.pk}.issubset(ids))
+        self.assertNotIn(inactive.pk, ids)
+        self.assertNotIn(self.admin.pk, ids)
 
     def make_quote(self, inquiry=None):
         return create_quote(customer=self.customer, creator=self.coach, inquiry=inquiry, note="",
@@ -136,6 +145,30 @@ class ShopWorkflowTests(TestCase):
         self.assertFalse(created_again)
         self.assertEqual(purchase.pk, duplicate.pk)
         self.assertEqual(purchase.amount, 36100)
+
+    def test_coach_can_directly_confirm_sent_quote_for_coach_customer(self):
+        buyer = User.objects.create_user("shop-coach-buyer", role=User.ROLE_COACH)
+        quote = create_quote(customer=buyer, creator=self.coach, items=[{
+            "description": "ラケット", "quantity": 1, "list_price": 30000, "sale_price": 30000,
+        }])
+        purchase, created = confirm_quote_purchase(quote=quote, actor=self.coach)
+        duplicate, duplicate_created = confirm_quote_purchase(quote=quote, actor=self.coach)
+        self.assertTrue(created)
+        self.assertFalse(duplicate_created)
+        self.assertEqual(purchase.pk, duplicate.pk)
+        self.assertEqual(purchase.customer, buyer)
+        self.assertFalse(purchase.allocations.exists())
+        self.client.force_login(buyer)
+        self.assertEqual(self.client.get(reverse("club:shop_quote_detail", args=[quote.pk])).status_code, 200)
+        self.assertContains(self.client.get(reverse("club:shop_estimate_history")), "ラケット")
+
+    def test_invalid_quote_states_cannot_be_confirmed(self):
+        for status in (ShopQuote.STATUS_CANCELED, ShopQuote.STATUS_PURCHASED):
+            quote = self.make_quote()
+            quote.status = status
+            quote.save(update_fields=["status"])
+            with self.assertRaises(ValidationError):
+                confirm_quote_purchase(quote=quote, actor=self.coach)
 
     def test_direct_purchase_appears_only_for_customer(self):
         purchase = create_direct_purchase(customer=self.customer, actor=self.coach,
@@ -274,6 +307,24 @@ class ShopWorkflowTests(TestCase):
                          ("HEAD SPEED MP", 2, 33000, 25000))
         self.assertEqual(first.line_profit, 16000)
 
+    def test_allocation_fields_are_admin_only_and_tampering_is_rejected(self):
+        quote = self.make_quote()
+        create_url = reverse("club:shop_quote_create")
+        edit_url = reverse("club:shop_quote_edit", args=[quote.pk])
+        self.client.force_login(self.admin)
+        self.assertContains(self.client.get(create_url), "Shop売上 利益配分")
+        self.assertContains(self.client.get(edit_url), "Shop売上 利益配分")
+        self.client.force_login(self.coach)
+        self.assertNotContains(self.client.get(create_url), "Shop売上 利益配分")
+        self.assertNotContains(self.client.get(edit_url), "Shop売上 利益配分")
+        response = self.client.post(create_url, {f"allocation_coach_{self.coach.pk}": "100"})
+        self.assertEqual(response.status_code, 403)
+        self.client.force_login(self.customer)
+        self.assertNotContains(
+            self.client.get(reverse("club:shop_quote_detail", args=[quote.pk])),
+            "Shop売上 利益配分",
+        )
+
     def test_editing_requested_quote_requires_customer_reconfirmation(self):
         quote = self.make_quote()
         request_purchase(quote=quote, customer=self.customer)
@@ -324,6 +375,55 @@ class ShopAllocationTests(TestCase):
             amounts={self.coaches[0].pk: 20000, self.coaches[1].pk: 10000, self.coaches[2].pk: 5000})
         self.assertEqual((summary["remaining"], summary["complete"]), (1100, False))
         self.assertEqual(self.purchase.allocation_audits.count(), 2)
+
+    def test_planned_allocations_are_audited_and_transfer_only_on_confirmation(self):
+        quote = create_quote(customer=self.customer, creator=self.coaches[0], items=[{
+            "description": "商品", "quantity": 1, "list_price": 36100, "sale_price": 36100,
+        }])
+        summary = save_quote_allocations(
+            quote=quote, actor=self.admin,
+            amounts={self.coaches[0].pk: 20000, self.coaches[1].pk: 10000},
+        )
+        self.assertEqual((summary["remaining"], summary["complete"]), (6100, False))
+        self.assertEqual(quote.planned_allocation_audits.count(), 1)
+        month = timezone.localdate()
+        self.assertEqual(monthly_shop_allocations(month.year, month.month), {})
+        purchase, _ = confirm_quote_purchase(quote=quote, actor=self.coaches[0])
+        self.assertEqual(purchase.allocations.count(), 2)
+        self.assertEqual(allocation_summary(purchase)["remaining"], 6100)
+        self.assertEqual(monthly_shop_allocations(month.year, month.month), {
+            self.coaches[0].pk: 20000, self.coaches[1].pk: 10000,
+        })
+
+    def test_quote_price_change_marks_old_allocation_for_review(self):
+        quote = create_quote(customer=self.customer, creator=self.coaches[0], items=[{
+            "description": "商品", "quantity": 1, "list_price": 36100, "sale_price": 36100,
+        }])
+        save_quote_allocations(
+            quote=quote, actor=self.admin, amounts={self.coaches[0].pk: 36100},
+        )
+        update_quote(quote=quote, customer=self.customer, actor=self.admin, items=[{
+            "description": "商品", "quantity": 1, "list_price": 30000, "sale_price": 30000,
+            "cost_price": None,
+        }], allocation_amounts={self.coaches[0].pk: 36100})
+        quote.refresh_from_db()
+        summary = quote_allocation_summary(quote)
+        self.assertFalse(summary["complete"])
+        self.assertEqual(summary["remaining"], -6100)
+        purchase, created = confirm_quote_purchase(quote=quote, actor=self.coaches[0])
+        self.assertTrue(created)
+        self.assertFalse(purchase.allocations.exists())
+        self.assertEqual(purchase.allocation_audits.count(), 1)
+
+    def test_non_admin_cannot_save_planned_allocations(self):
+        quote = create_quote(customer=self.customer, creator=self.coaches[0], items=[{
+            "description": "商品", "quantity": 1, "list_price": 1000, "sale_price": 1000,
+        }])
+        with self.assertRaises(PermissionError):
+            save_quote_allocations(
+                quote=quote, actor=self.coaches[0], amounts={self.coaches[0].pk: 1000},
+            )
+        self.assertFalse(ShopQuoteRevenueAllocation.objects.exists())
 
     def test_over_negative_non_admin_and_canceled_are_rejected_or_excluded(self):
         with self.assertRaises(ValidationError):

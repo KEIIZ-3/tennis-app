@@ -3296,6 +3296,37 @@ class ShopQuoteItem(models.Model):
     def profit_rate(self): return round(self.unit_profit * 100 / self.sale_price, 1) if self.unit_profit is not None and self.sale_price else None
 
 
+class ShopQuoteRevenueAllocation(models.Model):
+    """Admin-entered allocation plan which is not revenue until purchase confirmation."""
+    quote = models.ForeignKey(ShopQuote, on_delete=models.PROTECT, related_name="planned_allocations")
+    coach = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+                              related_name="planned_shop_revenue_allocations",
+                              limit_choices_to={"role__in": User.COACH_ROLE_VALUES})
+    amount = models.PositiveIntegerField(default=0)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+                                   related_name="created_shop_quote_allocations")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(
+            fields=["quote", "coach"], name="unique_shop_quote_coach_allocation",
+        )]
+
+    @property
+    def percentage(self):
+        return round(self.amount * 100 / self.quote.total, 1) if self.quote.total else 0
+
+
+class ShopQuoteRevenueAllocationAudit(models.Model):
+    quote = models.ForeignKey(ShopQuote, on_delete=models.PROTECT,
+                              related_name="planned_allocation_audits")
+    allocation_snapshot = models.JSONField(default=list)
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+                                   related_name="shop_quote_allocation_audits")
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+
 class ShopPurchase(models.Model):
     STATUS_CONFIRMED = "confirmed"
     STATUS_CANCELED = "canceled"
