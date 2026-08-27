@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal
 from unittest.mock import patch
+from io import BytesIO
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -15,6 +16,7 @@ from club.shop_service import (allocation_summary, confirm_quote_purchase,
     one_month_after, request_purchase, save_allocations, sale_price_from_discount,
     discount_rate_from_prices, profit_summary, update_quote)
 from club.shop_forms import ShopQuoteItemForm
+from pypdf import PdfReader
 
 
 class ShopWorkflowTests(TestCase):
@@ -114,9 +116,9 @@ class ShopWorkflowTests(TestCase):
         html = self.client.get(reverse("club:shop_quote_detail", args=[quote.pk])).content.decode()
         self.assertNotIn("原価", html)
         self.assertNotIn("利益率", html)
-        pdf = build_quote_pdf(quote).decode("latin1")
-        self.assertNotIn("539F4FA1", pdf)  # 原価 UTF-16BE
-        self.assertNotIn("522976CA", pdf)  # 利益 UTF-16BE
+        pdf_text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(build_quote_pdf(quote))).pages)
+        self.assertNotIn("原価", pdf_text)
+        self.assertNotIn("利益", pdf_text)
 
     def test_zero_list_price_and_month_end_are_safe(self):
         quote = create_quote(customer=self.customer, creator=self.coach,
@@ -154,7 +156,8 @@ class ShopWorkflowTests(TestCase):
         self.assertEqual(quote.status, ShopQuote.STATUS_PURCHASE_REQUESTED)
         pdf = build_quote_pdf(quote)
         self.assertTrue(pdf.startswith(b"%PDF"))
-        self.assertIn("304A898B7A4D66F8", pdf.decode("latin1"))  # お見積書 UTF-16BE
+        text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(pdf)).pages)
+        self.assertIn("お見積書", text)
 
     def test_purchase_request_actions_are_customer_only(self):
         quote = self.make_quote()
@@ -189,18 +192,45 @@ class ShopWorkflowTests(TestCase):
              "sale_price": 800, "cost_price": 400},
         ])
         raw = build_quote_pdf(quote)
-        source = raw.decode("latin1")
-        encoded = lambda value: str(value).encode("utf-16-be").hex().upper()
+        reader = PdfReader(BytesIO(raw))
+        source = "\n".join(page.extract_text() or "" for page in reader.pages)
         for value in ("Play Design Tennis", "お見積書", "見積番号", quote.quote_number,
                       "見積日", "有効期限", "お客様名", self.customer.display_name(),
                       "商品名・内容", "HEAD SPEED MP", "グリップテープ", "数量",
                       "定価", "値引き", "販売価格", "明細金額", "定価合計",
                       "お値引き", "お見積合計", "備考"):
-            self.assertIn(encoded(value), source)
+            self.assertIn(str(value), source)
         for private in ("原価", "利益", "利益率", "内部利益集計"):
-            self.assertNotIn(encoded(private), source)
-        self.assertIn("/MediaBox [0 0 595 842]", source)
-        self.assertEqual(source.count("/Type /Page "), 1)
+            self.assertNotIn(private, source)
+        self.assertEqual(tuple(round(float(value)) for value in reader.pages[0].mediabox[2:]), (595, 842))
+        fonts = reader.pages[0]["/Resources"]["/Font"]
+        embedded = False
+        for font_ref in fonts.values():
+            font = font_ref.get_object()
+            descriptor = font.get("/FontDescriptor")
+            if descriptor:
+                descriptor = descriptor.get_object()
+                embedded = any(key in descriptor for key in ("/FontFile", "/FontFile2", "/FontFile3"))
+            descendants = font.get("/DescendantFonts", [])
+            for descendant in descendants:
+                descriptor = descendant.get_object().get("/FontDescriptor")
+                if descriptor:
+                    descriptor = descriptor.get_object()
+                    embedded = embedded or any(key in descriptor for key in ("/FontFile", "/FontFile2", "/FontFile3"))
+        self.assertTrue(embedded, "Japanese font must be embedded in the PDF")
+
+    def test_customer_pdf_wraps_long_japanese_product_names_and_multiple_items(self):
+        long_name = "長い日本語商品名" * 12
+        quote = create_quote(customer=self.customer, creator=self.coach, note="日本語の備考です", items=[
+            {"description": f"{long_name}{index}", "quantity": 1, "list_price": 1000,
+             "sale_price": 900} for index in range(12)
+        ])
+        reader = PdfReader(BytesIO(build_quote_pdf(quote)))
+        self.assertGreaterEqual(len(reader.pages), 1)
+        self.assertEqual(tuple(round(float(value)) for value in reader.pages[0].mediabox[2:]), (595, 842))
+        source = "\n".join(page.extract_text() or "" for page in reader.pages)
+        self.assertIn(long_name, "".join(source.split()))
+        self.assertIn("日本語の備考です", source)
 
     def _edit_post(self, quote, rows, **form_overrides):
         data = {
