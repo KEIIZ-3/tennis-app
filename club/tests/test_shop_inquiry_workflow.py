@@ -174,7 +174,58 @@ class ShopWorkflowTests(TestCase):
         quote.refresh_from_db()
         self.assertEqual(quote.status, ShopQuote.STATUS_PURCHASE_REQUESTED)
         self.client.force_login(self.coach)
-        self.assertContains(self.client.get(url), "購入確定")
+        self.assertContains(self.client.get(url), "購入を確定する")
+
+    def test_quote_purchase_actions_are_separated_by_role(self):
+        confirm_text = "購入を確定する"
+        request_text = "この内容で購入を希望する"
+
+        sent_quote = self.make_quote()
+        detail = reverse("club:shop_quote_detail", args=[sent_quote.pk])
+        confirm = reverse("club:shop_quote_confirm", args=[sent_quote.pk])
+
+        self.client.force_login(self.customer)
+        response = self.client.get(detail)
+        self.assertContains(response, request_text)
+        self.assertNotContains(response, confirm_text)
+        self.assertEqual(self.client.post(confirm).status_code, 403)
+        sent_quote.refresh_from_db()
+        self.assertEqual(sent_quote.status, ShopQuote.STATUS_SENT)
+        self.assertFalse(ShopPurchase.objects.filter(quote=sent_quote).exists())
+
+        self.client.force_login(self.coach)
+        response = self.client.get(detail)
+        self.assertContains(response, confirm_text)
+        self.assertNotContains(response, request_text)
+        self.assertRedirects(self.client.post(confirm), reverse("club:shop_coach"))
+        sent_quote.refresh_from_db()
+        self.assertEqual(sent_quote.status, ShopQuote.STATUS_PURCHASED)
+        self.assertEqual(ShopPurchase.objects.filter(quote=sent_quote).count(), 1)
+        self.assertNotContains(self.client.get(detail), confirm_text)
+        self.client.post(confirm)
+        self.assertEqual(ShopPurchase.objects.filter(quote=sent_quote).count(), 1)
+
+        for actor in (self.coach, self.admin):
+            for requested in (False, True):
+                quote = self.make_quote()
+                if requested:
+                    request_purchase(quote=quote, customer=self.customer)
+                url = reverse("club:shop_quote_detail", args=[quote.pk])
+                action = reverse("club:shop_quote_confirm", args=[quote.pk])
+                self.client.force_login(actor)
+                self.assertContains(self.client.get(url), confirm_text)
+                self.assertRedirects(self.client.post(action), reverse("club:shop_coach"))
+                self.assertEqual(ShopPurchase.objects.filter(quote=quote).count(), 1)
+
+        canceled = self.make_quote()
+        canceled.status = ShopQuote.STATUS_CANCELED
+        canceled.save(update_fields=["status"])
+        self.client.force_login(self.admin)
+        canceled_detail = reverse("club:shop_quote_detail", args=[canceled.pk])
+        canceled_confirm = reverse("club:shop_quote_confirm", args=[canceled.pk])
+        self.assertNotContains(self.client.get(canceled_detail), confirm_text)
+        self.assertRedirects(self.client.post(canceled_confirm), canceled_detail)
+        self.assertFalse(ShopPurchase.objects.filter(quote=canceled).exists())
 
     def test_other_customer_cannot_request_purchase(self):
         quote = self.make_quote()

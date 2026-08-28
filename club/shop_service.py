@@ -143,8 +143,8 @@ def confirm_quote_purchase(*, quote, actor):
     existing = ShopPurchase.objects.filter(quote=quote).first()
     if existing:
         return existing, False
-    if quote.status != ShopQuote.STATUS_PURCHASE_REQUESTED:
-        raise ValidationError("購入希望済みの見積のみ購入確定できます。")
+    if quote.status not in (ShopQuote.STATUS_SENT, ShopQuote.STATUS_PURCHASE_REQUESTED):
+        raise ValidationError("見積済みまたは購入希望済みの見積のみ購入確定できます。")
     purchase, created = ShopPurchase.objects.get_or_create(
         quote=quote,
         defaults={"customer": quote.customer, "description": "\n".join(i.description for i in quote.items.all()),

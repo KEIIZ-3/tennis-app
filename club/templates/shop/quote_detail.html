@@ -31,7 +31,7 @@
     <a class="btn" href="{% url 'club:shop_quote_pdf' quote.pk %}">見積書PDF</a>
     {% if can_manage and quote.status != 'purchased' and quote.status != 'canceled' %}<a class="btn" href="{% url 'club:shop_quote_edit' quote.pk %}">見積を編集</a>{% endif %}
     {% if not can_manage and quote.status == 'sent' %}<form method="post" action="{% url 'club:shop_quote_purchase_request' quote.pk %}">{% csrf_token %}<button class="btn btn-primary">この内容で購入を希望する</button></form>{% endif %}
-    {% if can_manage and quote.status == 'purchase_requested' %}<form method="post" action="{% url 'club:shop_quote_confirm' quote.pk %}">{% csrf_token %}<button class="btn btn-primary">購入確定</button></form>{% endif %}
+    {% if can_manage %}{% if quote.status == 'sent' or quote.status == 'purchase_requested' %}<form method="post" action="{% url 'club:shop_quote_confirm' quote.pk %}">{% csrf_token %}<button class="btn btn-primary">購入を確定する</button></form>{% endif %}{% endif %}
   </div>
 </article>
 {% endblock %}
