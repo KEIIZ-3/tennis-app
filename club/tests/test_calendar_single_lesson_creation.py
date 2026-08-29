@@ -15,7 +15,7 @@ from club.settlement_calculator import reservation_coaches_for_split
 
 
 class CalendarSingleLessonCreationTests(TestCase):
-    today = date(2026, 8, 23)
+    today = timezone.localdate()
 
     def setUp(self):
         self.target_date = self.today + timedelta(days=5)

@@ -130,6 +130,9 @@ def coach_admin_settlement(request):
             raw_paid_date = (request.POST.get("paid_date") or "").strip()
             note = (request.POST.get("note") or "").strip()
 
+            if not coach_id:
+                messages.error(request, "支払先コーチを選択してください。")
+                return redirect(redirect_url)
             coach = User.objects.filter(
                 pk=coach_id,
                 role__in=("coach", "contractor_coach"),
