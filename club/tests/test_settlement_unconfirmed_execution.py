@@ -219,7 +219,7 @@ class SettlementUnconfirmedExecutionTests(TestCase):
             username="active_settlement_member", role=User.ROLE_MEMBER
         )
         availability = self._availability(
-            self.now - timedelta(hours=2), capacity=5
+            self.now - timedelta(hours=2), capacity=5, participant_status=None
         )
         common = {
             "coach": self.coach,
@@ -298,9 +298,13 @@ class SettlementUnconfirmedExecutionTests(TestCase):
         rows = lesson_execution.unconfirmed_execution_rows(
             2026, 8, now=target + timedelta(days=1)
         )
+        slots = lesson_execution._canonical_slots(2026, 8)
 
         self.assertEqual(len(rows), 1)
-        self.assertNotEqual(rows[0]["availability_id"], predecessor.pk)
+        self.assertEqual(len(slots), 1)
+        self.assertEqual(slots[0]["source_kind"], "fixed_lesson")
+        self.assertEqual(slots[0]["fixed_lesson"], fixed)
+        self.assertEqual(CoachAvailability.objects.count(), 1)
 
     def test_august_audit_shape_keeps_only_occurrences_needing_confirmation(self):
         fixed_start = timezone.make_aware(datetime(2026, 8, 5, 19, 0))
