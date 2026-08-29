@@ -260,6 +260,14 @@ def unconfirmed_execution_rows(year, month, *, now=None):
             continue
 
         reservations = list(_reservation_queryset(slot))
+        if not any(
+            reservation.status in (
+                Reservation.STATUS_ACTIVE,
+                Reservation.STATUS_PENDING,
+            )
+            for reservation in reservations
+        ):
+            continue
         entry = _status_entry(status_map, slot)
         status, _cancellation_type = effective_status(
             _status_entry(status_map, slot),
@@ -402,7 +410,9 @@ def _reservation_queryset(slot):
     return (
         reservations_for_lesson(
             fixed_lesson=fixed_lesson,
-            availability=availability,
+            # A fixed occurrence is canonical even when historical reservations
+            # still point at a predecessor availability for the same slot.
+            availability=None if fixed_lesson is not None else availability,
             lesson_type=slot.get("lesson_type"),
             start_at=start_at,
             end_at=end_at,
@@ -490,17 +500,21 @@ def _canonical_slots(year, month):
                 continue
 
             represented_availability_ids.add(availability.pk)
-            slots.append(
-                {
-                    "availability": availability,
-                    "fixed_lesson": fixed_lesson,
-                    "target_date": target_date,
-                    "start_at": start_at,
-                    "end_at": end_at,
-                    "coach_names": _fixed_coach_names(fixed_lesson),
-                    "source_kind": "fixed_lesson",
-                }
+            slot = {
+                "availability": availability,
+                "fixed_lesson": fixed_lesson,
+                "target_date": target_date,
+                "start_at": start_at,
+                "end_at": end_at,
+                "coach_names": _fixed_coach_names(fixed_lesson),
+                "source_kind": "fixed_lesson",
+            }
+            represented_availability_ids.update(
+                _reservation_queryset(slot)
+                .exclude(availability_id__isnull=True)
+                .values_list("availability_id", flat=True)
             )
+            slots.append(slot)
 
     extra_availabilities = (
         CoachAvailability.objects.filter(

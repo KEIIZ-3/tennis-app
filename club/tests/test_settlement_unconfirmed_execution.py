@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from club import lesson_execution
 from club.lesson_execution_storage import save_status
-from club.models import CoachAvailability, Court, Reservation
+from club.models import CoachAvailability, Court, FixedLesson, Reservation
 from club.settlement_models import MonthlySettlement
 
 
@@ -38,8 +38,10 @@ class SettlementUnconfirmedExecutionTests(TestCase):
         )
         self.now = timezone.make_aware(datetime(2026, 8, 15, 12, 0))
 
-    def _availability(self, start_at, *, duration=1, capacity=1):
-        return CoachAvailability.objects.create(
+    def _availability(
+        self, start_at, *, duration=1, capacity=1, participant_status=Reservation.STATUS_ACTIVE
+    ):
+        availability = CoachAvailability.objects.create(
             coach=self.coach,
             court=self.court,
             lesson_type=Reservation.LESSON_PRIVATE,
@@ -49,6 +51,19 @@ class SettlementUnconfirmedExecutionTests(TestCase):
             capacity=capacity,
             status=CoachAvailability.STATUS_OPEN,
         )
+        if participant_status:
+            Reservation.objects.create(
+                user=self.member,
+                coach=self.coach,
+                court=self.court,
+                availability=availability,
+                lesson_type=Reservation.LESSON_PRIVATE,
+                target_level=get_user_model().LEVEL_BEGINNER,
+                start_at=availability.start_at,
+                end_at=availability.end_at,
+                status=participant_status,
+            )
+        return availability
 
     def _set_execution_status(self, availability, status):
         settlement, _ = MonthlySettlement.objects.get_or_create(
@@ -141,7 +156,9 @@ class SettlementUnconfirmedExecutionTests(TestCase):
         self.assertEqual(lesson_execution._fixed_coach_names(fixed_lesson), ["-"])
 
     def test_legacy_rain_cancel_is_not_unconfirmed(self):
-        availability = self._availability(self.now - timedelta(hours=2))
+        availability = self._availability(
+            self.now - timedelta(hours=2), participant_status=None
+        )
         Reservation.objects.create(
             user=self.member,
             coach=self.coach,
@@ -161,7 +178,9 @@ class SettlementUnconfirmedExecutionTests(TestCase):
         )
 
     def test_explicitly_canceled_occurrence_is_not_unconfirmed(self):
-        availability = self._availability(self.now - timedelta(hours=2))
+        availability = self._availability(
+            self.now - timedelta(hours=2), participant_status=None
+        )
         Reservation.objects.create(
             user=self.member,
             coach=self.coach,
@@ -200,7 +219,7 @@ class SettlementUnconfirmedExecutionTests(TestCase):
             username="active_settlement_member", role=User.ROLE_MEMBER
         )
         availability = self._availability(
-            self.now - timedelta(hours=2), capacity=5
+            self.now - timedelta(hours=2), capacity=5, participant_status=None
         )
         common = {
             "coach": self.coach,
@@ -226,6 +245,122 @@ class SettlementUnconfirmedExecutionTests(TestCase):
         rows = lesson_execution.unconfirmed_execution_rows(2026, 8, now=self.now)
 
         self.assertEqual([row["availability_id"] for row in rows], [availability.pk])
+
+    def test_only_occurrences_with_active_or_pending_participants_need_confirmation(self):
+        empty = self._availability(
+            self.now - timedelta(days=3), participant_status=None
+        )
+        canceled = self._availability(
+            self.now - timedelta(days=2), participant_status=Reservation.STATUS_CANCELED
+        )
+        active = self._availability(self.now - timedelta(days=1))
+        pending = self._availability(
+            self.now - timedelta(hours=2), participant_status=Reservation.STATUS_PENDING
+        )
+
+        rows = lesson_execution.unconfirmed_execution_rows(2026, 8, now=self.now)
+
+        self.assertEqual(
+            [row["availability_id"] for row in rows],
+            [active.pk, pending.pk],
+        )
+        self.assertNotIn(empty.pk, [row["availability_id"] for row in rows])
+        self.assertNotIn(canceled.pk, [row["availability_id"] for row in rows])
+
+    def test_fixed_occurrence_replaces_predecessor_availability(self):
+        target = timezone.make_aware(datetime(2026, 8, 5, 19, 0))
+        fixed = FixedLesson.objects.create(
+            title="Canonical fixed lesson",
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=get_user_model().LEVEL_BEGINNER,
+            start_date=target.date(),
+            weekday=target.weekday(),
+            start_hour=target.hour,
+            capacity=4,
+            weeks_ahead=1,
+        )
+        predecessor = self._availability(target, participant_status=None)
+        Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            availability=predecessor,
+            fixed_lesson=fixed,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=get_user_model().LEVEL_BEGINNER,
+            start_at=predecessor.start_at,
+            end_at=predecessor.end_at,
+            status=Reservation.STATUS_ACTIVE,
+        )
+
+        rows = lesson_execution.unconfirmed_execution_rows(
+            2026, 8, now=target + timedelta(days=1)
+        )
+        slots = lesson_execution._canonical_slots(2026, 8)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(slots), 1)
+        self.assertEqual(slots[0]["source_kind"], "fixed_lesson")
+        self.assertEqual(slots[0]["fixed_lesson"], fixed)
+        self.assertEqual(CoachAvailability.objects.count(), 1)
+
+    def test_august_audit_shape_keeps_only_occurrences_needing_confirmation(self):
+        fixed_start = timezone.make_aware(datetime(2026, 8, 5, 19, 0))
+        fixed = FixedLesson.objects.create(
+            title="Wednesday fixed lesson",
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=get_user_model().LEVEL_BEGINNER,
+            start_date=fixed_start.date(),
+            weekday=fixed_start.weekday(),
+            start_hour=fixed_start.hour,
+            capacity=4,
+            weeks_ahead=1,
+        )
+        predecessor = self._availability(fixed_start, participant_status=None)
+        Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            availability=predecessor,
+            fixed_lesson=fixed,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=get_user_model().LEVEL_BEGINNER,
+            start_at=predecessor.start_at,
+            end_at=predecessor.end_at,
+            status=Reservation.STATUS_CANCELED,
+        )
+        settlement = MonthlySettlement.objects.create(year=2026, month=8)
+        save_status(
+            settlement,
+            lesson_execution._fixed_slot_key(fixed, fixed_start.date()),
+            lesson_execution.STATUS_HELD,
+            self.admin,
+        )
+        self._availability(
+            timezone.make_aware(datetime(2026, 8, 9, 19, 0)),
+            participant_status=Reservation.STATUS_CANCELED,
+        )
+        self._availability(
+            timezone.make_aware(datetime(2026, 8, 21, 19, 0)),
+            participant_status=None,
+        )
+        for day in (23, 24, 28):
+            self._availability(timezone.make_aware(datetime(2026, 8, day, 19, 0)))
+
+        rows = lesson_execution.unconfirmed_execution_rows(
+            2026,
+            8,
+            now=timezone.make_aware(datetime(2026, 8, 29, 0, 0)),
+        )
+
+        self.assertEqual(
+            [row["lesson_date"].day for row in rows],
+            [23, 24, 28],
+        )
 
     def test_cancellation_evidence_overrides_stale_held_metadata(self):
         availability = self._availability(self.now - timedelta(hours=2))
