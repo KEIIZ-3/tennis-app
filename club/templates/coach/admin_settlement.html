@@ -161,7 +161,8 @@
     </div>
     {% if not is_month_closed %}
       <form method="post" class="form-grid">{% csrf_token %}
-        <input type="hidden" name="action" value="record_salary_payment">
+        <input type="hidden" name="action" value="create_payout">
+        <input type="hidden" name="payout_type" value="salary_payout">
         <input type="hidden" name="year" value="{{ selected_year }}">
         <input type="hidden" name="month" value="{{ selected_month }}">
         <div><label for="coach_id">支払先コーチ</label><select id="coach_id" name="coach_id" required><option value="">選択してください</option>{% for coach in coach_options %}<option value="{{ coach.id }}">{{ coach.display_name }}</option>{% endfor %}</select></div>

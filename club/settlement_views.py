@@ -130,6 +130,9 @@ def coach_admin_settlement(request):
             raw_paid_date = (request.POST.get("paid_date") or "").strip()
             note = (request.POST.get("note") or "").strip()
 
+            if not coach_id:
+                messages.error(request, "支払先コーチを選択してください。")
+                return redirect(redirect_url)
             coach = User.objects.filter(
                 pk=coach_id,
                 role__in=("coach", "contractor_coach"),
@@ -179,11 +182,30 @@ def coach_admin_settlement(request):
                 messages.error(request, "支払日の形式が正しくありません。")
                 return redirect(redirect_url)
 
-            _payment, created, allocated = create_settlement_payment(
-                settlement=settlement, coach=coach, payment_type=payment_type,
-                amount=amount, paid_date=paid_date, note=note,
-                user=request.user,
-            )
+            try:
+                _payment, created, allocated = create_settlement_payment(
+                    settlement=settlement,
+                    coach=coach,
+                    payment_type=payment_type,
+                    amount=amount,
+                    paid_date=paid_date,
+                    note=note,
+                    user=request.user,
+                )
+            except ValidationError as exc:
+                message = (
+                    exc.messages[0]
+                    if exc.messages
+                    else "支払いを記録できませんでした。入力内容を確認してください。"
+                )
+                messages.error(request, message)
+                return redirect(redirect_url)
+            except (ValueError, TypeError) as exc:
+                messages.error(
+                    request,
+                    str(exc) or "支払いを記録できませんでした。入力内容を確認してください。",
+                )
+                return redirect(redirect_url)
 
             if not created:
                 messages.info(
