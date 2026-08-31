@@ -362,7 +362,14 @@ def synchronize_fixed_lesson_membership(fixed_lesson_id, created_by=None):
             raise ValidationError("固定メンバーの予約生成にはコート設定が必要です。")
 
         today = timezone.localdate()
-        target_dates = _rolling_target_dates(fixed_lesson, today)
+        canceled_dates = set(
+            fixed_lesson.canceled_occurrences.values_list("occurrence_date", flat=True)
+        )
+        target_dates = [
+            target_date
+            for target_date in _rolling_target_dates(fixed_lesson, today)
+            if target_date not in canceled_dates
+        ]
         target_datetimes = {
             fixed_lesson._build_datetimes_for_date(target_date)
             for target_date in target_dates
