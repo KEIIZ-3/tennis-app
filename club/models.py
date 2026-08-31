@@ -717,12 +717,21 @@ class FixedLesson(models.Model, LessonTypeMixin):
         except Exception:
             return 1
 
-    def scheduled_occurrence_dates(self):
+    def configured_occurrence_dates(self):
         first_date = self.first_occurrence_date()
         return [
             first_date + timedelta(days=7 * index)
             for index in range(self.occurrence_count())
         ]
+
+    def scheduled_occurrence_dates(self):
+        dates = self.configured_occurrence_dates()
+        if not self.pk:
+            return dates
+        canceled_dates = set(
+            self.canceled_occurrences.values_list("occurrence_date", flat=True)
+        )
+        return [target_date for target_date in dates if target_date not in canceled_dates]
 
     def sync_future_reservations(self, created_by=None):
         """固定メンバー同期の公開入口。
@@ -806,6 +815,36 @@ class FixedLesson(models.Model, LessonTypeMixin):
     def delete(self, using=None, keep_parents=False, created_by=None):
         # Django admin の単件削除を含む全経路で、予約だけが孤児化するのを防ぐ。
         return self.cancel_and_delete(created_by=created_by)
+
+
+class FixedLessonCanceledOccurrence(models.Model):
+    fixed_lesson = models.ForeignKey(
+        FixedLesson,
+        on_delete=models.CASCADE,
+        related_name="canceled_occurrences",
+        verbose_name="固定レッスン",
+    )
+    occurrence_date = models.DateField(verbose_name="中止日")
+    canceled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="canceled_fixed_lesson_occurrences",
+        verbose_name="中止操作ユーザー",
+    )
+    canceled_at = models.DateTimeField(auto_now_add=True, verbose_name="中止日時")
+
+    class Meta:
+        ordering = ["occurrence_date", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["fixed_lesson", "occurrence_date"],
+                name="unique_canceled_fixed_occurrence",
+            )
+        ]
+        verbose_name = "固定レッスン中止開催回"
+        verbose_name_plural = "固定レッスン中止開催回"
 
 
 class TicketPurchase(models.Model):

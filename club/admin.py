@@ -783,6 +783,20 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
             return obj.target_level_display_label()
         return obj.get_target_level_display()
 
+    def delete_model(self, request, obj):
+        from .fixed_lesson_occurrence_service import delete_or_cancel_availability
+
+        delete_or_cancel_availability(availability_id=obj.pk, actor=request.user)
+
+    def delete_queryset(self, request, queryset):
+        from .fixed_lesson_occurrence_service import delete_or_cancel_availability
+
+        for availability_id in queryset.order_by("pk").values_list("pk", flat=True):
+            delete_or_cancel_availability(
+                availability_id=availability_id,
+                actor=request.user,
+            )
+
 
 @admin.register(FixedLesson)
 class FixedLessonAdmin(admin.ModelAdmin):
