@@ -18,6 +18,7 @@ from club.models import (
 )
 from club.settlement_models import MonthlySettlement
 from club.ticket_purchase_correction_service import correct_ticket_purchase
+from club.forms import TicketPurchaseCorrectionForm
 
 
 class TicketPurchaseCorrectionTests(TestCase):
@@ -184,6 +185,62 @@ class TicketPurchaseCorrectionTests(TestCase):
         recreated = TicketCashReceipt.objects.get(ticket_purchase=replacement)
         self.assertEqual((recreated.amount, recreated.received_at), (receipt.amount, receipt.received_at))
 
+    def correction_form_data(self, purchase, **overrides):
+        receipt = TicketCashReceipt.objects.get(ticket_purchase=purchase)
+        data = {
+            "tickets": purchase.total_tickets,
+            "unit_price": purchase.unit_price,
+            "purchase_type": purchase.purchase_type,
+            "purchased_at": timezone.localtime(purchase.purchased_at).strftime("%Y-%m-%dT%H:%M"),
+            "note": purchase.note,
+            "correction_reason": "入力誤り",
+            "cash_received_at": timezone.localtime(receipt.received_at).strftime("%Y-%m-%dT%H:%M"),
+            "idempotency_key": "11111111-1111-4111-8111-111111111111",
+        }
+        data.update(overrides)
+        return TicketPurchaseCorrectionForm(data, purchase=purchase)
+
+    def test_form_recalculates_cash_amount_from_changed_ticket_count(self):
+        original = self.grant(cash=True)
+        form = self.correction_form_data(original, tickets=3)
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["cash_amount"], 10500)
+        self.assertEqual(form.cleaned_data["cash_mode"], "replace")
+
+    def test_form_recalculates_cash_amount_from_changed_unit_price(self):
+        original = self.grant(cash=True)
+        form = self.correction_form_data(original, unit_price=4000)
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["cash_amount"], 16000)
+
+    def test_form_keeps_original_cash_amount_when_values_are_unchanged_or_preserve_is_selected(self):
+        original = self.grant(cash=True)
+        unchanged = self.correction_form_data(original)
+        preserved = self.correction_form_data(original, tickets=3, preserve_cash_amount="on")
+
+        self.assertTrue(unchanged.is_valid(), unchanged.errors)
+        self.assertEqual(unchanged.cleaned_data["cash_amount"], 14000)
+        self.assertEqual(unchanged.cleaned_data["cash_mode"], "preserve")
+        self.assertTrue(preserved.is_valid(), preserved.errors)
+        self.assertEqual(preserved.cleaned_data["cash_amount"], 14000)
+        self.assertEqual(preserved.cleaned_data["cash_mode"], "preserve")
+
+    def test_confirmed_ui_cash_amount_matches_created_receipt(self):
+        original = self.grant(cash=True)
+        url = reverse("admin:club_ticketpurchase_correct", args=[original.pk])
+        self.client.force_login(self.admin)
+        get_response = self.client.get(url)
+        data = self.correction_form_data(original, tickets=3).data.copy()
+        data["action"] = "confirm"
+
+        response = self.client.post(url, data)
+
+        self.assertRedirects(response, reverse("admin:club_ticketpurchase_changelist"))
+        replacement = TicketPurchase.objects.get(corrected_from=original)
+        self.assertEqual(TicketCashReceipt.objects.get(ticket_purchase=replacement).amount, 10500)
+
     def test_closed_purchase_or_consumption_month_is_rejected_atomically(self):
         original = self.grant()
         MonthlySettlement.objects.create(
@@ -220,6 +277,8 @@ class TicketPurchaseCorrectionTests(TestCase):
         self.client.force_login(self.admin)
         response = self.client.get(url)
         self.assertContains(response, "確認画面へ")
+        self.assertNotContains(response, "現金受領記録")
+        self.assertNotContains(response, "Idempotency key")
         token = response.context["form"]["idempotency_key"].value()
         data = {
             "tickets": 4,

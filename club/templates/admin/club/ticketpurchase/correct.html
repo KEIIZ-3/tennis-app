@@ -54,14 +54,19 @@
       {{ form.non_field_errors }}
       <fieldset class="module aligned">
         {% for field in form %}
+          {% if field.name == "cash_mode" or field.name == "idempotency_key" %}
+            {{ field }}
+          {% elif receipt or field.name != "preserve_cash_amount" and field.name != "cash_amount" and field.name != "cash_received_at" %}
           <div class="form-row">
             {{ field.errors }}
             {{ field.label_tag }} {{ field }}
+            {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
           </div>
+          {% endif %}
         {% endfor %}
       </fieldset>
       {% if receipt %}
-        <p class="help">現金受領記録は元履歴で取消し、新しい付与履歴へ再作成されます。金額変更時は「明示した内容へ変更」を選び、受領額と受領日を確認してください。</p>
+        <p class="help">修正後の現金受領額は、通常はチケット枚数 × 単価で自動計算します。受領日は元の記録を初期表示します。</p>
       {% endif %}
       <div class="submit-row">
         <input type="submit" class="default" value="確認画面へ">
@@ -70,4 +75,22 @@
     </form>
   {% endif %}
 </div>
+{% if receipt and not is_confirmation %}
+<script>
+  (function () {
+    const tickets = document.getElementById("id_tickets");
+    const unitPrice = document.getElementById("id_unit_price");
+    const amount = document.getElementById("id_cash_amount");
+    const preserve = document.getElementById("id_preserve_cash_amount");
+    const originalAmount = {{ receipt.amount }};
+    function updateAmount() {
+      amount.value = preserve.checked ? originalAmount : (Number(tickets.value) * Number(unitPrice.value) || "");
+    }
+    tickets.addEventListener("input", updateAmount);
+    unitPrice.addEventListener("input", updateAmount);
+    preserve.addEventListener("change", updateAmount);
+    updateAmount();
+  }());
+</script>
+{% endif %}
 {% endblock %}

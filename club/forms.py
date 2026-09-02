@@ -49,11 +49,18 @@ class TicketPurchaseCorrectionForm(forms.Form):
     correction_reason = forms.CharField(
         label="修正理由", max_length=255, widget=forms.Textarea(attrs={"rows": 3})
     )
-    cash_mode = forms.ChoiceField(
-        label="現金受領記録",
-        choices=(("none", "受領記録なし"), ("preserve", "金額・受領日を維持"), ("replace", "明示した内容へ変更")),
+    cash_mode = forms.CharField(widget=forms.HiddenInput, required=False)
+    preserve_cash_amount = forms.BooleanField(
+        label="元の現金受領額を維持する",
+        required=False,
+        help_text="枚数や単価を変更しても、現金受領額だけは変更しない場合に選択してください。",
     )
-    cash_amount = forms.IntegerField(label="修正後の現金受領額", min_value=1, required=False)
+    cash_amount = forms.IntegerField(
+        label="修正後の現金受領額",
+        min_value=1,
+        required=False,
+        widget=forms.NumberInput(attrs={"readonly": True}),
+    )
     cash_received_at = forms.DateTimeField(
         label="修正後の現金受領日",
         required=False,
@@ -67,18 +74,33 @@ class TicketPurchaseCorrectionForm(forms.Form):
         self.purchase = purchase
         receipt = purchase.cash_receipts.filter(reversed_at__isnull=True).first()
         if receipt is None:
-            self.fields["cash_mode"].choices = (("none", "受領記録なし"),)
+            for field_name in ("preserve_cash_amount", "cash_amount", "cash_received_at"):
+                self.fields[field_name].required = False
 
     def clean(self):
         cleaned = super().clean()
         receipt = self.purchase.cash_receipts.filter(reversed_at__isnull=True).first()
-        mode = cleaned.get("cash_mode")
-        if receipt and mode == "replace":
-            if cleaned.get("cash_amount") is None or cleaned.get("cash_received_at") is None:
-                raise forms.ValidationError("現金受領額を変更する場合は、金額と受領日を明示してください。")
-        if receipt and mode == "preserve":
+        if receipt is None:
+            cleaned["cash_mode"] = "none"
+            cleaned["cash_amount"] = None
+            cleaned["cash_received_at"] = None
+            return cleaned
+
+        if cleaned.get("cash_received_at") is None:
+            self.add_error("cash_received_at", "現金受領日を入力してください。")
+            return cleaned
+
+        if cleaned.get("preserve_cash_amount"):
             cleaned["cash_amount"] = receipt.amount
-            cleaned["cash_received_at"] = receipt.received_at
+        elif cleaned.get("tickets") is not None and cleaned.get("unit_price") is not None:
+            cleaned["cash_amount"] = int(cleaned["tickets"]) * int(cleaned["unit_price"])
+
+        cleaned["cash_mode"] = (
+            "preserve"
+            if cleaned.get("cash_amount") == receipt.amount
+            and cleaned.get("cash_received_at") == receipt.received_at
+            else "replace"
+        )
         return cleaned
 
 
