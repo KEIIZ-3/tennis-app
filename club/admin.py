@@ -1338,7 +1338,8 @@ class TicketPurchaseAdmin(TicketAuditAdmin):
             "purchase_type": purchase.purchase_type,
             "purchased_at": timezone.localtime(purchase.purchased_at).strftime("%Y-%m-%dT%H:%M"),
             "note": purchase.note,
-            "cash_mode": "preserve" if receipt else "none",
+            "cash_mode": "none",
+            "preserve_cash_amount": False,
             "cash_amount": receipt.amount if receipt else None,
             "cash_received_at": (
                 timezone.localtime(receipt.received_at).strftime("%Y-%m-%dT%H:%M") if receipt else None
