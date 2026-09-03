@@ -4,7 +4,7 @@ import secrets
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections import OrderedDict
+from collections import defaultdict, OrderedDict
 from datetime import date, datetime, timedelta
 from urllib.parse import urlencode
 
@@ -3823,6 +3823,13 @@ def coach_today_lessons(request):
             return redirect(_today_lessons_redirect())
 
     slot_map = {}
+    reservations_by_availability = defaultdict(list)
+    reservations_by_fixed_lesson = defaultdict(list)
+    reservations_by_physical_slot = defaultdict(list)
+    waitlists_by_availability = defaultdict(list)
+    waitlists_by_fixed_lesson = defaultdict(list)
+    waitlists_by_physical_slot = defaultdict(list)
+    participant_details = {}
 
     def _slot_key_for_row(
         *, lesson_type, coach_id, court_id, start_at, end_at,
@@ -3908,75 +3915,35 @@ def coach_today_lessons(request):
         if key in slot_map:
             return slot_map[key]
 
-        reservation_kwargs = {
-            "fixed_lesson": fixed_lesson,
-            "availability": availability,
-            "lesson_type": key[0],
-            "start_at": start_at,
-            "end_at": end_at,
-        }
-        if fixed_lesson is None and availability is None:
-            reservation_source = Reservation.objects.filter(
-                lesson_type=key[0],
-                coach_id=key[1] or None,
-                court_id=key[2] or None,
-                start_at=start_at,
-                end_at=end_at,
-            )
+        physical_key = (key[0], key[1] or None, key[2] or None, start_at, end_at)
+        if availability is not None:
+            slot_reservations = list(reservations_by_availability[availability.pk])
+            if fixed_lesson is not None:
+                competing_ids = _competing_fixed_lesson_ids(fixed_lesson, start_at, end_at)
+                if competing_ids:
+                    slot_reservations = [
+                        reservation for reservation in slot_reservations
+                        if reservation.fixed_lesson_id not in competing_ids
+                    ]
+        elif fixed_lesson is not None:
+            slot_reservations = list(reservations_by_fixed_lesson[fixed_lesson.pk])
         else:
-            reservation_source = reservations_for_lesson(
-                **reservation_kwargs,
-                statuses=(Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING),
-            )
+            slot_reservations = list(reservations_by_physical_slot[physical_key])
+        reservations = [
+            reservation for reservation in slot_reservations
+            if reservation.status == Reservation.STATUS_ACTIVE
+        ]
+        pending_reservations = [
+            reservation for reservation in slot_reservations
+            if reservation.status == Reservation.STATUS_PENDING
+        ]
 
-        reservations = list(
-            reservation_source.filter(status=Reservation.STATUS_ACTIVE).select_related(
-                "user",
-                "coach",
-                "substitute_coach",
-                "court",
-                "availability",
-                "fixed_lesson",
-            )
-        )
-
-        pending_reservations = list(
-            reservation_source.filter(status=Reservation.STATUS_PENDING).select_related(
-                "user",
-                "coach",
-                "substitute_coach",
-                "court",
-                "availability",
-                "fixed_lesson",
-            )
-        )
-
-        base_slot_filter = Q(lesson_type=key[0], start_at=start_at, end_at=end_at)
         if fixed_lesson is not None:
-            relation_filter = Q(fixed_lesson=fixed_lesson)
+            waitlists = list(waitlists_by_fixed_lesson[fixed_lesson.pk])
         elif availability is not None:
-            relation_filter = Q(availability=availability)
+            waitlists = list(waitlists_by_availability[availability.pk])
         else:
-            relation_filter = Q(coach_id=key[1] or None, court_id=key[2] or None)
-        slot_filter = base_slot_filter & relation_filter
-
-        waitlists = list(
-            LessonWaitlist.objects.select_related(
-                "user",
-                "coach",
-                "substitute_coach",
-                "court",
-                "availability",
-                "fixed_lesson",
-            )
-            .filter(slot_filter, status=LessonWaitlist.STATUS_WAITING)
-            .order_by("created_at", "id")
-            .distinct()
-        )
-
-        participant_details = participant_details_by_reservation(
-            reservations + pending_reservations
-        )
+            waitlists = list(waitlists_by_physical_slot[physical_key])
         participant_rows = [
             _reservation_person_row(reservation, participant_details.get(reservation.pk))
             for reservation in reservations
@@ -4093,83 +4060,51 @@ def coach_today_lessons(request):
         if not availability:
             return None
 
-        linked_fixed_lesson = (
-            Reservation.objects.filter(
-                availability=availability,
-                fixed_lesson__isnull=False,
-                start_at=availability.start_at,
-                end_at=availability.end_at,
-            )
-            .select_related(
-                "fixed_lesson",
-                "fixed_lesson__coach",
-                "fixed_lesson__coach_2",
-                "fixed_lesson__coach_3",
-                "fixed_lesson__court",
-            )
-            .order_by("id")
-            .values_list("fixed_lesson_id", flat=True)
-            .first()
+        linked_reservation = next(
+            (
+                reservation for reservation in reservations_by_availability[availability.pk]
+                if reservation.fixed_lesson_id
+                and reservation.start_at == availability.start_at
+                and reservation.end_at == availability.end_at
+            ),
+            None,
         )
-
-        if not linked_fixed_lesson:
-            linked_fixed_lesson = (
-                Reservation.objects.filter(
-                    fixed_lesson__isnull=False,
-                    lesson_type=availability.lesson_type,
-                    start_at=availability.start_at,
-                    end_at=availability.end_at,
-                )
-                .filter(
-                    Q(court=availability.court)
-                    | Q(availability=availability)
-                )
-                .order_by("id")
-                .values_list("fixed_lesson_id", flat=True)
-                .first()
+        if linked_reservation is None:
+            linked_reservation = next(
+                (
+                    reservation for reservation in all_period_reservations
+                    if reservation.fixed_lesson_id
+                    and reservation.lesson_type == availability.lesson_type
+                    and reservation.start_at == availability.start_at
+                    and reservation.end_at == availability.end_at
+                    and (
+                        reservation.court_id == availability.court_id
+                        or reservation.availability_id == availability.pk
+                    )
+                ),
+                None,
             )
 
-        if linked_fixed_lesson:
-            return (
-                FixedLesson.objects.select_related(
-                    "coach",
-                    "coach_2",
-                    "coach_3",
-                    "court",
-                )
-                .prefetch_related("members")
-                .filter(pk=linked_fixed_lesson)
-                .first()
-            )
+        if linked_reservation is not None:
+            return linked_reservation.fixed_lesson
 
         start_local = _local(availability.start_at)
         target_date = start_local.date()
 
-        candidates = (
-            FixedLesson.objects.filter(
-                is_active=True,
-                lesson_type=availability.lesson_type,
-                start_hour=start_local.hour,
+        candidates = [
+            fixed_lesson for fixed_lesson in all_fixed_lessons
+            if fixed_lesson.is_active
+            and fixed_lesson.lesson_type == availability.lesson_type
+            and fixed_lesson.start_hour == start_local.hour
+            and (
+                not availability.court_id
+                or fixed_lesson.court_id in (availability.court_id, None)
             )
-            .select_related(
-                "coach",
-                "coach_2",
-                "coach_3",
-                "court",
-            )
-            .prefetch_related("members")
-            .order_by("id")
-        )
-
-        if availability.court_id:
-            candidates = candidates.filter(
-                Q(court=availability.court)
-                | Q(court__isnull=True)
-            )
+        ]
 
         for fixed_lesson in candidates:
             try:
-                if target_date in set(fixed_lesson.scheduled_occurrence_dates()):
+                if target_date in _scheduled_dates(fixed_lesson):
                     return fixed_lesson
             except Exception:
                 repeat_start = getattr(fixed_lesson, "start_date", None)
@@ -4180,14 +4115,135 @@ def coach_today_lessons(request):
 
         return None
 
-    fixed_queryset = (
+    all_fixed_lessons = list(
         FixedLesson.objects.filter(is_active=True)
         .select_related("coach", "coach_2", "coach_3", "court")
-        .prefetch_related("members")
+        .prefetch_related("members", "canceled_occurrences")
         .order_by("weekday", "start_hour", "id")
     )
+    fixed_queryset = all_fixed_lessons
     if selected_coach is not None:
         fixed_queryset = [fixed for fixed in fixed_queryset if _fixed_lesson_includes_coach(fixed, selected_coach)]
+
+    all_period_availabilities = list(
+        CoachAvailability.objects.filter(
+            start_at__date__gte=range_start,
+            start_at__date__lte=range_end,
+        )
+        .select_related("coach", "substitute_coach", "court")
+        .order_by("start_at", "id")
+    )
+    availability_qs = all_period_availabilities
+    if selected_coach is not None:
+        availability_qs = [
+            availability for availability in availability_qs
+            if availability.coach_id == selected_coach.pk
+            or availability.substitute_coach_id == selected_coach.pk
+        ]
+
+    period_start = timezone.make_aware(datetime.combine(range_start, datetime.min.time()))
+    period_end = timezone.make_aware(datetime.combine(range_end + timedelta(days=1), datetime.min.time()))
+    reservation_queryset = Reservation.objects.filter(
+        start_at__gte=period_start,
+        start_at__lt=period_end,
+    )
+    waitlist_queryset = LessonWaitlist.objects.filter(
+        status=LessonWaitlist.STATUS_WAITING,
+        start_at__gte=period_start,
+        start_at__lt=period_end,
+    )
+    if selected_coach is not None:
+        relevant_fixed_ids = [fixed.pk for fixed in fixed_queryset]
+        relevant_availability_ids = [availability.pk for availability in availability_qs]
+        coach_scope = (
+            Q(coach=selected_coach)
+            | Q(substitute_coach=selected_coach)
+            | Q(fixed_lesson_id__in=relevant_fixed_ids)
+            | Q(availability_id__in=relevant_availability_ids)
+        )
+        reservation_queryset = reservation_queryset.filter(coach_scope)
+        waitlist_queryset = waitlist_queryset.filter(coach_scope)
+
+    all_period_reservations = list(
+        reservation_queryset
+        .select_related(
+            "user", "coach", "substitute_coach", "court", "availability",
+            "fixed_lesson", "fixed_lesson__coach", "fixed_lesson__coach_2",
+            "fixed_lesson__coach_3", "fixed_lesson__court",
+        )
+        .order_by("guest_name", "user__full_name", "user__username", "id")
+    )
+    display_reservations = [
+        reservation for reservation in all_period_reservations
+        if reservation.status in (Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING)
+    ]
+    for reservation in display_reservations:
+        if reservation.availability_id:
+            reservations_by_availability[reservation.availability_id].append(reservation)
+        if reservation.fixed_lesson_id:
+            reservations_by_fixed_lesson[reservation.fixed_lesson_id].append(reservation)
+        reservations_by_physical_slot[(
+            reservation.lesson_type, reservation.coach_id, reservation.court_id,
+            reservation.start_at, reservation.end_at,
+        )].append(reservation)
+    participant_details = participant_details_by_reservation(display_reservations)
+
+    all_waitlists = list(
+        waitlist_queryset
+        .select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
+        .order_by("created_at", "id")
+    )
+    for waitlist in all_waitlists:
+        if waitlist.availability_id:
+            waitlists_by_availability[waitlist.availability_id].append(waitlist)
+        if waitlist.fixed_lesson_id:
+            waitlists_by_fixed_lesson[waitlist.fixed_lesson_id].append(waitlist)
+        waitlists_by_physical_slot[(
+            waitlist.lesson_type, waitlist.coach_id, waitlist.court_id,
+            waitlist.start_at, waitlist.end_at,
+        )].append(waitlist)
+
+    for reservation in all_period_reservations:
+        if reservation.fixed_lesson and all(
+            fixed.pk != reservation.fixed_lesson_id for fixed in all_fixed_lessons
+        ):
+            all_fixed_lessons.append(reservation.fixed_lesson)
+
+    competing_fixed_lesson_ids = {}
+    scheduled_dates_by_fixed_lesson = {}
+
+    def _scheduled_dates(fixed_lesson):
+        if fixed_lesson.pk not in scheduled_dates_by_fixed_lesson:
+            scheduled_dates_by_fixed_lesson[fixed_lesson.pk] = set(
+                fixed_lesson.scheduled_occurrence_dates()
+            )
+        return scheduled_dates_by_fixed_lesson[fixed_lesson.pk]
+
+    def _competing_fixed_lesson_ids(fixed_lesson, start_at, end_at):
+        cache_key = (fixed_lesson.pk, start_at, end_at)
+        if cache_key not in competing_fixed_lesson_ids:
+            target_date = _local(start_at).date()
+            current_title = (fixed_lesson.title or "").strip()
+            ids = set()
+            for candidate in all_fixed_lessons:
+                if not candidate.is_active or candidate.pk == fixed_lesson.pk:
+                    continue
+                if current_title and (candidate.title or "").strip() == current_title:
+                    continue
+                if target_date not in _scheduled_dates(candidate):
+                    continue
+                candidate_start, candidate_end = candidate._build_datetimes_for_date(target_date)
+                if candidate_start == start_at and candidate_end == end_at:
+                    ids.add(candidate.pk)
+            competing_fixed_lesson_ids[cache_key] = ids
+        return competing_fixed_lesson_ids[cache_key]
+
+    availability_by_physical_slot = defaultdict(list)
+    for availability in all_period_availabilities:
+        availability_by_physical_slot[(
+            availability.court_id, availability.lesson_type,
+            availability.start_at, availability.end_at,
+        )].append(availability)
 
     # レッスンカレンダーと同じ開催日生成ロジックを使用します。
     # weekdayだけで判定すると、個別に設定された開催日や既存データの曜日差異により、
@@ -4195,7 +4251,7 @@ def coach_today_lessons(request):
     for fixed in fixed_queryset:
         try:
             if hasattr(fixed, "scheduled_occurrence_dates"):
-                occurrence_dates = list(fixed.scheduled_occurrence_dates())
+                occurrence_dates = list(_scheduled_dates(fixed))
             else:
                 repeat_start = getattr(fixed, "start_date", None) or range_start
                 first_offset = (int(fixed.weekday) - repeat_start.weekday()) % 7
@@ -4228,17 +4284,10 @@ def coach_today_lessons(request):
             # 固定レッスンの担当変更前に作成された旧Availabilityも、
             # 参加者・回収状況を同じ枠へ統合するために取得します。
             # 現在の担当コーチとの一致は条件にせず、日時・種別・コートを正とします。
-            availability = (
-                CoachAvailability.objects.filter(
-                    court=court,
-                    lesson_type=fixed.lesson_type,
-                    start_at=start_at,
-                    end_at=end_at,
-                )
-                .select_related("coach", "substitute_coach", "court")
-                .order_by("id")
-                .first()
-            )
+            matching_availabilities = availability_by_physical_slot[(
+                court.pk, fixed.lesson_type, start_at, end_at,
+            )]
+            availability = matching_availabilities[0] if matching_availabilities else None
 
             capacity = fixed.effective_capacity() if hasattr(fixed, "effective_capacity") else fixed.capacity
             if availability:
@@ -4283,22 +4332,6 @@ def coach_today_lessons(request):
                 fixed_lesson=fixed,
                 availability=availability,
             )
-
-    availability_qs = (
-        CoachAvailability.objects.filter(
-            start_at__date__gte=range_start,
-            start_at__date__lte=range_end,
-        )
-        .select_related("coach", "substitute_coach", "court")
-        .order_by("start_at", "id")
-    )
-
-    if selected_coach is not None:
-        availability_qs = [
-            availability for availability in availability_qs
-            if availability.coach_id == selected_coach.pk
-            or getattr(availability, "substitute_coach_id", None) == selected_coach.pk
-        ]
 
     for availability in availability_qs:
         authoritative_fixed_lesson = _authoritative_fixed_lesson_for_availability(
