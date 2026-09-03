@@ -1,14 +1,6 @@
 {% load static dashboard_tags %}
-{% if user.is_authenticated %}
-  {% if user.role == "coach" or user.role == "contractor_coach" or user.is_staff or user.is_superuser %}
-    {% coach_pending_request_count user as nav_pending_count %}
-    {% coach_unhandled_stringing_count user as nav_stringing_count %}
-  {% else %}
-    {% member_pending_reservation_count user as nav_member_pending_count %}
-    {% member_upcoming_reservation_count user as nav_member_upcoming_count %}
-    {% member_low_ticket_warning user as nav_low_ticket_warning %}
-  {% endif %}
-{% endif %}
+{% dashboard_navigation_data user as nav_data %}
+{% with nav_pending_count=nav_data.coach_pending_count nav_stringing_count=nav_data.coach_stringing_count nav_member_pending_count=nav_data.member_pending_count nav_member_upcoming_count=nav_data.member_upcoming_count nav_low_ticket_warning=nav_data.low_ticket_warning %}
 <!doctype html>
 <html lang="ja">
 <head>
@@ -1190,3 +1182,4 @@
   </script>
 </body>
 </html>
+{% endwith %}
