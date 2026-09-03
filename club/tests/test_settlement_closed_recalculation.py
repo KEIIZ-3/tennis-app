@@ -174,6 +174,36 @@ class ClosedSettlementRecalculationTests(TestCase):
 
 
 class OpenSettlementRecalculationTests(TestCase):
+    def test_admin_get_recalculates_open_month_once_and_renders_fresh_result(self):
+        User = get_user_model()
+        admin = User.objects.create_user(
+            username="open_settlement_admin",
+            password="password12345",
+            is_staff=True,
+        )
+        settlement = MonthlySettlement.objects.create(
+            year=2099,
+            month=4,
+            status=MonthlySettlement.STATUS_DRAFT,
+            calculation_snapshot={"before": True},
+        )
+        self.client.force_login(admin)
+
+        with patch(
+            "club.settlement_views.calculate_monthly_settlement",
+            wraps=calculate_monthly_settlement,
+        ) as calculate:
+            response = self.client.get(
+                reverse("club:coach_admin_settlement"),
+                {"year": 2099, "month": 4},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        calculate.assert_called_once_with(2099, 4)
+        settlement.refresh_from_db()
+        self.assertNotEqual(settlement.calculation_snapshot, {"before": True})
+        self.assertEqual(response.context["settlement"].pk, settlement.pk)
+
     def test_open_month_recalculates_with_and_without_force(self):
         for month, force in ((5, False), (6, True)):
             with self.subTest(force=force):
