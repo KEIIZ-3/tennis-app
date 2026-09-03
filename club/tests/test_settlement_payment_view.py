@@ -57,12 +57,9 @@ class SettlementPaymentViewTests(TestCase):
 
     def test_form_posts_fields_expected_by_create_payout_view(self):
         self.client.force_login(self.admin)
-        with patch(
-            "club.settlement_admin_refresh.calculate_monthly_settlement"
-        ):
-            response = self.client.get(
-                self.url, {"year": self.settlement.year, "month": self.settlement.month}
-            )
+        response = self.client.get(
+            self.url, {"year": self.settlement.year, "month": self.settlement.month}
+        )
 
         self.assertContains(response, 'name="action" value="create_payout"')
         self.assertContains(response, 'name="payout_type" value="salary_payout"')
