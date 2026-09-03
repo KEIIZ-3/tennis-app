@@ -16,7 +16,7 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import Q, Sum
+from django.db.models import Prefetch, Q, Sum
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -42,6 +42,7 @@ from .models import (
     CoachExpense,
     Court,
     FixedLesson,
+    FixedLessonCanceledOccurrence,
     LessonWaitlist,
     LineAccountLink,
     Reservation,
@@ -76,10 +77,7 @@ from .lesson_participants import (
 )
 from .participant_levels import current_participant_level_label
 from .reservation_service import create_reservation
-from .ticket_purchase_reservation_service import (
-    is_main_coach,
-    pending_purchase_reservations_for_participants,
-)
+from .ticket_purchase_reservation_service import is_main_coach
 from .stringing_service import (
     STRINGING_BASE_PRICE,
     STRINGING_DELIVERY_FEE,
@@ -1388,18 +1386,6 @@ def lesson_calendar_view(request):
             value = int(getattr(availability, "capacity", 0) or 0)
         return max(value, int(getattr(availability, "capacity", 0) or 0), 1)
 
-    def _find_matching_availability_for_fixed(fixed_lesson, start_at, end_at):
-        primary_coach = fixed_lesson.primary_coach() if hasattr(fixed_lesson, "primary_coach") else fixed_lesson.coach
-        qs = CoachAvailability.objects.select_related("coach", "substitute_coach", "court").filter(
-            coach=primary_coach,
-            lesson_type=fixed_lesson.lesson_type,
-            start_at=start_at,
-            end_at=end_at,
-        )
-        if getattr(fixed_lesson, "court_id", None):
-            qs = qs.filter(court=fixed_lesson.court)
-        return qs.order_by("id").first()
-
     def _get_or_create_availability_from_fixed_lesson(fixed_lesson, target_date):
         start_at, end_at = _fixed_lesson_datetimes_safely(fixed_lesson, target_date)
         if not start_at or not end_at:
@@ -1792,6 +1778,21 @@ def lesson_calendar_view(request):
     )
     reservation_list = list(reservation_qs)
 
+    pending_ticket_purchase_counts_by_user = {}
+    if is_main_coach(request.user):
+        for user_id in TicketPurchaseReservation.objects.filter(
+            status=TicketPurchaseReservation.STATUS_PENDING,
+        ).values_list("user_id", flat=True):
+            pending_ticket_purchase_counts_by_user[user_id] = (
+                pending_ticket_purchase_counts_by_user.get(user_id, 0) + 1
+            )
+
+    user_has_active_family_members = False
+    if request.user.is_authenticated:
+        user_has_active_family_members = request.user.family_member_profiles.filter(
+            is_active=True,
+        ).exists()
+
     active_slot_counts = {}
     pending_slot_counts = {}
     fixed_lesson_active_counts = {}
@@ -2014,6 +2015,7 @@ def lesson_calendar_view(request):
         is_recruitment_closed=False,
         fixed_lesson=None,
         availability=None,
+        participant_user_ids=(),
     ):
         start_local = _local_dt(start_at)
         end_local = _local_dt(end_at)
@@ -2070,12 +2072,12 @@ def lesson_calendar_view(request):
             disabled_reason = "会員または業務委託コーチアカウントで予約できます。"
         elif (
             user_slot_status == Reservation.STATUS_ACTIVE
-            and not request.user.family_member_profiles.filter(is_active=True).exists()
+            and not user_has_active_family_members
         ):
             disabled_reason = "予約済みです。"
         elif (
             user_slot_status == Reservation.STATUS_PENDING
-            and not request.user.family_member_profiles.filter(is_active=True).exists()
+            and not user_has_active_family_members
         ):
             disabled_reason = "承認待ちの申請があります。"
         elif not _slot_level_allowed(
@@ -2139,14 +2141,10 @@ def lesson_calendar_view(request):
         pending_ticket_purchase_count = 0
         ticket_purchase_confirm_url = ""
         if is_main_coach(request.user) and source_kind in ("fixed_lesson", "availability"):
-            participant_reservations = reservations_for_lesson(
-                fixed_lesson=fixed_lesson, availability=availability, coach=coach, court=court,
-                lesson_type=lesson_type, start_at=start_at, end_at=end_at,
-                statuses=(Reservation.STATUS_ACTIVE,),
+            pending_ticket_purchase_count = sum(
+                pending_ticket_purchase_counts_by_user.get(user_id, 0)
+                for user_id in set(participant_user_ids)
             )
-            pending_ticket_purchase_count = pending_purchase_reservations_for_participants(
-                participant_reservations
-            ).count()
             if pending_ticket_purchase_count:
                 ticket_purchase_confirm_url = f"{reverse('club:ticket_purchase_confirm')}?{urlencode({'availability_id': availability_id, 'fixed_lesson_id': fixed_lesson_id, 'lesson_date': lesson_date})}"
         calendar_url = (
@@ -2224,24 +2222,69 @@ def lesson_calendar_view(request):
     fixed_lesson_list = list(
         FixedLesson.objects.filter(is_active=True)
         .select_related("coach", "coach_2", "coach_3", "court")
+        .prefetch_related(
+            Prefetch(
+                "canceled_occurrences",
+                queryset=FixedLessonCanceledOccurrence.objects.filter(
+                    occurrence_date__gte=month_start,
+                    occurrence_date__lt=next_month,
+                ).only("fixed_lesson_id", "occurrence_date"),
+                to_attr="calendar_canceled_occurrences",
+            )
+        )
         .order_by("weekday", "start_hour", "id")
     )
 
+    availability_list = list(
+        CoachAvailability.objects.filter(
+            start_at__date__gte=month_start,
+            start_at__date__lt=next_month,
+        )
+        .select_related("coach", "substitute_coach", "court")
+        .order_by("start_at", "coach__username", "court__name", "id")
+    )
+    availabilities_by_schedule = {}
+    reservations_by_availability = {}
+    reservations_by_fixed_occurrence = {}
+    for availability in availability_list:
+        key = (
+            availability.coach_id,
+            availability.lesson_type,
+            availability.start_at,
+            availability.end_at,
+        )
+        availabilities_by_schedule.setdefault(key, []).append(availability)
+    for reservation in reservation_list:
+        if reservation.availability_id:
+            reservations_by_availability.setdefault(reservation.availability_id, []).append(reservation)
+        if reservation.fixed_lesson_id:
+            local_date = _local_dt(reservation.start_at).date().isoformat()
+            reservations_by_fixed_occurrence.setdefault(
+                (reservation.fixed_lesson_id, local_date), []
+            ).append(reservation)
+
+    fixed_occurrences_by_datetimes = {}
+    occurrence_dates_by_fixed = {}
     for fixed_lesson in fixed_lesson_list:
-        if hasattr(fixed_lesson, "scheduled_occurrence_dates"):
-            occurrence_dates = fixed_lesson.scheduled_occurrence_dates()
-        else:
-            repeat_start = getattr(fixed_lesson, "start_date", None) or month_start
-            first_offset = (int(fixed_lesson.weekday) - repeat_start.weekday()) % 7
-            first_date = repeat_start + timedelta(days=first_offset)
-            try:
-                occurrence_count = max(int(getattr(fixed_lesson, "weeks_ahead", 1) or 1), 1)
-            except Exception:
-                occurrence_count = 1
-            occurrence_dates = [
-                first_date + timedelta(days=7 * index)
-                for index in range(occurrence_count)
-            ]
+        canceled_dates = {
+            occurrence.occurrence_date
+            for occurrence in fixed_lesson.calendar_canceled_occurrences
+        }
+        occurrence_dates = [
+            occurrence_date
+            for occurrence_date in fixed_lesson.configured_occurrence_dates()
+            if occurrence_date not in canceled_dates
+        ]
+        occurrence_dates_by_fixed[fixed_lesson.pk] = occurrence_dates
+        for occurrence_date in occurrence_dates:
+            start_at, end_at = _fixed_lesson_datetimes_safely(fixed_lesson, occurrence_date)
+            if start_at and end_at:
+                fixed_occurrences_by_datetimes.setdefault((start_at, end_at), []).append(fixed_lesson)
+
+    first_active_court = _first_active_court()
+
+    for fixed_lesson in fixed_lesson_list:
+        occurrence_dates = occurrence_dates_by_fixed[fixed_lesson.pk]
 
         for cursor_date in occurrence_dates:
             if cursor_date < month_start or cursor_date >= next_month:
@@ -2252,7 +2295,16 @@ def lesson_calendar_view(request):
                 continue
 
             primary_coach = fixed_lesson.primary_coach() if hasattr(fixed_lesson, "primary_coach") else fixed_lesson.coach
-            matching_availability = _find_matching_availability_for_fixed(fixed_lesson, start_at, end_at)
+            availability_candidates = availabilities_by_schedule.get(
+                (primary_coach.pk, fixed_lesson.lesson_type, start_at, end_at), []
+            )
+            matching_availability = next(
+                (
+                    candidate for candidate in availability_candidates
+                    if not fixed_lesson.court_id or candidate.court_id == fixed_lesson.court_id
+                ),
+                None,
+            )
             if matching_availability:
                 represented_availability_ids.add(matching_availability.pk)
                 court = matching_availability.court
@@ -2270,7 +2322,7 @@ def lesson_calendar_view(request):
                     end_at=matching_availability.end_at,
                 )
             else:
-                court = fixed_lesson.court or _first_active_court()
+                court = fixed_lesson.court or first_active_court
                 capacity = _capacity_for_fixed_lesson(fixed_lesson)
                 status = CoachAvailability.STATUS_OPEN
                 is_recruitment_closed = False
@@ -2290,22 +2342,29 @@ def lesson_calendar_view(request):
             # 物理枠の一致を混ぜると、同時刻・同コートの別レッスンまで数えるため、
             # FixedLesson に明示的に紐づく Reservation のみを使用する。
             if matching_availability:
-                member_count = reservations_for_lesson(
-                    fixed_lesson=fixed_lesson,
-                    availability=matching_availability,
-                    lesson_type=fixed_lesson.lesson_type,
-                    start_at=start_at,
-                    end_at=end_at,
-                ).count()
-                pending_count = reservations_for_lesson(
-                    fixed_lesson=fixed_lesson,
-                    availability=matching_availability,
-                    lesson_type=fixed_lesson.lesson_type,
-                    start_at=start_at,
-                    end_at=end_at,
-                    statuses=(Reservation.STATUS_PENDING,),
-                ).count()
+                competing_ids = {
+                    candidate.pk
+                    for candidate in fixed_occurrences_by_datetimes.get((start_at, end_at), [])
+                    if candidate.pk != fixed_lesson.pk
+                    and (candidate.title or "").strip() != (fixed_lesson.title or "").strip()
+                }
+                occurrence_reservation_rows = [
+                    reservation
+                    for reservation in reservations_by_availability.get(matching_availability.pk, [])
+                    if reservation.fixed_lesson_id not in competing_ids
+                ]
+                member_count = sum(
+                    reservation.status == Reservation.STATUS_ACTIVE
+                    for reservation in occurrence_reservation_rows
+                )
+                pending_count = sum(
+                    reservation.status == Reservation.STATUS_PENDING
+                    for reservation in occurrence_reservation_rows
+                )
             else:
+                occurrence_reservation_rows = reservations_by_fixed_occurrence.get(
+                    (fixed_lesson.pk, cursor_date.isoformat()), []
+                )
                 member_count = int(fixed_lesson_active_counts.get(fixed_key, 0))
                 pending_count = int(fixed_lesson_pending_counts.get(fixed_key, 0))
             fixed_user_status = user_fixed_lesson_status_map.get(fixed_key, "")
@@ -2350,21 +2409,16 @@ def lesson_calendar_view(request):
                 is_recruitment_closed=is_recruitment_closed,
                 fixed_lesson=fixed_lesson,
                 availability=matching_availability,
+                participant_user_ids=[
+                    reservation.user_id
+                    for reservation in occurrence_reservation_rows
+                    if reservation.status == Reservation.STATUS_ACTIVE and reservation.user_id
+                ],
             )
 
             day_event_map.setdefault(cursor_date, [])
             day_event_map[cursor_date].append(item)
             schedule_rows.append(item)
-
-    availability_qs = (
-        CoachAvailability.objects.filter(
-            start_at__date__gte=month_start,
-            start_at__date__lt=next_month,
-        )
-        .select_related("coach", "substitute_coach", "court")
-        .order_by("start_at", "coach__username", "court__name", "id")
-    )
-    availability_list = list(availability_qs)
 
     for availability in availability_list:
         if availability.pk in represented_availability_ids:
@@ -2411,6 +2465,11 @@ def lesson_calendar_view(request):
             is_recruitment_closed=availability.is_recruitment_closed,
             color_class=_coach_color_class(availability),
             color_combo_class=_coach_combo_class_from_names(availability.coach_display_names()),
+            participant_user_ids=[
+                reservation.user_id
+                for reservation in reservations_by_availability.get(availability.pk, [])
+                if reservation.status == Reservation.STATUS_ACTIVE and reservation.user_id
+            ],
         )
 
         day_event_map.setdefault(target_date, [])

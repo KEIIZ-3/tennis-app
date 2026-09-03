@@ -1,4 +1,6 @@
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
@@ -173,6 +175,55 @@ class FixedOccurrenceCalendarCountTests(TestCase):
             and row["lesson_date"] == self.target_date.isoformat()
         )
         self.assertEqual(fixed_row["member_count"], 1)
+
+    def test_calendar_query_count_does_not_scale_with_fixed_occurrences(self):
+        url = reverse("club:lesson_calendar")
+        params = {"year": self.target_date.year, "month": self.target_date.month}
+        with CaptureQueriesContext(connection) as single_context:
+            self.client.get(url, params)
+
+        self.fixed_lesson.weeks_ahead = 4
+        self.fixed_lesson.save(update_fields=["weeks_ahead"])
+        extra_availabilities = []
+        extra_reservations = []
+        for target_date in self.fixed_lesson.configured_occurrence_dates()[1:]:
+            start_at, end_at = self.fixed_lesson._build_datetimes_for_date(target_date)
+            availability = CoachAvailability(
+                coach=self.coach,
+                court=self.court,
+                lesson_type=Reservation.LESSON_GENERAL,
+                target_level=User.LEVEL_BEGINNER,
+                start_at=start_at,
+                end_at=end_at,
+                capacity=5,
+            )
+            extra_availabilities.append(availability)
+        CoachAvailability.objects.bulk_create(extra_availabilities)
+        for availability in extra_availabilities:
+            extra_reservations.append(Reservation(
+                user=self.member,
+                coach=self.coach,
+                court=self.court,
+                availability=availability,
+                fixed_lesson=self.fixed_lesson,
+                lesson_type=Reservation.LESSON_GENERAL,
+                target_level=User.LEVEL_BEGINNER,
+                start_at=availability.start_at,
+                end_at=availability.end_at,
+                status=Reservation.STATUS_ACTIVE,
+                is_fixed_entry=True,
+            ))
+        Reservation.objects.bulk_create(extra_reservations)
+
+        with CaptureQueriesContext(connection) as multiple_context:
+            response = self.client.get(url, params)
+
+        displayed_occurrences = [
+            row for row in response.context["schedule_rows"]
+            if row["fixed_lesson_id"] == str(self.fixed_lesson.pk)
+        ]
+        self.assertEqual(len(displayed_occurrences), 4)
+        self.assertLessEqual(len(multiple_context), len(single_context) + 1)
 
     def test_fixed_lesson_confirmation_uses_linked_reservations_only(self):
         other_member = User.objects.create_user(
