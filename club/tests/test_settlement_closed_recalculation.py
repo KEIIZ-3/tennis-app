@@ -199,7 +199,7 @@ class OpenSettlementRecalculationTests(TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        calculate.assert_called_once_with(2099, 4)
+        calculate.assert_called_once_with(2099, 4, trace_performance=True)
         settlement.refresh_from_db()
         self.assertNotEqual(settlement.calculation_snapshot, {"before": True})
         self.assertEqual(response.context["settlement"].pk, settlement.pk)

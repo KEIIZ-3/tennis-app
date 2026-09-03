@@ -290,6 +290,7 @@ def coach_admin_settlement(request):
     result = calculate_monthly_settlement(
         selected_year,
         selected_month,
+        trace_performance=True,
     )
     settlement = result["settlement"]
     from .lesson_execution import missing_rain_refund_rows
@@ -313,27 +314,32 @@ def coach_admin_settlement(request):
         role__in=("coach", "contractor_coach")
     ).order_by("full_name", "username", "id")
 
-    context = {
-        **result,
-        "selected_year": selected_year,
-        "selected_month": selected_month,
+    from .settlement_performance import SettlementPerformanceTrace
+    performance_trace = SettlementPerformanceTrace(
+        enabled=True, year=selected_year, month=selected_month
+    )
+    with performance_trace.step("view_context_build"):
+        context = {
+            **result,
+            "selected_year": selected_year,
+            "selected_month": selected_month,
         "month_label": f"{selected_year}年{selected_month}月",
-        "prev_url": _month_url(previous_year, previous_month),
-        "next_url": _month_url(next_year, next_month),
-        "coach_options": coach_queryset,
-        "today_value": today.isoformat(),
-        "payout_type_choices": [
+            "prev_url": _month_url(previous_year, previous_month),
+            "next_url": _month_url(next_year, next_month),
+            "coach_options": coach_queryset,
+            "today_value": today.isoformat(),
+            "payout_type_choices": [
             ("salary_payout", "給与支払い"),
-        ],
-        "settlement_status": settlement.status,
-        "settlement_status_label": settlement.get_status_display(),
-        "is_month_closed": settlement.is_closed,
-        "opening_balance": settlement.opening_balance,
-        "closing_balance": settlement.closing_balance,
-        "rain_refund_missing_rows": missing_refund_rows,
-        "unconfirmed_execution_rows": unconfirmed_rows,
-        "unconfirmed_execution_count": len(unconfirmed_rows),
-    }
+            ],
+            "settlement_status": settlement.status,
+            "settlement_status_label": settlement.get_status_display(),
+            "is_month_closed": settlement.is_closed,
+            "opening_balance": settlement.opening_balance,
+            "closing_balance": settlement.closing_balance,
+            "rain_refund_missing_rows": missing_refund_rows,
+            "unconfirmed_execution_rows": unconfirmed_rows,
+            "unconfirmed_execution_count": len(unconfirmed_rows),
+        }
 
     if "payout_history_rows" not in context:
         from .settlement_service import payment_history_rows
@@ -386,11 +392,12 @@ def coach_admin_settlement(request):
     ):
         context.setdefault(key, 0)
 
-    return render(
-        request,
-        "coach/admin_settlement.html",
-        context,
-    )
+    with performance_trace.step("template_render"):
+        return render(
+            request,
+            "coach/admin_settlement.html",
+            context,
+        )
 
 @login_required
 @require_http_methods(["GET"])

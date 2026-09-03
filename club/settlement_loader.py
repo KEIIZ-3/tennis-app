@@ -4,22 +4,32 @@ from .lesson_participants import CONFIRMED_PARTICIPANT_STATUSES
 from .lesson_execution_storage import read_status_map
 from .models import CoachExpense, Reservation, StringingOrder, TicketCashReceipt
 from .settlement_models import MonthlySettlement
+from .settlement_performance import SettlementPerformanceTrace
 from .stringing_service import recognized_stringing_orders
 
 
-def load_monthly_settlement_data(*, month_start, next_month):
+def load_monthly_settlement_data(
+    *, month_start, next_month, performance_trace=None
+):
+    performance_trace = performance_trace or SettlementPerformanceTrace(
+        enabled=False,
+        year=month_start.year,
+        month=month_start.month,
+    )
     User = get_user_model()
 
-    coaches = list(
-        User.objects.filter(role__in=("coach", "contractor_coach")).order_by(
-            "full_name",
-            "username",
-            "id",
+    with performance_trace.step("coaches_load"):
+        coaches = list(
+            User.objects.filter(role__in=("coach", "contractor_coach")).order_by(
+                "full_name",
+                "username",
+                "id",
+            )
         )
-    )
 
-    reservations = list(
-        Reservation.objects.filter(
+    with performance_trace.step("reservations_load"):
+        reservations = list(
+            Reservation.objects.filter(
             start_at__date__gte=month_start,
             start_at__date__lt=next_month,
             status__in=CONFIRMED_PARTICIPANT_STATUSES,
@@ -41,29 +51,32 @@ def load_monthly_settlement_data(*, month_start, next_month):
         )
         .prefetch_related("ticket_consumptions__purchase")
         .order_by("start_at", "id")
-    )
+        )
 
-    stringing_orders = list(
-        recognized_stringing_orders(
-            StringingOrder.objects.all(),
-            month_start=month_start,
-            next_month=next_month,
-        ).select_related("assigned_coach", "user")
-    )
+    with performance_trace.step("stringing_orders_load"):
+        stringing_orders = list(
+            recognized_stringing_orders(
+                StringingOrder.objects.all(),
+                month_start=month_start,
+                next_month=next_month,
+            ).select_related("assigned_coach", "user")
+        )
 
-    all_expenses = list(
-        CoachExpense.objects.filter(expense_date__lt=next_month)
-        .select_related("created_by")
-        .order_by("expense_date", "id")
-    )
+    with performance_trace.step("coach_expenses_load"):
+        all_expenses = list(
+            CoachExpense.objects.filter(expense_date__lt=next_month)
+            .select_related("created_by")
+            .order_by("expense_date", "id")
+        )
 
-    ticket_cash_receipts = list(
-        TicketCashReceipt.objects.filter(
-            received_at__date__gte=month_start,
-            received_at__date__lt=next_month,
-            reversed_at__isnull=True,
-        ).select_related("ticket_purchase")
-    )
+    with performance_trace.step("ticket_cash_receipts_load"):
+        ticket_cash_receipts = list(
+            TicketCashReceipt.objects.filter(
+                received_at__date__gte=month_start,
+                received_at__date__lt=next_month,
+                reversed_at__isnull=True,
+            ).select_related("ticket_purchase")
+        )
 
     settlement = MonthlySettlement.objects.filter(
         year=month_start.year,
