@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
@@ -29,12 +29,14 @@ class DashboardNavigationTests(TestCase):
         self.court = Court.objects.create(name="Navigation test court")
         self._reservation_offset = 1
 
+    def reservation_start_at(self, day_offset):
+        reservation_date = timezone.localdate() + timedelta(days=day_offset)
+        return timezone.make_aware(datetime.combine(reservation_date, time(12)))
+
     def reservation(self, *, user=None, coach=None, substitute_coach=None, status=Reservation.STATUS_ACTIVE,
                     lesson_type=Reservation.LESSON_PRIVATE, start_at=None):
         if start_at is None:
-            start_at = (timezone.now() + timedelta(days=self._reservation_offset)).replace(
-                minute=0, second=0, microsecond=0
-            )
+            start_at = self.reservation_start_at(self._reservation_offset)
             self._reservation_offset += 1
         return Reservation.objects.create(
             user=user or self.member,
@@ -53,7 +55,7 @@ class DashboardNavigationTests(TestCase):
         self.reservation(status=Reservation.STATUS_PENDING)
         self.reservation(status=Reservation.STATUS_ACTIVE)
         self.reservation(status=Reservation.STATUS_CANCELED)
-        past = (timezone.now() - timedelta(days=1)).replace(minute=0, second=0, microsecond=0)
+        past = self.reservation_start_at(-1)
         self.reservation(status=Reservation.STATUS_PENDING, start_at=past)
 
         with CaptureQueriesContext(connection) as queries:
@@ -89,7 +91,7 @@ class DashboardNavigationTests(TestCase):
         self.reservation(coach=self.coach, status=Reservation.STATUS_PENDING)
         self.reservation(coach=self.other_coach, status=Reservation.STATUS_PENDING,
                          lesson_type=Reservation.LESSON_GROUP)
-        start_at = (timezone.now() + timedelta(days=10)).replace(minute=0, second=0, microsecond=0)
+        start_at = self.reservation_start_at(10)
         Reservation.objects.bulk_create([Reservation(
             user=self.member,
             coach=self.other_coach,
