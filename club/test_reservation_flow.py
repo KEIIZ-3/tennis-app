@@ -4,7 +4,9 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.db import connection
 from django.test import Client, TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
@@ -2768,6 +2770,36 @@ class ReservationFlowSmokeTests(TestCase):
             },
             {first_lesson.pk: "別レッスン会員 0", second_lesson.pk: "別レッスン会員 1"},
         )
+
+    def test_today_lessons_query_count_does_not_scale_with_displayed_slots(self):
+        month_start = (self.lesson_date + timedelta(days=32)).replace(day=1)
+        fixed_lesson = self._create_fixed_lesson(
+            lesson_date=month_start,
+            title="本日の受付クエリ数テスト",
+        )
+        self.client.force_login(self.coach)
+        url = reverse("club:coach_today_lessons")
+        params = {"month": month_start.strftime("%Y-%m")}
+
+        with CaptureQueriesContext(connection) as single_context:
+            single_response = self.client.get(url, params)
+
+        fixed_lesson.weeks_ahead = 4
+        fixed_lesson.save(update_fields=["weeks_ahead"])
+        with CaptureQueriesContext(connection) as multiple_context:
+            multiple_response = self.client.get(url, params)
+
+        single_rows = [
+            row for row in single_response.context["lesson_rows"]
+            if row["fixed_lesson"].pk == fixed_lesson.pk
+        ]
+        multiple_rows = [
+            row for row in multiple_response.context["lesson_rows"]
+            if row["fixed_lesson"].pk == fixed_lesson.pk
+        ]
+        self.assertEqual(len(single_rows), 1)
+        self.assertEqual(len(multiple_rows), 4)
+        self.assertLessEqual(len(multiple_context), len(single_context) + 1)
 
     def test_family_participants_are_named_and_guardian_contact_is_not_duplicated(self):
         self.member.ticket_balance = 10
