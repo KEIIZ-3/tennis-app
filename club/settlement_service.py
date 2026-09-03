@@ -35,6 +35,7 @@ from .settlement_models import (
 from .settlement_loader import load_monthly_settlement_data
 from .settlement_monthly_profit import build_monthly_profit_rows
 from .settlement_persistence import persist_monthly_settlement
+from .settlement_performance import SettlementPerformanceTrace
 from .settlement_reimbursement import apply_reimbursement_amounts
 from .settlement_result import MonthlySettlementResult
 from .settlement_totals import calculate_settlement_totals
@@ -399,7 +400,9 @@ def reopen_monthly_settlement(*, settlement, user):
 
 
 @transaction.atomic
-def _calculate_monthly_settlement_base(year, month, *, force=False):
+def _calculate_monthly_settlement_base(
+    year, month, *, force=False, performance_trace
+):
     month_start, next_month, _start_at, _end_at = aware_month_range(year, month)
 
     settlement = get_or_create_monthly_settlement(year, month)
@@ -544,10 +547,12 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
 
     sync_legacy_payouts_through(next_month)
 
-    monthly_data = load_monthly_settlement_data(
-        month_start=month_start,
-        next_month=next_month,
-    )
+    with performance_trace.step("monthly_data_load"):
+        monthly_data = load_monthly_settlement_data(
+            month_start=month_start,
+            next_month=next_month,
+            performance_trace=performance_trace,
+        )
     coaches = monthly_data["coaches"]
     coach_map = build_coach_map(
         coaches,
@@ -557,35 +562,45 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
 
     reservations = monthly_data["reservations"]
 
-    active_regular_coach_ids, active_coach_ids = aggregate_reservations(
-        reservations=reservations,
-        coach_map=coach_map,
-        reservation_model=Reservation,
-        preopen_cash_price=PREOPEN_CASH_PRICE,
-        is_preopen_cash_lesson_date=is_preopen_cash_lesson_date,
-        money=money,
-        execution_status_map=monthly_data["execution_status_map"],
-    )
+    with performance_trace.step(
+        "reservations_aggregate", count=len(reservations)
+    ):
+        active_regular_coach_ids, active_coach_ids = aggregate_reservations(
+            reservations=reservations,
+            coach_map=coach_map,
+            reservation_model=Reservation,
+            preopen_cash_price=PREOPEN_CASH_PRICE,
+            is_preopen_cash_lesson_date=is_preopen_cash_lesson_date,
+            money=money,
+            execution_status_map=monthly_data["execution_status_map"],
+        )
 
     stringing_orders = monthly_data["stringing_orders"]
-    stringing_total = aggregate_stringing_orders(
-        stringing_orders=stringing_orders,
-        coach_map=coach_map,
-        money=money,
-    )
+    with performance_trace.step(
+        "stringing_orders_aggregate", count=len(stringing_orders)
+    ):
+        stringing_total = aggregate_stringing_orders(
+            stringing_orders=stringing_orders,
+            coach_map=coach_map,
+            money=money,
+        )
 
     all_expenses = monthly_data["all_expenses"]
-    all_expense_meta_rows = [expense_meta_row(expense) for expense in all_expenses]
-
-    expense_row_groups = classify_expense_rows(
-        all_expense_meta_rows=all_expense_meta_rows,
-        month_start=month_start,
-        next_month=next_month,
-        expense_type_common=EXPENSE_TYPE_COMMON,
-        expense_type_personal=EXPENSE_TYPE_PERSONAL,
-        approval_approved=EXPENSE_APPROVAL_APPROVED,
-        approval_submitted=EXPENSE_APPROVAL_SUBMITTED,
-    )
+    with performance_trace.step(
+        "coach_expenses_aggregate", count=len(all_expenses)
+    ):
+        all_expense_meta_rows = [
+            expense_meta_row(expense) for expense in all_expenses
+        ]
+        expense_row_groups = classify_expense_rows(
+            all_expense_meta_rows=all_expense_meta_rows,
+            month_start=month_start,
+            next_month=next_month,
+            expense_type_common=EXPENSE_TYPE_COMMON,
+            expense_type_personal=EXPENSE_TYPE_PERSONAL,
+            approval_approved=EXPENSE_APPROVAL_APPROVED,
+            approval_submitted=EXPENSE_APPROVAL_SUBMITTED,
+        )
     approved_common_expense_rows = expense_row_groups[
         "approved_common_expense_rows"
     ]
@@ -608,13 +623,14 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
         expense_unpaid_amount=expense_unpaid_amount,
     )
 
-    coach_calculation = calculate_coach_rows(
-        coach_map=coach_map,
-        active_regular_coach_ids=active_regular_coach_ids,
-        approved_common_expense_total=approved_common_expense_total,
-        settlement=settlement,
-        current_payment_totals=_current_payment_totals,
-    )
+    with performance_trace.step("coach_payment_aggregate"):
+        coach_calculation = calculate_coach_rows(
+            coach_map=coach_map,
+            active_regular_coach_ids=active_regular_coach_ids,
+            approved_common_expense_total=approved_common_expense_total,
+            settlement=settlement,
+            current_payment_totals=_current_payment_totals,
+        )
     coach_rows = coach_calculation["coach_rows"]
     contractor_hourly_pay_total = coach_calculation[
         "contractor_hourly_pay_total"
@@ -629,15 +645,19 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
         "per_coach_common_expense"
     ]
 
-    totals = calculate_settlement_totals(
-        coach_rows=coach_rows,
-        ticket_cash_receipts=monthly_data["ticket_cash_receipts"],
-        stringing_total=stringing_total,
-        approved_common_expense_total=approved_common_expense_total,
-        submitted_personal_expense_rows=submitted_personal_expense_rows,
-        expense_approval_submitted=EXPENSE_APPROVAL_SUBMITTED,
-        money=money,
-    )
+    with performance_trace.step(
+        "ticket_cash_receipts_aggregate",
+        count=len(monthly_data["ticket_cash_receipts"]),
+    ):
+        totals = calculate_settlement_totals(
+            coach_rows=coach_rows,
+            ticket_cash_receipts=monthly_data["ticket_cash_receipts"],
+            stringing_total=stringing_total,
+            approved_common_expense_total=approved_common_expense_total,
+            submitted_personal_expense_rows=submitted_personal_expense_rows,
+            expense_approval_submitted=EXPENSE_APPROVAL_SUBMITTED,
+            money=money,
+        )
     preopen_paid_total = totals["preopen_paid_total"]
     preopen_unpaid_total = totals["preopen_unpaid_total"]
     ticket_amount_total = totals["ticket_amount_total"]
@@ -654,27 +674,28 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
     cash_in_total = totals["cash_in_total"]
     cash_out_total = totals["cash_out_total"]
 
-    persist_monthly_settlement(
-        settlement=settlement,
-        coach_rows=coach_rows,
-        ticket_purchase_total=ticket_purchase_total,
-        preopen_paid_total=preopen_paid_total,
-        stringing_total=stringing_total,
-        cash_in_total=cash_in_total,
-        salary_paid_total=salary_paid_total,
-        reimbursement_paid_total=reimbursement_paid_total,
-        approved_common_expense_total=approved_common_expense_total,
-        contractor_hourly_pay_total=contractor_hourly_pay_total,
-        cash_out_total=cash_out_total,
-        unpaid_salary_total=unpaid_salary_total,
-        unpaid_reimbursement_total=unpaid_reimbursement_total,
-        preopen_unpaid_total=preopen_unpaid_total,
-        active_coach_ids=active_coach_ids,
-        active_regular_coach_ids=active_regular_coach_ids,
-        common_expense_participant_count=common_expense_participant_count,
-        per_coach_common_expense=per_coach_common_expense,
-        common_expense_base_total=common_expense_base_total,
-    )
+    with performance_trace.step("coach_monthly_settlement_persist"):
+        persist_monthly_settlement(
+            settlement=settlement,
+            coach_rows=coach_rows,
+            ticket_purchase_total=ticket_purchase_total,
+            preopen_paid_total=preopen_paid_total,
+            stringing_total=stringing_total,
+            cash_in_total=cash_in_total,
+            salary_paid_total=salary_paid_total,
+            reimbursement_paid_total=reimbursement_paid_total,
+            approved_common_expense_total=approved_common_expense_total,
+            contractor_hourly_pay_total=contractor_hourly_pay_total,
+            cash_out_total=cash_out_total,
+            unpaid_salary_total=unpaid_salary_total,
+            unpaid_reimbursement_total=unpaid_reimbursement_total,
+            preopen_unpaid_total=preopen_unpaid_total,
+            active_coach_ids=active_coach_ids,
+            active_regular_coach_ids=active_regular_coach_ids,
+            common_expense_participant_count=common_expense_participant_count,
+            per_coach_common_expense=per_coach_common_expense,
+            common_expense_base_total=common_expense_base_total,
+        )
 
     return MonthlySettlementResult.from_mapping(
         {
@@ -714,18 +735,31 @@ def _calculate_monthly_settlement_base(year, month, *, force=False):
 
 
 @transaction.atomic
-def calculate_monthly_settlement(year, month, *, force=False):
+def calculate_monthly_settlement(
+    year, month, *, force=False, trace_performance=False
+):
     """月次精算の標準計算と会社財布ポリシーを一つの正式な入口で実行する。"""
     from .settlement_balance_policy import _apply_wallet_policy
 
-    result = _calculate_monthly_settlement_base(
-        year,
-        month,
-        force=force,
+    performance_trace = SettlementPerformanceTrace(
+        enabled=trace_performance,
+        year=year,
+        month=month,
     )
-    result = _apply_wallet_policy(result, year, month)
-    from .shop_service import monthly_shop_allocations
-    result["monthly_profit_rows"] = build_monthly_profit_rows(
-        result.get("coach_rows", []), monthly_shop_allocations(year, month)
-    )
+    with performance_trace.step("calculate_monthly_settlement"):
+        result = _calculate_monthly_settlement_base(
+            year,
+            month,
+            force=force,
+            performance_trace=performance_trace,
+        )
+        with performance_trace.step("wallet_policy"):
+            result = _apply_wallet_policy(
+                result, year, month, performance_trace=performance_trace
+            )
+        from .shop_service import monthly_shop_allocations
+        with performance_trace.step("monthly_profit_context"):
+            result["monthly_profit_rows"] = build_monthly_profit_rows(
+                result.get("coach_rows", []), monthly_shop_allocations(year, month)
+            )
     return MonthlySettlementResult.from_mapping(result)

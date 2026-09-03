@@ -15,6 +15,7 @@ from .ball_expense_allocation import (
 from .settlement_coach_calculation import calculate_coach_wallets
 from .court_cost_allocation import allocate_court_cost
 from .settlement_expense_distribution import build_expense_distribution_policies
+from .settlement_performance import SettlementPerformanceTrace
 
 WEEKDAY_COURT_RATE_PER_HOUR = 900
 WEEKEND_HOLIDAY_COURT_RATE_PER_HOUR = 1200
@@ -1094,7 +1095,10 @@ def _unpaid_salary_carry_in_by_coach(year, month, coach_ids):
     return carry_by_coach
 
 
-def _apply_wallet_policy(result, year, month):
+def _apply_wallet_policy(result, year, month, *, performance_trace=None):
+    performance_trace = performance_trace or SettlementPerformanceTrace(
+        enabled=False, year=year, month=month
+    )
     settlement = result.get("settlement")
     if settlement is None or settlement.is_closed:
         return result
@@ -1110,31 +1114,33 @@ def _apply_wallet_policy(result, year, month):
         for row in coach_rows
         if getattr(row.get("coach"), "pk", None) is not None
     ]
-    negative_carry_in_by_coach = _negative_carry_in_by_coach(
-        year,
-        month,
-        eligible_coach_ids,
-    )
-    unpaid_salary_carry_in_by_coach = _unpaid_salary_carry_in_by_coach(
-        year,
-        month,
-        eligible_coach_ids,
-    )
+    with performance_trace.step("carry_opening_balance"):
+        negative_carry_in_by_coach = _negative_carry_in_by_coach(
+            year,
+            month,
+            eligible_coach_ids,
+        )
+        unpaid_salary_carry_in_by_coach = _unpaid_salary_carry_in_by_coach(
+            year,
+            month,
+            eligible_coach_ids,
+        )
 
-    expense_policies = build_expense_distribution_policies(
-        year=year,
-        month=month,
-        main_coach_ids=main_coach_ids,
-        eligible_coach_ids=eligible_coach_ids,
-        contractor_coach_ids=[
+    with performance_trace.step("court_common_expense_allocation"):
+        expense_policies = build_expense_distribution_policies(
+            year=year,
+            month=month,
+            main_coach_ids=main_coach_ids,
+            eligible_coach_ids=eligible_coach_ids,
+            contractor_coach_ids=[
             getattr(row.get("coach"), "pk", None)
             for row in coach_rows
             if row.get("is_contractor_coach")
             and getattr(row.get("coach"), "pk", None) is not None
-        ],
-        build_court_cost_policy=_build_court_cost_policy,
-        build_other_expense_policy=_build_other_expense_policy,
-        lesson_revenue_by_coach={
+            ],
+            build_court_cost_policy=_build_court_cost_policy,
+            build_other_expense_policy=_build_other_expense_policy,
+            lesson_revenue_by_coach={
             coach_id: sum(
                 _money(row.get("ticket_amount"))
                 + _money(row.get("preopen_paid_amount"))
@@ -1142,9 +1148,9 @@ def _apply_wallet_policy(result, year, month):
                 if getattr(row.get("coach"), "pk", None) == coach_id
             )
             for coach_id in main_coach_ids
-        },
-        build_rain_refund_policy=_rain_refund_policy,
-    )
+            },
+            build_rain_refund_policy=_rain_refund_policy,
+        )
     court_policy = expense_policies["court_policy"]
     other_expense_policy = expense_policies["other_expense_policy"]
     rain_refund_policy = expense_policies["rain_refund_policy"]
@@ -1162,23 +1168,24 @@ def _apply_wallet_policy(result, year, month):
     ticket_purchase_cash = _money(result.get("ticket_purchase_total"))
     total_company_revenue = _company_cash_in_total(result, coach_rows)
 
-    coach_calculation = calculate_coach_wallets(
-        coach_rows=coach_rows,
-        settlement=settlement,
-        main_coach_ids=main_coach_ids,
-        court_policy=court_policy,
-        other_expense_policy=other_expense_policy,
-        rain_refund_policy=rain_refund_policy,
-        contractor_share_by_main=contractor_share_by_main,
-        negative_carry_in_by_coach=negative_carry_in_by_coach,
-        unpaid_salary_carry_in_by_coach=unpaid_salary_carry_in_by_coach,
-        total_company_revenue=total_company_revenue,
-        money=_money,
-        active_salary_payment_total=_active_salary_payment_total,
-        active_reimbursement_payment_total=(
-            _active_reimbursement_payment_total
-        ),
-    )
+    with performance_trace.step("wallet_coach_payment_aggregate"):
+        coach_calculation = calculate_coach_wallets(
+            coach_rows=coach_rows,
+            settlement=settlement,
+            main_coach_ids=main_coach_ids,
+            court_policy=court_policy,
+            other_expense_policy=other_expense_policy,
+            rain_refund_policy=rain_refund_policy,
+            contractor_share_by_main=contractor_share_by_main,
+            negative_carry_in_by_coach=negative_carry_in_by_coach,
+            unpaid_salary_carry_in_by_coach=unpaid_salary_carry_in_by_coach,
+            total_company_revenue=total_company_revenue,
+            money=_money,
+            active_salary_payment_total=_active_salary_payment_total,
+            active_reimbursement_payment_total=(
+                _active_reimbursement_payment_total
+            ),
+        )
     coach_rows = coach_calculation["coach_rows"]
     wallet_difference = coach_calculation["wallet_difference"]
     salary_due_total = coach_calculation["salary_due_total"]
