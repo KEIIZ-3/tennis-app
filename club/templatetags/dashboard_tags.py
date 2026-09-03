@@ -10,6 +10,16 @@ from club.lesson_participants import CAPACITY_CONSUMING_STATUSES
 register = template.Library()
 
 
+def _empty_navigation_data():
+    return {
+        "member_pending_count": 0,
+        "member_upcoming_count": 0,
+        "low_ticket_warning": False,
+        "coach_pending_count": 0,
+        "coach_stringing_count": 0,
+    }
+
+
 def _is_staff_like(user):
     if not user or not getattr(user, "is_authenticated", False):
         return False
@@ -48,6 +58,41 @@ def _reservations_for_coach(user):
         return qs
 
     return qs.filter(models.Q(coach=user) | models.Q(substitute_coach=user)).distinct()
+
+
+@register.simple_tag
+def dashboard_navigation_data(user):
+    """Return all shared navigation counters with no duplicate reservation query."""
+    data = _empty_navigation_data()
+    if not user or not getattr(user, "is_authenticated", False):
+        return data
+
+    try:
+        is_coach_navigation = (
+            getattr(user, "role", None) in ("coach", "contractor_coach")
+            or getattr(user, "is_staff", False)
+            or getattr(user, "is_superuser", False)
+        )
+        if is_coach_navigation:
+            data["coach_pending_count"] = coach_pending_request_count(user)
+            data["coach_stringing_count"] = coach_unhandled_stringing_count(user)
+            return data
+
+        data["low_ticket_warning"] = member_low_ticket_warning(user)
+        counts = _future_reservations_for_member(user).aggregate(
+            upcoming=models.Count("id"),
+            pending=models.Count(
+                "id",
+                filter=models.Q(status=Reservation.STATUS_PENDING),
+            ),
+        )
+        data.update(
+            member_pending_count=counts["pending"],
+            member_upcoming_count=counts["upcoming"],
+        )
+    except Exception:
+        return data
+    return data
 
 
 @register.simple_tag
