@@ -1,11 +1,14 @@
 from datetime import datetime, time, timedelta
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import resolve, reverse
 from django.utils import timezone
 
 from club.models import CoachAvailability, Court, FixedLesson, Reservation
+from club.reservation_display_service import build_member_reservation_list_display
 
 
 class CustomerReservationUiTests(TestCase):
@@ -94,6 +97,28 @@ class CustomerReservationUiTests(TestCase):
         )
         self.assertContains(response, "キャンセル済み")
         self.assertContains(response, "現在の参加人数には含まれません")
+
+    def test_reservation_list_display_service_keeps_representative_query_count(self):
+        from club import views
+
+        self._reservation()
+        with CaptureQueriesContext(connection) as queries:
+            display_data = build_member_reservation_list_display(
+                user=self.member,
+                can_user_cancel_reservation=views._can_user_cancel_reservation,
+                active_reservation_count_for_slot=views._active_reservation_count_for_slot,
+                capacity_for_waitlist_slot=views._capacity_for_waitlist_slot,
+                user_can_manage_waitlist=views._user_can_manage_waitlist,
+                coach_can_manage_waitlist=views._coach_can_manage_waitlist,
+                display_name=views._display_name,
+                now=timezone.now(),
+            )
+
+        # Preserve the pre-extraction query plan: reservation + prefetch, waitlist,
+        # and the existing cancellation/capacity lookups for an active row.
+        self.assertEqual(len(queries), 6)
+        self.assertEqual(len(display_data["future_reservation_rows"]), 1)
+        self.assertEqual(display_data["waitlist_rows"], [])
 
     def test_customer_templates_expose_mobile_structure_and_text_statuses(self):
         self._reservation()
