@@ -74,6 +74,10 @@ from .lesson_participants import (
     reservations_for_lesson,
     reservations_for_object,
 )
+from .lesson_calendar_service import (
+    build_lesson_calendar_display_data,
+    lesson_calendar_slot_key,
+)
 from .reservation_service import create_reservation
 from .ticket_purchase_reservation_service import is_main_coach
 from .stringing_service import (
@@ -716,12 +720,12 @@ def _slot_level_allowed(user, target_level, target_level_2="", *, lesson_type=""
 
 
 def _slot_key(lesson_type, coach_id, court_id, start_at, end_at):
-    return (
-        str(lesson_type or ""),
-        str(coach_id or ""),
-        str(court_id or ""),
-        _to_event_datetime_str(start_at) or "",
-        _to_event_datetime_str(end_at) or "",
+    return lesson_calendar_slot_key(
+        lesson_type=lesson_type,
+        coach_id=coach_id,
+        court_id=court_id,
+        start_at=start_at,
+        end_at=end_at,
     )
 
 
@@ -1725,8 +1729,6 @@ def lesson_calendar_view(request):
 
     target_year, target_month = _parse_target_month(request.GET.get("year"), request.GET.get("month"))
     from . import lesson_execution
-    from .lesson_calendar_service import build_lesson_calendar_display_data
-
     month_start, next_month = _month_start_end(target_year, target_month)
     prev_year = target_year
     prev_month = target_month - 1
