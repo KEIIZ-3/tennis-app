@@ -17,7 +17,7 @@ from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q, Sum
-from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -78,7 +78,11 @@ from .lesson_calendar_service import (
     build_lesson_calendar_display_data,
     lesson_calendar_slot_key,
 )
-from .reservation_display_service import build_member_reservation_list_display
+from .reservation_display_service import (
+    build_member_reservation_list_display,
+    build_reservation_detail_display,
+    get_reservation_detail_reservation,
+)
 from .reservation_service import create_reservation
 from .ticket_purchase_reservation_service import is_main_coach
 from .stringing_service import (
@@ -3882,106 +3886,27 @@ def _user_can_manage_stringing_order(user, order):
 @login_required
 @require_GET
 def reservation_detail(request, pk):
-    reservation = get_object_or_404(
-        Reservation.objects.select_related(
-            "user",
-            "coach",
-            "substitute_coach",
-            "court",
-            "availability",
-            "fixed_lesson",
-        ).prefetch_related("ticket_consumptions__purchase", "ticket_ledgers"),
-        pk=pk,
-    )
+    try:
+        reservation = get_reservation_detail_reservation(reservation_id=pk)
+    except Reservation.DoesNotExist:
+        raise Http404
 
     if not _user_can_access_reservation(request.user, reservation):
         return HttpResponse("Forbidden", status=403)
 
-    can_cancel, cancel_reason = _can_user_cancel_reservation(request.user, reservation)
-    can_manage_request = _coach_can_manage_request(request.user, reservation) and reservation.status == Reservation.STATUS_PENDING
-
-    ticket_consumption_rows = []
-    for consumption in reservation.ticket_consumptions.select_related("purchase").order_by("created_at", "id"):
-        ticket_consumption_rows.append(
-            {
-                "consumption": consumption,
-                "unit_price_label": consumption.unit_price_label(),
-                "is_refunded": bool(consumption.refunded_at),
-            }
-        )
-
-    ticket_ledger_rows = list(
-        reservation.ticket_ledgers.select_related("created_by").order_by("-created_at", "-id")[:20]
-    )
-
-    same_slot_reservations = list(
-        reservations_for_object(reservation).select_related(
-            "user", "coach", "substitute_coach", "court"
-        )
-    )
-
-    same_slot_waitlists = list(
-        LessonWaitlist.objects.select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
-        .filter(
-            coach=reservation.coach,
-            court=reservation.court,
-            lesson_type=reservation.lesson_type,
-            start_at=reservation.start_at,
-            end_at=reservation.end_at,
-        )
-        .order_by("status", "created_at", "id")
-    )
-
-    capacity = _capacity_for_reservation_slot(reservation)
-    active_count = len(same_slot_reservations)
-    waitlist_rows = []
-    for waitlist in same_slot_waitlists:
-        can_promote = (
-            waitlist.status == LessonWaitlist.STATUS_WAITING
-            and reservation.start_at >= timezone.now()
-            and active_count < capacity
-            and _coach_can_manage_waitlist(request.user, waitlist)
-        )
-        waitlist_rows.append(
-            {
-                "waitlist": waitlist,
-                "can_promote": can_promote,
-                "can_cancel": (
-                    waitlist.status == LessonWaitlist.STATUS_WAITING
-                    and waitlist.start_at >= timezone.now()
-                    and _user_can_manage_waitlist(request.user, waitlist)
-                ),
-            }
-        )
-
     return render(
         request,
         "reservations/detail.html",
-        {
-            "reservation": reservation,
-            "can_cancel": can_cancel,
-            "can_customer_cancel": reservation.status in (
-                Reservation.STATUS_ACTIVE,
-                Reservation.STATUS_PENDING,
-            ) and (
-                reservation.user_id == request.user.pk
-                or request.user.is_staff
-                or request.user.is_superuser
-            ),
-            "cancel_reason": cancel_reason,
-            "can_manage_request": can_manage_request,
-            "assigned_coach_name": reservation.assigned_coach_display(),
-            "normal_coach_name": reservation.normal_coach_display(),
-            "substitute_coach_name": _display_name(reservation.substitute_coach) if reservation.substitute_coach else "",
-            "has_substitute": reservation.has_substitute_coach(),
-            "ticket_consumption_rows": ticket_consumption_rows,
-            "ticket_ledger_rows": ticket_ledger_rows,
-            "same_slot_reservations": same_slot_reservations,
-            "same_slot_waitlist_rows": waitlist_rows,
-            "slot_capacity": capacity,
-            "slot_active_count": active_count,
-            "slot_remaining_count": max(capacity - active_count, 0),
-        },
+        build_reservation_detail_display(
+            reservation=reservation,
+            user=request.user,
+            can_user_cancel_reservation=_can_user_cancel_reservation,
+            coach_can_manage_request=_coach_can_manage_request,
+            capacity_for_reservation_slot=_capacity_for_reservation_slot,
+            coach_can_manage_waitlist=_coach_can_manage_waitlist,
+            user_can_manage_waitlist=_user_can_manage_waitlist,
+            display_name=_display_name,
+        ),
     )
 
 
