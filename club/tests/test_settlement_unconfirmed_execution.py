@@ -2,13 +2,22 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
 from club import lesson_execution
 from club.lesson_execution_storage import save_status
-from club.models import CoachAvailability, Court, FixedLesson, Reservation
+from club.models import (
+    CoachAvailability,
+    CoachExpense,
+    Court,
+    FixedLesson,
+    RainRefund,
+    Reservation,
+)
 from club.settlement_models import MonthlySettlement
 
 
@@ -305,6 +314,110 @@ class SettlementUnconfirmedExecutionTests(TestCase):
         self.assertEqual(slots[0]["source_kind"], "fixed_lesson")
         self.assertEqual(slots[0]["fixed_lesson"], fixed)
         self.assertEqual(CoachAvailability.objects.count(), 1)
+
+    def test_parallel_fixed_occurrences_do_not_share_reservations(self):
+        target = timezone.make_aware(datetime(2026, 8, 5, 9, 0))
+        fixed_lessons = [
+            FixedLesson.objects.create(
+                title=f"Parallel lesson {index}",
+                coach=self.coach,
+                court=self.court,
+                lesson_type=Reservation.LESSON_PRIVATE,
+                target_level=get_user_model().LEVEL_BEGINNER,
+                start_date=target.date(),
+                weekday=target.weekday(),
+                start_hour=target.hour,
+                capacity=4,
+                weeks_ahead=1,
+            )
+            for index in range(2)
+        ]
+        availability = self._availability(target, participant_status=None)
+        Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            availability=availability,
+            fixed_lesson=fixed_lessons[0],
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=get_user_model().LEVEL_BEGINNER,
+            start_at=availability.start_at,
+            end_at=availability.end_at,
+            status=Reservation.STATUS_ACTIVE,
+        )
+
+        rows = lesson_execution.unconfirmed_execution_rows(
+            2026, 8, now=target + timedelta(days=1)
+        )
+
+        self.assertEqual([row["lesson_name"] for row in rows], ["Parallel lesson 0"])
+
+    def test_unconfirmed_query_count_does_not_scale_with_availability_count(self):
+        MonthlySettlement.objects.create(year=2026, month=8)
+        self._availability(timezone.make_aware(datetime(2026, 8, 1, 9, 0)))
+
+        with CaptureQueriesContext(connection) as single_context:
+            lesson_execution.unconfirmed_execution_rows(2026, 8, now=self.now)
+
+        for day in (2, 3, 4):
+            self._availability(timezone.make_aware(datetime(2026, 8, day, 9, 0)))
+        with CaptureQueriesContext(connection) as multiple_context:
+            lesson_execution.unconfirmed_execution_rows(2026, 8, now=self.now)
+
+        self.assertLessEqual(len(multiple_context), len(single_context))
+
+    def test_missing_refund_query_count_does_not_scale_with_availability_count(self):
+        MonthlySettlement.objects.create(year=2026, month=8)
+        first = self._availability(
+            timezone.make_aware(datetime(2026, 8, 1, 9, 0)),
+            participant_status=Reservation.STATUS_RAIN_CANCELED,
+        )
+        Reservation.objects.filter(availability=first).update(
+            cancellation_reason="雨天中止"
+        )
+
+        with CaptureQueriesContext(connection) as single_context:
+            lesson_execution.missing_rain_refund_rows(2026, 8)
+
+        for day in (2, 3, 4):
+            availability = self._availability(
+                timezone.make_aware(datetime(2026, 8, day, 9, 0)),
+                participant_status=Reservation.STATUS_RAIN_CANCELED,
+            )
+            Reservation.objects.filter(availability=availability).update(
+                cancellation_reason="雨天中止"
+            )
+        with CaptureQueriesContext(connection) as multiple_context:
+            lesson_execution.missing_rain_refund_rows(2026, 8)
+
+        self.assertLessEqual(len(multiple_context), len(single_context))
+
+    def test_registered_rain_refund_is_not_reported_missing(self):
+        availability = self._availability(
+            timezone.make_aware(datetime(2026, 8, 1, 9, 0)),
+            participant_status=Reservation.STATUS_RAIN_CANCELED,
+        )
+        Reservation.objects.filter(availability=availability).update(
+            cancellation_reason="雨天中止"
+        )
+        expense = CoachExpense.objects.create(
+            expense_date=availability.start_at.date(),
+            category=CoachExpense.CATEGORY_COURT,
+            amount=1000,
+            created_by=self.coach,
+        )
+        RainRefund.objects.create(
+            expense=expense,
+            availability=availability,
+            lesson_date=availability.start_at.date(),
+            amount=1000,
+            booking_account_kind=RainRefund.ACCOUNT_COACH,
+            booking_account_coach=self.coach,
+            debit_coach=self.coach,
+            payer_coach=self.coach,
+        )
+
+        self.assertEqual(lesson_execution.missing_rain_refund_rows(2026, 8), [])
 
     def test_august_audit_shape_keeps_only_occurrences_needing_confirmation(self):
         fixed_start = timezone.make_aware(datetime(2026, 8, 5, 19, 0))

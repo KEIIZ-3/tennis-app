@@ -254,12 +254,14 @@ def unconfirmed_execution_rows(year, month, *, now=None):
     status_map = read_status_map(settlement)
     current_time = now or timezone.now()
     rows = []
+    slots = _canonical_slots(year, month)
+    reservations_by_slot = _reservations_by_slot(slots)
 
-    for slot in _canonical_slots(year, month):
+    for slot in slots:
         if slot["end_at"] > current_time:
             continue
 
-        reservations = list(_reservation_queryset(slot))
+        reservations = reservations_by_slot[_slot_reservation_key(slot)]
         if not any(
             reservation.status in (
                 Reservation.STATUS_ACTIVE,
@@ -268,7 +270,6 @@ def unconfirmed_execution_rows(year, month, *, now=None):
             for reservation in reservations
         ):
             continue
-        entry = _status_entry(status_map, slot)
         status, _cancellation_type = effective_status(
             _status_entry(status_map, slot),
             reservations,
@@ -316,13 +317,15 @@ def missing_rain_refund_rows(year, month):
         ).values_list("availability_id", flat=True)
     )
     rows = []
-    for slot in _canonical_slots(year, month):
+    slots = _canonical_slots(year, month)
+    reservations_by_slot = _reservations_by_slot(slots)
+    for slot in slots:
         availability = slot["availability"]
         status = _status_entry(status_map, slot).get("status")
         has_legacy_rain_cancel = any(
             reservation.status == Reservation.STATUS_RAIN_CANCELED
             or "雨天中止" in str(reservation.cancellation_reason or "")
-            for reservation in _reservation_queryset(slot)
+            for reservation in reservations_by_slot[_slot_reservation_key(slot)]
         )
         if (
             status not in (STATUS_RAIN_CANCELED, STATUS_REFUND_PENDING)
@@ -429,6 +432,74 @@ def _reservation_queryset(slot):
     )
 
 
+def _slot_reservation_key(slot):
+    relation_key = (
+        ("fixed_lesson", slot["fixed_lesson"].pk)
+        if slot.get("fixed_lesson") is not None
+        else ("availability", slot["availability"].pk)
+    )
+    return relation_key + (slot["start_at"], slot["end_at"])
+
+
+def _reservations_by_slot(slots):
+    """Load canonical Reservation rows for all supplied occurrences at once."""
+    grouped = {_slot_reservation_key(slot): [] for slot in slots}
+    if not slots:
+        return grouped
+
+    fixed_lesson_ids = {
+        slot["fixed_lesson"].pk
+        for slot in slots
+        if slot.get("fixed_lesson") is not None
+    }
+    availability_ids = {
+        slot["availability"].pk
+        for slot in slots
+        if slot.get("fixed_lesson") is None
+    }
+    relation_filter = Q()
+    if fixed_lesson_ids:
+        relation_filter |= Q(fixed_lesson_id__in=fixed_lesson_ids)
+    if availability_ids:
+        relation_filter |= Q(availability_id__in=availability_ids)
+
+    reservations = (
+        Reservation.objects.filter(
+            relation_filter,
+            status__in=ALL_RESERVATION_STATUSES,
+            start_at__gte=min(slot["start_at"] for slot in slots),
+            start_at__lte=max(slot["start_at"] for slot in slots),
+        )
+        .select_related(
+            "user",
+            "coach",
+            "substitute_coach",
+            "fixed_lesson",
+            "availability",
+        )
+        .order_by("id")
+    )
+    for reservation in reservations:
+        fixed_key = (
+            "fixed_lesson",
+            reservation.fixed_lesson_id,
+            reservation.start_at,
+            reservation.end_at,
+        )
+        availability_key = (
+            "availability",
+            reservation.availability_id,
+            reservation.start_at,
+            reservation.end_at,
+        )
+        if fixed_key in grouped:
+            grouped[fixed_key].append(reservation)
+        if availability_key in grouped:
+            grouped[availability_key].append(reservation)
+
+    return grouped
+
+
 def _canonical_availability_for_fixed(fixed_lesson, start_at, end_at):
     primary_coach = (
         fixed_lesson.primary_coach()
@@ -509,12 +580,17 @@ def _canonical_slots(year, month):
                 "coach_names": _fixed_coach_names(fixed_lesson),
                 "source_kind": "fixed_lesson",
             }
-            represented_availability_ids.update(
-                _reservation_queryset(slot)
-                .exclude(availability_id__isnull=True)
-                .values_list("availability_id", flat=True)
-            )
             slots.append(slot)
+
+    fixed_reservations_by_slot = _reservations_by_slot(slots)
+    for slot in slots:
+        represented_availability_ids.update(
+            reservation.availability_id
+            for reservation in fixed_reservations_by_slot[
+                _slot_reservation_key(slot)
+            ]
+            if reservation.availability_id is not None
+        )
 
     extra_availabilities = (
         CoachAvailability.objects.filter(
