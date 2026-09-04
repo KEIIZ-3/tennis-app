@@ -21,7 +21,8 @@ def _local_datetime(value):
     return value
 
 
-def _slot_key(*, lesson_type, coach_id, court_id, start_at, end_at):
+def lesson_calendar_slot_key(*, lesson_type, coach_id, court_id, start_at, end_at):
+    """Return the canonical identity used by lesson-calendar slot maps."""
     return (lesson_type, coach_id, court_id, start_at, end_at)
 
 
@@ -84,7 +85,7 @@ def build_lesson_calendar_display_data(*, user, target_year, target_month, month
     reservations_by_availability = {}
     reservations_by_fixed_occurrence = {}
     for reservation in reservation_list:
-        slot_key = _slot_key(
+        slot_key = lesson_calendar_slot_key(
             lesson_type=reservation.lesson_type,
             coach_id=reservation.coach_id,
             court_id=reservation.court_id,
@@ -131,7 +132,7 @@ def build_lesson_calendar_display_data(*, user, target_year, target_month, month
         .order_by("start_at", "created_at", "id")
     )
     for waitlist in waitlists:
-        slot_key = _slot_key(
+        slot_key = lesson_calendar_slot_key(
             lesson_type=waitlist.lesson_type,
             coach_id=waitlist.coach_id,
             court_id=waitlist.court_id,
