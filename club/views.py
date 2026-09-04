@@ -78,6 +78,7 @@ from .lesson_calendar_service import (
     build_lesson_calendar_display_data,
     lesson_calendar_slot_key,
 )
+from .reservation_display_service import build_member_reservation_list_display
 from .reservation_service import create_reservation
 from .ticket_purchase_reservation_service import is_main_coach
 from .stringing_service import (
@@ -6605,143 +6606,16 @@ def reservation_list(request):
     if getattr(request.user, "role", "") != "member":
         return HttpResponse("予約確認は会員専用です。", status=403)
 
-    now = timezone.now()
-
-    qs = (
-        Reservation.objects.select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
-        .prefetch_related("ticket_consumptions__purchase")
-        .all()
+    display_data = build_member_reservation_list_display(
+        user=request.user,
+        can_user_cancel_reservation=_can_user_cancel_reservation,
+        active_reservation_count_for_slot=_active_reservation_count_for_slot,
+        capacity_for_waitlist_slot=_capacity_for_waitlist_slot,
+        user_can_manage_waitlist=_user_can_manage_waitlist,
+        coach_can_manage_waitlist=_coach_can_manage_waitlist,
+        display_name=_display_name,
     )
-
-    waitlist_qs = (
-        LessonWaitlist.objects.select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
-        .all()
-    )
-
-    # _is_staff_like() は coach も True になるため、コーチ判定を先に行う。
-    # 業務委託コーチは「担当コーチ」と「受講者」の両方になり得るため、
-    # 自分が担当する予約に加えて、自分自身の受講予約・キャンセル待ちも表示します。
-    if _is_coach_user(request.user):
-        reservation_ids = []
-        for reservation in qs:
-            if (
-                reservation.user_id == request.user.pk
-                or reservation.coach_id == request.user.pk
-                or getattr(reservation, "substitute_coach_id", None) == request.user.pk
-            ):
-                reservation_ids.append(reservation.pk)
-        qs = qs.filter(pk__in=reservation_ids)
-
-        waitlist_ids = []
-        for waitlist in waitlist_qs:
-            if (
-                waitlist.user_id == request.user.pk
-                or waitlist.coach_id == request.user.pk
-                or getattr(waitlist, "substitute_coach_id", None) == request.user.pk
-            ):
-                waitlist_ids.append(waitlist.pk)
-        waitlist_qs = waitlist_qs.filter(pk__in=waitlist_ids)
-    elif _is_staff_like(request.user):
-        pass
-    else:
-        qs = qs.filter(user=request.user)
-        waitlist_qs = waitlist_qs.filter(user=request.user)
-
-    qs = qs.order_by("start_at", "id")
-    waitlist_qs = waitlist_qs.order_by("start_at", "created_at", "id")
-
-    def _reservation_row(reservation):
-        can_cancel, cancel_reason = _can_user_cancel_reservation(request.user, reservation)
-        return {
-            "reservation": reservation,
-            "can_cancel": can_cancel,
-            "can_customer_cancel": (
-                reservation.status in (Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING)
-                and (
-                    reservation.user_id == request.user.pk
-                    or request.user.is_staff
-                    or request.user.is_superuser
-                )
-            ),
-            "cancel_reason": cancel_reason,
-            "assigned_coach_name": reservation.assigned_coach_display(),
-            "normal_coach_name": reservation.normal_coach_display(),
-            "substitute_coach_name": _display_name(reservation.substitute_coach) if reservation.substitute_coach else "",
-            "has_substitute": reservation.has_substitute_coach(),
-            "is_future": reservation.start_at >= now,
-            "is_canceled": reservation.status in CANCELED_RESERVATION_STATUSES,
-            "is_pending": reservation.status == Reservation.STATUS_PENDING,
-            "is_active": reservation.status == Reservation.STATUS_ACTIVE,
-        }
-
-    future_reservation_rows = []
-    past_reservation_rows = []
-    canceled_reservation_rows = []
-
-    for reservation in qs:
-        row = _reservation_row(reservation)
-        if row["is_canceled"]:
-            canceled_reservation_rows.append(row)
-        elif reservation.start_at >= now:
-            future_reservation_rows.append(row)
-        else:
-            past_reservation_rows.append(row)
-
-    waitlist_rows = []
-    for waitlist in waitlist_qs:
-        can_cancel_waitlist = (
-            waitlist.status == LessonWaitlist.STATUS_WAITING
-            and waitlist.start_at >= now
-            and _user_can_manage_waitlist(request.user, waitlist)
-        )
-
-        active_count = _active_reservation_count_for_slot(
-            coach=waitlist.coach,
-            court=waitlist.court,
-            lesson_type=waitlist.lesson_type,
-            start_at=waitlist.start_at,
-            end_at=waitlist.end_at,
-        )
-        capacity = _capacity_for_waitlist_slot(waitlist)
-        can_promote = (
-            waitlist.status == LessonWaitlist.STATUS_WAITING
-            and waitlist.start_at >= now
-            and active_count < capacity
-            and _coach_can_manage_waitlist(request.user, waitlist)
-        )
-
-        waitlist_rows.append(
-            {
-                "waitlist": waitlist,
-                "can_cancel": can_cancel_waitlist,
-                "can_promote": can_promote,
-                "active_count": active_count,
-                "capacity": capacity,
-                "remaining_count": max(capacity - active_count, 0),
-                "assigned_coach_name": waitlist.assigned_coach_display(),
-                "normal_coach_name": _display_name(waitlist.coach),
-                "substitute_coach_name": _display_name(waitlist.substitute_coach) if waitlist.substitute_coach else "",
-                "has_substitute": bool(waitlist.substitute_coach_id),
-            }
-        )
-
-    waiting_waitlist_rows = [row for row in waitlist_rows if row["waitlist"].status == LessonWaitlist.STATUS_WAITING]
-    processed_waitlist_rows = [row for row in waitlist_rows if row["waitlist"].status != LessonWaitlist.STATUS_WAITING]
-
-    return render(
-        request,
-        "reservations/list.html",
-        {
-            "future_reservation_rows": future_reservation_rows,
-            "past_reservation_rows": past_reservation_rows,
-            "canceled_reservation_rows": canceled_reservation_rows,
-            "waiting_waitlist_rows": waiting_waitlist_rows,
-            "processed_waitlist_rows": processed_waitlist_rows,
-            # 旧テンプレート互換用
-            "reservation_rows": future_reservation_rows + past_reservation_rows + canceled_reservation_rows,
-            "waitlist_rows": waitlist_rows,
-        },
-    )
+    return render(request, "reservations/list.html", display_data)
 
 
 @login_required
