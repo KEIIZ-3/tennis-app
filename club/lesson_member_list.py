@@ -11,10 +11,12 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .lesson_participants import (
+    competing_fixed_lesson_ids,
     participant_details_by_reservation,
     reservations_for_lesson,
 )
-from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation, User
+from .lesson_member_list_performance import LessonMemberListPerformanceTrace
+from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation, TicketConsumption, User
 from .participant_levels import current_participant_level_label
 from .ticket_purchase_reservation_service import (
     completed_purchase_reservations_for_participants,
@@ -395,6 +397,7 @@ def _build_reservation_url(
 
 @login_required
 def lesson_calendar_member_list(request):
+    performance_trace = LessonMemberListPerformanceTrace()
     is_coach_view = _is_coach_like(request.user)
 
     availability_id = (
@@ -420,116 +423,75 @@ def lesson_calendar_member_list(request):
     title = ""
     target_level_label = "-"
 
-    if fixed_lesson_id and lesson_date_text:
-        fixed_lesson = get_object_or_404(
-            FixedLesson.objects.select_related(
-                "coach",
-                "coach_2",
-                "coach_3",
-                "court",
-            ).prefetch_related("members"),
-            pk=fixed_lesson_id,
-            is_active=True,
-        )
-
-        try:
-            target_date = date.fromisoformat(
-                lesson_date_text
+    with performance_trace.step("lesson_resolution"):
+        if fixed_lesson_id and lesson_date_text:
+            fixed_lesson = get_object_or_404(
+                FixedLesson.objects.select_related(
+                    "coach", "coach_2", "coach_3", "court"
+                ).prefetch_related("members"),
+                pk=fixed_lesson_id,
+                is_active=True,
             )
-        except Exception:
-            raise ValidationError(
-                "レッスン日付が正しくありません。"
-            )
+            try:
+                target_date = date.fromisoformat(lesson_date_text)
+            except Exception:
+                raise ValidationError("レッスン日付が正しくありません。")
 
-        start_at, end_at = (
-            _build_fixed_lesson_datetimes(
-                fixed_lesson,
-                target_date,
-            )
-        )
+            start_at, end_at = _build_fixed_lesson_datetimes(fixed_lesson, target_date)
+            coach = _primary_coach(fixed_lesson)
+            court = fixed_lesson.court
+            lesson_type = fixed_lesson.lesson_type
+            title = fixed_lesson.title or fixed_lesson.get_lesson_type_display()
+            target_level_label = _lesson_level_label(fixed_lesson)
 
-        # 固定レッスンでは、現在の管理画面設定を正とします。
-        coach = _primary_coach(fixed_lesson)
-        court = fixed_lesson.court
-        lesson_type = fixed_lesson.lesson_type
-        title = (
-            fixed_lesson.title
-            or fixed_lesson.get_lesson_type_display()
-        )
-        target_level_label = (
-            _lesson_level_label(fixed_lesson)
-        )
+            if availability_id:
+                availability = (
+                    CoachAvailability.objects.select_related(
+                        "coach", "substitute_coach", "court"
+                    )
+                    .filter(pk=availability_id)
+                    .first()
+                )
 
-        if availability_id:
-            availability = (
+            if not availability:
+                availability_qs = (
+                    CoachAvailability.objects.select_related(
+                        "coach", "substitute_coach", "court"
+                    ).filter(
+                        lesson_type=lesson_type,
+                        start_at=start_at,
+                        end_at=end_at,
+                    )
+                )
+                if court:
+                    availability_qs = availability_qs.filter(
+                        Q(court=court) | Q(court__isnull=True)
+                    )
+                availability = availability_qs.order_by("id").first()
+
+            if availability:
+                court = availability.court or court
+
+        elif availability_id:
+            availability = get_object_or_404(
                 CoachAvailability.objects.select_related(
-                    "coach",
-                    "substitute_coach",
-                    "court",
-                )
-                .filter(pk=availability_id)
-                .first()
+                    "coach", "substitute_coach", "court"
+                ),
+                pk=availability_id,
             )
+            start_at = availability.start_at
+            end_at = availability.end_at
+            coach = availability.coach
+            court = availability.court
+            lesson_type = availability.lesson_type
+            title = availability.get_lesson_type_display()
+            target_level_label = _lesson_level_label(availability)
 
-        if not availability:
-            # 担当変更前の古いAvailabilityも存在し得るため、
-            # 現在のコーチ一致を必須にせず、
-            # 日時・種別・コートを優先して取得します。
-            availability_qs = (
-                CoachAvailability.objects.select_related(
-                    "coach",
-                    "substitute_coach",
-                    "court",
-                )
-                .filter(
-                    lesson_type=lesson_type,
-                    start_at=start_at,
-                    end_at=end_at,
-                )
+        else:
+            return HttpResponse(
+                "対象レッスンが見つかりません。",
+                status=404,
             )
-
-            if court:
-                availability_qs = availability_qs.filter(
-                    Q(court=court)
-                    | Q(court__isnull=True)
-                )
-
-            availability = (
-                availability_qs
-                .order_by("id")
-                .first()
-            )
-
-        if availability:
-            # ここでcoachをavailability.coachに戻さないことが重要です。
-            # 表示担当は現在のFixedLesson設定を維持します。
-            court = availability.court or court
-
-    elif availability_id:
-        availability = get_object_or_404(
-            CoachAvailability.objects.select_related(
-                "coach",
-                "substitute_coach",
-                "court",
-            ),
-            pk=availability_id,
-        )
-
-        start_at = availability.start_at
-        end_at = availability.end_at
-        coach = availability.coach
-        court = availability.court
-        lesson_type = availability.lesson_type
-        title = availability.get_lesson_type_display()
-        target_level_label = (
-            _lesson_level_label(availability)
-        )
-
-    else:
-        return HttpResponse(
-            "対象レッスンが見つかりません。",
-            status=404,
-        )
 
     if is_coach_view and not _contractor_can_access_lesson(
         request.user,
@@ -648,8 +610,14 @@ def lesson_calendar_member_list(request):
         end_at=end_at,
     )
 
-    active_reservations = list(
-        reservations_for_lesson(
+    competing_ids = None
+    if availability is not None and fixed_lesson is not None:
+        competing_ids = competing_fixed_lesson_ids(fixed_lesson, start_at, end_at)
+
+    active_reservations = []
+    with performance_trace.step("active_reservations_load", count=lambda: len(active_reservations)):
+        active_reservations = list(
+            reservations_for_lesson(
             fixed_lesson=fixed_lesson,
             availability=availability,
             coach=coach,
@@ -657,22 +625,24 @@ def lesson_calendar_member_list(request):
             lesson_type=lesson_type,
             start_at=start_at,
             end_at=end_at,
-        ).select_related(
-            "user",
-            "coach",
-            "substitute_coach",
-            "court",
-            "fixed_lesson",
-            "availability",
+            competing_fixed_lesson_ids_override=competing_ids,
+            ).select_related(
+                "user",
+                "coach",
+                "substitute_coach",
+                "court",
+                "fixed_lesson",
+                "availability",
+            )
         )
-    )
 
     purchase_reservations = []
     completed_purchase_reservations = []
     if is_main_coach(request.user):
-        purchase_reservations = list(
-            pending_purchase_reservations_for_participants(
-                reservations_for_lesson(
+        with performance_trace.step("pending_purchase_reservations", count=lambda: len(purchase_reservations)):
+            purchase_reservations = list(
+                pending_purchase_reservations_for_participants(
+                    reservations_for_lesson(
                     fixed_lesson=fixed_lesson,
                     availability=availability,
                     coach=coach,
@@ -681,9 +651,10 @@ def lesson_calendar_member_list(request):
                     start_at=start_at,
                     end_at=end_at,
                     statuses=(Reservation.STATUS_ACTIVE,),
+                    competing_fixed_lesson_ids_override=competing_ids,
+                    )
                 )
             )
-        )
         completed_source_reservations = reservations_for_lesson(
             fixed_lesson=fixed_lesson,
             availability=availability,
@@ -693,17 +664,29 @@ def lesson_calendar_member_list(request):
             start_at=start_at,
             end_at=end_at,
             statuses=(Reservation.STATUS_ACTIVE, Reservation.STATUS_CANCELED),
+            competing_fixed_lesson_ids_override=competing_ids,
         )
-        completed_purchase_reservations = list(
-            completed_purchase_reservations_for_participants(completed_source_reservations)
-        )
-        for completed_purchase in completed_purchase_reservations:
-            completed_purchase.can_reverse, completed_purchase.reversal_block_reason = (
-                purchase_reversal_availability(completed_purchase)
+        with performance_trace.step("completed_purchase_reservations", count=lambda: len(completed_purchase_reservations)):
+            completed_purchase_reservations = list(
+                completed_purchase_reservations_for_participants(completed_source_reservations)
             )
+            used_purchase_ids = set(
+                TicketConsumption.objects.filter(
+                    purchase_id__in=[row.ticket_purchase_id for row in completed_purchase_reservations],
+                ).values_list("purchase_id", flat=True)
+            )
+            for completed_purchase in completed_purchase_reservations:
+                completed_purchase.can_reverse, completed_purchase.reversal_block_reason = (
+                    purchase_reversal_availability(
+                        completed_purchase,
+                        consumption_exists=completed_purchase.ticket_purchase_id in used_purchase_ids,
+                    )
+                )
 
-    pending_reservations = list(
-        reservations_for_lesson(
+    pending_reservations = []
+    with performance_trace.step("pending_reservations_load", count=lambda: len(pending_reservations)):
+        pending_reservations = list(
+            reservations_for_lesson(
             fixed_lesson=fixed_lesson,
             availability=availability,
             coach=coach,
@@ -712,22 +695,24 @@ def lesson_calendar_member_list(request):
             start_at=start_at,
             end_at=end_at,
             statuses=(Reservation.STATUS_PENDING,),
-        ).select_related(
-            "user",
-            "coach",
-            "substitute_coach",
-            "court",
-            "fixed_lesson",
-            "availability",
+            competing_fixed_lesson_ids_override=competing_ids,
+            ).select_related(
+                "user",
+                "coach",
+                "substitute_coach",
+                "court",
+                "fixed_lesson",
+                "availability",
+            )
         )
-    )
 
-    participant_snapshot_map = (
-        _reservation_participant_snapshot_map(
-            active_reservations
-            + pending_reservations
+    with performance_trace.step("participant_snapshot_map", count=lambda: len(participant_snapshot_map)):
+        participant_snapshot_map = (
+            _reservation_participant_snapshot_map(
+                active_reservations
+                + pending_reservations
+            )
         )
-    )
 
     waitlist_filter = Q(
         lesson_type=lesson_type,
@@ -754,8 +739,10 @@ def lesson_calendar_member_list(request):
             court=court,
         )
 
-    waitlists = list(
-        LessonWaitlist.objects.select_related(
+    waitlists = []
+    with performance_trace.step("waitlists_load", count=lambda: len(waitlists)):
+        waitlists = list(
+            LessonWaitlist.objects.select_related(
             "user",
             "coach",
             "substitute_coach",
@@ -771,44 +758,51 @@ def lesson_calendar_member_list(request):
             "created_at",
             "id",
         )
-        .distinct()
-    )
-
-    active_rows = [
-        _member_row_from_reservation(
-            reservation,
-            participant_snapshot_map.get(
-                reservation.pk
-            ),
+            .distinct()
         )
-        for reservation in active_reservations
-    ]
-    ticket_payer_options = []
-    if is_main_coach(request.user):
-        payer_users = {
-            row.user_id: row.user
-            for row in active_reservations
-            if row.user_id
-        }
-        current_payer_by_reservation = {
-            reservation.pk: reservation.ticket_consumptions.filter(
-                refunded_at__isnull=True
-            ).values_list("user_id", flat=True).first()
+
+    with performance_trace.step("active_rows_build", count=lambda: len(active_rows)):
+        active_rows = [
+            _member_row_from_reservation(
+                reservation,
+                participant_snapshot_map.get(
+                    reservation.pk
+                ),
+            )
             for reservation in active_reservations
-        }
-        current_payer_ids = {
-            payer_id for payer_id in current_payer_by_reservation.values() if payer_id
-        }
-        for payer in User.objects.filter(pk__in=current_payer_ids):
-            payer_users.setdefault(payer.pk, payer)
-        ticket_payer_options = [
-            {"id": user_id, "name": _display_name(user)}
-            for user_id, user in sorted(payer_users.items())
         ]
-        for row in active_rows:
-            row["current_payer_id"] = current_payer_by_reservation.get(
-                row["reservation"].pk
-            ) or row["reservation"].user_id
+    ticket_payer_options = []
+    with performance_trace.step("ticket_payer_build", count=lambda: len(ticket_payer_options)):
+        if is_main_coach(request.user):
+            payer_users = {
+                row.user_id: row.user
+                for row in active_reservations
+                if row.user_id
+            }
+            current_payer_by_reservation = {}
+            consumptions = TicketConsumption.objects.filter(
+                reservation_id__in=[row.pk for row in active_reservations],
+                refunded_at__isnull=True,
+            ).order_by("reservation_id", "created_at", "id")
+            for reservation_id, payer_id in consumptions.values_list(
+                "reservation_id", "user_id"
+            ):
+                current_payer_by_reservation.setdefault(reservation_id, payer_id)
+            current_payer_ids = {
+                payer_id
+                for payer_id in current_payer_by_reservation.values()
+                if payer_id
+            }
+            for payer in User.objects.filter(pk__in=current_payer_ids):
+                payer_users.setdefault(payer.pk, payer)
+            ticket_payer_options = [
+                {"id": user_id, "name": _display_name(user)}
+                for user_id, user in sorted(payer_users.items())
+            ]
+            for row in active_rows:
+                row["current_payer_id"] = current_payer_by_reservation.get(
+                    row["reservation"].pk
+                ) or row["reservation"].user_id
     capacity = _capacity_for_slot(
         availability=availability,
         fixed_lesson=fixed_lesson,
@@ -838,57 +832,60 @@ def lesson_calendar_member_list(request):
     execution_status = None
     execution_manage_url = ""
     court_summary = None
-    if availability and is_coach_view:
-        from . import lesson_execution
-        from .court_expense_transfer import (
-            court_transfer_summary_for_availability,
-        )
+    with performance_trace.step("execution_status"):
+        if availability and is_coach_view:
+            from . import lesson_execution
+            from .court_expense_transfer import (
+                court_transfer_summary_for_availability,
+            )
 
-        status_map = lesson_execution.status_by_availability(
-            request.user,
-            {(start_at.year, start_at.month)},
-        )
-        execution_status = status_map.get(availability.pk)
-        execution_manage_url = (
-            f"{reverse('club:lesson_execution_manage')}?year={start_at.year}"
-            f"&month={start_at.month}&open_rain={availability.pk}#lesson-{availability.pk}"
-        )
-        if execution_status:
-            current_status = execution_status["execution_status"]
-            execution_status["can_mark_held"] = current_status in (
-                lesson_execution.STATUS_UNCONFIRMED,
-                lesson_execution.STATUS_SCHEDULED,
+            status_map = lesson_execution.status_by_availability(
+                request.user,
+                {(start_at.year, start_at.month)},
             )
-            execution_status["can_unhold"] = current_status == lesson_execution.STATUS_HELD
-            execution_status["can_cancel"] = current_status in (
-                lesson_execution.STATUS_UNCONFIRMED,
-                lesson_execution.STATUS_SCHEDULED,
-                lesson_execution.STATUS_HELD,
+            execution_status = status_map.get(availability.pk)
+            execution_manage_url = (
+                f"{reverse('club:lesson_execution_manage')}?year={start_at.year}"
+                f"&month={start_at.month}&open_rain={availability.pk}#lesson-{availability.pk}"
             )
-        court_summary = court_transfer_summary_for_availability(
-            availability
-        )
-        if (
-            execution_status
-            and execution_status.get("execution_status")
-            in (
-                lesson_execution.STATUS_RAIN_CANCELED,
-                lesson_execution.STATUS_REFUND_PENDING,
-                lesson_execution.STATUS_REFUNDED,
-            )
-            and court_summary["status"] == "unregistered"
-        ):
-            court_summary = {
-                "status": "not_required",
-                "status_label": "登録不要",
-                "amount": None,
-                "payer_name": "",
-            }
+            if execution_status:
+                current_status = execution_status["execution_status"]
+                execution_status["can_mark_held"] = current_status in (
+                    lesson_execution.STATUS_UNCONFIRMED,
+                    lesson_execution.STATUS_SCHEDULED,
+                )
+                execution_status["can_unhold"] = current_status == lesson_execution.STATUS_HELD
+                execution_status["can_cancel"] = current_status in (
+                    lesson_execution.STATUS_UNCONFIRMED,
+                    lesson_execution.STATUS_SCHEDULED,
+                    lesson_execution.STATUS_HELD,
+                )
+            with performance_trace.step("court_summary"):
+                court_summary = court_transfer_summary_for_availability(
+                    availability
+                )
+            if (
+                execution_status
+                and execution_status.get("execution_status")
+                in (
+                    lesson_execution.STATUS_RAIN_CANCELED,
+                    lesson_execution.STATUS_REFUND_PENDING,
+                    lesson_execution.STATUS_REFUNDED,
+                )
+                and court_summary["status"] == "unregistered"
+            ):
+                court_summary = {
+                    "status": "not_required",
+                    "status_label": "登録不要",
+                    "amount": None,
+                    "payer_name": "",
+                }
 
-    return render(
-        request,
-        "coach/lesson_member_list.html",
-        {
+    with performance_trace.step("template_render"):
+        response = render(
+            request,
+            "coach/lesson_member_list.html",
+            {
             "title": title,
             "lesson_type_label": (
                 _lesson_type_label(
@@ -962,5 +959,7 @@ def lesson_calendar_member_list(request):
             "execution_status": execution_status,
             "execution_manage_url": execution_manage_url,
             "court_summary": court_summary,
-        },
-    )
+            },
+        )
+    performance_trace.log_total()
+    return response

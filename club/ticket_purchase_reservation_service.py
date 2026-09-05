@@ -87,7 +87,9 @@ def completed_purchase_reservations_for_participants(reservations):
     ).select_related("user", "approved_by", "reversed_by", "ticket_purchase").order_by("-approved_at", "-id")
 
 
-def purchase_reversal_availability(purchase_reservation, *, purchase=None):
+def purchase_reversal_availability(
+    purchase_reservation, *, purchase=None, consumption_exists=None
+):
     if purchase is None:
         purchase = purchase_reservation.ticket_purchase
     if purchase_reservation.status == TicketPurchaseReservation.STATUS_REVERSED:
@@ -96,7 +98,9 @@ def purchase_reversal_availability(purchase_reservation, *, purchase=None):
         return False, "承認済み購入ではありません"
     if purchase.reversed_at:
         return False, "すでに承認取消済みです"
-    if purchase.remaining_tickets != purchase.total_tickets or TicketConsumption.objects.filter(purchase=purchase).exists():
+    if consumption_exists is None:
+        consumption_exists = TicketConsumption.objects.filter(purchase=purchase).exists()
+    if purchase.remaining_tickets != purchase.total_tickets or consumption_exists:
         return False, "この購入で付与したチケットが既に使用されているため、自動取消できません"
     return True, ""
 
