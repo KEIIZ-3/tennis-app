@@ -325,6 +325,109 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertNotIn("中止登録", response.content.decode())
 
+    def test_member_list_query_count_does_not_scale_with_active_participants(self):
+        fixed_lesson = self._create_fixed_lesson(title="参加者一覧クエリ回帰")
+        start_at, end_at = fixed_lesson._build_datetimes_for_date(self.lesson_date)
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=fixed_lesson.lesson_type,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=6,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+
+        def create_participant(index):
+            member = self._create_user(
+                username=f"member_list_query_{index}",
+                role=self.User.ROLE_MEMBER,
+                full_name=f"クエリ会員 {index}",
+            )
+            reservation = Reservation.objects.create(
+                user=member,
+                coach=self.coach,
+                court=self.court,
+                availability=availability,
+                fixed_lesson=fixed_lesson,
+                lesson_type=fixed_lesson.lesson_type,
+                target_level=self.User.LEVEL_BEGINNER,
+                start_at=start_at,
+                end_at=end_at,
+                status=Reservation.STATUS_ACTIVE,
+            )
+            TicketConsumption.objects.create(
+                user=member,
+                reservation=reservation,
+                fixed_lesson=fixed_lesson,
+            )
+
+        create_participant(0)
+        self.client.force_login(self.coach)
+        url = reverse("club:lesson_calendar_member_list")
+        query = {
+            "availability_id": availability.pk,
+            "fixed_lesson_id": fixed_lesson.pk,
+            "lesson_date": self.lesson_date.isoformat(),
+        }
+        self.client.get(url, query)
+        with CaptureQueriesContext(connection) as single_context:
+            single_response = self.client.get(url, query)
+
+        for index in range(1, 4):
+            create_participant(index)
+        with CaptureQueriesContext(connection) as multiple_context:
+            multiple_response = self.client.get(url, query)
+
+        self.assertEqual(single_response.status_code, 200)
+        self.assertEqual(multiple_response.status_code, 200)
+        self.assertEqual(multiple_response.context["active_count"], 4)
+        self.assertEqual(len(multiple_context), len(single_context))
+
+    def test_member_list_logs_safe_performance_steps(self):
+        start_at = timezone.make_aware(
+            datetime.combine(self.lesson_date, datetime.min.time()).replace(hour=14)
+        )
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+            capacity=6,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        self.client.force_login(self.coach)
+
+        with self.assertLogs("performance", level="INFO") as logs:
+            response = self.client.get(
+                reverse("club:lesson_calendar_member_list"),
+                {"availability_id": availability.pk},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        output = "\n".join(logs.output)
+        for step in (
+            "lesson_resolution",
+            "active_reservations_load",
+            "pending_purchase_reservations",
+            "completed_purchase_reservations",
+            "pending_reservations_load",
+            "participant_snapshot_map",
+            "waitlists_load",
+            "active_rows_build",
+            "ticket_payer_build",
+            "execution_status",
+            "court_summary",
+            "template_render",
+            "total",
+        ):
+            self.assertIn(f"step={step} duration_ms=", output)
+        self.assertNotIn("availability_id", output)
+        self.assertNotIn(self.member.full_name, output)
+
     def test_member_can_cancel_own_reservation_from_confirmation(self):
         self.member.ticket_balance = 10
         self.member.save(update_fields=["ticket_balance"])

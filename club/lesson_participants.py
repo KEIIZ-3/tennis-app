@@ -46,7 +46,8 @@ def competing_fixed_lesson_ids(fixed_lesson, start_at, end_at):
 
 def reservations_for_lesson(*, fixed_lesson=None, availability=None, coach=None,
                             court=None, lesson_type=None, start_at=None, end_at=None,
-                            statuses=CONFIRMED_PARTICIPANT_STATUSES):
+                            statuses=CONFIRMED_PARTICIPANT_STATUSES,
+                            competing_fixed_lesson_ids_override=None):
     """Return canonical Reservation rows for one lesson occurrence.
 
     Reservation is the attendance source of truth. FixedLesson.members is only
@@ -65,7 +66,9 @@ def reservations_for_lesson(*, fixed_lesson=None, availability=None, coach=None,
     if availability is not None:
         queryset = queryset.filter(availability=availability)
         if fixed_lesson is not None:
-            competing_ids = competing_fixed_lesson_ids(fixed_lesson, start_at, end_at)
+            competing_ids = competing_fixed_lesson_ids_override
+            if competing_ids is None:
+                competing_ids = competing_fixed_lesson_ids(fixed_lesson, start_at, end_at)
             if competing_ids:
                 queryset = queryset.exclude(fixed_lesson_id__in=competing_ids)
     elif fixed_lesson is not None:
