@@ -147,6 +147,20 @@
               {% if row.can_mark_refunded %}
                 <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}">{% if pending_only %}<input type="hidden" name="pending" value="1">{% endif %}<input type="hidden" name="availability_id" value="{{ row.availability.id }}"><input type="hidden" name="action" value="refunded"><button type="submit" class="btn btn-held" onclick="return confirm('コート側からの返金を確認済みにしますか？');">返金確認</button></form>
               {% endif %}
+              {% if row.can_edit_rain_refund %}
+                {% if open_refund_edit_id == row.availability.id|stringformat:"s" %}
+                  <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}">{% if pending_only %}<input type="hidden" name="pending" value="1">{% endif %}<input type="hidden" name="availability_id" value="{{ row.availability.id }}"><input type="hidden" name="action" value="update_rain_refund">
+                    <div class="confirmed-note">返金待ちの精算情報だけを修正します。中止処理、金額、予約、チケット、通知は変更しません。</div>
+                    <label>予約アカウント<select name="rain_booking_account" required onchange="const isOther=this.value==='other'; const other=this.form.querySelector('[name=rain_booking_account_other]'); other.hidden=!isOther; other.required=isOther; if(!isOther){other.value='';}"><option value="">選択してください</option>{% for coach in main_coach_options %}<option value="{{ coach.id }}"{% if row.rain_refund.booking_account_coach_id == coach.id %} selected{% endif %}>{{ coach.display_name }}</option>{% endfor %}<option value="other"{% if row.rain_refund.booking_account_kind == 'other' %} selected{% endif %}>その他</option></select></label>
+                    <input name="rain_booking_account_other" type="text" placeholder="その他のアカウント情報" value="{{ row.rain_refund.booking_account_other }}"{% if row.rain_refund.booking_account_kind != 'other' %} hidden{% else %} required{% endif %}>
+                    <label data-rain-collection>回収者<select name="rain_collection_coach_id" required><option value="">選択してください</option>{% for coach in main_coach_options %}<option value="{{ coach.id }}"{% if row.rain_refund.collection_coach_id == coach.id %} selected{% endif %}>{{ coach.display_name }}</option>{% endfor %}</select></label>
+                    <label>コート支払者<select name="rain_court_payer_id" required><option value="">選択してください</option>{% for coach in main_coach_options %}<option value="{{ coach.id }}"{% if row.rain_refund.payer_coach_id == coach.id %} selected{% endif %}>{{ coach.display_name }}</option>{% endfor %}</select></label>
+                    <button type="submit" class="btn btn-rain" onclick="return confirm('中止時のコート精算情報を修正しますか？');">中止情報を修正して保存</button>
+                  </form>
+                {% else %}
+                  <a href="?year={{ selected_year }}&month={{ selected_month }}{% if pending_only %}&pending=1{% endif %}&open_refund_edit={{ row.availability.id }}#lesson-{{ row.availability.id }}" class="btn">中止情報を修正</a>
+                {% endif %}
+              {% endif %}
               {% if row.status == "held" %}
                 <a href="{{ row.court_expense_url }}#payer_coach_id" class="btn">コート支払者を登録</a>
                 <a href="{{ row.court_expense_url }}#amount" class="btn">コート代を登録・修正</a>
