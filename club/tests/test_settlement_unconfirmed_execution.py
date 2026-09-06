@@ -86,6 +86,30 @@ class SettlementUnconfirmedExecutionTests(TestCase):
             self.admin,
         )
 
+    def test_status_by_availability_reservation_queries_do_not_scale_with_slots(self):
+        first = self._availability(timezone.make_aware(datetime(2026, 8, 1, 9, 0)))
+        MonthlySettlement.objects.get_or_create(year=2026, month=8)
+
+        with CaptureQueriesContext(connection) as one_slot_queries:
+            one_slot_statuses = lesson_execution.status_by_availability(
+                self.admin, {(2026, 8)}
+            )
+
+        for day in (2, 3, 4):
+            self._availability(timezone.make_aware(datetime(2026, 8, day, 9, 0)))
+
+        with CaptureQueriesContext(connection) as four_slot_queries:
+            four_slot_statuses = lesson_execution.status_by_availability(
+                self.admin, {(2026, 8)}
+            )
+
+        self.assertEqual(
+            one_slot_statuses[first.pk]["execution_status"],
+            lesson_execution.STATUS_UNCONFIRMED,
+        )
+        self.assertEqual(len(four_slot_statuses), 4)
+        self.assertEqual(len(four_slot_queries), len(one_slot_queries))
+
     def test_query_filters_time_month_and_confirmed_statuses(self):
         ended = self._availability(self.now - timedelta(hours=2))
         future = self._availability(self.now + timedelta(hours=1))

@@ -223,12 +223,14 @@ def status_by_availability(user, year_month_pairs):
     for year, month in sorted(set(year_month_pairs)):
         settlement = get_or_create_monthly_settlement(year, month)
         status_map = read_status_map(settlement)
-        for slot in _canonical_slots(year, month):
+        slots = _canonical_slots(year, month)
+        reservations_by_slot = _reservations_by_slot(slots)
+        for slot in slots:
             if not _user_can_manage_slot(user, slot):
                 continue
             availability = slot["availability"]
             entry = _status_entry(status_map, slot)
-            reservations = list(_reservation_queryset(slot))
+            reservations = reservations_by_slot[_slot_reservation_key(slot)]
             status, cancellation_type = _effective_status(
                 entry, reservations, end_at=slot["end_at"]
             )
