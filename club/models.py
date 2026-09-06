@@ -1204,6 +1204,35 @@ class CoachExpense(models.Model):
         return super().save(*args, **kwargs)
 
 
+class CompletedLessonRegistration(models.Model):
+    """Audit identity for a coach-entered lesson that had already finished."""
+
+    availability = models.OneToOneField(
+        CoachAvailability,
+        on_delete=models.PROTECT,
+        related_name="completed_registration",
+    )
+    idempotency_key = models.CharField(max_length=64, unique=True)
+    note = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_completed_lesson_registrations",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    canceled_at = models.DateTimeField(null=True, blank=True)
+    canceled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="canceled_completed_lesson_registrations",
+    )
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+
 class RainRefund(models.Model):
     STATUS_PENDING = "pending"
     STATUS_REFUNDED = "refunded"
@@ -2134,6 +2163,15 @@ class Reservation(models.Model, LessonTypeMixin):
             )
             if self.pk:
                 coach_overlap_qs = coach_overlap_qs.exclude(pk=self.pk)
+            same_completed_availability = bool(
+                self.availability_id
+                and hasattr(self.availability, "completed_registration")
+                and self.availability.completed_registration.canceled_at is None
+            )
+            if same_completed_availability:
+                coach_overlap_qs = coach_overlap_qs.exclude(
+                    availability_id=self.availability_id
+                )
             if coach_overlap_qs.exists():
                 raise ValidationError("担当コーチには同じ時間帯の予約があります。")
 
@@ -2147,7 +2185,12 @@ class Reservation(models.Model, LessonTypeMixin):
                     self.substitute_coach = availability.substitute_coach
 
             slot_reservations_qs = self.active_slot_reservations_qs()
-            if slot_reservations_qs.exists():
+            is_completed_slot = bool(
+                availability
+                and hasattr(availability, "completed_registration")
+                and availability.completed_registration.canceled_at is None
+            )
+            if slot_reservations_qs.exists() and not is_completed_slot:
                 raise ValidationError("このプライベート枠はすでに予約済みです。")
 
             effective_capacity = 1

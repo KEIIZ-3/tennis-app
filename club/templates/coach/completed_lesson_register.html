@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}実施済みレッスンを登録{% endblock %}
+{% block content %}
+<style>
+  .completed-form{max-width:760px;margin:auto;display:grid;gap:14px}.panel{background:#fff;border:1px solid #dbe3ee;border-radius:16px;padding:16px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{display:grid;gap:5px}.field label{font-weight:800}.field input,.field select,.field textarea{box-sizing:border-box;width:100%;padding:11px;border:1px solid #cbd5e1;border-radius:10px;font-size:16px}.participant{margin-top:12px;padding:13px;border:1px solid #dbe3ee;border-radius:13px}.hidden{display:none}.submit{width:100%;padding:14px;border:0;border-radius:12px;background:#0f766e;color:white;font-weight:900;font-size:16px}@media(max-width:640px){.grid{grid-template-columns:1fr}.panel{padding:13px}}
+</style>
+<form class="completed-form" method="post" id="completed-form">
+  {% csrf_token %}<input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+  <h1>実施済みレッスンを登録</h1>
+  <section class="panel grid">
+    <div class="field"><label>実施日</label><input required type="date" name="date" value="{{ request.POST.date }}"></div>
+    <div class="field"><label>開始時刻</label><input required type="time" step="3600" name="start_time" value="{{ request.POST.start_time }}"></div>
+    <div class="field"><label>終了時刻</label><input required type="time" step="3600" name="end_time" value="{{ request.POST.end_time }}"></div>
+    <div class="field"><label>レッスン種別</label><select name="lesson_type">{% for value,label in lesson_types %}<option value="{{ value }}" {% if request.POST.lesson_type == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+    <div class="field"><label>担当コーチ</label><select name="coach">{% for item in coaches %}<option value="{{ item.id }}">{{ item.display_name }}</option>{% endfor %}</select></div>
+    <div class="field"><label>コート</label><select name="court">{% for item in courts %}<option value="{{ item.id }}">{{ item }}</option>{% endfor %}</select></div>
+    <div class="field"><label>顧客人数</label><select id="participant-count" name="participant_count">{% for i in participant_range %}<option value="{{ i|add:1 }}" {% if request.POST.participant_count == i|add:1|stringformat:'s' %}selected{% endif %}>{{ i|add:1 }}名</option>{% endfor %}</select></div>
+    <div class="field"><label>コート代</label><input required min="0" type="number" name="court_cost" value="{{ request.POST.court_cost|default:'0' }}"></div>
+    <div class="field"><label>コート支払者</label><select name="court_payer">{% for item in coaches %}<option value="{{ item.id }}">{{ item.display_name }}</option>{% endfor %}</select></div>
+  </section>
+  <section class="panel"><h2>参加者</h2>
+    {% for i in participant_range %}<div class="participant" data-index="{{ i }}"><strong>参加者 {{ i|add:1 }}</strong><div class="grid">
+      <div class="field"><label>種別</label><select name="participant_{{ i }}_kind" class="kind"><option value="member">既存会員</option><option value="guest">ゲスト</option></select></div>
+      <div class="field member-field"><label>会員</label><select name="participant_{{ i }}_user">{% for member in members %}<option value="{{ member.id }}">{{ member.display_name }}</option>{% endfor %}</select></div>
+      <div class="field guest-field hidden"><label>ゲスト氏名</label><input name="participant_{{ i }}_guest_name"></div>
+      <div class="field"><label>精算方法</label><select name="participant_{{ i }}_payment_method" class="payment"><option value="ticket">チケット</option><option value="cash">金額</option></select></div>
+      <div class="field"><label class="value-label">チケット枚数</label><input min="1" required type="number" name="participant_{{ i }}_value" value="1"></div>
+    </div></div>{% endfor %}
+  </section>
+  <section class="panel"><div class="field"><label>備考（任意）</label><textarea name="note">{{ request.POST.note }}</textarea></div></section>
+  <button class="submit" type="submit">実施済みレッスンを登録</button>
+</form>
+<script>
+const count=document.querySelector('#participant-count'),cards=[...document.querySelectorAll('.participant')];
+function sync(){cards.forEach((card,i)=>{card.classList.toggle('hidden',i>=Number(count.value));card.querySelectorAll('input,select').forEach(x=>x.disabled=i>=Number(count.value));});}
+cards.forEach(card=>{const kind=card.querySelector('.kind'),payment=card.querySelector('.payment');const fields=()=>{card.querySelector('.member-field').classList.toggle('hidden',kind.value!=='member');card.querySelector('.guest-field').classList.toggle('hidden',kind.value!=='guest');if(kind.value==='guest'&&payment.value==='ticket')payment.value='cash';card.querySelector('.value-label').textContent=payment.value==='cash'?'金額（円）':'チケット枚数';};kind.addEventListener('change',fields);payment.addEventListener('change',fields);fields();});count.addEventListener('change',sync);sync();
+document.querySelector('#completed-form').addEventListener('submit',e=>{const d=e.target.date.value,s=e.target.start_time.value,t=e.target.end_time.value;if(!confirm(`${d.replaceAll('-','/')} ${s}〜${t} の実施済みレッスンとして登録します。よろしいですか？`))e.preventDefault();});
+</script>
+{% endblock %}

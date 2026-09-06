@@ -106,6 +106,12 @@ def aggregate_reservations(
             and is_preopen_cash_lesson_date(reservation.start_at)
             and reservation.is_payment_tracking_required()
         )
+        is_completed_cash = (
+            getattr(reservation, "payment_method", None) == getattr(reservation_model, "PAYMENT_METHOD_CASH", "cash")
+            and getattr(reservation, "payment_status", None) == getattr(reservation_model, "PAYMENT_STATUS_PAID", "paid")
+            and getattr(getattr(reservation, "availability", None), "completed_registration", None) is not None
+            and reservation.availability.completed_registration.canceled_at is None
+        )
         if not is_preopen and not is_held_finished_reservation(
             reservation,
             execution_status_map,
@@ -134,7 +140,7 @@ def aggregate_reservations(
             if ticket_total > 0:
                 row["ticket_amount"] += int(ticket_total / denominator)
 
-            if is_preopen:
+            if is_preopen or is_completed_cash:
                 split_amount = int(payment_amount / denominator)
                 if (
                     reservation.payment_status
