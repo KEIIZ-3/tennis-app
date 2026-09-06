@@ -10,7 +10,7 @@ from django.utils import timezone
 from club import lesson_execution
 from club.expense_metadata import build_expense_note, parse_expense_note
 from club.lesson_execution_storage import save_status
-from club.models import CoachAvailability, CoachExpense, Court, RainRefund, Reservation
+from club.models import CoachAvailability, CoachExpense, Court, FixedLesson, RainRefund, Reservation
 from club.rain_refund_service import update_pending_rain_refund
 from club.settlement_balance_policy import _rain_refund_policy
 from club.settlement_models import MonthlySettlement
@@ -123,6 +123,95 @@ class RainRefundEditTests(TestCase):
             "rain_collection_coach_id": self.coaches[2].pk,
             "rain_court_payer_id": self.coaches[1].pk,
         }
+
+    def _member_list(self, *, availability=None, fixed_lesson=None):
+        availability = availability or self.availability
+        query = {"availability_id": availability.pk}
+        if fixed_lesson is not None:
+            query.update(
+                fixed_lesson_id=fixed_lesson.pk,
+                lesson_date=timezone.localtime(availability.start_at).date().isoformat(),
+            )
+        return self.client.get(
+            reverse("club:lesson_calendar_member_list"),
+            query,
+        )
+
+    def test_member_list_links_pending_refund_to_existing_edit_form(self):
+        self.client.force_login(self.coaches[0])
+
+        response = self._member_list()
+
+        expected_url = (
+            f"{reverse('club:lesson_execution_manage')}?year=2026&amp;month=8"
+            f"&amp;open_refund_edit={self.availability.pk}#lesson-{self.availability.pk}"
+        )
+        self.assertContains(response, "中止情報を修正")
+        self.assertContains(response, expected_url)
+
+    def test_member_list_hides_refund_edit_for_non_pending_states_and_closed_month(self):
+        self.client.force_login(self.coaches[0])
+
+        self.refund.status = RainRefund.STATUS_REFUNDED
+        self.refund.save(update_fields=["status", "updated_at"])
+        self.assertNotContains(self._member_list(), "中止情報を修正")
+
+        self.refund.status = RainRefund.STATUS_PENDING
+        self.refund.save(update_fields=["status", "updated_at"])
+        save_status(
+            self.settlement,
+            lesson_execution._availability_key(self.availability),
+            lesson_execution.STATUS_HELD,
+            self.coaches[0],
+        )
+        self.assertNotContains(self._member_list(), "中止情報を修正")
+
+        save_status(
+            self.settlement,
+            lesson_execution._availability_key(self.availability),
+            lesson_execution.STATUS_REFUND_PENDING,
+            self.coaches[0],
+        )
+        self.settlement.status = MonthlySettlement.STATUS_CLOSED
+        self.settlement.save(update_fields=["status"])
+        self.assertNotContains(self._member_list(), "中止情報を修正")
+
+    def test_member_list_uses_fixed_occurrence_availability_id(self):
+        lesson_date = timezone.localtime(self.availability.start_at).date()
+        fixed_lesson = FixedLesson.objects.create(
+            title="返金情報修正固定レッスン",
+            coach=self.coaches[0],
+            court=self.court,
+            lesson_type=FixedLesson.LESSON_GENERAL,
+            target_level=get_user_model().LEVEL_BEGINNER,
+            start_date=lesson_date,
+            weekday=lesson_date.weekday(),
+            start_hour=19,
+            capacity=6,
+            coach_count=1,
+            court_count=1,
+            weeks_ahead=1,
+            is_active=True,
+        )
+        self.availability.lesson_type = fixed_lesson.lesson_type
+        self.availability.capacity = fixed_lesson.capacity
+        self.availability.save(update_fields=["lesson_type", "capacity"])
+        self.client.force_login(self.coaches[0])
+
+        response = self._member_list(fixed_lesson=fixed_lesson)
+
+        self.assertContains(
+            response,
+            f"open_refund_edit={self.availability.pk}#lesson-{self.availability.pk}",
+        )
+
+    def test_member_without_occurrence_permission_cannot_see_edit_link(self):
+        self.client.force_login(self.member)
+
+        response = self._member_list()
+
+        self.assertEqual(response.status_code, 403)
+        self.assertNotIn("中止情報を修正", response.content.decode())
 
     def test_pending_card_shows_edit_button_and_existing_values(self):
         self.client.force_login(self.coaches[0])
