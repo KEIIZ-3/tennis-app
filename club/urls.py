@@ -16,6 +16,7 @@ from . import court_expense_transfer
 from . import reservation_cancellation
 from . import ticket_purchase_reservation_views
 from . import shop_views
+from . import completed_lesson_views
 
 app_name = "club"
 
@@ -81,6 +82,8 @@ urlpatterns = [
     path("coach/admin-settlement/", settlement_admin_refresh.coach_admin_settlement, name="coach_admin_settlement"),
     path("coach/settlement-integrity/", settlement_integrity_views.settlement_integrity_diagnostic, name="settlement_integrity_diagnostic"),
     path("coach/lesson-execution/", lesson_execution.lesson_execution_manage, name="lesson_execution_manage"),
+    path("coach/completed-lessons/new/", completed_lesson_views.register, name="completed_lesson_register"),
+    path("coach/completed-lessons/<int:pk>/cancel/", completed_lesson_views.cancel, name="completed_lesson_cancel"),
     path("coach/expenses/", court_expense_transfer.coach_expense_manage, name="coach_expense_manage"),
     path("coach/survey-summary/", views.coach_schedule_survey_summary, name="schedule_survey_summary"),
     path("coach/activity-log/", views.coach_activity_log, name="coach_activity_log"),

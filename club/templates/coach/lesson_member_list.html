@@ -364,5 +364,14 @@
       {% endif %}
     </section>
   {% endif %}
+  {% if is_coach_view and completed_registration and not completed_registration.canceled_at %}
+    <section class="section-card">
+      <h2 class="section-title">事後登録の取消</h2>
+      <p class="empty-box">取消後は内容を直接編集せず、正しい内容で再登録してください。</p>
+      <form method="post" action="{% url 'club:completed_lesson_cancel' completed_registration.id %}" onsubmit="return confirm('この実施済み登録を取り消します。\n参加者のチケット、売上、コート代、精算も元に戻ります。\nよろしいですか？');">
+        {% csrf_token %}<button class="mini-btn danger" type="submit">実施済み登録を取消</button>
+      </form>
+    </section>
+  {% endif %}
 </div>
 {% endblock %}

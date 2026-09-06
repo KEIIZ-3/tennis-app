@@ -1,4 +1,4 @@
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.utils import timezone
 
 from .lesson_execution_storage import read_status_map
@@ -169,8 +169,11 @@ def build_lesson_calendar_display_data(*, user, target_year, target_month, month
         CoachAvailability.objects.filter(
             start_at__date__gte=month_start,
             start_at__date__lt=next_month,
+        ).filter(
+            Q(completed_registration__isnull=True)
+            | Q(completed_registration__canceled_at__isnull=True)
         )
-        .select_related("coach", "substitute_coach", "court")
+        .select_related("coach", "substitute_coach", "court", "completed_registration")
         .order_by("start_at", "coach__username", "court__name", "id")
     )
     availabilities_by_schedule = {}

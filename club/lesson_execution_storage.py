@@ -107,6 +107,24 @@ def save_status(
     settlement.save(update_fields=["note", "updated_at"])
 
 
+def clear_status(settlement, slot_key):
+    """Remove an occurrence that no longer exists from execution tracking."""
+    status_map, plain_note = _decode_note(settlement)
+    if not status_map:
+        status_map = read_status_map(settlement)
+    if str(slot_key) not in status_map:
+        return False
+    status_map.pop(str(slot_key), None)
+    payload = {"version": 2, "statuses": status_map}
+    settlement.note = (
+        f"{NOTE_PREFIX}{json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}\n"
+        f"{plain_note}"
+    )
+    settlement.updated_at = timezone.now()
+    settlement.save(update_fields=["note", "updated_at"])
+    return True
+
+
 def _display_name(user):
     if not user:
         return "-"

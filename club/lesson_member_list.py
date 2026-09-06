@@ -908,6 +908,9 @@ def lesson_calendar_member_list(request):
                     "payer_name": "",
                 }
 
+    completed_registration = None
+    if availability is not None:
+        completed_registration = getattr(availability, "completed_registration", None)
     with performance_trace.step("template_render"):
         response = render(
             request,
@@ -934,6 +937,7 @@ def lesson_calendar_member_list(request):
             ),
             "capacity": capacity,
             "availability": availability,
+            "completed_registration": completed_registration,
             "can_delete_availability": bool(
                 availability
                 and not fixed_lesson
