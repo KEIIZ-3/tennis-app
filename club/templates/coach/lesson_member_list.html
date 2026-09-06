@@ -146,6 +146,7 @@
             <button type="submit" class="btn btn-held" onclick="return confirm('{% if execution_status.can_unhold %}実施登録を解除しますか？{% else %}このレッスンを実施済みにしますか？{% endif %}');">{% if execution_status.can_unhold %}実施登録を解除{% else %}実施登録{% endif %}</button>
           </form>{% endif %}
           {% if execution_status.can_cancel %}<a href="{{ execution_manage_url }}" class="btn btn-rain">中止登録</a>{% endif %}
+          {% if rain_refund_edit_url %}<a href="{{ rain_refund_edit_url }}" class="btn btn-rain">中止情報を修正</a>{% endif %}
           <a href="{% url 'club:coach_expense_manage' %}?availability_id={{ request.GET.availability_id }}&date={{ start_at|date:'Y-m-d' }}&next={{ request.get_full_path|urlencode }}" class="btn btn-expense">コート代登録・修正</a>
         </div>
       {% else %}

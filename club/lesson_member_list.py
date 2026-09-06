@@ -16,7 +16,16 @@ from .lesson_participants import (
     reservations_for_lesson,
 )
 from .lesson_member_list_performance import LessonMemberListPerformanceTrace
-from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation, TicketConsumption, User
+from .models import (
+    CoachAvailability,
+    FixedLesson,
+    LessonWaitlist,
+    RainRefund,
+    Reservation,
+    TicketConsumption,
+    User,
+)
+from .settlement_models import MonthlySettlement
 from .participant_levels import current_participant_level_label
 from .ticket_purchase_reservation_service import (
     completed_purchase_reservations_for_participants,
@@ -831,6 +840,7 @@ def lesson_calendar_member_list(request):
     )
     execution_status = None
     execution_manage_url = ""
+    rain_refund_edit_url = ""
     court_summary = None
     with performance_trace.step("execution_status"):
         if availability and is_coach_view:
@@ -860,6 +870,23 @@ def lesson_calendar_member_list(request):
                     lesson_execution.STATUS_SCHEDULED,
                     lesson_execution.STATUS_HELD,
                 )
+                if (
+                    current_status == lesson_execution.STATUS_REFUND_PENDING
+                    and not MonthlySettlement.objects.filter(
+                        year=start_at.year,
+                        month=start_at.month,
+                        status=MonthlySettlement.STATUS_CLOSED,
+                    ).exists()
+                    and RainRefund.objects.filter(
+                        availability=availability,
+                        status=RainRefund.STATUS_PENDING,
+                    ).exists()
+                ):
+                    rain_refund_edit_url = (
+                        f"{reverse('club:lesson_execution_manage')}?year={start_at.year}"
+                        f"&month={start_at.month}&open_refund_edit={availability.pk}"
+                        f"#lesson-{availability.pk}"
+                    )
             with performance_trace.step("court_summary"):
                 court_summary = court_transfer_summary_for_availability(
                     availability
@@ -958,6 +985,7 @@ def lesson_calendar_member_list(request):
             "reservation_url": reservation_url,
             "execution_status": execution_status,
             "execution_manage_url": execution_manage_url,
+            "rain_refund_edit_url": rain_refund_edit_url,
             "court_summary": court_summary,
             },
         )
