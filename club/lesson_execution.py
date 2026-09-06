@@ -2,6 +2,7 @@ from datetime import date
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse
@@ -954,6 +955,7 @@ def lesson_execution_manage(request):
         or ""
     ).strip() == "1"
     open_rain_id = str(request.GET.get("open_rain") or "").strip()
+    open_refund_edit_id = str(request.GET.get("open_refund_edit") or "").strip()
     redirect_url = _month_url(
         selected_year,
         selected_month,
@@ -1148,6 +1150,23 @@ def lesson_execution_manage(request):
                 f"コート代の返金済みを登録しました。対象経費{refunded_count}件を精算対象外にしました。",
             )
 
+        elif action == "update_rain_refund":
+            refund_input, input_error = _rain_refund_input(request)
+            if input_error:
+                messages.error(request, input_error)
+                return redirect(redirect_url)
+            from .rain_refund_service import update_pending_rain_refund
+
+            try:
+                update_pending_rain_refund(
+                    availability.pk,
+                    refund_input=refund_input,
+                )
+            except ValidationError as exc:
+                messages.error(request, "; ".join(exc.messages))
+                return redirect(redirect_url)
+            messages.success(request, "中止時のコート精算情報を修正しました。")
+
         elif action == "court_not_required":
             status = _status_entry(
                 read_status_map(settlement),
@@ -1339,11 +1358,18 @@ def lesson_execution_manage(request):
                 ) or has_cancellation_conflict,
                 "can_mark_refunded": (
                     rain_refund_exists
+                    and cancellation_refund.status == RainRefund.STATUS_PENDING
                     and status in (
                         STATUS_RAIN_CANCELED,
                         STATUS_REFUND_PENDING,
                     )
                 ),
+                "can_edit_rain_refund": bool(
+                    cancellation_refund is not None
+                    and cancellation_refund.status == RainRefund.STATUS_PENDING
+                    and status == STATUS_REFUND_PENDING
+                ),
+                "rain_refund": cancellation_refund,
                 "updated_by_name": entry.get("updated_by_name", ""),
                 "source_kind": slot["source_kind"],
                 "court_status": court_status,
@@ -1436,5 +1462,6 @@ def lesson_execution_manage(request):
             "visible_row_count": len(rows),
             "main_coach_options": main_coaches(),
             "open_rain_id": open_rain_id,
+            "open_refund_edit_id": open_refund_edit_id,
         },
     )
