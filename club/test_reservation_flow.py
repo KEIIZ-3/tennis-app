@@ -993,19 +993,27 @@ class ReservationFlowSmokeTests(TestCase):
                 self.coach,
             )
 
-            response = self.client.post(
-                reverse("club:lesson_execution_manage"),
-                data={
-                    "year": self.lesson_date.year,
-                    "month": self.lesson_date.month,
-                    "availability_id": availability.pk,
-                    "action": lesson_execution.STATUS_RAIN_CANCELED,
-                    "cancellation_type": cancellation_type,
-                    "rain_booking_account": payer.pk,
-                    "rain_collection_coach_id": payer.pk,
-                    "rain_court_payer_id": payer.pk,
-                },
-            )
+            with patch(
+                "club.reservation_notification_service."
+                "schedule_occurrence_rain_canceled_notifications"
+            ) as schedule_rain_notification:
+                response = self.client.post(
+                    reverse("club:lesson_execution_manage"),
+                    data={
+                        "year": self.lesson_date.year,
+                        "month": self.lesson_date.month,
+                        "availability_id": availability.pk,
+                        "action": lesson_execution.STATUS_RAIN_CANCELED,
+                        "cancellation_type": cancellation_type,
+                        "rain_booking_account": payer.pk,
+                        "rain_collection_coach_id": payer.pk,
+                        "rain_court_payer_id": payer.pk,
+                    },
+                )
+            if cancellation_type == lesson_execution.CANCELLATION_TYPE_RAIN:
+                schedule_rain_notification.assert_called_once_with((reservation.pk,))
+            else:
+                schedule_rain_notification.assert_not_called()
             self.assertEqual(response.status_code, 302)
             reservation.refresh_from_db()
             self.assertEqual(reservation.status, expected_status)

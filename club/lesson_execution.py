@@ -1062,6 +1062,15 @@ def lesson_execution_manage(request):
                 messages.error(request, input_error)
                 return redirect(redirect_url)
             canceled_count = 0
+            notification_reservation_ids = tuple(
+                reservation.pk
+                for reservation in reservations
+                if reservation.user_id is not None
+                and reservation.status in (
+                    Reservation.STATUS_ACTIVE,
+                    Reservation.STATUS_PENDING,
+                )
+            )
             with transaction.atomic():
                 CoachAvailability.objects.select_for_update().get(
                     pk=availability.pk
@@ -1103,6 +1112,14 @@ def lesson_execution_manage(request):
                     request.user,
                     cancellation_type=cancellation_type,
                 )
+                if cancellation_type == CANCELLATION_TYPE_RAIN:
+                    from .reservation_notification_service import (
+                        schedule_occurrence_rain_canceled_notifications,
+                    )
+
+                    schedule_occurrence_rain_canceled_notifications(
+                        notification_reservation_ids
+                    )
 
             messages.success(
                 request,

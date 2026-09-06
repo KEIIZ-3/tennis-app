@@ -2484,7 +2484,7 @@ class Reservation(models.Model, LessonTypeMixin):
         ensure_accounting_month_is_open(self.start_at)
         with transaction.atomic():
             locked_self = Reservation.objects.select_for_update().get(pk=self.pk)
-            if locked_self.status != self.STATUS_ACTIVE:
+            if locked_self.status not in (self.STATUS_ACTIVE, self.STATUS_PENDING):
                 self.status = locked_self.status
                 self.ticket_refunded_at = locked_self.ticket_refunded_at
                 return False
