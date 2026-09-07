@@ -81,7 +81,9 @@ class PublishWorkflowTests(unittest.TestCase):
         commit = self.text.index('@("commit", "-m"')
         self.assertLess(allowlist, quality)
         self.assertLess(quality, commit)
-        self.assertIn("git diff --cached --check --", self.text)
+        self.assertIn(
+            "git -c core.whitespace=cr-at-eol diff --cached --check --", self.text
+        )
         self.assertIn('"--ignore-cr-at-eol"', self.text)
 
     def test_quality_failure_restores_only_staged_paths(self):

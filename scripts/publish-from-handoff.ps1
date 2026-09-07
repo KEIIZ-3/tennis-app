@@ -34,7 +34,9 @@ function Assert-StagedDiffQuality {
     [CmdletBinding()]
     param()
 
-    $checkOutput = @(& git diff --cached --check -- 2>&1)
+    # Treat the CR in CRLF as part of the line ending for this check only.
+    # Git's other whitespace checks (including real trailing spaces/tabs) remain enabled.
+    $checkOutput = @(& git -c core.whitespace=cr-at-eol diff --cached --check -- 2>&1)
     if ($LASTEXITCODE -ne 0) {
         $details = ($checkOutput | Out-String).Trim()
         throw "Staged diff quality check failed (trailing whitespace or conflict marker). $details".Trim()

@@ -279,7 +279,7 @@ class PublishStagingIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(self.repository.staged(), ["M\tstaged.txt"])
 
-    def test_trailing_whitespace_fails_and_restores_clean_index(self):
+    def test_lf_trailing_space_fails_and_restores_clean_index(self):
         self.repository.commit_files({"selected.txt": "base\n", "other.txt": "base\n"})
         before_commits = self.repository.commit_count()
         self.repository.write("selected.txt", "bad trailing space \n")
@@ -298,7 +298,27 @@ class PublishStagingIntegrationTests(unittest.TestCase):
             "unlisted working tree change\n",
         )
 
-    def test_crlf_artifact_detected_by_git_check_fails_before_commit(self):
+    def test_lf_trailing_tab_fails_and_restores_clean_index(self):
+        self.repository.commit_files({"selected.txt": "base\n"})
+        self.repository.write("selected.txt", "bad trailing tab\t\n")
+
+        self.assert_staging_fails(["selected.txt"], "Staged diff quality check failed")
+
+        self.assertEqual(self.repository.staged(), [])
+        self.assertEqual(
+            (self.repository.root / "selected.txt").read_text(encoding="utf-8"),
+            "bad trailing tab\t\n",
+        )
+
+    def test_crlf_line_ending_is_not_treated_as_trailing_whitespace(self):
+        self.repository.commit_files({"selected.txt": "before\n"})
+        self.repository.write_bytes("selected.txt", b"after\r\n")
+
+        self.assert_staging_succeeds(["selected.txt"])
+
+        self.assertEqual(self.repository.staged(), ["M\tselected.txt"])
+
+    def test_crlf_trailing_space_fails_and_restores_clean_index(self):
         self.repository.commit_files({"selected.txt": "base\n"})
         self.repository.write_bytes("selected.txt", b"base\r\nadded \r\n")
 
