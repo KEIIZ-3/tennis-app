@@ -169,10 +169,19 @@ def direct_purchase(request):
 
 @login_required
 def quote_pdf(request, pk):
+    return _quote_pdf_response(request, pk, disposition="inline")
+
+
+@login_required
+def quote_pdf_download(request, pk):
+    return _quote_pdf_response(request, pk, disposition="attachment")
+
+
+def _quote_pdf_response(request, pk, disposition):
     quote = get_object_or_404(ShopQuote.objects.prefetch_related("items"), pk=pk)
     if not _coach(request.user) and quote.customer_id != request.user.pk: return HttpResponseForbidden()
     response = HttpResponse(build_quote_pdf(quote), content_type="application/pdf")
-    response["Content-Disposition"] = f'inline; filename="{quote.quote_number}.pdf"'
+    response["Content-Disposition"] = f'{disposition}; filename="estimate_{quote.quote_number}.pdf"'
     return response
 
 
