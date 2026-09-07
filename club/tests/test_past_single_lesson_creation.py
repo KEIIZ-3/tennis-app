@@ -42,13 +42,13 @@ class PastSingleLessonCreationTests(TestCase):
         }
 
     @patch("club.views.timezone.localdate", return_value=today)
-    def test_calendar_only_shows_creation_link_for_today_and_future(self, _localdate):
+    def test_calendar_shows_unified_creation_link_for_past_today_and_future(self, _localdate):
         response = self.client.get(
             reverse("club:lesson_calendar"),
             {"year": self.today.year, "month": self.today.month},
         )
 
-        self.assertNotContains(response, f"?date={(self.today - timedelta(days=1)).isoformat()}")
+        self.assertContains(response, f"?date={(self.today - timedelta(days=1)).isoformat()}")
         self.assertContains(response, f"?date={self.today.isoformat()}")
         self.assertContains(response, f"?date={(self.today + timedelta(days=1)).isoformat()}")
 

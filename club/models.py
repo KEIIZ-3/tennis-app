@@ -468,6 +468,9 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         )
         if self.pk:
             overlap_qs = overlap_qs.exclude(pk=self.pk)
+        conflict_exclusion_ids = getattr(self, "_validated_conflict_exclusion_ids", ())
+        if conflict_exclusion_ids:
+            overlap_qs = overlap_qs.exclude(pk__in=conflict_exclusion_ids)
         if overlap_qs.exists():
             raise ValidationError("同じコーチで重複する空き時間があります。")
 
@@ -478,6 +481,8 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         )
         if self.pk:
             court_overlap_qs = court_overlap_qs.exclude(pk=self.pk)
+        if conflict_exclusion_ids:
+            court_overlap_qs = court_overlap_qs.exclude(pk__in=conflict_exclusion_ids)
         used_court_count = court_overlap_qs.aggregate(total=Sum("court_count"))["total"] or 0
         added_court_count = int(self.court_count or 0)
         available_court_count = int(self.court.available_court_count or 0)
@@ -1935,6 +1940,17 @@ class Reservation(models.Model, LessonTypeMixin):
         return 1
 
     def matching_availability(self):
+        if self.availability_id:
+            explicit = CoachAvailability.objects.filter(
+                pk=self.availability_id,
+                coach=self.coach,
+                court=self.court,
+                lesson_type=self.lesson_type,
+                start_at=self.start_at,
+                end_at=self.end_at,
+            ).first()
+            if explicit:
+                return explicit
         return CoachAvailability.objects.filter(
             coach=self.coach,
             court=self.court,

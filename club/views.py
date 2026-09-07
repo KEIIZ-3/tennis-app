@@ -1930,6 +1930,7 @@ def lesson_calendar_view(request):
             lesson_execution.STATUS_REFUND_PENDING,
             lesson_execution.STATUS_REFUNDED,
         )
+        is_held = execution_status == lesson_execution.STATUS_HELD
         can_book = False
         can_join_waitlist = False
         can_cancel_waitlist = False
@@ -1947,6 +1948,8 @@ def lesson_calendar_view(request):
 
         if is_rain_canceled:
             disabled_reason = "中止" if cancellation_type == "other" else "雨天中止"
+        elif is_held:
+            disabled_reason = "実施済み"
         elif start_at < timezone.now():
             disabled_reason = "受付終了"
         elif is_recruitment_closed:
@@ -1995,6 +1998,8 @@ def lesson_calendar_view(request):
 
         if is_rain_canceled:
             customer_status_label = "中止" if cancellation_type == "other" else "雨天中止"
+        elif is_held:
+            customer_status_label = f"実施済み {int(member_count or 0)}/{int(capacity or 0)}名"
         elif start_at < timezone.now():
             customer_status_label = "実施済み" if target_date < today else "受付終了"
         elif is_recruitment_closed:
@@ -2407,8 +2412,7 @@ def lesson_calendar_view(request):
                     "is_today": cursor == today,
                     "is_past": cursor < today,
                     "can_create_single_lesson": (
-                        cursor >= today
-                        and request.user.is_authenticated
+                        request.user.is_authenticated
                         and (_is_coach_user(request.user) or _is_staff_like(request.user))
                     ),
                     "is_saturday": cursor.weekday() == 5,
