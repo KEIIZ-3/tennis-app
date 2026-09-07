@@ -64,8 +64,7 @@ class ShopQuoteForm(forms.Form):
             if not guest_name:
                 self.add_error("guest_name", "お名前を入力してください。")
             data["customer"] = None
-            if data.get("inquiry"):
-                self.add_error("inquiry", "問い合わせに紐づく見積は会員を選択してください。")
+            data["inquiry"] = None
         inquiry = data.get("inquiry")
         if inquiry and customer and inquiry.customer_id != customer.pk:
             self.add_error("customer", "問い合わせを行った会員を選択してください。")
