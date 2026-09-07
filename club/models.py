@@ -1910,9 +1910,7 @@ class Reservation(models.Model, LessonTypeMixin):
         if self.is_preopen_cash_lesson():
             return 0
 
-        if self.lesson_type == self.LESSON_PRIVATE:
-            return max(duration_hours, 1) * 2
-
+        participant_count = 1
         if self.lesson_type == self.LESSON_GROUP:
             active_count = Reservation.objects.filter(
                 coach=self.coach,
@@ -1932,12 +1930,14 @@ class Reservation(models.Model, LessonTypeMixin):
             if self.status == self.STATUS_ACTIVE and not persisted_as_active:
                 active_count += 1
             participant_count = max(active_count, 1)
-            return max(duration_hours, 1) * participant_count
 
-        if self.lesson_type == self.LESSON_EVENT:
-            return int(self.custom_ticket_price or 0)
-
-        return 1
+        from .lesson_ticket_rules import standard_ticket_count
+        return standard_ticket_count(
+            lesson_type=self.lesson_type,
+            duration_hours=duration_hours,
+            participant_count=participant_count,
+            custom_ticket_count=self.custom_ticket_price,
+        )
 
     def matching_availability(self):
         if self.availability_id:
