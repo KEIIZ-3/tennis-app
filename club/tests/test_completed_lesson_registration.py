@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from club.completed_lesson_registration import cancel_completed_lesson, register_completed_lesson
 from club.lesson_calendar_service import build_lesson_calendar_display_data
+from club.lesson_ticket_rules import standard_ticket_count
 from club.lesson_execution_storage import read_status_map, save_status
 from club.models import (
     CoachAvailability, CoachExpense, CompletedLessonRegistration, Court, Reservation,
@@ -61,6 +62,45 @@ class CompletedLessonRegistrationTests(TestCase):
         self.assertEqual(Reservation.objects.filter(availability=registration.availability).count(), 2)
         guest = Reservation.objects.get(availability=registration.availability, user__isnull=True)
         self.assertEqual((guest.guest_name, guest.payment_method, guest.payment_amount), ("ゲスト一郎", "cash", 4000))
+
+    def test_completed_availability_is_one_calendar_card_for_five_participants(self):
+        participants = [
+            {"user": None, "guest_name": f"ゲスト{i}", "payment_method": "cash", "value": 1000}
+            for i in range(5)
+        ]
+        registration, _created = self.register_private(
+            key="five-participants", participants=participants, court_cost=0
+        )
+        self.client.force_login(self.coach)
+        response = self.client.get(reverse("club:lesson_calendar"), {"year": 2026, "month": 9})
+        cards = [
+            row for row in response.context["schedule_rows"]
+            if row["availability_id"] == str(registration.availability_id)
+        ]
+        self.assertEqual(len(cards), 1)
+        self.assertEqual(cards[0]["customer_status_label"], "実施済み 5/5名")
+        member_response = self.client.get(
+            reverse("club:lesson_calendar_member_list"),
+            {"availability_id": registration.availability_id},
+        )
+        for index in range(5):
+            self.assertContains(member_response, f"ゲスト{index}")
+
+    def test_ticket_rule_helper_matches_reservation_canonical_rules(self):
+        self.assertEqual(standard_ticket_count(lesson_type="private", duration_hours=2), 4)
+        self.assertEqual(standard_ticket_count(lesson_type="private", duration_hours=1), 2)
+        self.assertEqual(standard_ticket_count(lesson_type="group", duration_hours=2, participant_count=2), 4)
+        self.assertEqual(standard_ticket_count(lesson_type="general", duration_hours=2), 1)
+        self.assertEqual(standard_ticket_count(lesson_type="event", duration_hours=2), 0)
+
+    def test_non_positive_duration_is_rejected_server_side(self):
+        with self.assertRaisesMessage(ValidationError, "開始時刻は終了時刻より前にしてください"):
+            register_completed_lesson(
+                actor=self.coach, start_at=self.start, end_at=self.start,
+                lesson_type=Reservation.LESSON_PRIVATE, coach=self.coach, court=self.court,
+                participants=[{"user": self.member1, "payment_method": "ticket", "value": 1}],
+                court_cost=0, court_payer=self.coach, note="", idempotency_key="invalid-time",
+            )
 
     def test_guest_ticket_duplicate_member_future_and_permissions_are_rejected(self):
         with self.assertRaises(ValidationError):
@@ -175,6 +215,19 @@ class CompletedLessonUnifiedViewTests(TestCase):
         self.assertContains(response, "表示会員")
         self.assertNotContains(response, "line_027b63632d75")
         self.assertContains(response, "登録前サマリー")
+        self.assertContains(response, "標準:")
+        self.assertContains(response, "Math.min")
+        self.assertContains(response, "+2")
+
+    def test_member_candidates_use_normalized_display_name_order_and_exclude_coaches(self):
+        User.objects.create_user(username="member-kata", full_name="カナ", role=User.ROLE_MEMBER)
+        User.objects.create_user(username="member-hira", full_name="あい", role=User.ROLE_MEMBER)
+        response = self.client.get(reverse("club:completed_lesson_register"))
+        options = response.context["member_options"]
+        labels = [row["label"] for row in options]
+        self.assertLess(labels.index("あい"), labels.index("カナ"))
+        self.assertNotIn("表示コーチ", labels)
+        self.assertNotIn("line_027b63632d75", response.content.decode())
 
     def test_post_mode_change_does_not_save(self):
         response = self.client.post(reverse("club:completed_lesson_register"), {

@@ -1,4 +1,5 @@
 import secrets
+import unicodedata
 from datetime import datetime
 
 from django.contrib import messages
@@ -16,6 +17,18 @@ from .completed_lesson_registration import (
 )
 from .models import CompletedLessonRegistration, Court, LessonTypeMixin, Reservation, User
 from .forms import CoachAvailabilityForm
+from .lesson_ticket_rules import standard_ticket_count
+from .models import BUSINESS_END_HOUR, BUSINESS_START_HOUR
+
+
+def _member_sort_key(member):
+    # Userにはかな項目がないため、読みを推測せずcanonical表示名で安定ソートする。
+    value = unicodedata.normalize("NFKC", member.display_name()).strip()
+    hiragana = "".join(
+        chr(ord(char) - 0x60) if "ァ" <= char <= "ヶ" else char
+        for char in value
+    )
+    return (hiragana.casefold(), member.pk)
 
 
 def _parse_datetime(date_text, time_text):
@@ -27,7 +40,11 @@ def _parse_datetime(date_text, time_text):
 def register(request):
     if not can_manage_completed_lessons(request.user):
         return HttpResponseForbidden("Forbidden")
-    members = User.objects.filter(role__in=User.LESSON_PARTICIPANT_ROLE_VALUES, is_active=True).order_by("full_name", "username")
+    members = list(User.objects.filter(
+        role__in=User.LESSON_PARTICIPANT_ROLE_VALUES, is_active=True
+    ).order_by("id"))
+    members.sort(key=_member_sort_key)
+    members_by_id = {str(member.pk): member for member in members}
     member_options = [
         {"id": member.pk, "label": member.display_name() if not member.display_name().startswith("line_") else "氏名未登録"}
         for member in members
@@ -81,7 +98,9 @@ def register(request):
                 kind = request.POST.get(prefix + "kind")
                 user = None
                 if kind == "member":
-                    user = members.get(pk=request.POST.get(prefix + "user"))
+                    user = members_by_id.get(request.POST.get(prefix + "user"))
+                    if user is None:
+                        raise ValidationError("参加可能な会員を選択してください。")
                 participants.append({
                     "user": user,
                     "guest_name": request.POST.get(prefix + "guest_name", ""),
@@ -109,6 +128,23 @@ def register(request):
         "participant_range": range(10), "idempotency_key": token,
         "selected_date": selected_date, "start_time": start_time, "end_time": end_time,
         "mode": mode,
+        "business_start_hour": BUSINESS_START_HOUR,
+        "business_end_hour": BUSINESS_END_HOUR,
+        "ticket_defaults": {
+            lesson_type: {
+                str(hours): {
+                    str(participants): standard_ticket_count(
+                        lesson_type=lesson_type,
+                        duration_hours=hours,
+                        participant_count=participants,
+                    )
+                    for participants in range(1, 11)
+                }
+                for hours in range(1, BUSINESS_END_HOUR - BUSINESS_START_HOUR + 1)
+            }
+            for lesson_type, _label in LessonTypeMixin.LESSON_TYPE_CHOICES
+            if lesson_type != Reservation.LESSON_EVENT
+        },
     })
 
 

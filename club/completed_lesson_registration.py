@@ -112,6 +112,8 @@ def register_completed_lesson(*, actor, start_at, end_at, lesson_type, coach, co
         raise ValidationError("この担当コーチの実績を登録する権限がありません。")
     if end_at > timezone.now():
         raise ValidationError("終了日時が現在時刻以前のレッスンだけ登録できます。")
+    if start_at >= end_at:
+        raise ValidationError("開始時刻は終了時刻より前にしてください。")
     if lesson_type not in dict(Reservation.LESSON_TYPE_CHOICES):
         raise ValidationError("レッスン種別が不正です。")
     if not 1 <= len(participants) <= 10:

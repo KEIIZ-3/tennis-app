@@ -2345,6 +2345,10 @@ def lesson_calendar_view(request):
         .order_by("start_at", "id")
     )
     for reservation in private_reservations:
+        # availability.pk is the canonical standalone occurrence identity.
+        # Availability-backed reservations are already represented once above.
+        if reservation.availability_id:
+            continue
         assigned_coach = reservation.assigned_coach()
         can_access_detail = _user_can_access_reservation(request.user, reservation)
         private_detail_url = (
