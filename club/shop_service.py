@@ -215,6 +215,21 @@ def _main_coach_map():
     return {coach.pk: coach for coach in main_coaches()}
 
 
+def _normalize_main_coach_id(coach, main, *, required=False):
+    coach_id = getattr(coach, "pk", coach)
+    if coach_id in (None, ""):
+        if required:
+            raise ValidationError("仕入コーチはメインコーチから選択してください。")
+        return None
+    try:
+        coach_id = int(coach_id)
+    except (TypeError, ValueError):
+        raise ValidationError("仕入コーチはメインコーチから選択してください。")
+    if coach_id not in main:
+        raise ValidationError("仕入コーチはメインコーチから選択してください。")
+    return coach_id
+
+
 @transaction.atomic
 def save_quote_accounting(*, quote, actor, sale_amount=None, purchase_cost=None,
                           procurement_coach=None, amounts=None):
@@ -224,12 +239,7 @@ def save_quote_accounting(*, quote, actor, sale_amount=None, purchase_cost=None,
     if quote.status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED) or ShopPurchase.objects.filter(quote=quote).exists():
         raise ValidationError("購入確定済みまたは取消済みの見積は編集できません。")
     main = _main_coach_map()
-    coach_id = getattr(procurement_coach, "pk", procurement_coach) or None
-    if coach_id is not None:
-        try: coach_id = int(coach_id)
-        except (TypeError, ValueError): raise ValidationError("仕入コーチはメインコーチから選択してください。")
-        if coach_id not in main:
-            raise ValidationError("仕入コーチはメインコーチから選択してください。")
+    coach_id = _normalize_main_coach_id(procurement_coach, main)
     sale = None if sale_amount in (None, "") else int(sale_amount)
     cost = None if purchase_cost in (None, "") else int(purchase_cost)
     if sale is not None and sale <= 0: raise ValidationError("売上額は1円以上にしてください。")
@@ -313,9 +323,7 @@ def save_allocations(
     if procurement_coach is None:
         procurement_coach = purchase.procurement_coach
     main = _main_coach_map()
-    procurement_id = getattr(procurement_coach, "pk", procurement_coach)
-    if procurement_id not in main:
-        raise ValidationError("仕入コーチはメインコーチから選択してください。")
+    procurement_id = _normalize_main_coach_id(procurement_coach, main, required=True)
     normalized = {int(coach_id): int(amount or 0) for coach_id, amount in amounts.items()}
     if any(amount < 0 for amount in normalized.values()):
         raise ValidationError("按分額は0円以上にしてください。")
