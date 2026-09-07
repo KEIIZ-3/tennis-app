@@ -3331,6 +3331,13 @@ class ShopQuote(models.Model):
     valid_until = models.DateField()
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_SENT)
     note = models.TextField(blank=True, default="")
+    accounting_sale_amount = models.PositiveIntegerField(null=True, blank=True)
+    accounting_purchase_cost = models.PositiveIntegerField(null=True, blank=True)
+    procurement_coach = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="procured_shop_quotes", limit_choices_to={"role": User.ROLE_COACH},
+    )
+    planned_profit_allocations = models.JSONField(default=dict, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_shop_quotes")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -3354,6 +3361,19 @@ class ShopQuote(models.Model):
     def profit_summary(self):
         from .shop_service import profit_summary
         return profit_summary(self.items.all())
+
+    @property
+    def accounting_profit_amount(self):
+        if self.accounting_sale_amount is None or self.accounting_purchase_cost is None:
+            return None
+        return int(self.accounting_sale_amount) - int(self.accounting_purchase_cost)
+
+    @property
+    def accounting_profit_rate(self):
+        if not self.accounting_sale_amount or self.accounting_profit_amount is None:
+            return None
+        from .shop_service import profit_rate
+        return profit_rate(self.accounting_sale_amount, self.accounting_profit_amount)
 
 
 class ShopQuoteItem(models.Model):
@@ -3464,7 +3484,9 @@ class ShopRevenueAllocation(models.Model):
 
 
 class ShopRevenueAllocationAudit(models.Model):
-    purchase = models.ForeignKey(ShopPurchase, on_delete=models.PROTECT, related_name="allocation_audits")
+    purchase = models.ForeignKey(ShopPurchase, null=True, blank=True, on_delete=models.PROTECT, related_name="allocation_audits")
+    quote = models.ForeignKey(ShopQuote, null=True, blank=True, on_delete=models.PROTECT, related_name="accounting_audits")
+    previous_snapshot = models.JSONField(default=dict, blank=True)
     allocation_snapshot = models.JSONField(default=list)
     changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="shop_allocation_audits")
     changed_at = models.DateTimeField(auto_now_add=True)

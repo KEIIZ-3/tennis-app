@@ -24,6 +24,14 @@
     原価合計 {% if quote.profit_summary.cost is None %}原価未入力{% else %}{{ quote.profit_summary.cost }}円{% endif %}<br>
     利益合計 {% if quote.profit_summary.profit is None %}計算不可{% else %}{{ quote.profit_summary.profit }}円{% endif %}<br>
     全体利益率 {% if quote.profit_summary.margin is None %}計算不可{% else %}{{ quote.profit_summary.margin }}%{% endif %}</div>{% endif %}
+  {% if can_manage %}<div class="line"><strong>内部精算情報（お客様には表示されません）</strong><br>
+    売上額 {{ quote.accounting_sale_amount|default:"未入力" }}{% if quote.accounting_sale_amount != None %}円{% endif %}<br>
+    仕入額 {{ quote.accounting_purchase_cost|default:"未入力" }}{% if quote.accounting_purchase_cost != None %}円{% endif %}<br>
+    仕入コーチ {% if quote.procurement_coach %}{{ quote.procurement_coach.display_name }}{% else %}未選択{% endif %}<br>
+    利益額 {{ accounting.profit|default:"計算不可" }}{% if accounting.profit != None %}円{% endif %} / 利益率 {{ accounting.rate|default:"計算不可" }}{% if accounting.rate != None %}%{% endif %}<br>
+    {% for row in accounting_rows %}{{ row.coach.display_name }} {{ row.amount }}円<br>{% endfor %}
+    分配合計 {{ accounting.allocated }}円 / 残額 {{ accounting.remaining|default:"計算不可" }}{% if accounting.remaining != None %}円{% endif %}
+  </div>{% endif %}
   <p>定価合計 {{ quote.list_total }}円<br>お値引き ▲{{ quote.discount_total }}円</p>
   <p class="total">お見積合計 {{ quote.total }}円</p>
   <p>備考: {{ quote.note|default:"―" }}<br>本見積の有効期限: {{ quote.valid_until|date:"Y年m月d日" }}</p>
@@ -31,7 +39,7 @@
     <a class="btn" href="{% url 'club:shop_quote_pdf' quote.pk %}">見積書PDF</a>
     {% if can_manage and quote.status != 'purchased' and quote.status != 'canceled' %}<a class="btn" href="{% url 'club:shop_quote_edit' quote.pk %}">見積を編集</a>{% endif %}
     {% if not can_manage and quote.status == 'sent' %}<form method="post" action="{% url 'club:shop_quote_purchase_request' quote.pk %}">{% csrf_token %}<button class="btn btn-primary">この内容で購入を希望する</button></form>{% endif %}
-    {% if can_manage %}{% if quote.status == 'sent' or quote.status == 'purchase_requested' %}<form method="post" action="{% url 'club:shop_quote_confirm' quote.pk %}">{% csrf_token %}<button class="btn btn-primary">購入を確定する</button></form>{% endif %}{% endif %}
+    {% if can_manage and accounting.complete %}{% if quote.status == 'sent' or quote.status == 'purchase_requested' %}<form method="post" action="{% url 'club:shop_quote_confirm' quote.pk %}">{% csrf_token %}<button class="btn btn-primary">購入を確定する</button></form>{% endif %}{% endif %}
   </div>
 </article>
 {% endblock %}

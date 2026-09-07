@@ -9,12 +9,21 @@ from .shop_forms import DirectPurchaseForm, ShopInquiryForm, ShopQuoteForm, Shop
 from .shop_pdf import build_quote_pdf
 from .shop_service import (allocation_summary, confirm_quote_purchase, create_direct_purchase,
                            cancel_purchase, create_inquiry, create_quote, request_purchase, save_allocations,
-                           update_quote)
+                           quote_accounting_summary, update_quote)
 from .settlement_balance_policy import main_coaches
 
 
 def _staff(user): return bool(user.is_staff or user.is_superuser)
 def _coach(user): return _staff(user) or user.role in User.COACH_ROLE_VALUES
+
+
+def _accounting_data(request, coaches):
+    return {
+        "sale_amount": request.POST.get("accounting_sale_amount"),
+        "purchase_cost": request.POST.get("accounting_purchase_cost"),
+        "procurement_coach": request.POST.get("procurement_coach"),
+        "amounts": {coach.pk: request.POST.get(f"accounting_coach_{coach.pk}", 0) for coach in coaches},
+    }
 
 
 @login_required
@@ -41,7 +50,11 @@ def shop_history(request):
 def quote_detail(request, pk):
     query = ShopQuote.objects.prefetch_related("items")
     quote = get_object_or_404(query if _coach(request.user) else query.filter(customer=request.user), pk=pk)
-    return render(request, "shop/quote_detail.html", {"quote": quote, "can_manage": _coach(request.user)})
+    coaches = list(main_coaches()) if _coach(request.user) else []
+    amounts = {int(key): int(value) for key, value in (quote.planned_profit_allocations or {}).items()}
+    return render(request, "shop/quote_detail.html", {"quote": quote, "can_manage": _coach(request.user),
+        "can_edit_accounting": _staff(request.user), "accounting": quote_accounting_summary(quote),
+        "accounting_rows": [{"coach": coach, "amount": amounts.get(coach.pk, 0)} for coach in coaches]})
 
 
 @login_required
@@ -71,18 +84,21 @@ def quote_create(request):
     if request.GET.get("inquiry"):
         inquiry = get_object_or_404(ShopInquiry, pk=request.GET["inquiry"])
         initial = {"customer": inquiry.customer, "inquiry": inquiry}
-    form = ShopQuoteForm(request.POST or None, initial=initial)
+    coaches = list(main_coaches()) if _staff(request.user) else []
+    form = ShopQuoteForm(request.POST or None, initial=initial, can_edit_accounting=_staff(request.user))
     formset = ShopQuoteItemFormSet(request.POST or None, prefix="items")
     if request.method == "POST" and form.is_valid() and formset.is_valid():
         items = [row for row in formset.cleaned_data if row]
         try:
             quote = create_quote(customer=form.cleaned_data["customer"], creator=request.user,
-                inquiry=form.cleaned_data.get("inquiry"), note=form.cleaned_data["note"], items=items)
-        except ValidationError as exc:
+                inquiry=form.cleaned_data.get("inquiry"), note=form.cleaned_data["note"], items=items,
+                accounting=_accounting_data(request, coaches) if _staff(request.user) else None)
+        except (ValidationError, ValueError) as exc:
             form.add_error(None, "; ".join(exc.messages))
         else:
             return redirect("club:shop_quote_detail", pk=quote.pk)
-    return render(request, "shop/quote_form.html", {"form": form, "formset": formset, "is_edit": False})
+    return render(request, "shop/quote_form.html", {"form": form, "formset": formset, "is_edit": False,
+        "can_edit_accounting": _staff(request.user), "accounting_rows": [{"coach": c, "amount": 0} for c in coaches]})
 
 
 @login_required
@@ -92,27 +108,35 @@ def quote_edit(request, pk):
     if quote.status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED) or hasattr(quote, "purchase"):
         messages.error(request, "購入確定済みまたは取消済みの見積は編集できません。")
         return redirect("club:shop_quote_detail", pk=pk)
-    initial = {"customer": quote.customer, "inquiry": quote.inquiry, "note": quote.note}
+    initial = {"customer": quote.customer, "inquiry": quote.inquiry, "note": quote.note,
+        "accounting_sale_amount": quote.accounting_sale_amount,
+        "accounting_purchase_cost": quote.accounting_purchase_cost,
+        "procurement_coach": quote.procurement_coach_id}
     item_initial = [{
         "description": item.description, "quantity": item.quantity,
         "list_price": item.list_price, "sale_price": item.sale_price,
         "discount_rate": item.discount_rate, "cost_price": item.cost_price,
         "pricing_source": "sale",
     } for item in quote.items.all()]
-    form = ShopQuoteForm(request.POST or None, initial=initial)
+    coaches = list(main_coaches()) if _staff(request.user) else []
+    form = ShopQuoteForm(request.POST or None, initial=initial, can_edit_accounting=_staff(request.user))
     formset = ShopQuoteItemFormSet(request.POST or None, prefix="items", initial=item_initial)
     if request.method == "POST" and form.is_valid() and formset.is_valid():
         items = [row for row in formset.cleaned_data if row and not row.get("DELETE")]
         try:
             update_quote(quote=quote, customer=form.cleaned_data["customer"],
-                         note=form.cleaned_data["note"], items=items)
-        except ValidationError as exc:
+                         note=form.cleaned_data["note"], items=items, actor=request.user,
+                         accounting=_accounting_data(request, coaches) if _staff(request.user) else None)
+        except (ValidationError, ValueError) as exc:
             form.add_error(None, "; ".join(exc.messages))
         else:
             messages.success(request, "見積を更新しました。購入希望済みの場合は、お客様の再確認が必要です。")
             return redirect("club:shop_quote_detail", pk=quote.pk)
+    amounts = {int(key): int(value) for key, value in (quote.planned_profit_allocations or {}).items()}
     return render(request, "shop/quote_form.html", {
         "form": form, "formset": formset, "is_edit": True, "quote": quote,
+        "can_edit_accounting": _staff(request.user),
+        "accounting_rows": [{"coach": c, "amount": amounts.get(c.pk, 0)} for c in coaches],
     })
 
 
