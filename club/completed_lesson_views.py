@@ -6,6 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 
 from .completed_lesson_registration import (
@@ -14,6 +15,7 @@ from .completed_lesson_registration import (
     register_completed_lesson,
 )
 from .models import CompletedLessonRegistration, Court, LessonTypeMixin, Reservation, User
+from .forms import CoachAvailabilityForm
 
 
 def _parse_datetime(date_text, time_text):
@@ -26,12 +28,50 @@ def register(request):
     if not can_manage_completed_lessons(request.user):
         return HttpResponseForbidden("Forbidden")
     members = User.objects.filter(role__in=User.LESSON_PARTICIPANT_ROLE_VALUES, is_active=True).order_by("full_name", "username")
+    member_options = [
+        {"id": member.pk, "label": member.display_name() if not member.display_name().startswith("line_") else "氏名未登録"}
+        for member in members
+    ]
     coaches = User.objects.filter(role__in=User.COACH_ROLE_VALUES, is_active=True).order_by("full_name", "username")
     if not (request.user.is_staff or request.user.is_superuser):
         coaches = coaches.filter(pk=request.user.pk)
     token = request.POST.get("idempotency_key") or secrets.token_urlsafe(24)
+    selected_date = request.POST.get("date") or request.GET.get("date") or timezone.localdate().isoformat()
+    start_time = request.POST.get("start_time") or "09:00"
+    end_time = request.POST.get("end_time") or "11:00"
+    mode = "completed"
+    try:
+        mode = "completed" if _parse_datetime(selected_date, end_time) <= timezone.now() else "scheduled"
+    except (TypeError, ValueError):
+        pass
     if request.method == "POST":
         try:
+            posted_mode = request.POST.get("displayed_mode")
+            if posted_mode not in ("completed", "scheduled") or posted_mode != mode:
+                raise ValidationError("入力中に現在時刻をまたいだため、登録区分が変わりました。内容を確認してください。")
+            if mode == "scheduled":
+                future_data = request.POST.copy()
+                future_data.update({
+                    "start_date": selected_date,
+                    "end_date": selected_date,
+                    "start_hour": str(int(start_time.split(":", 1)[0])),
+                    "end_hour": str(int(end_time.split(":", 1)[0])),
+                    "target_level": User.LEVEL_ALL,
+                    "target_level_2": "",
+                    "coach_count": "1",
+                    "court_count": "1",
+                    "capacity": request.POST.get("capacity") or "1",
+                    "custom_ticket_price": "0",
+                    "custom_duration_hours": str(max(int((_parse_datetime(selected_date, end_time) - _parse_datetime(selected_date, start_time)).total_seconds() // 3600), 1)),
+                })
+                form = CoachAvailabilityForm(future_data, request_user=request.user)
+                if not form.is_valid():
+                    raise ValidationError(next(iter(form.errors.values()))[0])
+                availability = form.save(commit=False)
+                availability.save()
+                messages.success(request, "実施予定レッスンを作成しました。")
+                local_start = timezone.localtime(availability.start_at)
+                return redirect(f"{reverse('club:lesson_calendar')}?year={local_start.year}&month={local_start.month}")
             count = int(request.POST.get("participant_count", "1"))
             if count < 1 or count > 10:
                 raise ValidationError("顧客人数は1〜10名で指定してください。")
@@ -64,9 +104,11 @@ def register(request):
         except (ValidationError, ValueError, TypeError, User.DoesNotExist, Court.DoesNotExist) as exc:
             messages.error(request, exc.messages[0] if getattr(exc, "messages", None) else "入力内容を確認してください。")
     return render(request, "coach/completed_lesson_register.html", {
-        "members": members, "coaches": coaches, "courts": Court.objects.all(),
+        "members": members, "member_options": member_options, "coaches": coaches, "courts": Court.objects.all(),
         "lesson_types": LessonTypeMixin.LESSON_TYPE_CHOICES,
         "participant_range": range(10), "idempotency_key": token,
+        "selected_date": selected_date, "start_time": start_time, "end_time": end_time,
+        "mode": mode,
     })
 
 
@@ -81,7 +123,8 @@ def cancel(request, pk):
         return redirect(f"/lesson-calendar/members/?availability_id={registration.availability_id}")
     try:
         _registration, changed = cancel_completed_lesson(registration_id=pk, actor=request.user)
-        messages.success(request, "実施済み登録を取り消しました。" if changed else "この実施済み登録はすでに取消済みです。")
+        messages.success(request, "実施済み登録を取り消しました。チケット・売上・コート代・精算を元に戻しました。" if changed else "この実施済み登録はすでに取消済みです。")
     except ValidationError as exc:
         messages.error(request, exc.messages[0])
-    return redirect("club:lesson_execution_manage")
+    local_start = timezone.localtime(registration.availability.start_at)
+    return redirect(f"{reverse('club:lesson_calendar')}?year={local_start.year}&month={local_start.month}")

@@ -2,6 +2,7 @@ import hashlib
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from .expense_metadata import (
@@ -10,6 +11,8 @@ from .expense_metadata import (
     build_expense_note,
 )
 from .lesson_execution_storage import clear_status, save_status
+from .lesson_execution_storage import read_status_map
+from . import lesson_execution
 from .models import (
     CoachAvailability,
     CoachExpense,
@@ -20,6 +23,7 @@ from .models import (
     User,
     ensure_accounting_month_is_open,
 )
+from .settlement_models import MonthlySettlement
 from .settlement_service import calculate_monthly_settlement, get_or_create_monthly_settlement
 
 
@@ -31,6 +35,54 @@ def can_manage_completed_lessons(user, coach=None):
     return getattr(user, "role", "") in User.COACH_ROLE_VALUES and (
         coach is None or coach.pk == user.pk
     )
+
+
+def _canceled_conflict_ids(*, coach, court, start_at, end_at):
+    """Return only overlapping occurrences with canonical non-held evidence.
+
+    This is deliberately scoped to completed-lesson registration. Normal
+    CoachAvailability validation remains strict.
+    """
+    candidates = list(
+        CoachAvailability.objects.filter(
+            start_at__lt=end_at,
+            end_at__gt=start_at,
+        ).filter(
+            Q(coach=coach)
+            | Q(coach_2=coach)
+            | Q(court=court)
+        ).prefetch_related("reservations", "rain_refunds")
+    )
+    settlements = {
+        (row.year, row.month): read_status_map(row)
+        for row in MonthlySettlement.objects.filter(
+            year__in={row.start_at.year for row in candidates},
+            month__in={row.start_at.month for row in candidates},
+        )
+    }
+    excluded = []
+    cancellation_statuses = {
+        lesson_execution.STATUS_RAIN_CANCELED,
+        lesson_execution.STATUS_REFUND_PENDING,
+        lesson_execution.STATUS_REFUNDED,
+    }
+    for candidate in candidates:
+        reservations = list(candidate.reservations.all())
+        if any(row.status in (Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING) for row in reservations):
+            continue
+        entry = settlements.get((candidate.start_at.year, candidate.start_at.month), {}).get(
+            f"availability:{candidate.pk}", {}
+        )
+        status, cancellation_type = lesson_execution.effective_status(
+            entry, reservations, end_at=candidate.end_at
+        )
+        has_explicit_cancellation = bool(
+            status in cancellation_statuses
+            and (cancellation_type in ("rain", "other") or candidate.rain_refunds.exists())
+        )
+        if has_explicit_cancellation:
+            excluded.append(candidate.pk)
+    return excluded
 
 
 def _court_transfer_note(*, registration, availability, payer, amount, actor, canceled=False):
@@ -87,6 +139,9 @@ def register_completed_lesson(*, actor, start_at, end_at, lesson_type, coach, co
         custom_duration_hours=max(int((end_at-start_at).total_seconds() // 3600), 1),
         is_recruitment_closed=True, status=CoachAvailability.STATUS_APPROVED,
         note=(note or "").strip(),
+    )
+    availability._validated_conflict_exclusion_ids = _canceled_conflict_ids(
+        coach=coach, court=court, start_at=start_at, end_at=end_at
     )
     availability.save()
     if availability.capacity != len(participants):

@@ -2,13 +2,14 @@ from datetime import datetime, timedelta
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from club.completed_lesson_registration import cancel_completed_lesson, register_completed_lesson
 from club.lesson_calendar_service import build_lesson_calendar_display_data
-from club.lesson_execution_storage import read_status_map
+from club.lesson_execution_storage import read_status_map, save_status
 from club.models import (
-    CoachExpense, CompletedLessonRegistration, Court, Reservation,
+    CoachAvailability, CoachExpense, CompletedLessonRegistration, Court, Reservation,
     TicketConsumption, TicketLedger, TicketPurchase, User,
 )
 from club.settlement_models import MonthlySettlement
@@ -104,3 +105,95 @@ class CompletedLessonRegistrationTests(TestCase):
                 court_cost=0, court_payer=self.coach, note="", idempotency_key=f"type-{lesson_type}",
             )
             self.assertEqual(Reservation.objects.filter(availability=registration.availability, status="active").count(), 3)
+
+    def _canceled_overlap(self, *, status="refund_pending", cancellation_type="rain"):
+        availability = CoachAvailability.objects.create(
+            coach=self.coach, court=self.court, lesson_type=Reservation.LESSON_PRIVATE,
+            start_at=self.start, end_at=self.end, capacity=1, target_level=User.LEVEL_ALL,
+        )
+        reservation = Reservation.objects.create(
+            user=self.member1, coach=self.coach, court=self.court, availability=availability,
+            lesson_type=Reservation.LESSON_PRIVATE, target_level=User.LEVEL_ALL,
+            start_at=self.start, end_at=self.end, status=Reservation.STATUS_CANCELED,
+            cancellation_reason="雨天中止" if cancellation_type == "rain" else "レッスン中止",
+        )
+        settlement, _created = MonthlySettlement.objects.get_or_create(year=2026, month=9)
+        save_status(settlement, f"availability:{availability.pk}", status, self.coach,
+                    cancellation_type=cancellation_type)
+        return availability, reservation
+
+    def test_canonically_rain_canceled_coach_and_court_overlap_is_excluded(self):
+        canceled, reservation = self._canceled_overlap()
+        registration, created = self.register_private(key="after-rain")
+        self.assertTrue(created)
+        self.assertNotEqual(registration.availability_id, canceled.pk)
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.status, Reservation.STATUS_CANCELED)
+        self.assertTrue(CoachAvailability.objects.filter(pk=canceled.pk).exists())
+
+    def test_confirmed_rain_and_formal_other_cancellation_are_excluded(self):
+        for offset, status, cancellation_type in ((0, "refunded", "rain"), (2, "refund_pending", "other")):
+            self.start += timedelta(hours=offset)
+            self.end += timedelta(hours=offset)
+            canceled, _reservation = self._canceled_overlap(status=status, cancellation_type=cancellation_type)
+            registration, created = self.register_private(key=f"after-{cancellation_type}")
+            self.assertTrue(created)
+            self.assertNotEqual(registration.availability_id, canceled.pk)
+
+    def test_held_and_ambiguous_overlaps_remain_rejected(self):
+        existing = CoachAvailability.objects.create(
+            coach=self.coach, court=self.court, lesson_type=Reservation.LESSON_PRIVATE,
+            start_at=self.start, end_at=self.end, capacity=1, target_level=User.LEVEL_ALL,
+        )
+        with self.assertRaises(ValidationError):
+            self.register_private(key="ambiguous-overlap")
+        existing.delete()
+        _held, held_reservation = self._canceled_overlap(status="held")
+        Reservation.objects.filter(pk=held_reservation.pk).update(status=Reservation.STATUS_ACTIVE)
+        with self.assertRaises(ValidationError):
+            self.register_private(key="held-overlap")
+
+
+class CompletedLessonUnifiedViewTests(TestCase):
+    def setUp(self):
+        self.coach = User.objects.create_user(
+            username="line_coach", full_name="表示コーチ", role=User.ROLE_COACH,
+            password="password",
+        )
+        self.member = User.objects.create_user(
+            username="line_027b63632d75", full_name="表示会員", role=User.ROLE_MEMBER,
+        )
+        self.court = Court.objects.create(name="統合画面コート", available_court_count=2)
+        self.client.force_login(self.coach)
+
+    def test_calendar_date_prefill_mode_labels_hour_choices_and_safe_member_name(self):
+        response = self.client.get(reverse("club:completed_lesson_register"), {"date": "2026-09-06"})
+        self.assertContains(response, 'value="2026-09-06"')
+        self.assertContains(response, "実施済みとして登録")
+        self.assertContains(response, 'value="09:00"')
+        self.assertContains(response, 'value="21:00"')
+        self.assertContains(response, "表示会員")
+        self.assertNotContains(response, "line_027b63632d75")
+        self.assertContains(response, "登録前サマリー")
+
+    def test_post_mode_change_does_not_save(self):
+        response = self.client.post(reverse("club:completed_lesson_register"), {
+            "date": "2026-09-06", "start_time": "17:00", "end_time": "19:00",
+            "displayed_mode": "scheduled", "idempotency_key": "mode-change",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "登録区分が変わりました")
+        self.assertFalse(CompletedLessonRegistration.objects.exists())
+
+    def test_future_post_uses_normal_availability_flow_only(self):
+        response = self.client.post(reverse("club:completed_lesson_register"), {
+            "date": "2099-09-06", "start_time": "09:00", "end_time": "11:00",
+            "displayed_mode": "scheduled", "lesson_type": Reservation.LESSON_GENERAL,
+            "coach": self.coach.pk, "court": self.court.pk, "capacity": "5",
+            "note": "", "idempotency_key": "future",
+        })
+        if response.status_code != 302:
+            self.fail(" / ".join(str(message) for message in response.context["messages"]))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(CoachAvailability.objects.count(), 1)
+        self.assertFalse(CompletedLessonRegistration.objects.exists())
