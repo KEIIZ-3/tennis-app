@@ -53,6 +53,8 @@ urlpatterns = [
     path("shop/quotes/<int:pk>/", shop_views.quote_detail, name="shop_quote_detail"),
     path("shop/quotes/<int:pk>/purchase-request/", shop_views.quote_purchase_request, name="shop_quote_purchase_request"),
     path("shop/quotes/<int:pk>/pdf/", shop_views.quote_pdf, name="shop_quote_pdf"),
+    path("shop/quotes/<int:pk>/pdf/download/", shop_views.quote_pdf_download,
+         name="shop_quote_pdf_download"),
     path("coach/shop/", shop_views.coach_shop, name="shop_coach"),
     path("coach/shop/quotes/new/", shop_views.quote_create, name="shop_quote_create"),
     path("coach/shop/quotes/<int:pk>/edit/", shop_views.quote_edit, name="shop_quote_edit"),

@@ -350,15 +350,46 @@ class ShopWorkflowTests(TestCase):
         quote = self.make_quote()
         self.client.force_login(self.other)
         self.assertEqual(self.client.get(reverse("club:shop_quote_detail", args=[quote.pk])).status_code, 404)
+        self.assertEqual(self.client.get(reverse("club:shop_quote_pdf", args=[quote.pk])).status_code, 403)
+        self.assertEqual(self.client.get(reverse("club:shop_quote_pdf_download", args=[quote.pk])).status_code, 403)
         self.client.force_login(self.customer)
-        self.assertEqual(self.client.get(reverse("club:shop_quote_pdf", args=[quote.pk])).status_code, 200)
+        inline = self.client.get(reverse("club:shop_quote_pdf", args=[quote.pk]))
+        download = self.client.get(reverse("club:shop_quote_pdf_download", args=[quote.pk]))
+        self.assertEqual((inline.status_code, download.status_code), (200, 200))
+        self.assertEqual((inline["Content-Type"], download["Content-Type"]),
+                         ("application/pdf", "application/pdf"))
+        self.assertTrue(inline["Content-Disposition"].startswith("inline;"))
+        self.assertTrue(download["Content-Disposition"].startswith("attachment;"))
+        self.assertIn(quote.quote_number, download["Content-Disposition"])
+        self.assertIn(f"estimate_{quote.quote_number}.pdf", download["Content-Disposition"])
+        for staff_user in (self.coach, self.admin):
+            self.client.force_login(staff_user)
+            self.assertEqual(self.client.get(reverse("club:shop_quote_pdf", args=[quote.pk])).status_code, 200)
+            self.assertEqual(self.client.get(
+                reverse("club:shop_quote_pdf_download", args=[quote.pk])).status_code, 200)
+        self.client.force_login(self.customer)
         self.client.post(reverse("club:shop_quote_purchase_request", args=[quote.pk]))
         quote.refresh_from_db()
         self.assertEqual(quote.status, ShopQuote.STATUS_PURCHASE_REQUESTED)
         pdf = build_quote_pdf(quote)
         self.assertTrue(pdf.startswith(b"%PDF"))
         text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(pdf)).pages)
-        self.assertIn("お見積書", text)
+        self.assertIn("見積書", text)
+
+    def test_guest_quote_pdf_endpoints_and_missing_seal_fallback(self):
+        quote = create_quote(customer=None, guest_name="外部 顧客", creator=self.coach,
+            note="ゲスト向け備考", items=[{"description": "ゲスト商品", "quantity": 1,
+                                           "list_price": 1200, "sale_price": 1000}])
+        self.client.force_login(self.coach)
+        response = self.client.get(reverse("club:shop_quote_pdf_download", args=[quote.pk]))
+        self.assertEqual(response.status_code, 200)
+        source = "\n".join(page.extract_text() or "" for page in
+                           PdfReader(BytesIO(response.content)).pages)
+        self.assertIn("外部 顧客", source)
+        with patch("club.shop_pdf.SEAL_PATH") as seal_path:
+            seal_path.is_file.return_value = False
+            pdf_without_seal = build_quote_pdf(quote)
+        self.assertTrue(pdf_without_seal.startswith(b"%PDF"))
 
     def test_purchase_request_actions_are_customer_only(self):
         quote = self.make_quote()
@@ -446,7 +477,8 @@ class ShopWorkflowTests(TestCase):
         raw = build_quote_pdf(quote)
         reader = PdfReader(BytesIO(raw))
         source = "\n".join(page.extract_text() or "" for page in reader.pages)
-        for value in ("Play Design Tennis", "お見積書", "見積番号", quote.quote_number,
+        for value in ("Play Design Tennis", "見積書", "ESTIMATE", "発行者",
+                      "見積番号", quote.quote_number,
                       "見積日", "有効期限", "お客様名", self.customer.display_name(),
                       "商品名・内容", "HEAD SPEED MP", "グリップテープ", "数量",
                       "定価", "値引き", "販売価格", "明細金額", "定価合計",
