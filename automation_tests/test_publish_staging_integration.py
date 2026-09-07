@@ -48,6 +48,11 @@ class IsolatedGitRepository:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8", newline="")
 
+    def write_bytes(self, relative_path, content):
+        path = self.root / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+
     def remove(self, relative_path):
         (self.root / relative_path).unlink()
 
@@ -60,6 +65,9 @@ class IsolatedGitRepository:
     def staged(self):
         result = self.git("diff", "--cached", "--name-status", "--no-renames", "--")
         return [line for line in result.stdout.splitlines() if line]
+
+    def commit_count(self):
+        return int(self.git("rev-list", "--count", "HEAD").stdout.strip())
 
     def invoke_staging(self, files, environment=None):
         handoff_path = self.root / "handoff.json"
@@ -251,6 +259,103 @@ class PublishStagingIntegrationTests(unittest.TestCase):
             ["report.md"], "Local workflow artifacts cannot be published"
         )
         self.assertEqual(self.repository.staged(), [])
+
+    def test_tracked_file_without_worktree_change_is_rejected(self):
+        self.repository.commit_files({"unchanged.txt": "base\n"})
+
+        self.assert_staging_fails(
+            ["unchanged.txt"], "The specified tracked file has no working tree change"
+        )
+        self.assertEqual(self.repository.staged(), [])
+
+    def test_pre_staged_change_is_rejected(self):
+        self.repository.commit_files({"selected.txt": "base\n", "staged.txt": "base\n"})
+        self.repository.write("selected.txt", "selected\n")
+        self.repository.write("staged.txt", "already staged\n")
+        self.repository.git("add", "--", "staged.txt")
+
+        self.assert_staging_fails(
+            ["selected.txt"], "The index already contains staged changes"
+        )
+        self.assertEqual(self.repository.staged(), ["M\tstaged.txt"])
+
+    def test_lf_trailing_space_fails_and_restores_clean_index(self):
+        self.repository.commit_files({"selected.txt": "base\n", "other.txt": "base\n"})
+        before_commits = self.repository.commit_count()
+        self.repository.write("selected.txt", "bad trailing space \n")
+        self.repository.write("other.txt", "unlisted working tree change\n")
+
+        self.assert_staging_fails(["selected.txt"], "Staged diff quality check failed")
+
+        self.assertEqual(self.repository.staged(), [])
+        self.assertEqual(self.repository.commit_count(), before_commits)
+        self.assertEqual(
+            (self.repository.root / "selected.txt").read_text(encoding="utf-8"),
+            "bad trailing space \n",
+        )
+        self.assertEqual(
+            (self.repository.root / "other.txt").read_text(encoding="utf-8"),
+            "unlisted working tree change\n",
+        )
+
+    def test_lf_trailing_tab_fails_and_restores_clean_index(self):
+        self.repository.commit_files({"selected.txt": "base\n"})
+        self.repository.write("selected.txt", "bad trailing tab\t\n")
+
+        self.assert_staging_fails(["selected.txt"], "Staged diff quality check failed")
+
+        self.assertEqual(self.repository.staged(), [])
+        self.assertEqual(
+            (self.repository.root / "selected.txt").read_text(encoding="utf-8"),
+            "bad trailing tab\t\n",
+        )
+
+    def test_crlf_line_ending_is_not_treated_as_trailing_whitespace(self):
+        self.repository.commit_files({"selected.txt": "before\n"})
+        self.repository.write_bytes("selected.txt", b"after\r\n")
+
+        self.assert_staging_succeeds(["selected.txt"])
+
+        self.assertEqual(self.repository.staged(), ["M\tselected.txt"])
+
+    def test_crlf_trailing_space_fails_and_restores_clean_index(self):
+        self.repository.commit_files({"selected.txt": "base\n"})
+        self.repository.write_bytes("selected.txt", b"base\r\nadded \r\n")
+
+        self.assert_staging_fails(["selected.txt"], "Staged diff quality check failed")
+
+        self.assertEqual(self.repository.staged(), [])
+
+    def test_conflict_marker_fails_git_diff_check(self):
+        self.repository.commit_files({"selected.txt": "base\n"})
+        self.repository.write(
+            "selected.txt", "<<<<<<< ours\nleft\n=======\nright\n>>>>>>> theirs\n"
+        )
+
+        self.assert_staging_fails(["selected.txt"], "Staged diff quality check failed")
+        self.assertEqual(self.repository.staged(), [])
+
+    def test_eol_only_large_diff_is_rejected(self):
+        lf_content = "".join(f"line {number}\n" for number in range(150))
+        self.repository.commit_files({"selected.txt": lf_content})
+        self.repository.write_bytes("selected.txt", lf_content.replace("\n", "\r\n").encode())
+
+        result = self.assert_staging_fails(
+            ["selected.txt"], "EOL normalization suspected: selected.txt"
+        )
+
+        self.assertIn("normal diff lines: 300", result.stdout + result.stderr)
+        self.assertIn("CR-at-EOL ignored diff lines: 0", result.stdout + result.stderr)
+        self.assertEqual(self.repository.staged(), [])
+
+    def test_legitimate_large_diff_does_not_trigger_eol_gate(self):
+        before = "".join(f"old {number}\n" for number in range(150))
+        after = "".join(f"new {number}\n" for number in range(150))
+        self.repository.commit_files({"selected.txt": before})
+        self.repository.write("selected.txt", after)
+
+        self.assert_staging_succeeds(["selected.txt"])
+        self.assertEqual(self.repository.staged(), ["M\tselected.txt"])
 
 
 if __name__ == "__main__":

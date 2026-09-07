@@ -7,6 +7,54 @@ param(
 
 . (Join-Path $PSScriptRoot "common.ps1")
 
+function Get-StagedDiffLineCounts {
+    [CmdletBinding()]
+    param([switch]$IgnoreCrAtEol)
+
+    $arguments = @("diff", "--cached", "--numstat")
+    if ($IgnoreCrAtEol) {
+        $arguments += "--ignore-cr-at-eol"
+    }
+    $arguments += "--"
+    $counts = @{}
+    $output = @(& git @arguments)
+    if ($LASTEXITCODE -ne 0) {
+        throw "The staged diff size could not be inspected."
+    }
+    foreach ($line in $output) {
+        $fields = @($line -split "`t")
+        if ($fields.Count -ge 3 -and $fields[0] -match '^\d+$' -and $fields[1] -match '^\d+$') {
+            $counts[$fields[2]] = [int64]$fields[0] + [int64]$fields[1]
+        }
+    }
+    return $counts
+}
+
+function Assert-StagedDiffQuality {
+    [CmdletBinding()]
+    param()
+
+    # Treat the CR in CRLF as part of the line ending for this check only.
+    # Git's other whitespace checks (including real trailing spaces/tabs) remain enabled.
+    $checkOutput = @(& git -c core.whitespace=cr-at-eol diff --cached --check -- 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        $details = ($checkOutput | Out-String).Trim()
+        throw "Staged diff quality check failed (trailing whitespace or conflict marker). $details".Trim()
+    }
+
+    $normalCounts = Get-StagedDiffLineCounts
+    $crIgnoredCounts = Get-StagedDiffLineCounts -IgnoreCrAtEol
+    foreach ($path in $normalCounts.Keys) {
+        $normal = [int64]$normalCounts[$path]
+        $ignored = if ($crIgnoredCounts.ContainsKey($path)) { [int64]$crIgnoredCounts[$path] } else { 0 }
+        # Require both meaningful volume and an extreme ratio. This catches mass
+        # CRLF/LF conversion without rejecting legitimate large source changes.
+        if ($normal -ge 200 -and $ignored -le [Math]::Max(20, [Math]::Floor($normal * 0.2))) {
+            throw "EOL normalization suspected: $path (normal diff lines: $normal; CR-at-EOL ignored diff lines: $ignored)."
+        }
+    }
+}
+
 function Invoke-HandoffStaging {
     [CmdletBinding()]
     param(
@@ -126,22 +174,38 @@ function Invoke-HandoffStaging {
         }
 
         $addArguments = @("add", "-A", "--") + $validatedFiles.ToArray()
-        Invoke-NativeChecked -FilePath "git" -Arguments $addArguments `
-            -FailureMessage "The allowed files could not be staged."
+        $stagingStarted = $false
+        try {
+            Invoke-NativeChecked -FilePath "git" -Arguments $addArguments `
+                -FailureMessage "The allowed files could not be staged."
+            $stagingStarted = $true
 
-        # --no-renames keeps the final allowlist comparison path-for-path after
-        # the complete-working-tree rename validation above.
-        $stagedFiles = @(& git diff --cached --name-only --no-renames --)
-        if ($LASTEXITCODE -ne 0) {
-            throw "The staged file list could not be read."
-        }
-        $expectedFiles = @($validatedFiles | Sort-Object)
-        $actualFiles = @($stagedFiles | ForEach-Object { $_.Replace('\', '/') } | Sort-Object)
-        if (($expectedFiles -join "`n") -cne ($actualFiles -join "`n")) {
-            throw "The staged files do not match the handoff allowlist."
-        }
+            # --no-renames keeps the final allowlist comparison path-for-path after
+            # the complete-working-tree rename validation above.
+            $stagedFiles = @(& git diff --cached --name-only --no-renames --)
+            if ($LASTEXITCODE -ne 0) {
+                throw "The staged file list could not be read."
+            }
+            $expectedFiles = @($validatedFiles | Sort-Object)
+            $actualFiles = @($stagedFiles | ForEach-Object { $_.Replace('\', '/') } | Sort-Object)
+            if (($expectedFiles -join "`n") -cne ($actualFiles -join "`n")) {
+                throw "The staged files do not match the handoff allowlist."
+            }
 
-        return $validatedFiles.ToArray()
+            Assert-StagedDiffQuality
+            return $validatedFiles.ToArray()
+        }
+        catch {
+            if ($stagingStarted) {
+                # The index was verified clean above. Restore only the paths this
+                # function staged; --worktree is intentionally omitted.
+                & git restore --staged -- $validatedFiles.ToArray() 2>$null
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Quality gate failed and the staged index could not be restored safely. $($_.Exception.Message)"
+                }
+            }
+            throw
+        }
     }
     finally {
         Pop-Location

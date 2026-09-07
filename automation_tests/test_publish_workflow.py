@@ -75,6 +75,21 @@ class PublishWorkflowTests(unittest.TestCase):
         self.assertIn('@("switch", "-c", $branch)', self.text)
         self.assertIn("gh pr create --draft", self.text)
 
+    def test_quality_gate_runs_after_allowlist_check_and_before_commit(self):
+        allowlist = self.text.index("The staged files do not match the handoff allowlist")
+        quality = self.text.index("Assert-StagedDiffQuality", allowlist)
+        commit = self.text.index('@("commit", "-m"')
+        self.assertLess(allowlist, quality)
+        self.assertLess(quality, commit)
+        self.assertIn(
+            "git -c core.whitespace=cr-at-eol diff --cached --check --", self.text
+        )
+        self.assertIn('"--ignore-cr-at-eol"', self.text)
+
+    def test_quality_failure_restores_only_staged_paths(self):
+        self.assertIn("git restore --staged -- $validatedFiles.ToArray()", self.text)
+        self.assertNotIn("git reset", self.text)
+
 
 if __name__ == "__main__":
     unittest.main()
