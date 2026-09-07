@@ -129,11 +129,13 @@ def update_quote(*, quote, customer, items, note="", accounting=None, actor=None
         raise ValidationError("見積明細を1件以上入力してください。")
     quote.customer = customer
     quote.guest_name = guest_name
+    if customer is None:
+        quote.inquiry = None
     quote.note = (note or "").strip()
     if quote.status == ShopQuote.STATUS_PURCHASE_REQUESTED:
         quote.status = ShopQuote.STATUS_SENT
     quote.full_clean()
-    quote.save(update_fields=["customer", "guest_name", "note", "status", "updated_at"])
+    quote.save(update_fields=["customer", "guest_name", "inquiry", "note", "status", "updated_at"])
     quote.items.all().delete()
     ShopQuoteItem.objects.bulk_create(rows)
     quote._prefetched_objects_cache.pop("items", None)

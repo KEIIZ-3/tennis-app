@@ -186,6 +186,62 @@ class ShopWorkflowTests(TestCase):
         quote.refresh_from_db()
         self.assertEqual((quote.customer_id, quote.guest_name), (None, "外部 花子 改"))
 
+    def test_inquiry_quote_can_change_to_guest_with_items_and_accounting(self):
+        inquiry = create_inquiry(customer=self.customer, wanted_item="問い合わせ商品")
+        quote = self.make_quote(inquiry=inquiry)
+        number, quote_date = quote.quote_number, quote.quote_date
+        original_customer_id = inquiry.customer_id
+        self.client.force_login(self.admin)
+        data = {
+            "purchaser_type": "guest", "customer": str(self.customer.pk),
+            "guest_name": "  外部 顧客  ", "inquiry": str(inquiry.pk), "note": "更新",
+            "accounting_sale_amount": "33825", "accounting_purchase_cost": "26053",
+            "procurement_coach": str(self.main_coaches[0].pk),
+            "items-TOTAL_FORMS": "1", "items-INITIAL_FORMS": "1",
+            "items-MIN_NUM_FORMS": "1", "items-MAX_NUM_FORMS": "1000",
+            "items-0-description": "更新商品", "items-0-quantity": "1",
+            "items-0-list_price": "33825", "items-0-sale_price": "33825",
+            "items-0-cost_price": "26053", "items-0-pricing_source": "sale",
+            f"accounting_coach_{self.main_coaches[0].pk}": "4372",
+            f"accounting_coach_{self.main_coaches[1].pk}": "1200",
+            f"accounting_coach_{self.main_coaches[2].pk}": "2200",
+        }
+        response = self.client.post(reverse("club:shop_quote_edit", args=[quote.pk]), data)
+        self.assertRedirects(response, reverse("club:shop_quote_detail", args=[quote.pk]))
+        quote.refresh_from_db()
+        inquiry.refresh_from_db()
+        self.assertEqual((quote.customer_id, quote.guest_name, quote.inquiry_id), (None, "外部 顧客", None))
+        self.assertEqual((quote.quote_number, quote.quote_date), (number, quote_date))
+        self.assertEqual((quote.items.get().description, quote.total), ("更新商品", 33825))
+        self.assertEqual((quote.accounting_sale_amount, quote.accounting_purchase_cost), (33825, 26053))
+        self.assertEqual(sum(quote.planned_profit_allocations.values()), 7772)
+        self.assertTrue(ShopInquiry.objects.filter(pk=inquiry.pk).exists())
+        self.assertEqual(inquiry.customer_id, original_customer_id)
+        self.assertEqual(inquiry.status, ShopInquiry.STATUS_QUOTED)
+
+        response = self._edit_post(quote, [{
+            "description": "会員向け商品", "quantity": "1", "list_price": "1000",
+            "sale_price": "1000", "cost_price": "500", "pricing_source": "sale",
+        }], purchaser_type="member", customer=self.other.pk, guest_name="消去対象")
+        self.assertRedirects(response, reverse("club:shop_quote_detail", args=[quote.pk]))
+        quote.refresh_from_db()
+        self.assertEqual((quote.customer_id, quote.guest_name, quote.inquiry_id), (self.other.pk, "", None))
+
+    def test_invalid_hidden_inquiry_error_and_common_guidance_are_visible(self):
+        self.client.force_login(self.coach)
+        response = self.client.post(reverse("club:shop_quote_create"), {
+            "purchaser_type": "member", "customer": str(self.customer.pk),
+            "guest_name": "", "inquiry": "999999", "note": "",
+            "items-TOTAL_FORMS": "1", "items-INITIAL_FORMS": "0",
+            "items-MIN_NUM_FORMS": "1", "items-MAX_NUM_FORMS": "1000",
+            "items-0-description": "商品", "items-0-quantity": "1",
+            "items-0-list_price": "1000", "items-0-sale_price": "1000",
+            "items-0-cost_price": "500", "items-0-pricing_source": "sale",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "入力内容を確認してください。")
+        self.assertContains(response, response.context["form"].errors["inquiry"][0])
+
     def test_guest_pdf_and_management_views_use_canonical_purchaser_name(self):
         quote = create_quote(customer=None, guest_name="外部 顧客", creator=self.coach,
             items=[{"description": "商品", "quantity": 1, "list_price": 1000,

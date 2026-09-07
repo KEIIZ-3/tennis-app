@@ -11,15 +11,16 @@
 <div class="form">
   <h1>{% if is_edit %}見積編集{% else %}見積作成{% endif %}</h1>
   {% if is_edit %}<p>見積番号: {{ quote.quote_number }}（番号と見積日は維持されます）</p>{% endif %}
+  {% if form.errors or formset.total_error_count %}<div class="errorlist" role="alert">入力内容を確認してください。</div>{% endif %}
   <form method="post">{% csrf_token %}{{ form.non_field_errors }}
     <div class="box">
       <div class="buyer-types">{{ form.purchaser_type.as_field_group }}</div>
       <div id="member-buyer">{{ form.customer.as_field_group }}</div>
       <div id="guest-buyer">{{ form.guest_name.as_field_group }}</div>
-      {{ form.inquiry }}{{ form.note.as_field_group }}
+      {% for hidden in form.hidden_fields %}{{ hidden }}{{ hidden.errors }}{% endfor %}{{ form.note.as_field_group }}
     </div>{{ formset.management_form }}{{ formset.non_form_errors }}
     {% for item in formset %}<div class="box items">
-      {% for hidden in item.hidden_fields %}{{ hidden }}{% endfor %}
+      {% for hidden in item.hidden_fields %}{{ hidden }}{{ hidden.errors }}{% endfor %}
       {% for field in item.visible_fields %}
         {% if field.name == 'DELETE' %}<div class="delete-field">{{ field }} {{ field.label_tag }}</div>
         {% else %}<div>{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endif %}
