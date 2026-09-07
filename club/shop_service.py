@@ -71,7 +71,7 @@ def create_inquiry(*, customer, wanted_item):
 
 
 @transaction.atomic
-def create_quote(*, customer, creator, items, inquiry=None, note=""):
+def create_quote(*, customer, creator, items, inquiry=None, note="", accounting=None):
     quote_date = timezone.localdate()
     quote = ShopQuote.objects.create(
         quote_number=f"PENDING-{uuid.uuid4().hex[:12]}", customer=customer,
@@ -87,6 +87,8 @@ def create_quote(*, customer, creator, items, inquiry=None, note=""):
         item.save()
     if not quote.items.exists():
         raise ValidationError("見積明細を1件以上入力してください。")
+    if accounting is not None:
+        save_quote_accounting(quote=quote, actor=creator, **accounting)
     if inquiry:
         inquiry.status = ShopInquiry.STATUS_QUOTED
         inquiry.quoted_amount = quote.total
@@ -108,7 +110,7 @@ def request_purchase(*, quote, customer):
 
 
 @transaction.atomic
-def update_quote(*, quote, customer, items, note=""):
+def update_quote(*, quote, customer, items, note="", accounting=None, actor=None):
     quote = ShopQuote.objects.select_for_update().prefetch_related("items").get(pk=quote.pk)
     if quote.status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED) or hasattr(quote, "purchase"):
         raise ValidationError("購入確定済みまたは取消済みの見積は編集できません。")
@@ -130,6 +132,8 @@ def update_quote(*, quote, customer, items, note=""):
     quote.items.all().delete()
     ShopQuoteItem.objects.bulk_create(rows)
     quote._prefetched_objects_cache.pop("items", None)
+    if accounting is not None:
+        save_quote_accounting(quote=quote, actor=actor, **accounting)
     if quote.inquiry_id:
         ShopInquiry.objects.filter(pk=quote.inquiry_id).update(
             status=ShopInquiry.STATUS_QUOTED, quoted_amount=quote.total,
@@ -145,15 +149,29 @@ def confirm_quote_purchase(*, quote, actor):
         return existing, False
     if quote.status not in (ShopQuote.STATUS_SENT, ShopQuote.STATUS_PURCHASE_REQUESTED):
         raise ValidationError("見積済みまたは購入希望済みの見積のみ購入確定できます。")
+    accounting = validate_quote_accounting_for_confirmation(quote)
     purchase, created = ShopPurchase.objects.get_or_create(
         quote=quote,
         defaults={"customer": quote.customer, "description": "\n".join(i.description for i in quote.items.all()),
-                  "quantity": sum(i.quantity for i in quote.items.all()), "amount": quote.total,
-                  "cost_total": profit_summary(quote.items.all())["cost"],
+                  "quantity": sum(i.quantity for i in quote.items.all()), "amount": accounting["sale_amount"],
+                  "cost_total": accounting["purchase_cost"], "procurement_coach": accounting["procurement_coach"],
+                  "profit_amount_snapshot": accounting["profit"],
+                  "profit_rate_snapshot": profit_rate(accounting["sale_amount"], accounting["profit"]),
+                  "accounting_configured": True,
                   "note": quote.note, "registered_by": actor},
     )
     if created:
         purchase.full_clean()
+        ShopRevenueAllocation.objects.bulk_create([
+            ShopRevenueAllocation(purchase=purchase, coach=coach, amount=accounting["amounts"][coach.pk], created_by=actor)
+            for coach in accounting["coaches"].values()
+        ])
+        ShopRevenueAllocationAudit.objects.create(
+            purchase=purchase, allocation_snapshot=accounting_snapshot(
+                sale_amount=accounting["sale_amount"], purchase_cost=accounting["purchase_cost"],
+                procurement_coach=accounting["procurement_coach"], amounts=accounting["amounts"],
+            ), changed_by=actor,
+        )
         quote.status = ShopQuote.STATUS_PURCHASED
         quote.save(update_fields=["status", "updated_at"])
         if quote.inquiry_id:
@@ -170,10 +188,91 @@ def create_direct_purchase(*, customer, actor, description, quantity, amount, no
     return purchase
 
 
-def _profit_rate(amount, profit):
+def profit_rate(amount, profit):
     return (Decimal(profit) * Decimal("100") / Decimal(amount)).quantize(
         Decimal("0.001"), rounding=ROUND_HALF_UP
     )
+
+
+def accounting_snapshot(*, sale_amount, purchase_cost, procurement_coach, amounts):
+    return {
+        "sale_amount": sale_amount, "purchase_cost": purchase_cost,
+        "procurement_coach_id": getattr(procurement_coach, "pk", procurement_coach),
+        "profit_allocations": {str(key): int(value) for key, value in amounts.items()},
+    }
+
+
+def _main_coach_map():
+    from .settlement_balance_policy import main_coaches
+    return {coach.pk: coach for coach in main_coaches()}
+
+
+@transaction.atomic
+def save_quote_accounting(*, quote, actor, sale_amount=None, purchase_cost=None,
+                          procurement_coach=None, amounts=None):
+    if not (actor and (actor.is_staff or actor.is_superuser)):
+        raise PermissionError("adminのみ内部精算情報を変更できます。")
+    quote = ShopQuote.objects.select_for_update().get(pk=quote.pk)
+    if quote.status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED) or ShopPurchase.objects.filter(quote=quote).exists():
+        raise ValidationError("購入確定済みまたは取消済みの見積は編集できません。")
+    main = _main_coach_map()
+    coach_id = getattr(procurement_coach, "pk", procurement_coach) or None
+    if coach_id is not None:
+        try: coach_id = int(coach_id)
+        except (TypeError, ValueError): raise ValidationError("仕入コーチはメインコーチから選択してください。")
+        if coach_id not in main:
+            raise ValidationError("仕入コーチはメインコーチから選択してください。")
+    sale = None if sale_amount in (None, "") else int(sale_amount)
+    cost = None if purchase_cost in (None, "") else int(purchase_cost)
+    if sale is not None and sale <= 0: raise ValidationError("売上額は1円以上にしてください。")
+    if cost is not None and cost < 0: raise ValidationError("仕入額は0円以上にしてください。")
+    if sale is not None and cost is not None and cost > sale:
+        raise ValidationError("仕入額が売上額を超える販売は登録できません。")
+    normalized = {coach_id: int((amounts or {}).get(coach_id, 0) or 0) for coach_id in main}
+    if any(value < 0 for value in normalized.values()): raise ValidationError("按分額は0円以上にしてください。")
+    before = accounting_snapshot(sale_amount=quote.accounting_sale_amount,
+        purchase_cost=quote.accounting_purchase_cost, procurement_coach=quote.procurement_coach_id,
+        amounts=quote.planned_profit_allocations or {})
+    quote.accounting_sale_amount, quote.accounting_purchase_cost = sale, cost
+    quote.procurement_coach = main.get(coach_id)
+    quote.planned_profit_allocations = {str(key): value for key, value in normalized.items()}
+    quote.save(update_fields=["accounting_sale_amount", "accounting_purchase_cost", "procurement_coach", "planned_profit_allocations", "updated_at"])
+    after = accounting_snapshot(sale_amount=sale, purchase_cost=cost,
+        procurement_coach=coach_id, amounts=normalized)
+    if before != after:
+        ShopRevenueAllocationAudit.objects.create(quote=quote, previous_snapshot=before,
+            allocation_snapshot=after, changed_by=actor)
+    return quote_accounting_summary(quote)
+
+
+def quote_accounting_summary(quote):
+    amounts = {int(key): int(value) for key, value in (quote.planned_profit_allocations or {}).items()}
+    allocated = sum(amounts.values())
+    profit = quote.accounting_profit_amount
+    return {"profit": profit, "rate": quote.accounting_profit_rate, "allocated": allocated,
+            "remaining": None if profit is None else profit - allocated,
+            "complete": profit is not None and quote.procurement_coach_id is not None
+            and allocated == profit and quote.accounting_sale_amount == quote.total}
+
+
+def validate_quote_accounting_for_confirmation(quote):
+    quote = ShopQuote.objects.select_related("procurement_coach").get(pk=quote.pk)
+    if quote.accounting_sale_amount is None or quote.accounting_purchase_cost is None or not quote.procurement_coach_id:
+        raise ValidationError("購入確定前に内部精算情報の売上額・仕入額・仕入コーチを入力してください。")
+    if quote.accounting_sale_amount != quote.total:
+        raise ValidationError(
+            f"内部精算情報の売上額を見積合計と一致させてください。見積合計: {quote.total:,}円"
+        )
+    main = _main_coach_map()
+    amounts = {int(key): int(value) for key, value in (quote.planned_profit_allocations or {}).items()}
+    if set(amounts) != set(main): raise ValidationError("利益分配はメインコーチ全員分を指定してください。")
+    profit = quote.accounting_profit_amount
+    allocated = sum(amounts.values())
+    if allocated != profit:
+        raise ValidationError(f"利益分配額の合計が利益額と一致していません。利益額: {profit:,}円 分配合計: {allocated:,}円 残額: {profit - allocated:,}円")
+    return {"sale_amount": quote.accounting_sale_amount, "purchase_cost": quote.accounting_purchase_cost,
+            "procurement_coach": main[quote.procurement_coach_id], "profit": profit,
+            "amounts": amounts, "coaches": main}
 
 
 def _ensure_purchase_month_open(purchase):
@@ -205,8 +304,7 @@ def save_allocations(
         raise ValidationError("仕入額が売上額を超える販売は登録できません。")
     if procurement_coach is None:
         procurement_coach = purchase.procurement_coach
-    from .settlement_balance_policy import main_coaches
-    main = {coach.pk: coach for coach in main_coaches()}
+    main = _main_coach_map()
     procurement_id = getattr(procurement_coach, "pk", procurement_coach)
     if procurement_id not in main:
         raise ValidationError("仕入コーチはメインコーチから選択してください。")
@@ -219,22 +317,26 @@ def save_allocations(
     if set(normalized) != set(main):
         raise ValidationError("利益分配はメインコーチ全員分を指定してください。")
     coaches = main
+    before = accounting_snapshot(sale_amount=purchase.amount, purchase_cost=purchase.cost_total,
+        procurement_coach=purchase.procurement_coach_id,
+        amounts={a.coach_id: a.amount for a in purchase.allocations.all()})
     purchase.amount = sale_amount
     purchase.cost_total = purchase_cost
     purchase.procurement_coach = main[procurement_id]
     purchase.profit_amount_snapshot = profit
-    purchase.profit_rate_snapshot = _profit_rate(sale_amount, profit)
+    purchase.profit_rate_snapshot = profit_rate(sale_amount, profit)
     purchase.accounting_configured = True
     purchase.full_clean()
     purchase.save(update_fields=["amount", "cost_total", "procurement_coach",
         "profit_amount_snapshot", "profit_rate_snapshot", "accounting_configured", "updated_at"])
     purchase.allocations.exclude(coach_id__in=normalized).delete()
-    snapshot = []
     for coach_id, amount in normalized.items():
-        allocation, _ = ShopRevenueAllocation.objects.update_or_create(
+        ShopRevenueAllocation.objects.update_or_create(
             purchase=purchase, coach=coaches[coach_id], defaults={"amount": amount, "created_by": actor})
-        snapshot.append({"coach_id": coach_id, "amount": amount})
-    ShopRevenueAllocationAudit.objects.create(purchase=purchase, allocation_snapshot=snapshot, changed_by=actor)
+    after = accounting_snapshot(sale_amount=sale_amount, purchase_cost=purchase_cost,
+        procurement_coach=procurement_id, amounts=normalized)
+    ShopRevenueAllocationAudit.objects.create(purchase=purchase, previous_snapshot=before,
+        allocation_snapshot=after, changed_by=actor)
     return allocation_summary(purchase)
 
 

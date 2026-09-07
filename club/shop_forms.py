@@ -22,11 +22,28 @@ class ShopQuoteForm(forms.Form):
     customer = forms.ModelChoiceField(queryset=User.objects.none(), label="顧客名")
     inquiry = forms.ModelChoiceField(queryset=ShopInquiry.objects.none(), required=False, widget=forms.HiddenInput())
     note = forms.CharField(required=False, label="備考", widget=forms.Textarea(attrs={"rows": 3}))
+    accounting_sale_amount = forms.IntegerField(required=False, min_value=1, label="売上額")
+    accounting_purchase_cost = forms.IntegerField(required=False, min_value=0, label="仕入額")
+    procurement_coach = forms.ChoiceField(choices=(), required=False, label="仕入コーチ")
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, can_edit_accounting=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["customer"].queryset = customer_queryset()
         self.fields["inquiry"].queryset = ShopInquiry.objects.exclude(status=ShopInquiry.STATUS_CANCELED)
+        from .settlement_balance_policy import main_coaches
+        self.fields["procurement_coach"].choices = [('', '---------')] + [
+            (str(coach.pk), coach.display_name()) for coach in main_coaches()
+        ]
+        if not can_edit_accounting:
+            for name in ("accounting_sale_amount", "accounting_purchase_cost", "procurement_coach"):
+                self.fields.pop(name)
+
+    def clean(self):
+        data = super().clean()
+        sale, cost = data.get("accounting_sale_amount"), data.get("accounting_purchase_cost")
+        if sale is not None and cost is not None and cost > sale:
+            self.add_error("accounting_purchase_cost", "仕入額が売上額を超える販売は登録できません。")
+        return data
 
 
 class ShopQuoteItemForm(forms.Form):

@@ -14,7 +14,7 @@ from club.shop_pdf import build_quote_pdf
 from club.shop_service import (allocation_summary, confirm_quote_purchase,
     create_direct_purchase, create_inquiry, create_quote, monthly_shop_allocations,
     one_month_after, request_purchase, save_allocations, sale_price_from_discount,
-    discount_rate_from_prices, profit_summary, update_quote)
+    discount_rate_from_prices, profit_summary, save_quote_accounting, update_quote)
 from club.shop_forms import ShopQuoteItemForm
 from pypdf import PdfReader
 
@@ -25,6 +25,9 @@ class ShopWorkflowTests(TestCase):
         self.other = User.objects.create_user("shop-other", password="pw")
         self.coach = User.objects.create_user("shop-coach", password="pw", role=User.ROLE_COACH)
         self.admin = User.objects.create_superuser("shop-admin", password="pw")
+        self.main_coaches = [User.objects.create_user(
+            f"shop-main-{index}", role=User.ROLE_COACH, full_name=name
+        ) for index, name in enumerate(MAIN_COACH_NAMES)]
 
     def test_customer_can_submit_free_text_and_empty_is_rejected(self):
         self.client.force_login(self.customer)
@@ -64,10 +67,16 @@ class ShopWorkflowTests(TestCase):
         self.client.force_login(self.coach)
         self.assertContains(self.client.get(reverse("club:shop_coach")), inquiry.wanted_item)
 
-    def make_quote(self, inquiry=None):
-        return create_quote(customer=self.customer, creator=self.coach, inquiry=inquiry, note="",
+    def make_quote(self, inquiry=None, configured=True):
+        quote = create_quote(customer=self.customer, creator=self.coach, inquiry=inquiry, note="",
             items=[{"description": "ラケット", "quantity": 1, "list_price": 44000, "sale_price": 35200},
                    {"description": "グリップ", "quantity": 3, "list_price": 400, "sale_price": 300}])
+        if configured:
+            save_quote_accounting(quote=quote, actor=self.admin, sale_amount=36100,
+                purchase_cost=30000, procurement_coach=self.main_coaches[0], amounts={
+                    self.main_coaches[0].pk: 3100, self.main_coaches[1].pk: 2000,
+                    self.main_coaches[2].pk: 1000})
+        return quote
 
     def test_quote_calculations_number_expiry_and_inquiry_link(self):
         inquiry = create_inquiry(customer=self.customer, wanted_item="ラケット")
@@ -102,12 +111,73 @@ class ShopWorkflowTests(TestCase):
             {"description": "ラケット", "quantity": 2, "list_price": 44000, "sale_price": 35200, "cost_price": 28000},
             {"description": "バッグ", "quantity": 1, "list_price": 10000, "sale_price": 8000, "cost_price": 5000},
         ])
+        save_quote_accounting(quote=quote, actor=self.admin, sale_amount=78400,
+            purchase_cost=61000, procurement_coach=self.main_coaches[0], amounts={
+                self.main_coaches[0].pk: 10000, self.main_coaches[1].pk: 5000,
+                self.main_coaches[2].pk: 2400})
         item = quote.items.first()
         self.assertEqual((item.unit_profit, item.profit_rate, item.line_profit), (7200, 20.5, 14400))
         self.assertEqual(profit_summary(quote.items.all()), {"revenue": 78400, "cost": 61000, "profit": 17400, "margin": Decimal("22.2")})
         request_purchase(quote=quote, customer=self.customer)
         purchase, _ = confirm_quote_purchase(quote=quote, actor=self.coach)
         self.assertEqual(purchase.cost_total, 61000)
+        self.assertEqual(purchase.profit_amount_snapshot, 17400)
+        self.assertEqual(purchase.allocations.count(), 3)
+
+    def test_quote_accounting_draft_snapshot_permissions_and_audit(self):
+        quote = self.make_quote(configured=False)
+        with self.assertRaises(PermissionError):
+            save_quote_accounting(quote=quote, actor=self.coach, sale_amount=36100,
+                purchase_cost=32100, procurement_coach=self.main_coaches[0], amounts={})
+        summary = save_quote_accounting(quote=quote, actor=self.admin, sale_amount=36100,
+            purchase_cost=32100, procurement_coach=self.main_coaches[0], amounts={
+                self.main_coaches[0].pk: 2000, self.main_coaches[1].pk: 1000,
+                self.main_coaches[2].pk: 500})
+        self.assertEqual((summary["profit"], summary["remaining"], summary["complete"]), (4000, 500, False))
+        self.assertEqual(quote.accounting_audits.count(), 1)
+        with self.assertRaisesMessage(ValidationError, "残額: 500円"):
+            confirm_quote_purchase(quote=quote, actor=self.coach)
+        save_quote_accounting(quote=quote, actor=self.admin, sale_amount=36100,
+            purchase_cost=32100, procurement_coach=self.main_coaches[0], amounts={
+                self.main_coaches[0].pk: 2000, self.main_coaches[1].pk: 1000,
+                self.main_coaches[2].pk: 1000})
+        purchase, created = confirm_quote_purchase(quote=quote, actor=self.coach)
+        self.assertTrue(created)
+        original = (purchase.amount, purchase.cost_total, purchase.procurement_coach_id,
+                    list(purchase.allocations.order_by("coach_id").values_list("coach_id", "amount")))
+        quote.accounting_sale_amount = 99999
+        quote.planned_profit_allocations = {}
+        quote.save(update_fields=["accounting_sale_amount", "planned_profit_allocations"])
+        purchase.refresh_from_db()
+        self.assertEqual(original, (purchase.amount, purchase.cost_total, purchase.procurement_coach_id,
+                    list(purchase.allocations.order_by("coach_id").values_list("coach_id", "amount"))))
+
+    def test_unconfigured_quote_cannot_be_confirmed(self):
+        quote = self.make_quote(configured=False)
+        with self.assertRaisesMessage(ValidationError, "内部精算情報"):
+            confirm_quote_purchase(quote=quote, actor=self.coach)
+
+    def test_draft_allows_overallocation_and_zero_profit_confirms(self):
+        quote = self.make_quote(configured=False)
+        summary = save_quote_accounting(quote=quote, actor=self.admin, sale_amount=36100,
+            purchase_cost=30000, procurement_coach=self.main_coaches[0], amounts={
+                self.main_coaches[0].pk: 7000, self.main_coaches[1].pk: 0,
+                self.main_coaches[2].pk: 0})
+        self.assertEqual(summary["remaining"], -900)
+        with self.assertRaisesMessage(ValidationError, "残額: -900円"):
+            confirm_quote_purchase(quote=quote, actor=self.admin)
+        summary = save_quote_accounting(quote=quote, actor=self.admin, sale_amount=36100,
+            purchase_cost=36100, procurement_coach=self.main_coaches[0], amounts={
+                coach.pk: 0 for coach in self.main_coaches})
+        self.assertTrue(summary["complete"])
+        purchase, _ = confirm_quote_purchase(quote=quote, actor=self.admin)
+        self.assertEqual((purchase.profit_amount_snapshot, purchase.allocations.count()), (0, 3))
+
+    def test_changed_quote_total_requires_accounting_review(self):
+        quote = self.make_quote()
+        quote.items.first().delete()
+        with self.assertRaisesMessage(ValidationError, "見積合計"):
+            confirm_quote_purchase(quote=quote, actor=self.coach)
 
     def test_missing_cost_is_not_treated_as_zero_and_customer_outputs_hide_profit(self):
         quote = self.make_quote()
@@ -372,6 +442,10 @@ class ShopAllocationTests(TestCase):
         self.assertEqual((summary["allocated"], summary["remaining"], summary["complete"]), (6100, 0, True))
         allocation = ShopRevenueAllocation.objects.get(purchase=self.purchase, coach=self.coaches[0])
         self.assertEqual(allocation.amount, 6100)
+        audit = self.purchase.allocation_audits.get()
+        self.assertEqual(audit.previous_snapshot["sale_amount"], 36100)
+        self.assertIsNone(audit.previous_snapshot["purchase_cost"])
+        self.assertEqual(audit.allocation_snapshot["purchase_cost"], 30000)
         with self.assertRaises(ValidationError):
             save_allocations(purchase=self.purchase, actor=self.admin,
                 amounts={self.coaches[0].pk: 5000, self.coaches[1].pk: 0, self.coaches[2].pk: 0})
