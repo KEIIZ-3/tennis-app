@@ -43,9 +43,9 @@ def _money(value):
         return 0
 
 
-def _company_cash_in_total(result, coach_rows):
+def _company_cash_in_total(result, coach_rows, shop_cash=0):
     """Cash received this month; ticket consumption is intentionally excluded."""
-    return _money(result.get("ticket_purchase_total")) + sum(
+    return _money(result.get("ticket_purchase_total")) + _money(shop_cash) + sum(
         _money(row.get("preopen_paid_amount"))
         + _money(row.get("stringing_amount"))
         for row in coach_rows
@@ -1165,8 +1165,15 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
         main_coach_ids,
     )
 
+    from .shop_service import (
+        monthly_shop_allocations, monthly_shop_cash_total,
+        monthly_shop_procurement_reimbursements,
+    )
+    shop_profit_by_coach = monthly_shop_allocations(year, month)
+    shop_reimbursement_by_coach = monthly_shop_procurement_reimbursements(year, month)
+    shop_cash = monthly_shop_cash_total(year, month)
     ticket_purchase_cash = _money(result.get("ticket_purchase_total"))
-    total_company_revenue = _company_cash_in_total(result, coach_rows)
+    total_company_revenue = _company_cash_in_total(result, coach_rows, shop_cash)
 
     with performance_trace.step("wallet_coach_payment_aggregate"):
         coach_calculation = calculate_coach_wallets(
@@ -1185,6 +1192,8 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
             active_reimbursement_payment_total=(
                 _active_reimbursement_payment_total
             ),
+            shop_profit_by_coach=shop_profit_by_coach,
+            shop_reimbursement_by_coach=shop_reimbursement_by_coach,
         )
     coach_rows = coach_calculation["coach_rows"]
     wallet_difference = coach_calculation["wallet_difference"]
@@ -1194,12 +1203,10 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
         "reimbursement_paid_total"
     ]
     unpaid_salary_total = coach_calculation["unpaid_salary_total"]
+    unpaid_reimbursement_total = coach_calculation["unpaid_reimbursement_total"]
     negative_carry_total = coach_calculation["negative_carry_total"]
     adjustment_by_coach = {}
-    company_internal_reserve = max(
-        _money(settlement.opening_balance),
-        0,
-    )
+    company_internal_reserve = _money(settlement.opening_balance)
     settlement.opening_balance = company_internal_reserve
     settlement.cash_in_total = total_company_revenue
     settlement.ticket_cash_in = ticket_purchase_cash
@@ -1215,13 +1222,12 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
     settlement.contractor_cash_out = contractor_pay_total
     settlement.cash_out_total = salary_paid_total + reimbursement_paid_total
     settlement.unpaid_salary_total = unpaid_salary_total
-    settlement.unpaid_reimbursement_total = 0
-    settlement.closing_balance = max(
+    settlement.unpaid_reimbursement_total = unpaid_reimbursement_total
+    settlement.closing_balance = (
         company_internal_reserve
         + total_company_revenue
         - salary_paid_total
-        - reimbursement_paid_total,
-        0,
+        - reimbursement_paid_total
     )
 
     settlement_snapshot = dict(settlement.calculation_snapshot or {})
@@ -1230,7 +1236,7 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
             "wallet_policy": True,
             "company_internal_reserve": company_internal_reserve,
             "company_revenue_definition": (
-                "ticket_purchase_cash + collected_cash + stringing"
+                "ticket_purchase_cash + collected_cash + stringing + shop_cash"
             ),
             "ticket_consumption_revenue": _money(
                 result.get("ticket_amount_total")
@@ -1238,6 +1244,9 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
             "main_coach_names": list(MAIN_COACH_NAMES),
             "main_coach_ids": main_coach_ids,
             "total_company_revenue": total_company_revenue,
+            "shop_cash_in": shop_cash,
+            "shop_profit_by_coach": shop_profit_by_coach,
+            "shop_procurement_reimbursement_by_coach": shop_reimbursement_by_coach,
             "contractor_pay_total": contractor_pay_total,
             "contractor_share_by_main": contractor_share_by_main,
             "court_policy": court_policy,
@@ -1265,9 +1274,9 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
             "salary_due_total": salary_due_total,
             "salary_paid_total": salary_paid_total,
             "unpaid_salary_total": unpaid_salary_total,
-            "reimbursement_due_total": 0,
+            "reimbursement_due_total": sum(_money(row.get("reimbursement_due")) for row in coach_rows),
             "reimbursement_paid_total": reimbursement_paid_total,
-            "unpaid_reimbursement_total": 0,
+            "unpaid_reimbursement_total": unpaid_reimbursement_total,
             "cash_out_total": salary_paid_total + reimbursement_paid_total,
             "approved_common_expense_total": (
                 other_expense_policy["expense_total"]

@@ -62,7 +62,9 @@ class SettlementPaymentViewTests(TestCase):
         )
 
         self.assertContains(response, 'name="action" value="create_payout"')
-        self.assertContains(response, 'name="payout_type" value="salary_payout"')
+        self.assertContains(response, 'name="payout_type"')
+        self.assertContains(response, 'value="salary_payout"')
+        self.assertContains(response, 'value="reimbursement_payout"')
         for field_name in ("year", "month", "coach_id", "amount", "paid_date", "note"):
             self.assertContains(response, f'name="{field_name}"')
         self.assertContains(response, "csrfmiddlewaretoken")

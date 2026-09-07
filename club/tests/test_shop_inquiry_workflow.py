@@ -8,7 +8,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from club.models import (ShopInquiry, ShopPurchase, ShopQuote,
+from club.models import (MAIN_COACH_NAMES, ShopInquiry, ShopPurchase, ShopQuote,
                          ShopRevenueAllocation, User)
 from club.shop_pdf import build_quote_pdf
 from club.shop_service import (allocation_summary, confirm_quote_purchase,
@@ -361,29 +361,32 @@ class ShopWorkflowTests(TestCase):
 class ShopAllocationTests(TestCase):
     def setUp(self):
         self.customer = User.objects.create_user("allocation-customer")
-        self.coaches = [User.objects.create_user(f"allocation-coach-{i}", role=User.ROLE_COACH) for i in range(3)]
+        self.coaches = [User.objects.create_user(f"allocation-coach-{i}", role=User.ROLE_COACH, full_name=name) for i, name in enumerate(MAIN_COACH_NAMES)]
         self.admin = User.objects.create_superuser("allocation-admin")
         self.purchase = create_direct_purchase(customer=self.customer, actor=self.coaches[0], description="商品", quantity=1, amount=36100)
 
     def test_admin_can_save_exact_and_partial_amount_allocations(self):
         summary = save_allocations(purchase=self.purchase, actor=self.admin,
-            amounts={self.coaches[0].pk: 20000, self.coaches[1].pk: 10000, self.coaches[2].pk: 6100})
-        self.assertEqual(summary, {"allocated": 36100, "remaining": 0, "complete": True})
+            amounts={self.coaches[0].pk: 6100, self.coaches[1].pk: 0, self.coaches[2].pk: 0},
+            purchase_cost=30000, procurement_coach=self.coaches[0])
+        self.assertEqual((summary["allocated"], summary["remaining"], summary["complete"]), (6100, 0, True))
         allocation = ShopRevenueAllocation.objects.get(purchase=self.purchase, coach=self.coaches[0])
-        self.assertEqual(allocation.percentage, 55.4)
-        summary = save_allocations(purchase=self.purchase, actor=self.admin,
-            amounts={self.coaches[0].pk: 20000, self.coaches[1].pk: 10000, self.coaches[2].pk: 5000})
-        self.assertEqual((summary["remaining"], summary["complete"]), (1100, False))
-        self.assertEqual(self.purchase.allocation_audits.count(), 2)
+        self.assertEqual(allocation.amount, 6100)
+        with self.assertRaises(ValidationError):
+            save_allocations(purchase=self.purchase, actor=self.admin,
+                amounts={self.coaches[0].pk: 5000, self.coaches[1].pk: 0, self.coaches[2].pk: 0})
+        self.assertEqual(self.purchase.allocation_audits.count(), 1)
 
     def test_over_negative_non_admin_and_canceled_are_rejected_or_excluded(self):
         with self.assertRaises(ValidationError):
-            save_allocations(purchase=self.purchase, actor=self.admin, amounts={self.coaches[0].pk: 40000})
+            save_allocations(purchase=self.purchase, actor=self.admin, amounts={self.coaches[0].pk: 40000}, purchase_cost=0, procurement_coach=self.coaches[0])
         with self.assertRaises(ValidationError):
-            save_allocations(purchase=self.purchase, actor=self.admin, amounts={self.coaches[0].pk: -1})
+            save_allocations(purchase=self.purchase, actor=self.admin, amounts={self.coaches[0].pk: -1}, purchase_cost=36101, procurement_coach=self.coaches[0])
         with self.assertRaises(PermissionError):
             save_allocations(purchase=self.purchase, actor=self.coaches[0], amounts={self.coaches[0].pk: 0})
-        save_allocations(purchase=self.purchase, actor=self.admin, amounts={self.coaches[0].pk: 36100})
+        save_allocations(purchase=self.purchase, actor=self.admin,
+            amounts={self.coaches[0].pk: 6100, self.coaches[1].pk: 0, self.coaches[2].pk: 0},
+            purchase_cost=30000, procurement_coach=self.coaches[0])
         self.purchase.amount = 35000
         self.purchase.save(update_fields=["amount"])
         self.assertFalse(allocation_summary(self.purchase)["complete"])

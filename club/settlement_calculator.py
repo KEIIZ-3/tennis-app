@@ -1,3 +1,39 @@
+def split_revenue_amount(amount, coaches):
+    """Split whole yen deterministically without losing a remainder."""
+    amount = int(amount or 0)
+    unique = {getattr(coach, "pk", None): coach for coach in coaches if coach}
+    ordered = sorted(
+        unique.values(),
+        key=lambda coach: (getattr(coach, "pk", 0) or 0),
+    )
+    if not ordered:
+        return {}
+
+    from .models import MAIN_COACH_NAMES
+
+    def normalized_name(coach):
+        try:
+            value = coach.display_name()
+        except Exception:
+            value = getattr(coach, "full_name", "")
+        return "".join(str(value or "").replace("\u3000", " ").split())
+
+    preferred = "".join(MAIN_COACH_NAMES[0].replace("\u3000", " ").split())
+    remainder_order = sorted(
+        ordered,
+        key=lambda coach: (
+            normalized_name(coach) != preferred,
+            getattr(coach, "pk", 0) or 0,
+        ),
+    )
+    base, remainder = divmod(amount, len(ordered))
+    result = {coach.pk: base for coach in ordered}
+    for coach in remainder_order[:remainder]:
+        result[coach.pk] += 1
+    assert sum(result.values()) == amount
+    return result
+
+
 def reservation_coaches_for_split(reservation):
     substitute = getattr(reservation, "substitute_coach", None)
     if substitute and getattr(substitute, "role", "") in (
@@ -92,12 +128,12 @@ def aggregate_reservations(
         if not split_coaches:
             continue
 
-        denominator = max(len(split_coaches), 1)
         snapshot = getattr(reservation, "participant_ticket_price_snapshot", None)
         ticket_total = money(snapshot) if snapshot is not None else sum(
             money(consumption.unit_price_snapshot) * money(consumption.tickets_used)
             for consumption in reservation.ticket_consumptions.filter(refunded_at__isnull=True)
         )
+        ticket_split = split_revenue_amount(ticket_total, split_coaches)
         payment_amount = money(
             getattr(reservation, "payment_amount", 0) or preopen_cash_price
         )
@@ -138,10 +174,12 @@ def aggregate_reservations(
                     )
 
             if ticket_total > 0:
-                row["ticket_amount"] += int(ticket_total / denominator)
+                row["ticket_amount"] += ticket_split[coach.pk]
 
             if is_preopen or is_completed_cash:
-                split_amount = int(payment_amount / denominator)
+                split_amount = split_revenue_amount(
+                    payment_amount, split_coaches
+                )[coach.pk]
                 if (
                     reservation.payment_status
                     == reservation_model.PAYMENT_STATUS_PAID
