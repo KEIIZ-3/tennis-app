@@ -15,7 +15,7 @@ from club.shop_service import (allocation_summary, confirm_quote_purchase,
     create_direct_purchase, create_inquiry, create_quote, monthly_shop_allocations,
     one_month_after, request_purchase, save_allocations, sale_price_from_discount,
     discount_rate_from_prices, profit_summary, save_quote_accounting, update_quote)
-from club.shop_forms import ShopQuoteItemForm
+from club.shop_forms import ShopQuoteForm, ShopQuoteItemForm
 from pypdf import PdfReader
 
 
@@ -123,6 +123,81 @@ class ShopWorkflowTests(TestCase):
         self.assertEqual(purchase.cost_total, 61000)
         self.assertEqual(purchase.profit_amount_snapshot, 17400)
         self.assertEqual(purchase.allocations.count(), 3)
+
+    def test_guest_quote_validation_snapshot_and_accounting_are_independent_of_buyer_type(self):
+        form = ShopQuoteForm({"purchaser_type": "guest", "customer": self.customer.pk,
+                              "guest_name": "  山田 太郎  ", "inquiry": "", "note": ""})
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertIsNone(form.cleaned_data["customer"])
+        self.assertEqual(form.cleaned_data["guest_name"], "山田 太郎")
+        quote = create_quote(customer=None, guest_name=form.cleaned_data["guest_name"],
+            creator=self.coach, items=[{"description": "ラケット", "quantity": 1,
+            "list_price": 36100, "sale_price": 36100, "cost_price": 30000}])
+        save_quote_accounting(quote=quote, actor=self.admin, sale_amount=36100,
+            purchase_cost=30000, procurement_coach=self.main_coaches[0], amounts={
+                self.main_coaches[0].pk: 3100, self.main_coaches[1].pk: 2000,
+                self.main_coaches[2].pk: 1000})
+        purchase, created = confirm_quote_purchase(quote=quote, actor=self.coach)
+        self.assertTrue(created)
+        self.assertIsNone(purchase.customer)
+        self.assertEqual((purchase.guest_name, purchase.purchaser_name), ("山田 太郎", "山田 太郎"))
+        self.assertEqual((purchase.amount, purchase.cost_total, purchase.profit_amount_snapshot),
+                         (36100, 30000, 6100))
+        self.assertEqual(sum(purchase.allocations.values_list("amount", flat=True)), 6100)
+        quote.guest_name = "変更後"
+        quote.full_clean()
+        quote.save(update_fields=["guest_name"])
+        purchase.refresh_from_db()
+        self.assertEqual(purchase.guest_name, "山田 太郎")
+
+    def test_buyer_exclusivity_and_guest_form_require_name(self):
+        for customer, guest_name in ((self.customer, "ゲスト"), (None, ""), (None, "   ")):
+            quote = ShopQuote(quote_number="invalid", customer=customer, guest_name=guest_name,
+                valid_until=timezone.localdate(), created_by=self.coach)
+            with self.assertRaises(ValidationError):
+                quote.full_clean()
+        missing = ShopQuoteForm({"purchaser_type": "guest", "guest_name": "", "inquiry": ""})
+        self.assertFalse(missing.is_valid())
+        self.assertIn("guest_name", missing.errors)
+        member = ShopQuoteForm({"purchaser_type": "member", "customer": self.customer.pk,
+                                "guest_name": "消去される", "inquiry": ""})
+        self.assertTrue(member.is_valid(), member.errors)
+        self.assertEqual(member.cleaned_data["guest_name"], "")
+        self.customer.full_name = "表示名 会員"
+        self.customer.save(update_fields=["full_name"])
+        self.assertIn("表示名 会員", str(ShopQuoteForm()["customer"]))
+        self.assertNotIn("shop-customer", str(ShopQuoteForm()["customer"]))
+
+    def test_guest_quote_can_be_created_and_edited_from_staff_ui(self):
+        self.client.force_login(self.coach)
+        data = {"purchaser_type": "guest", "customer": "", "guest_name": "  外部 花子  ",
+                "inquiry": "", "note": "", "items-TOTAL_FORMS": "1",
+                "items-INITIAL_FORMS": "0", "items-MIN_NUM_FORMS": "1",
+                "items-MAX_NUM_FORMS": "1000", "items-0-description": "商品",
+                "items-0-quantity": "1", "items-0-list_price": "1000",
+                "items-0-sale_price": "1000", "items-0-cost_price": "500",
+                "items-0-pricing_source": "sale"}
+        response = self.client.post(reverse("club:shop_quote_create"), data)
+        quote = ShopQuote.objects.get(guest_name="外部 花子")
+        self.assertRedirects(response, reverse("club:shop_quote_detail", args=[quote.pk]))
+        data.update({"guest_name": " 外部 花子 改 ", "items-INITIAL_FORMS": "1"})
+        response = self.client.post(reverse("club:shop_quote_edit", args=[quote.pk]), data)
+        self.assertRedirects(response, reverse("club:shop_quote_detail", args=[quote.pk]))
+        quote.refresh_from_db()
+        self.assertEqual((quote.customer_id, quote.guest_name), (None, "外部 花子 改"))
+
+    def test_guest_pdf_and_management_views_use_canonical_purchaser_name(self):
+        quote = create_quote(customer=None, guest_name="外部 顧客", creator=self.coach,
+            items=[{"description": "商品", "quantity": 1, "list_price": 1000,
+                    "sale_price": 1000, "cost_price": 500}])
+        pdf_text = "\n".join(page.extract_text() or "" for page in
+                             PdfReader(BytesIO(build_quote_pdf(quote))).pages)
+        self.assertIn("外部 顧客", pdf_text)
+        for private in ("原価", "仕入額", "仕入コーチ", "利益", "利益率", "利益分配"):
+            self.assertNotIn(private, pdf_text)
+        self.client.force_login(self.coach)
+        self.assertContains(self.client.get(reverse("club:shop_coach")), "外部 顧客")
+        self.assertContains(self.client.get(reverse("club:shop_quote_detail", args=[quote.pk])), "外部 顧客")
 
     def test_quote_accounting_draft_snapshot_permissions_and_audit(self):
         quote = self.make_quote(configured=False)
@@ -355,7 +430,9 @@ class ShopWorkflowTests(TestCase):
 
     def _edit_post(self, quote, rows, **form_overrides):
         data = {
+            "purchaser_type": form_overrides.get("purchaser_type", "member"),
             "customer": str(form_overrides.get("customer", self.customer.pk)),
+            "guest_name": form_overrides.get("guest_name", ""),
             "inquiry": "", "note": form_overrides.get("note", "更新備考"),
             "items-TOTAL_FORMS": str(len(rows)), "items-INITIAL_FORMS": str(min(2, len(rows))),
             "items-MIN_NUM_FORMS": "1", "items-MAX_NUM_FORMS": "1000",

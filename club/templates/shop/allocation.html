@@ -2,7 +2,7 @@
 {% block title %}Shop販売会計{% endblock %}
 {% block content %}
 <style>.allocation{max-width:700px;margin:auto}.card{background:#fff;padding:18px;border-radius:12px}.row{display:grid;grid-template-columns:1fr 160px;gap:10px;align-items:center;margin:9px 0}.row input,.row select{width:100%;padding:9px;box-sizing:border-box}.summary{padding:12px;background:#f8fafc;border-radius:8px}@media(max-width:600px){.row{grid-template-columns:1fr}}</style>
-<div class="allocation"><h1>Shop販売会計</h1><div class="card"><p>商品: {{ purchase.description }}<br>顧客: {{ purchase.customer.display_name }} 様</p>
+<div class="allocation"><h1>Shop販売会計</h1><div class="card"><p>商品: {{ purchase.description }}<br>顧客: {{ purchase.purchaser_name }} 様</p>
 <form method="post">{% csrf_token %}
 <div class="row"><label for="sale">売上額</label><input id="sale" name="sale_amount" type="number" min="1" value="{{ purchase.amount }}" required></div>
 <div class="row"><label for="cost">仕入額</label><input id="cost" name="purchase_cost" type="number" min="0" value="{{ purchase.cost_total|default:0 }}" required></div>

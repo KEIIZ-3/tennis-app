@@ -3325,7 +3325,8 @@ class ShopQuote(models.Model):
         (STATUS_CANCELED, "取消"),
     )
     quote_number = models.CharField(max_length=24, unique=True)
-    customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="shop_quotes")
+    customer = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="shop_quotes")
+    guest_name = models.CharField(max_length=120, blank=True, default="")
     inquiry = models.ForeignKey(ShopInquiry, null=True, blank=True, on_delete=models.PROTECT, related_name="quotes")
     quote_date = models.DateField(default=timezone.localdate)
     valid_until = models.DateField()
@@ -3344,6 +3345,28 @@ class ShopQuote(models.Model):
 
     class Meta:
         ordering = ["-quote_date", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    (models.Q(customer__isnull=False) & models.Q(guest_name=""))
+                    | (models.Q(customer__isnull=True) & ~models.Q(guest_name=""))
+                ),
+                name="shop_quote_exactly_one_buyer",
+            ),
+        ]
+
+    def clean(self):
+        self.guest_name = (self.guest_name or "").strip()
+        if bool(self.customer_id) == bool(self.guest_name):
+            raise ValidationError("購入者は会員またはゲストのどちらか一方を指定してください。")
+
+    @property
+    def purchaser_name(self):
+        return self.customer.display_name() if self.customer_id else self.guest_name
+
+    @property
+    def purchaser_type(self):
+        return "member" if self.customer_id else "guest"
 
     @property
     def list_total(self):
@@ -3418,7 +3441,8 @@ class ShopPurchase(models.Model):
     STATUS_CONFIRMED = "confirmed"
     STATUS_CANCELED = "canceled"
     STATUS_CHOICES = ((STATUS_CONFIRMED, "購入確定"), (STATUS_CANCELED, "取消"))
-    customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="shop_purchases")
+    customer = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="shop_purchases")
+    guest_name = models.CharField(max_length=120, blank=True, default="")
     quote = models.OneToOneField(ShopQuote, null=True, blank=True, on_delete=models.PROTECT, related_name="purchase")
     description = models.TextField()
     quantity = models.PositiveIntegerField(default=1)
@@ -3440,7 +3464,21 @@ class ShopPurchase(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    (models.Q(customer__isnull=False) & models.Q(guest_name=""))
+                    | (models.Q(customer__isnull=True) & ~models.Q(guest_name=""))
+                ),
+                name="shop_purchase_exactly_one_buyer",
+            ),
+        ]
+
     def clean(self):
+        self.guest_name = (self.guest_name or "").strip()
+        if bool(self.customer_id) == bool(self.guest_name):
+            raise ValidationError("購入者は会員またはゲストのどちらか一方を指定してください。")
         self.description = (self.description or "").strip()
         if not self.description: raise ValidationError("商品内容を入力してください。")
         if int(self.quantity or 0) < 1: raise ValidationError("数量は1以上にしてください。")
@@ -3453,6 +3491,14 @@ class ShopPurchase(models.Model):
                 raise ValidationError("仕入額が売上額を超える販売は登録できません。")
             if not self.procurement_coach_id:
                 raise ValidationError("仕入コーチを選択してください。")
+
+    @property
+    def purchaser_name(self):
+        return self.customer.display_name() if self.customer_id else self.guest_name
+
+    @property
+    def purchaser_type(self):
+        return "member" if self.customer_id else "guest"
 
     @property
     def profit_amount(self):

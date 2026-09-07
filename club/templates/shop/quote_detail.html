@@ -10,7 +10,7 @@
 <article class="quote">
   <h1>お見積書</h1><h2>Play Design Tennis</h2>
   <p>見積番号: {{ quote.quote_number }}<br>見積日: {{ quote.quote_date|date:"Y年m月d日" }}<br>
-    有効期限: {{ quote.valid_until|date:"Y年m月d日" }}<br>お客様名: {{ quote.customer.display_name }} 様</p>
+    有効期限: {{ quote.valid_until|date:"Y年m月d日" }}<br>お客様名: {{ quote.purchaser_name }} 様</p>
   <h2>お見積内容</h2>
   {% for item in quote.items.all %}
     <div class="line"><strong>{{ item.description }}</strong><br>数量 {{ item.quantity }}<br>定価 {{ item.list_price }}円<br>

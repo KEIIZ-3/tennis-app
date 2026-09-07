@@ -71,13 +71,16 @@ def create_inquiry(*, customer, wanted_item):
 
 
 @transaction.atomic
-def create_quote(*, customer, creator, items, inquiry=None, note="", accounting=None):
+def create_quote(*, customer, creator, items, inquiry=None, note="", accounting=None, guest_name=""):
     quote_date = timezone.localdate()
-    quote = ShopQuote.objects.create(
+    quote = ShopQuote(
         quote_number=f"PENDING-{uuid.uuid4().hex[:12]}", customer=customer,
+        guest_name=guest_name,
         inquiry=inquiry, quote_date=quote_date, valid_until=one_month_after(quote_date),
         note=(note or "").strip(), created_by=creator,
     )
+    quote.full_clean()
+    quote.save()
     quote.quote_number = quote_number_for(quote)
     quote.save(update_fields=["quote_number"])
     for order, data in enumerate(items):
@@ -110,7 +113,7 @@ def request_purchase(*, quote, customer):
 
 
 @transaction.atomic
-def update_quote(*, quote, customer, items, note="", accounting=None, actor=None):
+def update_quote(*, quote, customer, items, note="", accounting=None, actor=None, guest_name=""):
     quote = ShopQuote.objects.select_for_update().prefetch_related("items").get(pk=quote.pk)
     if quote.status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED) or hasattr(quote, "purchase"):
         raise ValidationError("購入確定済みまたは取消済みの見積は編集できません。")
@@ -125,10 +128,12 @@ def update_quote(*, quote, customer, items, note="", accounting=None, actor=None
     if not rows:
         raise ValidationError("見積明細を1件以上入力してください。")
     quote.customer = customer
+    quote.guest_name = guest_name
     quote.note = (note or "").strip()
     if quote.status == ShopQuote.STATUS_PURCHASE_REQUESTED:
         quote.status = ShopQuote.STATUS_SENT
-    quote.save(update_fields=["customer", "note", "status", "updated_at"])
+    quote.full_clean()
+    quote.save(update_fields=["customer", "guest_name", "note", "status", "updated_at"])
     quote.items.all().delete()
     ShopQuoteItem.objects.bulk_create(rows)
     quote._prefetched_objects_cache.pop("items", None)
@@ -152,7 +157,8 @@ def confirm_quote_purchase(*, quote, actor):
     accounting = validate_quote_accounting_for_confirmation(quote)
     purchase, created = ShopPurchase.objects.get_or_create(
         quote=quote,
-        defaults={"customer": quote.customer, "description": "\n".join(i.description for i in quote.items.all()),
+        defaults={"customer": quote.customer, "guest_name": quote.guest_name,
+                  "description": "\n".join(i.description for i in quote.items.all()),
                   "quantity": sum(i.quantity for i in quote.items.all()), "amount": accounting["sale_amount"],
                   "cost_total": accounting["purchase_cost"], "procurement_coach": accounting["procurement_coach"],
                   "profit_amount_snapshot": accounting["profit"],
