@@ -24,6 +24,7 @@
 - mainとorigin/mainのfast-forward同期は、Codex起動前に親PowerShellが行う。
 - Codexは現物調査、コード編集、テスト、差分相当の確認、report.md作成、handoff.json作成までを行う。
 - handoff.jsonには、agent/で始まる英小文字kebab-caseの専用ブランチ名、公開対象ファイル、コミットメッセージ、PRタイトル、PR本文を記録する。
+- handoff.jsonのfilesには、git statusだけを根拠にせず、読み取り専用の実差分確認でworking tree changeが存在するファイルだけを記録する。
 - Git公開工程はCodex正常終了後に、scripts/start-codex.ps1がscripts/publish-from-handoff.ps1を親PowerShellとして実行する。
 - publish-from-handoff.ps1はhandoff.jsonの対象ファイルだけを明示的にステージし、commit、push、Draft PR作成、Ready化、head commitを固定したsquash auto-merge登録を行う。
 - report.md、handoff.json、.pr-body.md、.codex-prompt.tmpはコミットしない。
@@ -34,6 +35,9 @@
 
 - 編集したファイルの変更前後の内容比較
 - 末尾空白、競合マーカー、不正な改行などの差分品質確認
+- trailing whitespaceはCRLF/LFの双方をGitのdiff check相当で確認する。
+- 改行コードだけの大規模diffを機能変更へ混ぜない。巨大diffはignore-cr-at-eol相当の比較で実質差分とEOL差分を分離する。
+- ファイル全体のEOL normalizationを機能PRへ混ぜない。
 - 変更量と対象範囲の確認
 - 変更ファイル一覧
 - 利用可能な関連テスト
@@ -54,6 +58,7 @@
 - scripts/prompts/prompt-dev.txtの{{IMPROVEMENT}}へ入力全体を埋め込み、Codexへ自動送信する。
 - 長い運用promptをユーザーへ要求しない。
 - 通常開発のPRはpublish-from-handoff.ps1でauto-mergeを登録し、必須チェックtestとRulesetの条件成立後にGitHubへsquash mergeを委ねる。
+- publish-from-handoff.ps1のcommit直前の公開前品質ゲート通過を完了条件とする。
 - CodexへGit metadata書き込み権限を要求しない。
 
 ## 6. 禁止事項
