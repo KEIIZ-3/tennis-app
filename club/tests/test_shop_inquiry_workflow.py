@@ -285,6 +285,15 @@ class ShopWorkflowTests(TestCase):
 
     def test_unconfigured_quote_cannot_be_confirmed(self):
         quote = self.make_quote(configured=False)
+        self.client.force_login(self.coach)
+        response = self.client.get(reverse("club:shop_quote_detail", args=[quote.pk]))
+        self.assertContains(response, "購入を確定する")
+        self.assertContains(response, "disabled")
+        self.assertContains(response, "購入確定前に内部精算情報を完成させてください。")
+        self.assertContains(response, "売上額未入力")
+        response = self.client.post(reverse("club:shop_quote_confirm", args=[quote.pk]), follow=True)
+        self.assertContains(response, "内部精算情報")
+        self.assertFalse(ShopPurchase.objects.filter(quote=quote).exists())
         with self.assertRaisesMessage(ValidationError, "内部精算情報"):
             confirm_quote_purchase(quote=quote, actor=self.coach)
 
@@ -428,6 +437,7 @@ class ShopWorkflowTests(TestCase):
         self.client.force_login(self.coach)
         response = self.client.get(detail)
         self.assertContains(response, confirm_text)
+        self.assertNotContains(response, "disabled")
         self.assertNotContains(response, request_text)
         self.assertRedirects(self.client.post(confirm), reverse("club:shop_coach"))
         sent_quote.refresh_from_db()
@@ -615,6 +625,34 @@ class ShopAllocationTests(TestCase):
             save_allocations(purchase=self.purchase, actor=self.admin,
                 amounts={self.coaches[0].pk: 5000, self.coaches[1].pk: 0, self.coaches[2].pk: 0})
         self.assertEqual(self.purchase.allocation_audits.count(), 1)
+
+    def test_procurement_coach_accepts_string_integer_and_user_pk(self):
+        amounts = {coach.pk: 0 for coach in self.coaches}
+        amounts[self.coaches[0].pk] = 6100
+        for procurement_coach in (
+            str(self.coaches[0].pk), self.coaches[0].pk, self.coaches[0]
+        ):
+            summary = save_allocations(
+                purchase=self.purchase, actor=self.admin, amounts=amounts,
+                purchase_cost=30000, procurement_coach=procurement_coach,
+            )
+            self.purchase.refresh_from_db()
+            self.assertTrue(summary["complete"])
+            self.assertEqual(self.purchase.procurement_coach_id, self.coaches[0].pk)
+
+    def test_procurement_coach_rejects_invalid_or_non_main_pk(self):
+        outsider = User.objects.create_user("allocation-outsider", role=User.ROLE_COACH)
+        amounts = {coach.pk: 0 for coach in self.coaches}
+        amounts[self.coaches[0].pk] = 6100
+        for procurement_coach in ("", "invalid", 999999, outsider.pk):
+            with self.subTest(procurement_coach=procurement_coach):
+                with self.assertRaisesMessage(
+                    ValidationError, "仕入コーチはメインコーチから選択してください。"
+                ):
+                    save_allocations(
+                        purchase=self.purchase, actor=self.admin, amounts=amounts,
+                        purchase_cost=30000, procurement_coach=procurement_coach,
+                    )
 
     def test_over_negative_non_admin_and_canceled_are_rejected_or_excluded(self):
         with self.assertRaises(ValidationError):
