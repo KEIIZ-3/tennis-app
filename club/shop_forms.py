@@ -10,6 +10,11 @@ def customer_queryset():
     return User.objects.filter(is_active=True, role__in=User.LESSON_PARTICIPANT_ROLE_VALUES).order_by("full_name", "username")
 
 
+class CustomerChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, customer):
+        return customer.display_name()
+
+
 class ShopInquiryForm(forms.ModelForm):
     class Meta:
         model = ShopInquiry
@@ -19,7 +24,14 @@ class ShopInquiryForm(forms.ModelForm):
 
 
 class ShopQuoteForm(forms.Form):
-    customer = forms.ModelChoiceField(queryset=User.objects.none(), label="顧客名")
+    PURCHASER_MEMBER = "member"
+    PURCHASER_GUEST = "guest"
+    purchaser_type = forms.ChoiceField(
+        choices=((PURCHASER_MEMBER, "会員"), (PURCHASER_GUEST, "ゲスト")),
+        label="購入者種別", widget=forms.RadioSelect,
+    )
+    customer = CustomerChoiceField(queryset=User.objects.none(), required=False, label="会員")
+    guest_name = forms.CharField(required=False, max_length=120, label="お名前")
     inquiry = forms.ModelChoiceField(queryset=ShopInquiry.objects.none(), required=False, widget=forms.HiddenInput())
     note = forms.CharField(required=False, label="備考", widget=forms.Textarea(attrs={"rows": 3}))
     accounting_sale_amount = forms.IntegerField(required=False, min_value=1, label="売上額")
@@ -40,6 +52,23 @@ class ShopQuoteForm(forms.Form):
 
     def clean(self):
         data = super().clean()
+        purchaser_type = data.get("purchaser_type")
+        customer = data.get("customer")
+        guest_name = (data.get("guest_name") or "").strip()
+        data["guest_name"] = guest_name
+        if purchaser_type == self.PURCHASER_MEMBER:
+            if customer is None:
+                self.add_error("customer", "会員を選択してください。")
+            data["guest_name"] = ""
+        elif purchaser_type == self.PURCHASER_GUEST:
+            if not guest_name:
+                self.add_error("guest_name", "お名前を入力してください。")
+            data["customer"] = None
+            if data.get("inquiry"):
+                self.add_error("inquiry", "問い合わせに紐づく見積は会員を選択してください。")
+        inquiry = data.get("inquiry")
+        if inquiry and customer and inquiry.customer_id != customer.pk:
+            self.add_error("customer", "問い合わせを行った会員を選択してください。")
         sale, cost = data.get("accounting_sale_amount"), data.get("accounting_purchase_cost")
         if sale is not None and cost is not None and cost > sale:
             self.add_error("accounting_purchase_cost", "仕入額が売上額を超える販売は登録できません。")

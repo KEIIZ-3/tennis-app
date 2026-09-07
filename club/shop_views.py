@@ -79,18 +79,19 @@ def coach_shop(request):
 @login_required
 def quote_create(request):
     if not _coach(request.user): return HttpResponseForbidden()
-    initial = {}
+    initial = {"purchaser_type": ShopQuoteForm.PURCHASER_MEMBER}
     inquiry = None
     if request.GET.get("inquiry"):
         inquiry = get_object_or_404(ShopInquiry, pk=request.GET["inquiry"])
-        initial = {"customer": inquiry.customer, "inquiry": inquiry}
+        initial = {"purchaser_type": ShopQuoteForm.PURCHASER_MEMBER,
+                   "customer": inquiry.customer, "inquiry": inquiry}
     coaches = list(main_coaches()) if _staff(request.user) else []
     form = ShopQuoteForm(request.POST or None, initial=initial, can_edit_accounting=_staff(request.user))
     formset = ShopQuoteItemFormSet(request.POST or None, prefix="items")
     if request.method == "POST" and form.is_valid() and formset.is_valid():
         items = [row for row in formset.cleaned_data if row]
         try:
-            quote = create_quote(customer=form.cleaned_data["customer"], creator=request.user,
+            quote = create_quote(customer=form.cleaned_data["customer"], guest_name=form.cleaned_data["guest_name"], creator=request.user,
                 inquiry=form.cleaned_data.get("inquiry"), note=form.cleaned_data["note"], items=items,
                 accounting=_accounting_data(request, coaches) if _staff(request.user) else None)
         except (ValidationError, ValueError) as exc:
@@ -108,7 +109,8 @@ def quote_edit(request, pk):
     if quote.status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED) or hasattr(quote, "purchase"):
         messages.error(request, "購入確定済みまたは取消済みの見積は編集できません。")
         return redirect("club:shop_quote_detail", pk=pk)
-    initial = {"customer": quote.customer, "inquiry": quote.inquiry, "note": quote.note,
+    initial = {"purchaser_type": quote.purchaser_type, "customer": quote.customer,
+        "guest_name": quote.guest_name, "inquiry": quote.inquiry, "note": quote.note,
         "accounting_sale_amount": quote.accounting_sale_amount,
         "accounting_purchase_cost": quote.accounting_purchase_cost,
         "procurement_coach": quote.procurement_coach_id}
@@ -124,7 +126,7 @@ def quote_edit(request, pk):
     if request.method == "POST" and form.is_valid() and formset.is_valid():
         items = [row for row in formset.cleaned_data if row and not row.get("DELETE")]
         try:
-            update_quote(quote=quote, customer=form.cleaned_data["customer"],
+            update_quote(quote=quote, customer=form.cleaned_data["customer"], guest_name=form.cleaned_data["guest_name"],
                          note=form.cleaned_data["note"], items=items, actor=request.user,
                          accounting=_accounting_data(request, coaches) if _staff(request.user) else None)
         except (ValidationError, ValueError) as exc:

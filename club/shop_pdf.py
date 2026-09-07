@@ -55,7 +55,7 @@ def build_quote_pdf(quote):
         Table([
             [_paragraph(f"見積番号  {quote.quote_number}", base),
              _paragraph(f"見積日  {quote.quote_date:%Y年%m月%d日}", right)],
-            [_paragraph(f"お客様名  {quote.customer.display_name()} 様", base),
+            [_paragraph(f"お客様名  {quote.purchaser_name} 様", base),
              _paragraph(f"有効期限  {quote.valid_until:%Y年%m月%d日}", right)],
         ], colWidths=[90 * mm, 73 * mm], style=TableStyle([
             ("FONTNAME", (0, 0), (-1, -1), FONT_NAME),
