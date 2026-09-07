@@ -303,22 +303,21 @@ class SettlementPayment(models.Model):
             ),
             None,
         )
-        coach_available = int((target_row or {}).get("unpaid_salary") or 0)
-
-        if self.payment_type == self.PAYMENT_TYPE_REIMBURSEMENT:
-            raise ValidationError(
-                "会社＝財布方式では、立替返金は月末一括精算額に"
-                "含まれます。支払種別は「給与支払い」を選択してください。"
-            )
+        due_key = (
+            "unpaid_reimbursement"
+            if self.payment_type == self.PAYMENT_TYPE_REIMBURSEMENT
+            else "unpaid_salary"
+        )
+        coach_available = int((target_row or {}).get(due_key) or 0)
         if payment_amount > coach_available:
             raise ValidationError(
-                "支払額がこのコーチの支払可能額を超えています。"
-                f"支払可能上限は{coach_available:,}円です。"
+                ("未払返金額" if self.payment_type == self.PAYMENT_TYPE_REIMBURSEMENT else "未払給与額")
+                + "を超える金額は支払えません。"
             )
         if payment_amount > company_available:
             raise ValidationError(
-                "支払額が会社の当月売上残高を超えています。"
-                f"会社財布の支払可能残高は{company_available:,}円です。"
+                "会社残高が不足しているため、この金額は支払えません。"
+                f"現在支払可能額: {company_available:,}円"
             )
 
     def save(self, *args, **kwargs):

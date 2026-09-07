@@ -108,8 +108,9 @@ class ExecutedTicketRevenueTests(SimpleTestCase):
 
         rows = self._aggregate([guest], statuses)
 
-        self.assertEqual(rows[1]["ticket_amount"], 2500)
+        self.assertEqual(rows[1]["ticket_amount"], 2501)
         self.assertEqual(rows[2]["ticket_amount"], 2500)
+        self.assertEqual(sum(row["ticket_amount"] for row in rows.values()), 5001)
         self.assertEqual(rows[1]["reservation_count"], 1)
         self.assertEqual(rows[2]["reservation_count"], 1)
 

@@ -59,6 +59,7 @@ urlpatterns = [
     path("coach/shop/quotes/<int:pk>/confirm/", shop_views.quote_confirm, name="shop_quote_confirm"),
     path("coach/shop/purchases/new/", shop_views.direct_purchase, name="shop_direct_purchase"),
     path("coach/shop/purchases/<int:pk>/allocation/", shop_views.allocation_edit, name="shop_allocation"),
+    path("coach/shop/purchases/<int:pk>/cancel/", shop_views.purchase_cancel, name="shop_purchase_cancel"),
     path("survey/", views.schedule_survey_view, name="schedule_survey"),
     path("reservations/new/", views.reservation_create, name="reservation_create"),
     path("reservations/", views.reservation_list, name="reservation_list"),

@@ -3404,6 +3404,15 @@ class ShopPurchase(models.Model):
     quantity = models.PositiveIntegerField(default=1)
     amount = models.PositiveIntegerField()
     cost_total = models.PositiveIntegerField(null=True, blank=True)
+    procurement_coach = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="procured_shop_purchases", limit_choices_to={"role": User.ROLE_COACH},
+    )
+    profit_amount_snapshot = models.IntegerField(null=True, blank=True)
+    profit_rate_snapshot = models.DecimalField(
+        max_digits=7, decimal_places=3, null=True, blank=True
+    )
+    accounting_configured = models.BooleanField(default=False)
     note = models.TextField(blank=True, default="")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_CONFIRMED)
     registered_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="registered_shop_purchases")
@@ -3415,6 +3424,27 @@ class ShopPurchase(models.Model):
         self.description = (self.description or "").strip()
         if not self.description: raise ValidationError("商品内容を入力してください。")
         if int(self.quantity or 0) < 1: raise ValidationError("数量は1以上にしてください。")
+        if self.accounting_configured:
+            if int(self.amount or 0) <= 0:
+                raise ValidationError("売上額は1円以上にしてください。")
+            if self.cost_total is None:
+                raise ValidationError("仕入額を入力してください。")
+            if int(self.cost_total) > int(self.amount):
+                raise ValidationError("仕入額が売上額を超える販売は登録できません。")
+            if not self.procurement_coach_id:
+                raise ValidationError("仕入コーチを選択してください。")
+
+    @property
+    def profit_amount(self):
+        if self.cost_total is None:
+            return None
+        return int(self.amount) - int(self.cost_total)
+
+    @property
+    def profit_rate(self):
+        if not self.amount or self.profit_amount is None:
+            return None
+        return round(self.profit_amount * 100 / int(self.amount), 1)
 
 
 class ShopRevenueAllocation(models.Model):

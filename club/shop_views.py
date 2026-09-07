@@ -8,8 +8,9 @@ from .models import ShopEstimateRequest, ShopInquiry, ShopPurchase, ShopQuote, U
 from .shop_forms import DirectPurchaseForm, ShopInquiryForm, ShopQuoteForm, ShopQuoteItemFormSet
 from .shop_pdf import build_quote_pdf
 from .shop_service import (allocation_summary, confirm_quote_purchase, create_direct_purchase,
-                           create_inquiry, create_quote, request_purchase, save_allocations,
+                           cancel_purchase, create_inquiry, create_quote, request_purchase, save_allocations,
                            update_quote)
+from .settlement_balance_policy import main_coaches
 
 
 def _staff(user): return bool(user.is_staff or user.is_superuser)
@@ -153,14 +154,30 @@ def quote_pdf(request, pk):
 def allocation_edit(request, pk):
     if not _staff(request.user): return HttpResponseForbidden()
     purchase = get_object_or_404(ShopPurchase.objects.prefetch_related("allocations"), pk=pk)
-    coaches = User.objects.filter(is_active=True, role__in=User.COACH_ROLE_VALUES).order_by("full_name", "username")
+    coaches = main_coaches()
     current = {a.coach_id: a for a in purchase.allocations.all()}
     if request.method == "POST":
         amounts = {coach.pk: request.POST.get(f"coach_{coach.pk}", 0) for coach in coaches}
-        try: save_allocations(purchase=purchase, actor=request.user, amounts=amounts)
+        try: save_allocations(
+            purchase=purchase, actor=request.user, amounts=amounts,
+            sale_amount=request.POST.get("sale_amount"),
+            purchase_cost=request.POST.get("purchase_cost"),
+            procurement_coach=request.POST.get("procurement_coach"),
+        )
         except (ValidationError, ValueError) as exc: messages.error(request, str(exc))
         else: messages.success(request, "売上按分を保存しました。")
         return redirect("club:shop_allocation", pk=pk)
     rows = [{"coach": c, "amount": current[c.pk].amount if c.pk in current else 0,
              "percentage": current[c.pk].percentage if c.pk in current else 0} for c in coaches]
-    return render(request, "shop/allocation.html", {"purchase": purchase, "rows": rows, "summary": allocation_summary(purchase)})
+    return render(request, "shop/allocation.html", {"purchase": purchase, "rows": rows, "summary": allocation_summary(purchase), "coaches": coaches})
+
+
+@login_required
+def purchase_cancel(request, pk):
+    if not _staff(request.user): return HttpResponseForbidden()
+    if request.method != "POST": return HttpResponse(status=405)
+    purchase = get_object_or_404(ShopPurchase, pk=pk)
+    try: cancel_purchase(purchase=purchase, actor=request.user)
+    except ValidationError as exc: messages.error(request, "; ".join(exc.messages))
+    else: messages.success(request, "Shop販売を取り消しました。")
+    return redirect("club:shop_coach")

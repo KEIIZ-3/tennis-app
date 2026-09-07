@@ -170,21 +170,65 @@ def create_direct_purchase(*, customer, actor, description, quantity, amount, no
     return purchase
 
 
+def _profit_rate(amount, profit):
+    return (Decimal(profit) * Decimal("100") / Decimal(amount)).quantize(
+        Decimal("0.001"), rounding=ROUND_HALF_UP
+    )
+
+
+def _ensure_purchase_month_open(purchase):
+    from .models import ensure_accounting_month_is_open
+    ensure_accounting_month_is_open(purchase.purchased_at)
+
+
 @transaction.atomic
-def save_allocations(*, purchase, actor, amounts):
+def save_allocations(
+    *, purchase, actor, amounts, sale_amount=None, purchase_cost=None,
+    procurement_coach=None
+):
     if not (actor.is_staff or actor.is_superuser):
         raise PermissionError("adminのみ売上按分を変更できます。")
     purchase = ShopPurchase.objects.select_for_update().get(pk=purchase.pk)
+    _ensure_purchase_month_open(purchase)
     if purchase.status != ShopPurchase.STATUS_CONFIRMED:
         raise ValidationError("購入確定済みのShop売上だけ按分できます。")
+    sale_amount = int(purchase.amount if sale_amount is None else sale_amount)
+    purchase_cost = purchase.cost_total if purchase_cost is None else purchase_cost
+    if purchase_cost is None:
+        raise ValidationError("仕入額を入力してください。")
+    purchase_cost = int(purchase_cost)
+    if sale_amount <= 0:
+        raise ValidationError("売上額は1円以上にしてください。")
+    if purchase_cost < 0:
+        raise ValidationError("仕入額は0円以上にしてください。")
+    if purchase_cost > sale_amount:
+        raise ValidationError("仕入額が売上額を超える販売は登録できません。")
+    if procurement_coach is None:
+        procurement_coach = purchase.procurement_coach
+    from .settlement_balance_policy import main_coaches
+    main = {coach.pk: coach for coach in main_coaches()}
+    procurement_id = getattr(procurement_coach, "pk", procurement_coach)
+    if procurement_id not in main:
+        raise ValidationError("仕入コーチはメインコーチから選択してください。")
     normalized = {int(coach_id): int(amount or 0) for coach_id, amount in amounts.items()}
     if any(amount < 0 for amount in normalized.values()):
         raise ValidationError("按分額は0円以上にしてください。")
-    if sum(normalized.values()) > purchase.amount:
-        raise ValidationError("按分合計がShop売上を超えています。")
-    coaches = {u.pk: u for u in User.objects.filter(pk__in=normalized, role__in=User.COACH_ROLE_VALUES, is_active=True)}
-    if set(normalized) != set(coaches):
-        raise ValidationError("按分対象にできないユーザーが含まれています。")
+    profit = sale_amount - purchase_cost
+    if sum(normalized.values()) != profit:
+        raise ValidationError("利益分配額の合計を利益額と一致させてください。")
+    if set(normalized) != set(main):
+        raise ValidationError("利益分配はメインコーチ全員分を指定してください。")
+    coaches = main
+    purchase.amount = sale_amount
+    purchase.cost_total = purchase_cost
+    purchase.procurement_coach = main[procurement_id]
+    purchase.profit_amount_snapshot = profit
+    purchase.profit_rate_snapshot = _profit_rate(sale_amount, profit)
+    purchase.accounting_configured = True
+    purchase.full_clean()
+    purchase.save(update_fields=["amount", "cost_total", "procurement_coach",
+        "profit_amount_snapshot", "profit_rate_snapshot", "accounting_configured", "updated_at"])
+    purchase.allocations.exclude(coach_id__in=normalized).delete()
     snapshot = []
     for coach_id, amount in normalized.items():
         allocation, _ = ShopRevenueAllocation.objects.update_or_create(
@@ -196,13 +240,44 @@ def save_allocations(*, purchase, actor, amounts):
 
 def allocation_summary(purchase):
     allocated = purchase.allocations.aggregate(total=Sum("amount"))["total"] or 0
-    remaining = int(purchase.amount) - int(allocated)
-    return {"allocated": allocated, "remaining": remaining, "complete": purchase.status == ShopPurchase.STATUS_CONFIRMED and remaining == 0}
+    profit = purchase.profit_amount_snapshot
+    if profit is None and purchase.cost_total is not None:
+        profit = int(purchase.amount) - int(purchase.cost_total)
+    remaining = int(profit or 0) - int(allocated)
+    return {"allocated": allocated, "remaining": remaining, "profit": profit,
+            "complete": purchase.accounting_configured and purchase.status == ShopPurchase.STATUS_CONFIRMED and remaining == 0}
 
 
 def monthly_shop_allocations(year, month):
     rows = (ShopRevenueAllocation.objects.filter(
         purchase__status=ShopPurchase.STATUS_CONFIRMED,
+        purchase__accounting_configured=True,
         purchase__purchased_at__year=year, purchase__purchased_at__month=month,
     ).values("coach_id").annotate(total=Sum("amount")))
     return {row["coach_id"]: int(row["total"] or 0) for row in rows}
+
+
+def monthly_shop_procurement_reimbursements(year, month):
+    rows = (ShopPurchase.objects.filter(
+        status=ShopPurchase.STATUS_CONFIRMED, accounting_configured=True,
+        purchased_at__year=year, purchased_at__month=month,
+    ).values("procurement_coach_id").annotate(total=Sum("cost_total")))
+    return {row["procurement_coach_id"]: int(row["total"] or 0) for row in rows}
+
+
+def monthly_shop_cash_total(year, month):
+    return int(ShopPurchase.objects.filter(
+        status=ShopPurchase.STATUS_CONFIRMED, accounting_configured=True,
+        purchased_at__year=year, purchased_at__month=month,
+    ).aggregate(total=Sum("amount"))["total"] or 0)
+
+
+@transaction.atomic
+def cancel_purchase(*, purchase, actor):
+    purchase = ShopPurchase.objects.select_for_update().get(pk=purchase.pk)
+    _ensure_purchase_month_open(purchase)
+    if purchase.status == ShopPurchase.STATUS_CANCELED:
+        raise ValidationError("このShop販売は既に取り消されています。")
+    purchase.status = ShopPurchase.STATUS_CANCELED
+    purchase.save(update_fields=["status", "updated_at"])
+    return purchase
