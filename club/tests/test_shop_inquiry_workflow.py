@@ -15,7 +15,7 @@ from club.shop_service import (allocation_summary, confirm_quote_purchase,
     create_direct_purchase, create_inquiry, create_quote, monthly_shop_allocations,
     one_month_after, request_purchase, save_allocations, sale_price_from_discount,
     discount_rate_from_prices, profit_summary, save_quote_accounting, update_quote)
-from club.shop_forms import ShopQuoteForm, ShopQuoteItemForm
+from club.shop_forms import ShopQuoteForm, ShopQuoteItemForm, ShopQuoteItemFormSet
 from pypdf import PdfReader
 from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
@@ -735,6 +735,111 @@ class ShopWorkflowTests(TestCase):
         self.assertContains(response, "原価未入力あり")
         self.assertContains(response, "利益未確定")
         self.assertContains(response, "accountingCost.value=cost")
+
+    def test_quote_item_formset_ignores_default_only_rows_and_requires_one_item(self):
+        management = {
+            "items-TOTAL_FORMS": "3", "items-INITIAL_FORMS": "0",
+            "items-MIN_NUM_FORMS": "1", "items-MAX_NUM_FORMS": "1000",
+        }
+        empty_rows = dict(management)
+        for index in range(3):
+            empty_rows.update({
+                f"items-{index}-description": "", f"items-{index}-quantity": "1",
+                f"items-{index}-list_price": "", f"items-{index}-sale_price": "",
+                f"items-{index}-discount_rate": "", f"items-{index}-pricing_source": "sale",
+            })
+        formset = ShopQuoteItemFormSet(empty_rows, prefix="items")
+        self.assertFalse(formset.is_valid())
+        self.assertEqual(formset.forms[0].errors, {})
+        self.assertIn("見積明細を1件以上入力してください。", formset.non_form_errors())
+
+        with_item = dict(empty_rows)
+        with_item.update({
+            "items-0-description": "商品", "items-0-list_price": "1000",
+            "items-0-sale_price": "900",
+        })
+        formset = ShopQuoteItemFormSet(with_item, prefix="items")
+        self.assertTrue(formset.is_valid(), formset.errors)
+        self.assertEqual(len([row for row in formset.cleaned_data if row]), 1)
+
+    def test_partial_and_deleted_quote_item_rows_are_distinguished(self):
+        data = {
+            "items-TOTAL_FORMS": "2", "items-INITIAL_FORMS": "0",
+            "items-MIN_NUM_FORMS": "1", "items-MAX_NUM_FORMS": "1000",
+            "items-0-description": "Wilson NXT", "items-0-quantity": "1",
+            "items-0-list_price": "", "items-0-sale_price": "",
+            "items-0-pricing_source": "sale", "items-1-description": "削除商品",
+            "items-1-quantity": "1", "items-1-list_price": "",
+            "items-1-sale_price": "", "items-1-pricing_source": "sale",
+            "items-1-DELETE": "on",
+        }
+        formset = ShopQuoteItemFormSet(data, prefix="items")
+        self.assertFalse(formset.is_valid())
+        self.assertIn("list_price", formset.forms[0].errors)
+        self.assertIn("sale_price", formset.forms[0].errors)
+        self.assertNotIn(formset.forms[1], [form for form in formset.forms if form.errors and not form.cleaned_data.get("DELETE")])
+
+    def test_quote_form_dynamic_template_permissions_and_initial_count(self):
+        self.client.force_login(self.coach)
+        response = self.client.get(reverse("club:shop_quote_create"))
+        self.assertEqual(len(response.context["formset"].forms), 1)
+        self.assertContains(response, "＋ 商品を追加")
+        self.assertContains(response, "__prefix__")
+        self.assertContains(response, "id_items-TOTAL_FORMS")
+        self.assertNotIn("cost_price", response.context["formset"].empty_form.fields)
+
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse("club:shop_quote_create"))
+        self.assertIn("cost_price", response.context["formset"].empty_form.fields)
+
+    def test_three_dynamic_rows_save_with_discount_and_zero_cost(self):
+        self.client.force_login(self.admin)
+        data = {
+            "purchaser_type": "member", "customer": str(self.customer.pk),
+            "guest_name": "", "inquiry": "", "note": "",
+            "items-TOTAL_FORMS": "4", "items-INITIAL_FORMS": "0",
+            "items-MIN_NUM_FORMS": "1", "items-MAX_NUM_FORMS": "1000",
+        }
+        rows = [
+            ("商品A", "1", "1000", "900", "10.0", "500", "discount"),
+            ("商品B", "2", "2000", "1800", "", "0", "sale"),
+            ("商品C", "3", "500", "500", "", "200", "sale"),
+            ("", "1", "", "", "", "", "sale"),
+        ]
+        for index, row in enumerate(rows):
+            for name, value in zip(
+                ("description", "quantity", "list_price", "sale_price", "discount_rate", "cost_price", "pricing_source"), row
+            ):
+                data[f"items-{index}-{name}"] = value
+        response = self.client.post(reverse("club:shop_quote_create"), data)
+        quote = ShopQuote.objects.latest("pk")
+        self.assertRedirects(response, reverse("club:shop_quote_detail", args=[quote.pk]))
+        self.assertEqual(quote.items.count(), 3)
+        self.assertEqual(quote.items.get(description="商品A").sale_price, 900)
+        self.assertEqual(profit_summary(quote.items.all()), {
+            "revenue": 6000, "cost": 1100, "profit": 4900,
+            "margin": Decimal("81.7"), "costs_complete": True,
+        })
+
+    def test_next_quote_link_is_management_only_and_starts_blank(self):
+        quote = self.make_quote()
+        detail_url = reverse("club:shop_quote_detail", args=[quote.pk])
+        create_url = reverse("club:shop_quote_create")
+        self.client.force_login(self.coach)
+        detail = self.client.get(detail_url)
+        self.assertContains(detail, "次の見積を作成")
+        self.assertContains(detail, f'href="{create_url}"')
+        self.assertNotContains(detail, f"{create_url}?inquiry=")
+        create = self.client.get(create_url)
+        self.assertIsNone(create.context["form"].initial.get("customer"))
+        self.assertIsNone(create.context["form"].initial.get("guest_name"))
+        self.assertEqual(len(create.context["formset"].forms), 1)
+        self.assertFalse(create.context["formset"].forms[0].initial.get("description"))
+        for name in ("accounting_sale_amount", "accounting_purchase_cost", "procurement_coach"):
+            self.assertNotIn(name, create.context["form"].fields)
+
+        self.client.force_login(self.customer)
+        self.assertNotContains(self.client.get(detail_url), "次の見積を作成")
 
 
 class ShopAllocationTests(TestCase):

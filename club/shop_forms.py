@@ -1,5 +1,5 @@
 from django import forms
-from django.forms import formset_factory
+from django.forms import BaseFormSet, formset_factory
 from decimal import Decimal
 
 from .models import ShopInquiry, User
@@ -104,9 +104,34 @@ class ShopQuoteItemForm(forms.Form):
             self.add_error("sale_price", "販売価格は定価以下にしてください。")
         return data
 
+    def has_changed(self):
+        """Treat an extra row containing only widget defaults as unused."""
+        if self.initial.get("description"):
+            return super().has_changed()
+        meaningful_fields = ("description", "list_price", "sale_price", "discount_rate", "cost_price")
+        if any(str(self.data.get(self.add_prefix(name), "")).strip() for name in meaningful_fields):
+            return True
+        quantity = str(self.data.get(self.add_prefix("quantity"), "")).strip()
+        pricing_source = str(self.data.get(self.add_prefix("pricing_source"), "")).strip()
+        return quantity not in ("", "1") or pricing_source not in ("", "sale")
+
+
+class ShopQuoteItemBaseFormSet(BaseFormSet):
+    default_error_messages = {
+        **BaseFormSet.default_error_messages,
+        "too_few_forms": "見積明細を1件以上入力してください。",
+    }
+
+    def _construct_form(self, i, **kwargs):
+        form = super()._construct_form(i, **kwargs)
+        if i >= self.initial_form_count():
+            form.empty_permitted = True
+        return form
+
 
 ShopQuoteItemFormSet = formset_factory(
-    ShopQuoteItemForm, extra=3, min_num=1, validate_min=True, can_delete=True,
+    ShopQuoteItemForm, formset=ShopQuoteItemBaseFormSet,
+    extra=0, min_num=1, validate_min=True, can_delete=True,
 )
 
 
