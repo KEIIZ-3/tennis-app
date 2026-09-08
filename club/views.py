@@ -5726,13 +5726,47 @@ def coach_expense_manage(request):
     rows_by_month = defaultdict(list)
     for row in displayed_rows:
         rows_by_month[row["application_month"]].append(row)
+
+    category_choices = list(CoachExpense.CATEGORY_CHOICES)
+    valid_history_categories = {value for value, _label in category_choices}
+    selected_history_category = (request.GET.get("category") or "all").strip()
+    if selected_history_category not in valid_history_categories:
+        selected_history_category = "all"
+    category_labels = dict(category_choices)
+
     expense_month_groups = []
     for application_month in (previous_month, month_start, next_month):
-        rows = rows_by_month[application_month]
+        all_rows = rows_by_month[application_month]
+        rows = [
+            row for row in all_rows
+            if selected_history_category == "all"
+            or row["expense"].category == selected_history_category
+        ]
+        category_groups = []
+        for category_value, category_label in category_choices:
+            category_rows_for_month = [
+                row for row in rows if row["expense"].category == category_value
+            ]
+            if category_rows_for_month:
+                category_groups.append({
+                    "value": category_value,
+                    "label": category_label,
+                    "rows": category_rows_for_month,
+                    "subtotal": sum(
+                        int(row["expense"].amount or 0)
+                        for row in category_rows_for_month
+                    ),
+                })
         expense_month_groups.append({
             "month": application_month,
             "rows": rows,
+            "category_groups": category_groups,
             "total": sum(int(row["expense"].amount or 0) for row in rows),
+            "total_label": (
+                "適用経費合計"
+                if selected_history_category == "all"
+                else f"{category_labels[selected_history_category]}合計"
+            ),
         })
 
     current_month_meta_rows = rows_by_month[month_start]
@@ -5785,6 +5819,7 @@ def coach_expense_manage(request):
         {
             "expense_month_groups": expense_month_groups,
             "expense_category_choices": CoachExpense.CATEGORY_CHOICES,
+            "selected_history_category": selected_history_category,
             "expense_type_choices": EXPENSE_TYPE_CHOICES,
             "expense_receipt_choices": EXPENSE_RECEIPT_CHOICES,
             "expense_receipt_check_choices": EXPENSE_RECEIPT_CHECK_CHOICES,
