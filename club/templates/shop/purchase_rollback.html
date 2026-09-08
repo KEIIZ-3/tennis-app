@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}購入を見積へ差し戻す{% endblock %}
+{% block content %}
+<section class="card" style="max-width:680px;margin:auto">
+  <h1>購入を見積へ差し戻す</h1>
+  <p>この購入を見積編集可能な状態へ差し戻します。旧購入履歴は保持され、月次精算対象から除外されます。修正後に再度購入確定してください。</p>
+  <dl>
+    <dt>見積番号</dt><dd>{{ purchase.quote.quote_number }}</dd>
+    <dt>旧販売価格</dt><dd>{{ purchase.amount }}円</dd>
+    <dt>旧仕入額</dt><dd>{{ purchase.cost_total }}円</dd>
+  </dl>
+  <form method="post">
+    {% csrf_token %}
+    <label for="reason">差し戻し理由（必須）</label>
+    <textarea id="reason" name="reason" required rows="4">{{ request.POST.reason }}</textarea>
+    <div class="actions">
+      <button class="btn btn-danger" type="submit">見積へ差し戻す</button>
+      <a class="btn" href="{% url 'club:shop_quote_detail' purchase.quote_id %}">戻る</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

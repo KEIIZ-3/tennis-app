@@ -40,6 +40,7 @@
     <a class="btn" href="{% url 'club:shop_quote_pdf_download' quote.pk %}">PDFをダウンロード</a>
     {% if can_manage %}<a class="btn btn-primary" href="{% url 'club:shop_quote_create' %}">次の見積を作成</a>{% endif %}
     {% if can_manage and quote.status != 'purchased' and quote.status != 'canceled' %}<a class="btn" href="{% url 'club:shop_quote_edit' quote.pk %}">見積を編集</a>{% endif %}
+    {% if can_edit_accounting and active_purchase %}<a class="btn btn-danger" href="{% url 'club:shop_purchase_rollback' active_purchase.pk %}">見積へ差し戻す</a>{% endif %}
     {% if not can_manage and quote.status == 'sent' %}<form method="post" action="{% url 'club:shop_quote_purchase_request' quote.pk %}">{% csrf_token %}<button class="btn btn-primary">この内容で購入を希望する</button></form>{% endif %}
     {% if can_edit_accounting %}{% if quote.status == 'sent' or quote.status == 'purchase_requested' %}
       {% if accounting.complete %}

@@ -129,7 +129,7 @@ def request_purchase(*, quote, customer):
 @transaction.atomic
 def update_quote(*, quote, customer, items, note="", accounting=None, actor=None, guest_name=""):
     quote = ShopQuote.objects.select_for_update().prefetch_related("items").get(pk=quote.pk)
-    if quote.status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED) or hasattr(quote, "purchase"):
+    if quote.status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED) or quote.active_purchase:
         raise ValidationError("購入確定済みまたは取消済みの見積は編集できません。")
     rows = []
     for order, data in enumerate(items):
@@ -169,7 +169,9 @@ def confirm_quote_purchase(*, quote, actor):
     if not can_manage_shop_accounting(actor):
         raise PermissionError("adminのみ購入を確定できます。")
     quote = ShopQuote.objects.select_for_update().prefetch_related("items").get(pk=quote.pk)
-    existing = ShopPurchase.objects.filter(quote=quote).first()
+    existing = ShopPurchase.objects.filter(
+        quote=quote, status=ShopPurchase.STATUS_CONFIRMED,
+    ).first()
     if existing:
         return existing, False
     if quote.status not in (ShopQuote.STATUS_SENT, ShopQuote.STATUS_PURCHASE_REQUESTED):
@@ -182,34 +184,34 @@ def confirm_quote_purchase(*, quote, actor):
     )
     quote.refresh_from_db()
     accounting = validate_quote_accounting_for_confirmation(quote)
-    purchase, created = ShopPurchase.objects.get_or_create(
-        quote=quote,
-        defaults={"customer": quote.customer, "guest_name": quote.guest_name,
-                  "description": "\n".join(i.description for i in quote.items.all()),
-                  "quantity": sum(i.quantity for i in quote.items.all()), "amount": accounting["sale_amount"],
-                  "cost_total": accounting["purchase_cost"], "procurement_coach": accounting["procurement_coach"],
-                  "profit_amount_snapshot": accounting["profit"],
-                  "profit_rate_snapshot": profit_rate(accounting["sale_amount"], accounting["profit"]),
-                  "accounting_configured": True,
-                  "note": quote.note, "registered_by": actor},
+    purchase = ShopPurchase(
+        quote=quote, customer=quote.customer, guest_name=quote.guest_name,
+        description="\n".join(i.description for i in quote.items.all()),
+        quantity=sum(i.quantity for i in quote.items.all()), amount=accounting["sale_amount"],
+        cost_total=accounting["purchase_cost"], procurement_coach=accounting["procurement_coach"],
+        profit_amount_snapshot=accounting["profit"],
+        profit_rate_snapshot=profit_rate(accounting["sale_amount"], accounting["profit"]),
+        accounting_configured=True, note=quote.note, registered_by=actor,
     )
-    if created:
-        purchase.full_clean()
-        ShopRevenueAllocation.objects.bulk_create([
-            ShopRevenueAllocation(purchase=purchase, coach=coach, amount=accounting["amounts"][coach.pk], created_by=actor)
-            for coach in accounting["coaches"].values()
-        ])
-        ShopRevenueAllocationAudit.objects.create(
-            purchase=purchase, allocation_snapshot=accounting_snapshot(
-                sale_amount=accounting["sale_amount"], purchase_cost=accounting["purchase_cost"],
-                procurement_coach=accounting["procurement_coach"], amounts=accounting["amounts"],
-            ), changed_by=actor,
+    purchase.full_clean()
+    purchase.save()
+    ShopRevenueAllocation.objects.bulk_create([
+        ShopRevenueAllocation(purchase=purchase, coach=coach, amount=accounting["amounts"][coach.pk], created_by=actor)
+        for coach in accounting["coaches"].values()
+    ])
+    ShopRevenueAllocationAudit.objects.create(
+        purchase=purchase, allocation_snapshot=accounting_snapshot(
+            sale_amount=accounting["sale_amount"], purchase_cost=accounting["purchase_cost"],
+            procurement_coach=accounting["procurement_coach"], amounts=accounting["amounts"],
+        ), changed_by=actor,
+    )
+    quote.status = ShopQuote.STATUS_PURCHASED
+    quote.save(update_fields=["status", "updated_at"])
+    if quote.inquiry_id:
+        ShopInquiry.objects.filter(pk=quote.inquiry_id).update(
+            status=ShopInquiry.STATUS_PURCHASED, purchased_at=purchase.purchased_at,
         )
-        quote.status = ShopQuote.STATUS_PURCHASED
-        quote.save(update_fields=["status", "updated_at"])
-        if quote.inquiry_id:
-            ShopInquiry.objects.filter(pk=quote.inquiry_id).update(status=ShopInquiry.STATUS_PURCHASED, purchased_at=purchase.purchased_at)
-    return purchase, created
+    return purchase, True
 
 
 @transaction.atomic
@@ -261,7 +263,7 @@ def save_quote_accounting(*, quote, actor, sale_amount=None, purchase_cost=None,
     if not can_manage_shop_accounting(actor):
         raise PermissionError("adminのみ内部精算情報を変更できます。")
     quote = ShopQuote.objects.select_for_update().get(pk=quote.pk)
-    if quote.status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED) or ShopPurchase.objects.filter(quote=quote).exists():
+    if quote.status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED) or quote.active_purchase:
         raise ValidationError("購入確定済みまたは取消済みの見積は編集できません。")
     main = _main_coach_map()
     coach_id = _normalize_main_coach_id(procurement_coach, main)
@@ -434,4 +436,51 @@ def cancel_purchase(*, purchase, actor):
         raise ValidationError("このShop販売は既に取り消されています。")
     purchase.status = ShopPurchase.STATUS_CANCELED
     purchase.save(update_fields=["status", "updated_at"])
+    return purchase
+
+
+@transaction.atomic
+def rollback_purchase_to_quote(*, purchase, actor, reason):
+    if not can_manage_shop_accounting(actor):
+        raise PermissionError("adminのみ見積へ差し戻せます。")
+    reason = (reason or "").strip()
+    if not reason:
+        raise ValidationError("差し戻し理由を入力してください。")
+    purchase = ShopPurchase.objects.select_for_update().select_related("quote").get(pk=purchase.pk)
+    if not purchase.quote_id:
+        raise ValidationError("見積に紐づかない購入は差し戻せません。")
+    quote = ShopQuote.objects.select_for_update().get(pk=purchase.quote_id)
+    _ensure_purchase_month_open(purchase)
+    if purchase.status != ShopPurchase.STATUS_CONFIRMED:
+        raise ValidationError("購入確定中のShop購入だけを差し戻せます。")
+    active_ids = list(ShopPurchase.objects.filter(
+        quote=quote, status=ShopPurchase.STATUS_CONFIRMED,
+    ).values_list("pk", flat=True))
+    if active_ids != [purchase.pk]:
+        raise ValidationError("同一見積の購入確定状態が不整合です。")
+    snapshot = accounting_snapshot(
+        sale_amount=purchase.amount, purchase_cost=purchase.cost_total,
+        procurement_coach=purchase.procurement_coach_id,
+        amounts={row.coach_id: row.amount for row in purchase.allocations.all()},
+    )
+    snapshot.update({
+        "purchase_id": purchase.pk, "quote_id": quote.pk,
+        "profit_amount": purchase.profit_amount_snapshot,
+        "profit_rate": str(purchase.profit_rate_snapshot) if purchase.profit_rate_snapshot is not None else None,
+        "status": purchase.status,
+    })
+    ShopRevenueAllocationAudit.objects.create(
+        purchase=purchase, quote=quote, previous_snapshot=snapshot,
+        allocation_snapshot=snapshot, event_type=ShopRevenueAllocationAudit.EVENT_ROLLBACK,
+        reason=reason, changed_by=actor,
+    )
+    purchase.status = ShopPurchase.STATUS_REVERTED
+    purchase.save(update_fields=["status", "updated_at"])
+    quote.status = ShopQuote.STATUS_SENT
+    quote.save(update_fields=["status", "updated_at"])
+    if quote.inquiry_id:
+        ShopInquiry.objects.filter(pk=quote.inquiry_id).update(
+            status=ShopInquiry.STATUS_QUOTED, purchased_at=None,
+            quoted_amount=quote.total,
+        )
     return purchase
