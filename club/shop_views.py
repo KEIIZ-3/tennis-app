@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.db.models import F
 from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 
@@ -73,9 +74,15 @@ def quote_purchase_request(request, pk):
 def coach_shop(request):
     if not _coach(request.user): return HttpResponseForbidden()
     return render(request, "shop/coach_dashboard.html", {
-        "inquiries": ShopInquiry.objects.select_related("customer", "assigned_coach")[:100],
-        "quotes": ShopQuote.objects.select_related("customer").prefetch_related("items")[:100],
-        "purchases": ShopPurchase.objects.select_related("customer")[:100],
+        "inquiries": ShopInquiry.objects.filter(quotes__isnull=True).select_related(
+            "customer", "assigned_coach"
+        )[:100],
+        "quotes": ShopQuote.objects.exclude(status=ShopQuote.STATUS_PURCHASED).select_related(
+            "customer"
+        ).prefetch_related("items")[:100],
+        "purchases": ShopPurchase.objects.select_related("customer", "quote").order_by(
+            F("quote__quote_number").desc(nulls_last=True), "-purchased_at", "-pk"
+        )[:100],
         "can_edit_accounting": can_manage_shop_accounting(request.user),
     })
 
