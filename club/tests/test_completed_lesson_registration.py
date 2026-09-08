@@ -238,15 +238,16 @@ class CompletedLessonUnifiedViewTests(TestCase):
         self.assertContains(response, "登録区分が変わりました")
         self.assertFalse(CompletedLessonRegistration.objects.exists())
 
-    def test_future_post_uses_normal_availability_flow_only(self):
+    def test_future_post_redirects_to_canonical_availability_form_without_saving(self):
         response = self.client.post(reverse("club:completed_lesson_register"), {
             "date": "2099-09-06", "start_time": "09:00", "end_time": "11:00",
             "displayed_mode": "scheduled", "lesson_type": Reservation.LESSON_GENERAL,
             "coach": self.coach.pk, "court": self.court.pk, "capacity": "5",
             "note": "", "idempotency_key": "future",
         })
-        if response.status_code != 302:
-            self.fail(" / ".join(str(message) for message in response.context["messages"]))
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(CoachAvailability.objects.count(), 1)
+        self.assertRedirects(
+            response,
+            f"{reverse('club:coach_availability_create')}?date=2099-09-06&source=calendar",
+        )
+        self.assertFalse(CoachAvailability.objects.exists())
         self.assertFalse(CompletedLessonRegistration.objects.exists())

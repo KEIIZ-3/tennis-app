@@ -42,15 +42,20 @@ class PastSingleLessonCreationTests(TestCase):
         }
 
     @patch("club.views.timezone.localdate", return_value=today)
-    def test_calendar_shows_unified_creation_link_for_past_today_and_future(self, _localdate):
+    def test_calendar_routes_past_to_completed_and_today_future_to_availability(self, _localdate):
         response = self.client.get(
             reverse("club:lesson_calendar"),
             {"year": self.today.year, "month": self.today.month},
         )
 
-        self.assertContains(response, f"?date={(self.today - timedelta(days=1)).isoformat()}")
-        self.assertContains(response, f"?date={self.today.isoformat()}")
-        self.assertContains(response, f"?date={(self.today + timedelta(days=1)).isoformat()}")
+        completed_url = reverse("club:completed_lesson_register")
+        availability_url = reverse("club:coach_availability_create")
+        past_query = f"{completed_url}?date={(self.today - timedelta(days=1)).isoformat()}&amp;source=calendar"
+        today_query = f"{availability_url}?date={self.today.isoformat()}&amp;source=calendar"
+        future_query = f"{availability_url}?date={(self.today + timedelta(days=1)).isoformat()}&amp;source=calendar"
+        self.assertContains(response, past_query, count=2)
+        self.assertContains(response, today_query, count=2)
+        self.assertContains(response, future_query, count=2)
 
     @patch("club.views.timezone.localdate", return_value=today)
     def test_past_date_get_parameter_is_rejected(self, _localdate):

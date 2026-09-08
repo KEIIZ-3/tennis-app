@@ -89,6 +89,12 @@ class CalendarSingleLessonCreationTests(TestCase):
         self.assertEqual(form["lesson_type"].value(), CoachAvailability.LESSON_GENERAL)
         self.assertEqual(form["coach"].value(), self.coach.pk)
         self.assertContains(response, 'name="source" value="calendar"')
+        for field_name in (
+            "target_level", "target_level_2", "coach", "coach_2",
+            "substitute_coach", "coach_count", "court_count", "capacity",
+        ):
+            with self.subTest(field_name=field_name):
+                self.assertContains(response, f'name="{field_name}"')
 
     def test_form_includes_both_coach_roles_and_second_target_level(self):
         form = CoachAvailabilityForm(request_user=self.staff)
@@ -307,11 +313,20 @@ class CalendarSingleLessonCreationTests(TestCase):
 
     def test_two_coaches_are_canonical_and_totals_use_capacity_policy(self):
         data = self._post_data()
-        data.update({"coach_2": self.other_coach.pk, "coach_count": 99, "court_count": 99, "capacity": 99})
+        data.update({
+            "coach_2": self.other_coach.pk,
+            "target_level_2": User.LEVEL_INTERMEDIATE,
+            "coach_count": 99,
+            "court_count": 99,
+            "capacity": 99,
+        })
         form = CoachAvailabilityForm(data=data, request_user=self.staff)
         self.assertTrue(form.is_valid(), form.errors)
         availability = form.save()
         self.assertEqual((availability.coach_count, availability.court_count, availability.capacity), (2, 2, 10))
+        self.assertEqual(availability.target_level, User.LEVEL_BEGINNER)
+        self.assertEqual(availability.target_level_2, User.LEVEL_INTERMEDIATE)
+        self.assertEqual(availability.coach_2, self.other_coach)
         self.assertEqual(availability.coach_display_names(), f"{self.coach.display_name()} / {self.other_coach.display_name()}")
 
     def test_one_coach_totals_are_normalized(self):
