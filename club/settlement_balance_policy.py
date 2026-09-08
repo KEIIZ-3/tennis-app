@@ -338,33 +338,15 @@ def _is_court_expense(expense):
 
 
 def _ball_expense_amount_for_month(expense, meta, month_start, next_month):
-    """複数月分の購入総額から、指定精算月だけのボール代を返す。"""
+    """ボール代の全額を canonical な適用月（開始月）だけに計上する。"""
     amount = _money(expense.amount)
     period_start = getattr(expense, "settlement_period_start", None)
-    period_end = getattr(expense, "settlement_period_end", None)
-    if not (period_start and period_end):
+    if not period_start:
         return None
     target_month = month_start.replace(day=1)
-    if not (period_start <= target_month <= period_end):
+    if period_start.replace(day=1) != target_month:
         return None
-
-    try:
-        month_count = (
-            (period_end.year - period_start.year) * 12
-            + period_end.month
-            - period_start.month
-            + 1
-        )
-        month_index = (
-            (target_month.year - period_start.year) * 12
-            + month_start.month
-            - period_start.month
-        )
-        base_amount, remainder = divmod(amount, month_count)
-    except (AttributeError, TypeError, ValueError, ZeroDivisionError):
-        return None
-
-    return base_amount + (1 if month_index < remainder else 0)
+    return amount
 
 
 def _approved_monthly_expenses(month_start, next_month):
@@ -376,8 +358,8 @@ def _approved_monthly_expenses(month_start, next_month):
             Q(expense_date__gte=month_start, expense_date__lt=next_month)
             | Q(
                 category=CoachExpense.CATEGORY_BALL,
-                settlement_period_start__lte=month_start,
-                settlement_period_end__gte=month_start,
+                settlement_period_start__year=month_start.year,
+                settlement_period_start__month=month_start.month,
             )
         )
         .select_related("created_by")

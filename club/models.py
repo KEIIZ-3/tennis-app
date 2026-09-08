@@ -1198,14 +1198,16 @@ class CoachExpense(models.Model):
             raise ValidationError("経費は0円以上にしてください。")
         if self.category == self.CATEGORY_BALL:
             if not self.settlement_period_start or not self.settlement_period_end:
-                raise ValidationError("ボール代の精算対象開始月・終了月を選択してください。")
+                raise ValidationError("ボール代の適用月を選択してください。")
             if self.settlement_period_start.day != 1 or self.settlement_period_end.day != 1:
-                raise ValidationError("ボール代の精算対象月は月単位で指定してください。")
-            if self.settlement_period_start > self.settlement_period_end:
-                raise ValidationError("精算対象終了月は開始月以降にしてください。")
+                raise ValidationError("ボール代の適用月は月単位で指定してください。")
+            if self.settlement_period_start != self.settlement_period_end:
+                raise ValidationError("ボール代の適用月は1か月で指定してください。")
 
     def save(self, *args, **kwargs):
         ensure_accounting_month_is_open(self.expense_date)
+        if self.category == self.CATEGORY_BALL:
+            ensure_accounting_month_is_open(self.settlement_period_start)
         return super().save(*args, **kwargs)
 
 
