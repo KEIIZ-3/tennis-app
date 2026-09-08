@@ -3398,6 +3398,10 @@ class ShopQuote(models.Model):
         from .shop_service import profit_rate
         return profit_rate(self.accounting_sale_amount, self.accounting_profit_amount)
 
+    @property
+    def active_purchase(self):
+        return self.purchases.filter(status=ShopPurchase.STATUS_CONFIRMED).first()
+
 
 class ShopQuoteItem(models.Model):
     quote = models.ForeignKey(ShopQuote, on_delete=models.CASCADE, related_name="items")
@@ -3440,10 +3444,14 @@ class ShopQuoteItem(models.Model):
 class ShopPurchase(models.Model):
     STATUS_CONFIRMED = "confirmed"
     STATUS_CANCELED = "canceled"
-    STATUS_CHOICES = ((STATUS_CONFIRMED, "購入確定"), (STATUS_CANCELED, "取消"))
+    STATUS_REVERTED = "reverted"
+    STATUS_CHOICES = (
+        (STATUS_CONFIRMED, "購入確定"), (STATUS_CANCELED, "取消"),
+        (STATUS_REVERTED, "差し戻し済み"),
+    )
     customer = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="shop_purchases")
     guest_name = models.CharField(max_length=120, blank=True, default="")
-    quote = models.OneToOneField(ShopQuote, null=True, blank=True, on_delete=models.PROTECT, related_name="purchase")
+    quote = models.ForeignKey(ShopQuote, null=True, blank=True, on_delete=models.PROTECT, related_name="purchases")
     description = models.TextField()
     quantity = models.PositiveIntegerField(default=1)
     amount = models.PositiveIntegerField()
@@ -3472,6 +3480,10 @@ class ShopPurchase(models.Model):
                     | (models.Q(customer__isnull=True) & ~models.Q(guest_name=""))
                 ),
                 name="shop_purchase_exactly_one_buyer",
+            ),
+            models.UniqueConstraint(
+                fields=["quote"], condition=models.Q(status="confirmed"),
+                name="unique_confirmed_shop_purchase_per_quote",
             ),
         ]
 
@@ -3530,9 +3542,13 @@ class ShopRevenueAllocation(models.Model):
 
 
 class ShopRevenueAllocationAudit(models.Model):
+    EVENT_ACCOUNTING = "accounting"
+    EVENT_ROLLBACK = "rollback"
     purchase = models.ForeignKey(ShopPurchase, null=True, blank=True, on_delete=models.PROTECT, related_name="allocation_audits")
     quote = models.ForeignKey(ShopQuote, null=True, blank=True, on_delete=models.PROTECT, related_name="accounting_audits")
     previous_snapshot = models.JSONField(default=dict, blank=True)
     allocation_snapshot = models.JSONField(default=list)
+    event_type = models.CharField(max_length=20, default=EVENT_ACCOUNTING)
+    reason = models.TextField(blank=True, default="")
     changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="shop_allocation_audits")
     changed_at = models.DateTimeField(auto_now_add=True)

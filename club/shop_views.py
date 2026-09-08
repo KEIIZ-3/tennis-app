@@ -9,7 +9,8 @@ from .shop_forms import DirectPurchaseForm, ShopInquiryForm, ShopQuoteForm, Shop
 from .shop_pdf import build_quote_pdf
 from .shop_service import (allocation_summary, confirm_quote_purchase, create_direct_purchase,
                            cancel_purchase, create_inquiry, create_quote, request_purchase, save_allocations,
-                           quote_accounting_summary, update_quote, can_manage_shop_accounting)
+                           quote_accounting_summary, rollback_purchase_to_quote,
+                           update_quote, can_manage_shop_accounting)
 from .settlement_balance_policy import main_coaches
 
 
@@ -55,7 +56,8 @@ def quote_detail(request, pk):
     amounts = {int(key): int(value) for key, value in (quote.planned_profit_allocations or {}).items()}
     return render(request, "shop/quote_detail.html", {"quote": quote, "can_manage": _coach(request.user),
         "can_edit_accounting": can_account, "accounting": quote_accounting_summary(quote) if can_account else None,
-        "accounting_rows": [{"coach": coach, "amount": amounts.get(coach.pk, 0)} for coach in coaches]})
+        "accounting_rows": [{"coach": coach, "amount": amounts.get(coach.pk, 0)} for coach in coaches],
+        "active_purchase": quote.active_purchase if can_account else None})
 
 
 @login_required
@@ -109,7 +111,7 @@ def quote_create(request):
 def quote_edit(request, pk):
     if not _coach(request.user): return HttpResponseForbidden()
     quote = get_object_or_404(ShopQuote.objects.prefetch_related("items"), pk=pk)
-    if quote.status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED) or hasattr(quote, "purchase"):
+    if quote.status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED) or quote.active_purchase:
         messages.error(request, "購入確定済みまたは取消済みの見積は編集できません。")
         return redirect("club:shop_quote_detail", pk=pk)
     initial = {"purchaser_type": quote.purchaser_type, "customer": quote.customer,
@@ -230,3 +232,24 @@ def purchase_cancel(request, pk):
     except ValidationError as exc: messages.error(request, "; ".join(exc.messages))
     else: messages.success(request, "Shop販売を取り消しました。")
     return redirect("club:shop_coach")
+
+
+@login_required
+def purchase_rollback(request, pk):
+    if not can_manage_shop_accounting(request.user):
+        return HttpResponseForbidden()
+    purchase = get_object_or_404(
+        ShopPurchase.objects.select_related("quote"), pk=pk,
+        status=ShopPurchase.STATUS_CONFIRMED, quote__isnull=False,
+    )
+    if request.method == "POST":
+        try:
+            rollback_purchase_to_quote(
+                purchase=purchase, actor=request.user, reason=request.POST.get("reason"),
+            )
+        except ValidationError as exc:
+            messages.error(request, "; ".join(exc.messages))
+        else:
+            messages.success(request, "購入を見積へ差し戻しました。修正後に再度購入を確定してください。")
+            return redirect("club:shop_quote_detail", pk=purchase.quote_id)
+    return render(request, "shop/purchase_rollback.html", {"purchase": purchase})
