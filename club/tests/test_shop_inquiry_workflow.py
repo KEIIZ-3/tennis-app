@@ -119,7 +119,10 @@ class ShopWorkflowTests(TestCase):
                 self.main_coaches[2].pk: 2400})
         item = quote.items.first()
         self.assertEqual((item.unit_profit, item.profit_rate, item.line_profit), (7200, 20.5, 14400))
-        self.assertEqual(profit_summary(quote.items.all()), {"revenue": 78400, "cost": 61000, "profit": 17400, "margin": Decimal("22.2")})
+        self.assertEqual(profit_summary(quote.items.all()), {
+            "revenue": 78400, "cost": 61000, "profit": 17400,
+            "margin": Decimal("22.2"), "costs_complete": True,
+        })
         request_purchase(quote=quote, customer=self.customer)
         purchase, _ = confirm_quote_purchase(quote=quote, actor=self.admin)
         self.assertEqual(purchase.cost_total, 61000)
@@ -324,7 +327,10 @@ class ShopWorkflowTests(TestCase):
     def test_missing_cost_is_not_treated_as_zero_and_customer_outputs_hide_profit(self):
         quote = self.make_quote()
         quote.items.filter(sort_order=0).update(cost_price=None)
-        self.assertIsNone(profit_summary(quote.items.all())["profit"])
+        summary = profit_summary(quote.items.all())
+        self.assertEqual(summary["cost"], 1500)
+        self.assertFalse(summary["costs_complete"])
+        self.assertIsNone(summary["profit"])
         self.client.force_login(self.customer)
         html = self.client.get(reverse("club:shop_quote_detail", args=[quote.pk])).content.decode()
         self.assertNotIn("原価", html)
@@ -646,6 +652,89 @@ class ShopWorkflowTests(TestCase):
         quote.refresh_from_db()
         self.assertEqual((quote.accounting_sale_amount, quote.accounting_purchase_cost), (36100, 30000))
         self.assertEqual(summary["profit"], 6100)
+
+    def test_admin_quote_cost_summary_ignores_empty_and_deleted_rows(self):
+        self.client.force_login(self.admin)
+        data = {
+            "purchaser_type": "member", "customer": str(self.customer.pk),
+            "guest_name": "", "inquiry": "", "note": "",
+            "accounting_sale_amount": "1", "accounting_purchase_cost": "1",
+            "procurement_coach": "", "items-TOTAL_FORMS": "6",
+            "items-INITIAL_FORMS": "0", "items-MIN_NUM_FORMS": "1",
+            "items-MAX_NUM_FORMS": "1000",
+        }
+        rows = [
+            ("Tecnifibre XR3 1.30mm", "1", "3465", "3465", "2508", ""),
+            ("Wilson NXT 1.30mm", "1", "2435", "2435", "1947", ""),
+            ("ガット張り代", "2", "1200", "1200", "0", ""),
+            ("削除商品", "3", "1000", "900", "700", "on"),
+            ("", "1", "", "", "", ""),
+            ("", "1", "", "", "", ""),
+        ]
+        for index, (description, quantity, list_price, sale_price, cost_price, delete) in enumerate(rows):
+            data.update({
+                f"items-{index}-description": description,
+                f"items-{index}-quantity": quantity,
+                f"items-{index}-list_price": list_price,
+                f"items-{index}-sale_price": sale_price,
+                f"items-{index}-cost_price": cost_price,
+                f"items-{index}-pricing_source": "sale",
+            })
+            if delete:
+                data[f"items-{index}-DELETE"] = delete
+        response = self.client.post(reverse("club:shop_quote_create"), data)
+        quote = ShopQuote.objects.latest("pk")
+        self.assertRedirects(response, reverse("club:shop_quote_detail", args=[quote.pk]))
+        self.assertEqual(quote.items.count(), 3)
+        self.assertEqual(profit_summary(quote.items.all()), {
+            "revenue": 8300, "cost": 4455, "profit": 3845,
+            "margin": Decimal("46.3"), "costs_complete": True,
+        })
+        self.assertEqual(
+            (quote.accounting_sale_amount, quote.accounting_purchase_cost),
+            (8300, 4455),
+        )
+
+    def test_partial_cost_is_saved_but_confirmation_requires_every_cost(self):
+        quote = create_quote(customer=self.customer, creator=self.coach, items=[
+            {"description": "商品A", "quantity": 1, "list_price": 5000,
+             "sale_price": 5000, "cost_price": 5000},
+            {"description": "商品B", "quantity": 2, "list_price": 2000,
+             "sale_price": 2000, "cost_price": 1500},
+            {"description": "商品C", "quantity": 1, "list_price": 1000,
+             "sale_price": 1000, "cost_price": None},
+        ])
+        summary = save_quote_accounting(
+            quote=quote, actor=self.admin, sale_amount=1, purchase_cost=1,
+            procurement_coach=self.main_coaches[0], amounts={},
+        )
+        quote.refresh_from_db()
+        self.assertEqual((quote.accounting_sale_amount, quote.accounting_purchase_cost), (10000, 8000))
+        self.assertIsNone(summary["profit"])
+        with self.assertRaisesMessage(ValidationError, "原価未入力の明細"):
+            confirm_quote_purchase(quote=quote, actor=self.admin)
+
+    def test_confirmation_rejects_noncanonical_saved_accounting_totals(self):
+        quote = self.make_quote()
+        quote.accounting_sale_amount = 1
+        quote.accounting_purchase_cost = 1
+        quote.save(update_fields=["accounting_sale_amount", "accounting_purchase_cost"])
+        from club.shop_service import validate_quote_accounting_for_confirmation
+        with self.assertRaisesMessage(ValidationError, "売上額を見積合計と一致"):
+            validate_quote_accounting_for_confirmation(quote)
+
+        quote.accounting_sale_amount = quote.total
+        quote.save(update_fields=["accounting_sale_amount"])
+        with self.assertRaisesMessage(ValidationError, "仕入額を原価合計と一致"):
+            validate_quote_accounting_for_confirmation(quote)
+
+    def test_admin_quote_form_exposes_partial_cost_warning_and_pending_states(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse("club:shop_quote_create"))
+        self.assertContains(response, "原価未入力の商品があります")
+        self.assertContains(response, "原価未入力あり")
+        self.assertContains(response, "利益未確定")
+        self.assertContains(response, "accountingCost.value=cost")
 
 
 class ShopAllocationTests(TestCase):

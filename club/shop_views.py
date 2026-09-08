@@ -92,7 +92,7 @@ def quote_create(request):
     form = ShopQuoteForm(request.POST or None, initial=initial, can_edit_accounting=can_account)
     formset = ShopQuoteItemFormSet(request.POST or None, prefix="items", form_kwargs={"can_edit_accounting": can_account})
     if request.method == "POST" and form.is_valid() and formset.is_valid():
-        items = [row for row in formset.cleaned_data if row]
+        items = [row for row in formset.cleaned_data if row and not row.get("DELETE")]
         try:
             quote = create_quote(customer=form.cleaned_data["customer"], guest_name=form.cleaned_data["guest_name"], creator=request.user,
                 inquiry=form.cleaned_data.get("inquiry"), note=form.cleaned_data["note"], items=items,
