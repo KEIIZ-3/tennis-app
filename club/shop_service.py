@@ -446,7 +446,7 @@ def rollback_purchase_to_quote(*, purchase, actor, reason):
     reason = (reason or "").strip()
     if not reason:
         raise ValidationError("差し戻し理由を入力してください。")
-    purchase = ShopPurchase.objects.select_for_update().select_related("quote").get(pk=purchase.pk)
+    purchase = ShopPurchase.objects.select_for_update().get(pk=purchase.pk)
     if not purchase.quote_id:
         raise ValidationError("見積に紐づかない購入は差し戻せません。")
     quote = ShopQuote.objects.select_for_update().get(pk=purchase.quote_id)
