@@ -49,6 +49,14 @@ def _total_paragraph_styles(base, right):
     )
 
 
+def _table_header_paragraphs(small):
+    header_cell = ParagraphStyle("TableHeader", parent=small, textColor=colors.white)
+    return [
+        _paragraph(label, header_cell)
+        for label in ("商品名・内容", "数量", "定価", "値引き", "販売価格", "明細金額")
+    ]
+
+
 def build_quote_pdf(quote):
     """Return an A4 portrait quote with an embedded font and no cost data."""
     _register_font()
@@ -109,8 +117,7 @@ def build_quote_pdf(quote):
         ])),
         _paragraph("お見積内容", section),
     ]
-    rows = [[_paragraph(label, small) for label in
-             ("商品名・内容", "数量", "定価", "値引き", "販売価格", "明細金額")]]
+    rows = [_table_header_paragraphs(small)]
     for item in items:
         rows.append([
             _paragraph(item.description, small), _paragraph(item.quantity, small),

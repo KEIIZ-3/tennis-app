@@ -10,7 +10,8 @@ from django.utils import timezone
 
 from club.models import (MAIN_COACH_NAMES, ShopInquiry, ShopPurchase, ShopQuote,
                          ShopRevenueAllocation, User)
-from club.shop_pdf import _total_paragraph_styles, build_quote_pdf
+from club.shop_pdf import (_table_header_paragraphs, _total_paragraph_styles,
+                           build_quote_pdf)
 from club.shop_service import (allocation_summary, confirm_quote_purchase,
     create_direct_purchase, create_inquiry, create_quote, monthly_shop_allocations,
     one_month_after, request_purchase, save_allocations, sale_price_from_discount,
@@ -523,6 +524,17 @@ class ShopWorkflowTests(TestCase):
         label, amount = _total_paragraph_styles(base, base)
         self.assertEqual(label.textColor, colors.white)
         self.assertEqual(amount.textColor, colors.white)
+
+    def test_pdf_table_headers_use_explicit_white_paragraph_style(self):
+        body_style = ParagraphStyle("test-body", textColor=colors.HexColor("#263746"))
+        headers = _table_header_paragraphs(body_style)
+
+        self.assertEqual(
+            [header.getPlainText() for header in headers],
+            ["商品名・内容", "数量", "定価", "値引き", "販売価格", "明細金額"],
+        )
+        self.assertTrue(all(header.style.textColor == colors.white for header in headers))
+        self.assertEqual(body_style.textColor, colors.HexColor("#263746"))
 
     def test_customer_pdf_wraps_long_japanese_product_names_and_multiple_items(self):
         long_name = "長い日本語商品名" * 12
