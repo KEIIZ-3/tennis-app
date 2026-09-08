@@ -31,12 +31,22 @@ def discount_rate_from_prices(list_price, sale_price):
 def profit_summary(items):
     rows = list(items)
     revenue = sum(int(item.sale_price) * int(item.quantity) for item in rows)
-    if any(item.cost_price is None for item in rows):
-        return {"revenue": revenue, "cost": None, "profit": None, "margin": None}
-    cost = sum(int(item.cost_price) * int(item.quantity) for item in rows)
+    cost = sum(
+        int(item.cost_price) * int(item.quantity)
+        for item in rows if item.cost_price is not None
+    )
+    costs_complete = all(item.cost_price is not None for item in rows)
+    if not costs_complete:
+        return {
+            "revenue": revenue, "cost": cost, "profit": None, "margin": None,
+            "costs_complete": False,
+        }
     profit = revenue - cost
     margin = (Decimal(profit) * 100 / Decimal(revenue)).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP) if revenue else None
-    return {"revenue": revenue, "cost": cost, "profit": profit, "margin": margin}
+    return {
+        "revenue": revenue, "cost": cost, "profit": profit, "margin": margin,
+        "costs_complete": True,
+    }
 
 
 def can_manage_shop_accounting(user):
@@ -164,7 +174,7 @@ def confirm_quote_purchase(*, quote, actor):
         return existing, False
     if quote.status not in (ShopQuote.STATUS_SENT, ShopQuote.STATUS_PURCHASE_REQUESTED):
         raise ValidationError("見積済みまたは購入希望済みの見積のみ購入確定できます。")
-    if profit_summary(quote.items.all())["cost"] is None:
+    if not profit_summary(quote.items.all())["costs_complete"]:
         raise ValidationError("原価未入力の明細があるため購入を確定できません。")
     save_quote_accounting(
         quote=quote, actor=actor, procurement_coach=quote.procurement_coach_id,
@@ -282,20 +292,30 @@ def save_quote_accounting(*, quote, actor, sale_amount=None, purchase_cost=None,
 def quote_accounting_summary(quote):
     amounts = {int(key): int(value) for key, value in (quote.planned_profit_allocations or {}).items()}
     allocated = sum(amounts.values())
-    profit = quote.accounting_profit_amount
-    return {"profit": profit, "rate": quote.accounting_profit_rate, "allocated": allocated,
+    canonical = profit_summary(quote.items.all())
+    profit = quote.accounting_profit_amount if canonical["costs_complete"] else None
+    rate = quote.accounting_profit_rate if canonical["costs_complete"] else None
+    return {"profit": profit, "rate": rate, "allocated": allocated,
             "remaining": None if profit is None else profit - allocated,
-            "complete": profit is not None and quote.procurement_coach_id is not None
+            "complete": canonical["costs_complete"] and profit is not None
+            and quote.procurement_coach_id is not None
             and allocated == profit and quote.accounting_sale_amount == quote.total}
 
 
 def validate_quote_accounting_for_confirmation(quote):
-    quote = ShopQuote.objects.select_related("procurement_coach").get(pk=quote.pk)
+    quote = ShopQuote.objects.select_related("procurement_coach").prefetch_related("items").get(pk=quote.pk)
+    canonical = profit_summary(quote.items.all())
+    if not canonical["costs_complete"]:
+        raise ValidationError("原価未入力の明細があるため購入を確定できません。")
     if quote.accounting_sale_amount is None or quote.accounting_purchase_cost is None or not quote.procurement_coach_id:
         raise ValidationError("購入確定前に内部精算情報の売上額・仕入額・仕入コーチを入力してください。")
-    if quote.accounting_sale_amount != quote.total:
+    if quote.accounting_sale_amount != canonical["revenue"]:
         raise ValidationError(
-            f"内部精算情報の売上額を見積合計と一致させてください。見積合計: {quote.total:,}円"
+            f"内部精算情報の売上額を見積合計と一致させてください。見積合計: {canonical['revenue']:,}円"
+        )
+    if quote.accounting_purchase_cost != canonical["cost"]:
+        raise ValidationError(
+            f"内部精算情報の仕入額を原価合計と一致させてください。原価合計: {canonical['cost']:,}円"
         )
     main = _main_coach_map()
     amounts = {int(key): int(value) for key, value in (quote.planned_profit_allocations or {}).items()}
