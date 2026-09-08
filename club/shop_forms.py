@@ -46,6 +46,9 @@ class ShopQuoteForm(forms.Form):
         self.fields["procurement_coach"].choices = [('', '---------')] + [
             (str(coach.pk), coach.display_name()) for coach in main_coaches()
         ]
+        if can_edit_accounting:
+            self.fields["accounting_sale_amount"].widget.attrs["readonly"] = True
+            self.fields["accounting_purchase_cost"].widget.attrs["readonly"] = True
         if not can_edit_accounting:
             for name in ("accounting_sale_amount", "accounting_purchase_cost", "procurement_coach"):
                 self.fields.pop(name)
@@ -82,6 +85,11 @@ class ShopQuoteItemForm(forms.Form):
     discount_rate = forms.DecimalField(label="値引率 (%)", required=False, min_value=Decimal("0"), max_value=Decimal("100"), decimal_places=1, max_digits=4)
     cost_price = forms.IntegerField(label="原価", required=False, min_value=0)
     pricing_source = forms.ChoiceField(required=False, choices=(("sale", "sale"), ("discount", "discount")), widget=forms.HiddenInput(), initial="sale")
+
+    def __init__(self, *args, can_edit_accounting=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not can_edit_accounting:
+            self.fields.pop("cost_price")
 
     def clean(self):
         data = super().clean()

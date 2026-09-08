@@ -42,6 +42,13 @@ def _seal_image():
     return seal
 
 
+def _total_paragraph_styles(base, right):
+    return (
+        ParagraphStyle("TotalLabel", parent=base, fontSize=12, textColor=colors.white),
+        ParagraphStyle("Total", parent=right, fontSize=12, textColor=colors.white),
+    )
+
+
 def build_quote_pdf(quote):
     """Return an A4 portrait quote with an embedded font and no cost data."""
     _register_font()
@@ -63,6 +70,7 @@ def build_quote_pdf(quote):
     section = ParagraphStyle("JapaneseSection", parent=base, fontSize=12, leading=16,
                              spaceBefore=4 * mm, spaceAfter=2 * mm)
     right = ParagraphStyle("JapaneseRight", parent=base, alignment=TA_RIGHT)
+    total_label, total_amount = _total_paragraph_styles(base, right)
 
     title_block = [_paragraph("見積書", heading), _paragraph("ESTIMATE", english)]
     metadata = Table([
@@ -128,8 +136,7 @@ def build_quote_pdf(quote):
     summary = Table([
         [_paragraph("定価合計", base), _paragraph(f"{quote.list_total:,}円", right)],
         [_paragraph("お値引き", base), _paragraph(f"▲{quote.discount_total:,}円", right)],
-        [_paragraph("お見積合計", ParagraphStyle("TotalLabel", parent=base, fontSize=12)),
-         _paragraph(f"{quote.total:,}円", ParagraphStyle("Total", parent=right, fontSize=12))],
+        [_paragraph("お見積合計", total_label), _paragraph(f"{quote.total:,}円", total_amount)],
     ], colWidths=[43 * mm, 39 * mm], hAlign="RIGHT", style=TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), FONT_NAME),
         ("BACKGROUND", (0, -1), (-1, -1), NAVY),

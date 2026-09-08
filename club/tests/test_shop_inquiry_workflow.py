@@ -10,13 +10,15 @@ from django.utils import timezone
 
 from club.models import (MAIN_COACH_NAMES, ShopInquiry, ShopPurchase, ShopQuote,
                          ShopRevenueAllocation, User)
-from club.shop_pdf import build_quote_pdf
+from club.shop_pdf import _total_paragraph_styles, build_quote_pdf
 from club.shop_service import (allocation_summary, confirm_quote_purchase,
     create_direct_purchase, create_inquiry, create_quote, monthly_shop_allocations,
     one_month_after, request_purchase, save_allocations, sale_price_from_discount,
     discount_rate_from_prices, profit_summary, save_quote_accounting, update_quote)
 from club.shop_forms import ShopQuoteForm, ShopQuoteItemForm
 from pypdf import PdfReader
+from reportlab.lib import colors
+from reportlab.lib.styles import ParagraphStyle
 
 
 class ShopWorkflowTests(TestCase):
@@ -69,8 +71,8 @@ class ShopWorkflowTests(TestCase):
 
     def make_quote(self, inquiry=None, configured=True):
         quote = create_quote(customer=self.customer, creator=self.coach, inquiry=inquiry, note="",
-            items=[{"description": "ラケット", "quantity": 1, "list_price": 44000, "sale_price": 35200},
-                   {"description": "グリップ", "quantity": 3, "list_price": 400, "sale_price": 300}])
+            items=[{"description": "ラケット", "quantity": 1, "list_price": 44000, "sale_price": 35200, "cost_price": 28500},
+                   {"description": "グリップ", "quantity": 3, "list_price": 400, "sale_price": 300, "cost_price": 500}])
         if configured:
             save_quote_accounting(quote=quote, actor=self.admin, sale_amount=36100,
                 purchase_cost=30000, procurement_coach=self.main_coaches[0], amounts={
@@ -119,7 +121,7 @@ class ShopWorkflowTests(TestCase):
         self.assertEqual((item.unit_profit, item.profit_rate, item.line_profit), (7200, 20.5, 14400))
         self.assertEqual(profit_summary(quote.items.all()), {"revenue": 78400, "cost": 61000, "profit": 17400, "margin": Decimal("22.2")})
         request_purchase(quote=quote, customer=self.customer)
-        purchase, _ = confirm_quote_purchase(quote=quote, actor=self.coach)
+        purchase, _ = confirm_quote_purchase(quote=quote, actor=self.admin)
         self.assertEqual(purchase.cost_total, 61000)
         self.assertEqual(purchase.profit_amount_snapshot, 17400)
         self.assertEqual(purchase.allocations.count(), 3)
@@ -137,7 +139,7 @@ class ShopWorkflowTests(TestCase):
             purchase_cost=30000, procurement_coach=self.main_coaches[0], amounts={
                 self.main_coaches[0].pk: 3100, self.main_coaches[1].pk: 2000,
                 self.main_coaches[2].pk: 1000})
-        purchase, created = confirm_quote_purchase(quote=quote, actor=self.coach)
+        purchase, created = confirm_quote_purchase(quote=quote, actor=self.admin)
         self.assertTrue(created)
         self.assertIsNone(purchase.customer)
         self.assertEqual((purchase.guest_name, purchase.purchaser_name), ("山田 太郎", "山田 太郎"))
@@ -264,15 +266,15 @@ class ShopWorkflowTests(TestCase):
             purchase_cost=32100, procurement_coach=self.main_coaches[0], amounts={
                 self.main_coaches[0].pk: 2000, self.main_coaches[1].pk: 1000,
                 self.main_coaches[2].pk: 500})
-        self.assertEqual((summary["profit"], summary["remaining"], summary["complete"]), (4000, 500, False))
+        self.assertEqual((summary["profit"], summary["remaining"], summary["complete"]), (6100, 2600, False))
         self.assertEqual(quote.accounting_audits.count(), 1)
-        with self.assertRaisesMessage(ValidationError, "残額: 500円"):
-            confirm_quote_purchase(quote=quote, actor=self.coach)
+        with self.assertRaises(ValidationError):
+            confirm_quote_purchase(quote=quote, actor=self.admin)
         save_quote_accounting(quote=quote, actor=self.admin, sale_amount=36100,
             purchase_cost=32100, procurement_coach=self.main_coaches[0], amounts={
                 self.main_coaches[0].pk: 2000, self.main_coaches[1].pk: 1000,
-                self.main_coaches[2].pk: 1000})
-        purchase, created = confirm_quote_purchase(quote=quote, actor=self.coach)
+                self.main_coaches[2].pk: 3100})
+        purchase, created = confirm_quote_purchase(quote=quote, actor=self.admin)
         self.assertTrue(created)
         original = (purchase.amount, purchase.cost_total, purchase.procurement_coach_id,
                     list(purchase.allocations.order_by("coach_id").values_list("coach_id", "amount")))
@@ -287,14 +289,12 @@ class ShopWorkflowTests(TestCase):
         quote = self.make_quote(configured=False)
         self.client.force_login(self.coach)
         response = self.client.get(reverse("club:shop_quote_detail", args=[quote.pk]))
-        self.assertContains(response, "購入を確定する")
-        self.assertContains(response, "disabled")
-        self.assertContains(response, "購入確定前に内部精算情報を完成させてください。")
-        self.assertContains(response, "売上額未入力")
-        response = self.client.post(reverse("club:shop_quote_confirm", args=[quote.pk]), follow=True)
-        self.assertContains(response, "内部精算情報")
+        self.assertNotContains(response, "購入を確定する")
+        self.assertNotContains(response, "内部精算情報")
+        response = self.client.post(reverse("club:shop_quote_confirm", args=[quote.pk]))
+        self.assertEqual(response.status_code, 403)
         self.assertFalse(ShopPurchase.objects.filter(quote=quote).exists())
-        with self.assertRaisesMessage(ValidationError, "内部精算情報"):
+        with self.assertRaises(PermissionError):
             confirm_quote_purchase(quote=quote, actor=self.coach)
 
     def test_draft_allows_overallocation_and_zero_profit_confirms(self):
@@ -306,6 +306,8 @@ class ShopWorkflowTests(TestCase):
         self.assertEqual(summary["remaining"], -900)
         with self.assertRaisesMessage(ValidationError, "残額: -900円"):
             confirm_quote_purchase(quote=quote, actor=self.admin)
+        quote.items.filter(sort_order=0).update(cost_price=35200)
+        quote.items.filter(sort_order=1).update(cost_price=300)
         summary = save_quote_accounting(quote=quote, actor=self.admin, sale_amount=36100,
             purchase_cost=36100, procurement_coach=self.main_coaches[0], amounts={
                 coach.pk: 0 for coach in self.main_coaches})
@@ -316,11 +318,12 @@ class ShopWorkflowTests(TestCase):
     def test_changed_quote_total_requires_accounting_review(self):
         quote = self.make_quote()
         quote.items.first().delete()
-        with self.assertRaisesMessage(ValidationError, "見積合計"):
-            confirm_quote_purchase(quote=quote, actor=self.coach)
+        with self.assertRaises(ValidationError):
+            confirm_quote_purchase(quote=quote, actor=self.admin)
 
     def test_missing_cost_is_not_treated_as_zero_and_customer_outputs_hide_profit(self):
         quote = self.make_quote()
+        quote.items.filter(sort_order=0).update(cost_price=None)
         self.assertIsNone(profit_summary(quote.items.all())["profit"])
         self.client.force_login(self.customer)
         html = self.client.get(reverse("club:shop_quote_detail", args=[quote.pk])).content.decode()
@@ -340,8 +343,8 @@ class ShopWorkflowTests(TestCase):
         quote = self.make_quote()
         request_purchase(quote=quote, customer=self.customer)
         self.assertFalse(ShopPurchase.objects.exists())
-        purchase, created = confirm_quote_purchase(quote=quote, actor=self.coach)
-        duplicate, created_again = confirm_quote_purchase(quote=quote, actor=self.coach)
+        purchase, created = confirm_quote_purchase(quote=quote, actor=self.admin)
+        duplicate, created_again = confirm_quote_purchase(quote=quote, actor=self.admin)
         self.assertTrue(created)
         self.assertFalse(created_again)
         self.assertEqual(purchase.pk, duplicate.pk)
@@ -415,7 +418,7 @@ class ShopWorkflowTests(TestCase):
         quote.refresh_from_db()
         self.assertEqual(quote.status, ShopQuote.STATUS_PURCHASE_REQUESTED)
         self.client.force_login(self.coach)
-        self.assertContains(self.client.get(url), "購入を確定する")
+        self.assertNotContains(self.client.get(url), "購入を確定する")
 
     def test_quote_purchase_actions_are_separated_by_role(self):
         confirm_text = "購入を確定する"
@@ -436,18 +439,14 @@ class ShopWorkflowTests(TestCase):
 
         self.client.force_login(self.coach)
         response = self.client.get(detail)
-        self.assertContains(response, confirm_text)
-        self.assertNotContains(response, "disabled")
+        self.assertNotContains(response, confirm_text)
         self.assertNotContains(response, request_text)
-        self.assertRedirects(self.client.post(confirm), reverse("club:shop_coach"))
+        self.assertEqual(self.client.post(confirm).status_code, 403)
         sent_quote.refresh_from_db()
-        self.assertEqual(sent_quote.status, ShopQuote.STATUS_PURCHASED)
-        self.assertEqual(ShopPurchase.objects.filter(quote=sent_quote).count(), 1)
-        self.assertNotContains(self.client.get(detail), confirm_text)
-        self.client.post(confirm)
-        self.assertEqual(ShopPurchase.objects.filter(quote=sent_quote).count(), 1)
+        self.assertEqual(sent_quote.status, ShopQuote.STATUS_SENT)
+        self.assertFalse(ShopPurchase.objects.filter(quote=sent_quote).exists())
 
-        for actor in (self.coach, self.admin):
+        for actor in (self.admin,):
             for requested in (False, True):
                 quote = self.make_quote()
                 if requested:
@@ -513,6 +512,12 @@ class ShopWorkflowTests(TestCase):
                     embedded = embedded or any(key in descriptor for key in ("/FontFile", "/FontFile2", "/FontFile3"))
         self.assertTrue(embedded, "Japanese font must be embedded in the PDF")
 
+    def test_pdf_total_label_and_amount_use_explicit_white_paragraph_styles(self):
+        base = ParagraphStyle("test-base")
+        label, amount = _total_paragraph_styles(base, base)
+        self.assertEqual(label.textColor, colors.white)
+        self.assertEqual(amount.textColor, colors.white)
+
     def test_customer_pdf_wraps_long_japanese_product_names_and_multiple_items(self):
         long_name = "長い日本語商品名" * 12
         quote = create_quote(customer=self.customer, creator=self.coach, note="日本語の備考です", items=[
@@ -547,7 +552,7 @@ class ShopWorkflowTests(TestCase):
         self.client.force_login(self.customer)
         self.assertNotContains(self.client.get(detail), "見積を編集")
         self.assertEqual(self.client.get(reverse("club:shop_quote_edit", args=[quote.pk])).status_code, 403)
-        self.client.force_login(self.coach)
+        self.client.force_login(self.admin)
         self.assertContains(self.client.get(detail), "見積を編集")
         edit_page = self.client.get(reverse("club:shop_quote_edit", args=[quote.pk]))
         self.assertContains(edit_page, "HEAD", count=0)
@@ -601,6 +606,46 @@ class ShopWorkflowTests(TestCase):
                     "description": "x", "quantity": 1, "list_price": 1, "sale_price": 1,
                     "cost_price": 1,
                 }])
+
+    def test_non_admin_cannot_view_or_tamper_with_internal_accounting(self):
+        quote = self.make_quote()
+        quote.refresh_from_db()
+        before = (quote.accounting_sale_amount, quote.accounting_purchase_cost,
+                  quote.procurement_coach_id, quote.planned_profit_allocations.copy())
+        first_cost = quote.items.first().cost_price
+        self.client.force_login(self.coach)
+        edit = self.client.get(reverse("club:shop_quote_edit", args=[quote.pk]))
+        for private in ("原価", "利益率", "内部精算情報", "利益分配"):
+            self.assertNotContains(edit, private)
+        response = self._edit_post(quote, [
+            {"description": "更新ラケット", "quantity": "1", "list_price": "44000",
+             "sale_price": "35000", "cost_price": "1", "pricing_source": "sale",
+             "accounting_sale_amount": "1", "accounting_purchase_cost": "1",
+             f"accounting_coach_{self.main_coaches[0].pk}": "99999"},
+            {"description": "グリップ", "quantity": "3", "list_price": "400",
+             "sale_price": "300", "cost_price": "1", "pricing_source": "sale"},
+        ])
+        self.assertEqual(response.status_code, 302)
+        quote.refresh_from_db()
+        self.assertEqual(quote.items.first().cost_price, first_cost)
+        self.assertEqual((quote.accounting_sale_amount, quote.accounting_purchase_cost,
+                          quote.procurement_coach_id, quote.planned_profit_allocations), before)
+        detail = self.client.get(reverse("club:shop_quote_detail", args=[quote.pk]))
+        for private in ("原価", "内部利益集計", "内部精算情報", "利益分配"):
+            self.assertNotContains(detail, private)
+        with self.assertRaises(PermissionError):
+            save_quote_accounting(quote=quote, actor=self.coach, sale_amount=1,
+                                  purchase_cost=1, amounts={})
+
+    def test_admin_accounting_uses_saved_item_totals_not_posted_totals(self):
+        quote = self.make_quote(configured=False)
+        summary = save_quote_accounting(
+            quote=quote, actor=self.admin, sale_amount=1, purchase_cost=1,
+            procurement_coach=self.main_coaches[0], amounts={coach.pk: 0 for coach in self.main_coaches},
+        )
+        quote.refresh_from_db()
+        self.assertEqual((quote.accounting_sale_amount, quote.accounting_purchase_cost), (36100, 30000))
+        self.assertEqual(summary["profit"], 6100)
 
 
 class ShopAllocationTests(TestCase):

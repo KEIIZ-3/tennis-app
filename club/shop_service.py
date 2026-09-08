@@ -39,6 +39,10 @@ def profit_summary(items):
     return {"revenue": revenue, "cost": cost, "profit": profit, "margin": margin}
 
 
+def can_manage_shop_accounting(user):
+    return bool(user and user.is_authenticated and user.is_superuser)
+
+
 def _schedule_inquiry_admin_notification(inquiry):
     admins = User.objects.filter(is_active=True).filter(models.Q(is_staff=True) | models.Q(is_superuser=True))
     message = "\n".join([
@@ -122,6 +126,8 @@ def update_quote(*, quote, customer, items, note="", accounting=None, actor=None
         item_data = {key: data.get(key) for key in (
             "description", "quantity", "list_price", "sale_price", "cost_price",
         )}
+        if not can_manage_shop_accounting(actor):
+            item_data["cost_price"] = data.get("_preserved_cost_price")
         item = ShopQuoteItem(quote=quote, sort_order=order, **item_data)
         item.full_clean()
         rows.append(item)
@@ -150,12 +156,21 @@ def update_quote(*, quote, customer, items, note="", accounting=None, actor=None
 
 @transaction.atomic
 def confirm_quote_purchase(*, quote, actor):
+    if not can_manage_shop_accounting(actor):
+        raise PermissionError("adminのみ購入を確定できます。")
     quote = ShopQuote.objects.select_for_update().prefetch_related("items").get(pk=quote.pk)
     existing = ShopPurchase.objects.filter(quote=quote).first()
     if existing:
         return existing, False
     if quote.status not in (ShopQuote.STATUS_SENT, ShopQuote.STATUS_PURCHASE_REQUESTED):
         raise ValidationError("見積済みまたは購入希望済みの見積のみ購入確定できます。")
+    if profit_summary(quote.items.all())["cost"] is None:
+        raise ValidationError("原価未入力の明細があるため購入を確定できません。")
+    save_quote_accounting(
+        quote=quote, actor=actor, procurement_coach=quote.procurement_coach_id,
+        amounts={int(key): value for key, value in (quote.planned_profit_allocations or {}).items()},
+    )
+    quote.refresh_from_db()
     accounting = validate_quote_accounting_for_confirmation(quote)
     purchase, created = ShopPurchase.objects.get_or_create(
         quote=quote,
@@ -233,15 +248,16 @@ def _normalize_main_coach_id(coach, main, *, required=False):
 @transaction.atomic
 def save_quote_accounting(*, quote, actor, sale_amount=None, purchase_cost=None,
                           procurement_coach=None, amounts=None):
-    if not (actor and (actor.is_staff or actor.is_superuser)):
+    if not can_manage_shop_accounting(actor):
         raise PermissionError("adminのみ内部精算情報を変更できます。")
     quote = ShopQuote.objects.select_for_update().get(pk=quote.pk)
     if quote.status in (ShopQuote.STATUS_PURCHASED, ShopQuote.STATUS_CANCELED) or ShopPurchase.objects.filter(quote=quote).exists():
         raise ValidationError("購入確定済みまたは取消済みの見積は編集できません。")
     main = _main_coach_map()
     coach_id = _normalize_main_coach_id(procurement_coach, main)
-    sale = None if sale_amount in (None, "") else int(sale_amount)
-    cost = None if purchase_cost in (None, "") else int(purchase_cost)
+    canonical = profit_summary(quote.items.all())
+    sale = canonical["revenue"]
+    cost = canonical["cost"]
     if sale is not None and sale <= 0: raise ValidationError("売上額は1円以上にしてください。")
     if cost is not None and cost < 0: raise ValidationError("仕入額は0円以上にしてください。")
     if sale is not None and cost is not None and cost > sale:
@@ -303,7 +319,7 @@ def save_allocations(
     *, purchase, actor, amounts, sale_amount=None, purchase_cost=None,
     procurement_coach=None
 ):
-    if not (actor.is_staff or actor.is_superuser):
+    if not can_manage_shop_accounting(actor):
         raise PermissionError("adminのみ売上按分を変更できます。")
     purchase = ShopPurchase.objects.select_for_update().get(pk=purchase.pk)
     _ensure_purchase_month_open(purchase)
