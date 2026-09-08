@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 from io import BytesIO
@@ -69,6 +69,79 @@ class ShopWorkflowTests(TestCase):
         self.assertEqual(self.client.get(reverse("club:shop_coach")).status_code, 403)
         self.client.force_login(self.coach)
         self.assertContains(self.client.get(reverse("club:shop_coach")), inquiry.wanted_item)
+
+    def test_coach_dashboard_filters_inquiries_and_quotes_by_canonical_state(self):
+        unquoted = create_inquiry(customer=self.customer, wanted_item="unquoted")
+        quoted = create_inquiry(customer=self.customer, wanted_item="quoted")
+        multiple = create_inquiry(customer=self.customer, wanted_item="multiple")
+        purchased = create_inquiry(customer=self.customer, wanted_item="purchased")
+        self.make_quote(quoted)
+        self.make_quote(multiple)
+        self.make_quote(multiple)
+        purchased_quote = self.make_quote(purchased)
+        purchased_quote.status = ShopQuote.STATUS_PURCHASED
+        purchased_quote.save(update_fields=["status"])
+
+        sent = self.make_quote()
+        requested = self.make_quote()
+        requested.status = ShopQuote.STATUS_PURCHASE_REQUESTED
+        requested.save(update_fields=["status"])
+        reverted = self.make_quote()
+        ShopPurchase.objects.create(
+            customer=self.customer, quote=reverted, description="old revision", amount=1,
+            status=ShopPurchase.STATUS_REVERTED, registered_by=self.coach,
+        )
+
+        self.client.force_login(self.coach)
+        response = self.client.get(reverse("club:shop_coach"))
+        inquiries = list(response.context["inquiries"])
+        quotes = list(response.context["quotes"])
+        self.assertEqual(response.context["inquiries"].query.high_mark, 100)
+        self.assertEqual(response.context["quotes"].query.high_mark, 100)
+        self.assertEqual(inquiries, [unquoted])
+        self.assertEqual(len(inquiries), len({item.pk for item in inquiries}))
+        self.assertIn(sent, quotes)
+        self.assertIn(requested, quotes)
+        self.assertIn(reverted, quotes)
+        self.assertNotIn(purchased_quote, quotes)
+
+    def test_coach_dashboard_orders_purchases_and_labels_direct_purchase(self):
+        quotes = [self.make_quote() for _ in range(3)]
+        numbers = ["EST-202609-0005", "EST-202609-0004", "EST-202608-0099"]
+        for quote, number in zip(quotes, numbers):
+            quote.quote_number = number
+            quote.save(update_fields=["quote_number"])
+        now = timezone.now()
+        old_revision = ShopPurchase.objects.create(
+            customer=self.customer, quote=quotes[0], description="old revision", amount=1,
+            status=ShopPurchase.STATUS_REVERTED, registered_by=self.coach,
+            purchased_at=now - timedelta(days=1),
+        )
+        new_revision = ShopPurchase.objects.create(
+            customer=self.customer, quote=quotes[0], description="new revision", amount=2,
+            status=ShopPurchase.STATUS_CONFIRMED, registered_by=self.coach, purchased_at=now,
+        )
+        middle = ShopPurchase.objects.create(
+            customer=self.customer, quote=quotes[1], description="canceled", amount=3,
+            status=ShopPurchase.STATUS_CANCELED, registered_by=self.coach, purchased_at=now,
+        )
+        oldest = ShopPurchase.objects.create(
+            customer=self.customer, quote=quotes[2], description="confirmed", amount=4,
+            status=ShopPurchase.STATUS_CONFIRMED, registered_by=self.coach, purchased_at=now,
+        )
+        direct = create_direct_purchase(
+            customer=self.customer, actor=self.coach, description="direct", quantity=1, amount=5,
+        )
+
+        self.client.force_login(self.coach)
+        response = self.client.get(reverse("club:shop_coach"))
+        self.assertEqual(response.context["purchases"].query.high_mark, 100)
+        self.assertEqual(
+            [purchase.pk for purchase in response.context["purchases"]],
+            [new_revision.pk, old_revision.pk, middle.pk, oldest.pk, direct.pk],
+        )
+        self.assertContains(response, "直接購入")
+        self.assertNotContains(response, "None")
 
     def make_quote(self, inquiry=None, configured=True):
         quote = create_quote(customer=self.customer, creator=self.coach, inquiry=inquiry, note="",
