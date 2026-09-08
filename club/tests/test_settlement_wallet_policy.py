@@ -138,7 +138,7 @@ class SettlementWalletCourtCostTests(TestCase):
         self.assertEqual(_lighting_start_hour(datetime(2026, 10, 1).date()), 17)
         self.assertEqual(_lighting_start_hour(datetime(2026, 2, 28).date()), 17)
 
-    def test_ball_expense_uses_only_selected_settlement_month(self):
+    def test_legacy_ball_expense_uses_full_amount_only_in_start_month(self):
         expense = SimpleNamespace(
             amount=37840,
             expense_date=datetime(2026, 5, 10).date(),
@@ -172,8 +172,9 @@ class SettlementWalletCourtCostTests(TestCase):
             datetime(2026, 11, 1).date(),
         )
 
-        self.assertEqual((july, august, september), (12614, 12613, 12613))
-        self.assertEqual(july + august + september, 37840)
+        self.assertEqual(july, 37840)
+        self.assertIsNone(august)
+        self.assertIsNone(september)
         self.assertIsNone(october)
 
     def test_weekday_two_hour_court_without_lighting(self):

@@ -58,6 +58,7 @@ from .models import (
     TicketPurchase,
     TicketPurchaseReservation,
     PREOPEN_CASH_PRICE,
+    ensure_accounting_month_is_open,
     is_preopen_cash_lesson_date,
 )
 from .family_reservations import (
@@ -4441,16 +4442,12 @@ def _court_expense_matches_availability(expense, availability):
 def _expense_meta_row(expense):
     meta = _expense_parse_note(getattr(expense, "note", ""))
     period_start = getattr(expense, "settlement_period_start", None)
-    period_end = getattr(expense, "settlement_period_end", None)
     ball_period_start = period_start.strftime("%Y-%m") if period_start else ""
-    ball_period_end = period_end.strftime("%Y-%m") if period_end else ""
-    ball_period_label = ""
-    if ball_period_start and ball_period_end:
-        ball_period_label = (
-            ball_period_start
-            if ball_period_start == ball_period_end
-            else f"{ball_period_start}〜{ball_period_end}"
-        )
+    application_month = (
+        period_start.replace(day=1)
+        if expense.category == CoachExpense.CATEGORY_BALL and period_start
+        else expense.expense_date.replace(day=1)
+    )
     return {
         "expense": expense,
         "plain_note": meta["plain_note"],
@@ -4470,10 +4467,17 @@ def _expense_meta_row(expense):
         "court_refund_lesson_label": meta.get("court_refund_lesson_label", ""),
         "court_refund_facility_label": meta.get("court_refund_facility_label", ""),
         "rain_canceled_lesson_label": meta.get("rain_canceled_lesson_label", ""),
-        "ball_period_start": ball_period_start,
-        "ball_period_end": ball_period_end,
-        "ball_period_label": ball_period_label,
+        "application_month": application_month,
+        "ball_application_month": ball_period_start,
+        "ball_application_month_label": (
+            f"{period_start.year}年{period_start.month}月" if period_start else ""
+        ),
     }
+
+
+def _shift_month(month_start, offset):
+    month_index = month_start.year * 12 + month_start.month - 1 + offset
+    return date(month_index // 12, month_index % 12 + 1, 1)
 
 
 def _stringing_status_label(order):
@@ -5504,15 +5508,8 @@ def coach_expense_manage(request):
             receipt_check_status = (request.POST.get("receipt_check_status") or current_meta["receipt_check_status"]).strip()
             approval_status = (request.POST.get("approval_status") or current_meta["approval_status"]).strip()
             plain_note = current_meta["plain_note"]
-            ball_period_start = (
-                request.POST.get("ball_period_start")
-                or current_meta.get("ball_period_start")
-                or ""
-            ).strip()
-            ball_period_end = (
-                request.POST.get("ball_period_end")
-                or current_meta.get("ball_period_end")
-                or ""
+            ball_application_month = (
+                request.POST.get("ball_application_month") or ""
             ).strip()
 
             valid_expense_types = {value for value, _label in EXPENSE_TYPE_CHOICES}
@@ -5545,21 +5542,12 @@ def coach_expense_manage(request):
                 }
             }
             if expense.category == CoachExpense.CATEGORY_BALL:
-                if (
-                    not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", ball_period_start)
-                    or not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", ball_period_end)
-                    or ball_period_start > ball_period_end
-                ):
-                    messages.error(request, "ボール代の対象開始月・終了月を正しく選択してください。")
+                if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", ball_application_month):
+                    messages.error(request, "ボール代の適用月を正しく選択してください。")
                     return redirect("club:coach_expense_manage")
-                extra_meta["ball_period_start"] = ball_period_start
-                extra_meta["ball_period_end"] = ball_period_end
-                expense.settlement_period_start = date.fromisoformat(
-                    f"{ball_period_start}-01"
-                )
-                expense.settlement_period_end = date.fromisoformat(
-                    f"{ball_period_end}-01"
-                )
+                application_month = date.fromisoformat(f"{ball_application_month}-01")
+                extra_meta.pop("ball_period_start", None)
+                extra_meta.pop("ball_period_end", None)
             if approval_status == EXPENSE_APPROVAL_REFUNDED:
                 rain_refund = RainRefund.objects.filter(expense=expense).first()
                 if rain_refund is None:
@@ -5583,7 +5571,7 @@ def coach_expense_manage(request):
                     ]
                 )
 
-            expense.note = _expense_build_note(
+            updated_note = _expense_build_note(
                 plain_note,
                 expense_type=expense_type,
                 receipt_status=receipt_status,
@@ -5591,12 +5579,25 @@ def coach_expense_manage(request):
                 approval_status=approval_status,
                 extra_meta=extra_meta,
             )
-            update_fields = ["note"]
             if expense.category == CoachExpense.CATEGORY_BALL:
-                update_fields.extend(
-                    ["settlement_period_start", "settlement_period_end"]
-                )
-            expense.save(update_fields=update_fields)
+                try:
+                    with transaction.atomic():
+                        expense = CoachExpense.objects.select_for_update().get(pk=expense.pk)
+                        old_application_month = expense.settlement_period_start
+                        ensure_accounting_month_is_open(old_application_month)
+                        ensure_accounting_month_is_open(application_month)
+                        expense.settlement_period_start = application_month
+                        expense.settlement_period_end = application_month
+                        expense.note = updated_note
+                        expense.save(update_fields=[
+                            "settlement_period_start", "settlement_period_end", "note"
+                        ])
+                except ValidationError:
+                    messages.error(request, "締め済み月を含むため、ボール代の適用月を変更できません。")
+                    return redirect("club:coach_expense_manage")
+            else:
+                expense.note = updated_note
+                expense.save(update_fields=["note"])
             messages.success(request, "経費ステータスを更新しました。")
             return redirect("club:coach_expense_manage")
 
@@ -5658,23 +5659,18 @@ def coach_expense_manage(request):
 
         extra_meta = {}
         if raw_category == CoachExpense.CATEGORY_BALL:
-            ball_period_start = (request.POST.get("ball_period_start") or "").strip()
-            ball_period_end = (request.POST.get("ball_period_end") or "").strip()
-            if (
-                not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", ball_period_start)
-                or not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", ball_period_end)
-                or ball_period_start > ball_period_end
-            ):
-                messages.error(request, "ボール代の対象開始月・終了月を正しく選択してください。")
+            ball_application_month = (request.POST.get("ball_application_month") or "").strip()
+            if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", ball_application_month):
+                messages.error(request, "ボール代の適用月を正しく選択してください。")
                 return redirect("club:coach_expense_manage")
-            extra_meta["ball_period_start"] = ball_period_start
-            extra_meta["ball_period_end"] = ball_period_end
-            settlement_period_start = date.fromisoformat(
-                f"{ball_period_start}-01"
-            )
-            settlement_period_end = date.fromisoformat(
-                f"{ball_period_end}-01"
-            )
+            settlement_period_start = date.fromisoformat(f"{ball_application_month}-01")
+            settlement_period_end = settlement_period_start
+            try:
+                ensure_accounting_month_is_open(settlement_period_start)
+            except ValidationError as e:
+                for message_text in e.messages:
+                    messages.error(request, message_text)
+                return redirect("club:coach_expense_manage")
         else:
             settlement_period_start = None
             settlement_period_end = None
@@ -5711,15 +5707,35 @@ def coach_expense_manage(request):
         return redirect("club:coach_expense_manage")
 
     month_start = today.replace(day=1)
-    if today.month == 12:
-        next_month = date(today.year + 1, 1, 1)
-    else:
-        next_month = date(today.year, today.month + 1, 1)
-
-    current_month_queryset = list(
-        visible_queryset.filter(expense_date__gte=month_start, expense_date__lt=next_month)
+    previous_month = _shift_month(month_start, -1)
+    next_month = _shift_month(month_start, 1)
+    after_next_month = _shift_month(month_start, 2)
+    displayed_expenses = visible_queryset.filter(
+        Q(
+            category=CoachExpense.CATEGORY_BALL,
+            settlement_period_start__gte=previous_month,
+            settlement_period_start__lt=after_next_month,
+        )
+        | Q(
+            ~Q(category=CoachExpense.CATEGORY_BALL),
+            expense_date__gte=previous_month,
+            expense_date__lt=after_next_month,
+        )
     )
-    current_month_meta_rows = [_expense_meta_row(expense) for expense in current_month_queryset]
+    displayed_rows = [_expense_meta_row(expense) for expense in displayed_expenses]
+    rows_by_month = defaultdict(list)
+    for row in displayed_rows:
+        rows_by_month[row["application_month"]].append(row)
+    expense_month_groups = []
+    for application_month in (previous_month, month_start, next_month):
+        rows = rows_by_month[application_month]
+        expense_month_groups.append({
+            "month": application_month,
+            "rows": rows,
+            "total": sum(int(row["expense"].amount or 0) for row in rows),
+        })
+
+    current_month_meta_rows = rows_by_month[month_start]
     current_month_accounting_rows = [
         row for row in current_month_meta_rows
         if not _expense_is_refund_status(row["approval_status"])
@@ -5763,13 +5779,11 @@ def coach_expense_manage(request):
         for label, count in sorted(approval_totals.items(), key=lambda x: x[0])
     ]
 
-    recent_expenses = [_expense_meta_row(expense) for expense in list(visible_queryset[:30])]
-
     return render(
         request,
         "coach/expense_form.html",
         {
-            "recent_expenses": recent_expenses,
+            "expense_month_groups": expense_month_groups,
             "expense_category_choices": CoachExpense.CATEGORY_CHOICES,
             "expense_type_choices": EXPENSE_TYPE_CHOICES,
             "expense_receipt_choices": EXPENSE_RECEIPT_CHOICES,
