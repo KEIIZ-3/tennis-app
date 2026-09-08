@@ -16,7 +16,6 @@ from .completed_lesson_registration import (
     register_completed_lesson,
 )
 from .models import CompletedLessonRegistration, Court, LessonTypeMixin, Reservation, User
-from .forms import CoachAvailabilityForm
 from .lesson_ticket_rules import standard_ticket_count
 from .models import BUSINESS_END_HOUR, BUSINESS_START_HOUR
 
@@ -61,34 +60,15 @@ def register(request):
         mode = "completed" if _parse_datetime(selected_date, end_time) <= timezone.now() else "scheduled"
     except (TypeError, ValueError):
         pass
+    if mode == "scheduled":
+        return redirect(
+            f"{reverse('club:coach_availability_create')}?date={selected_date}&source=calendar"
+        )
     if request.method == "POST":
         try:
             posted_mode = request.POST.get("displayed_mode")
             if posted_mode not in ("completed", "scheduled") or posted_mode != mode:
                 raise ValidationError("入力中に現在時刻をまたいだため、登録区分が変わりました。内容を確認してください。")
-            if mode == "scheduled":
-                future_data = request.POST.copy()
-                future_data.update({
-                    "start_date": selected_date,
-                    "end_date": selected_date,
-                    "start_hour": str(int(start_time.split(":", 1)[0])),
-                    "end_hour": str(int(end_time.split(":", 1)[0])),
-                    "target_level": User.LEVEL_ALL,
-                    "target_level_2": "",
-                    "coach_count": "1",
-                    "court_count": "1",
-                    "capacity": request.POST.get("capacity") or "1",
-                    "custom_ticket_price": "0",
-                    "custom_duration_hours": str(max(int((_parse_datetime(selected_date, end_time) - _parse_datetime(selected_date, start_time)).total_seconds() // 3600), 1)),
-                })
-                form = CoachAvailabilityForm(future_data, request_user=request.user)
-                if not form.is_valid():
-                    raise ValidationError(next(iter(form.errors.values()))[0])
-                availability = form.save(commit=False)
-                availability.save()
-                messages.success(request, "実施予定レッスンを作成しました。")
-                local_start = timezone.localtime(availability.start_at)
-                return redirect(f"{reverse('club:lesson_calendar')}?year={local_start.year}&month={local_start.month}")
             count = int(request.POST.get("participant_count", "1"))
             if count < 1 or count > 10:
                 raise ValidationError("顧客人数は1〜10名で指定してください。")
