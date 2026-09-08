@@ -453,13 +453,31 @@
 <div class="card">
   <h2 class="card-title">適用月別の経費履歴</h2>
 
+  <form method="get" style="display:flex; align-items:end; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
+    <label style="display:flex; flex-direction:column; gap:6px;">
+      <span>表示する経費種別</span>
+      <select name="category">
+        <option value="all" {% if selected_history_category == "all" %}selected{% endif %}>すべて</option>
+        {% for value, label in expense_category_choices %}
+          <option value="{{ value }}" {% if selected_history_category == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">表示</button>
+  </form>
+
   {% for group in expense_month_groups %}
     <section style="margin-top:20px;">
       <h3 style="margin:0 0 12px; padding-bottom:8px; border-bottom:2px solid #dbeafe;">
         {{ group.month|date:"Y年n月" }}
-        <span class="muted" style="font-size:14px;">適用経費合計: {{ group.total }}円</span>
+        <span class="muted" style="font-size:14px;">{{ group.total_label }}: {{ group.total }}円</span>
       </h3>
-  {% if group.rows %}
+  {% if group.category_groups %}
+    {% for category_group in group.category_groups %}
+      <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin:16px 0 8px;">
+        <h4 style="margin:0;">{{ category_group.label }}</h4>
+        <span class="muted">小計: {{ category_group.subtotal }}円</span>
+      </div>
     <div class="desktop-table-area">
       <div style="overflow-x:auto;">
         <table>
@@ -481,7 +499,7 @@
             </tr>
           </thead>
           <tbody>
-            {% for row in group.rows %}
+            {% for row in category_group.rows %}
               <tr>
                 <td>{{ row.expense.expense_date|date:"Y-m-d" }}</td>
                 <td>{{ row.expense_type_label }}</td>
@@ -562,7 +580,7 @@
 
     <div class="mobile-expense-area">
       <div class="mobile-expense-list">
-        {% for row in group.rows %}
+        {% for row in category_group.rows %}
           <div class="mobile-expense-card">
             <div class="mobile-expense-head">
               <div>
@@ -644,8 +662,15 @@
         {% endfor %}
       </div>
     </div>
+    {% endfor %}
   {% else %}
-    <p class="muted" style="margin:0;">この月の経費はありません。</p>
+    <p class="muted" style="margin:0;">
+      {% if selected_history_category == "all" %}
+        この月の経費はありません。
+      {% else %}
+        この月の{% for value, label in expense_category_choices %}{% if selected_history_category == value %}{{ label }}{% endif %}{% endfor %}はありません。
+      {% endif %}
+    </p>
   {% endif %}
     </section>
   {% endfor %}
