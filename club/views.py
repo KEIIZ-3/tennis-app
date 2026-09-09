@@ -37,6 +37,7 @@ from .forms import (
     StringingOrderForm,
     StringingOrderRecordForm,
 )
+from .expense_service import update_ball_expense_application_month
 from .models import (
     MAIN_COACH_NAMES,
     CoachAvailability,
@@ -5583,17 +5584,24 @@ def coach_expense_manage(request):
                 try:
                     with transaction.atomic():
                         expense = CoachExpense.objects.select_for_update().get(pk=expense.pk)
-                        old_application_month = expense.settlement_period_start
-                        ensure_accounting_month_is_open(old_application_month)
-                        ensure_accounting_month_is_open(application_month)
-                        expense.settlement_period_start = application_month
-                        expense.settlement_period_end = application_month
-                        expense.note = updated_note
-                        expense.save(update_fields=[
-                            "settlement_period_start", "settlement_period_end", "note"
-                        ])
-                except ValidationError:
-                    messages.error(request, "締め済み月を含むため、ボール代の適用月を変更できません。")
+                        metadata_changed = any(
+                            (
+                                expense_type != current_meta["expense_type"],
+                                receipt_status != current_meta["receipt_status"],
+                                receipt_check_status != current_meta["receipt_check_status"],
+                                approval_status != current_meta["approval_status"],
+                            )
+                        )
+                        update_ball_expense_application_month(
+                            expense=expense,
+                            application_month=application_month,
+                            user=request.user,
+                        )
+                        if metadata_changed:
+                            expense.note = updated_note
+                            expense.save(update_fields=["note"])
+                except ValidationError as exc:
+                    messages.error(request, exc.messages[0])
                     return redirect("club:coach_expense_manage")
             else:
                 expense.note = updated_note

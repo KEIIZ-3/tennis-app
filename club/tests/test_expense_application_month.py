@@ -2,9 +2,11 @@ from datetime import date
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import TestCase
 from django.urls import reverse
 
+from club.expense_service import update_ball_expense_application_month
 from club.models import CoachExpense
 from club.settlement_balance_policy import _approved_monthly_expenses
 from club.settlement_models import MonthlySettlement
@@ -249,6 +251,80 @@ class ExpenseApplicationMonthTests(TestCase):
                 self.assertEqual(expense.settlement_period_start, date(2026, 9, 1))
                 MonthlySettlement.objects.all().delete()
                 expense.delete()
+
+    def test_closed_expense_date_does_not_block_application_month_move(self):
+        expense = self.create_expense(
+            expense_date=date(2026, 7, 25), amount=7568,
+            category=CoachExpense.CATEGORY_BALL,
+            start=date(2026, 9, 1), end=date(2026, 9, 1),
+        )
+        july = MonthlySettlement.objects.create(
+            year=2026,
+            month=7,
+            status=MonthlySettlement.STATUS_CLOSED,
+            calculation_snapshot={"marker": "unchanged"},
+            closing_balance=321,
+        )
+        MonthlySettlement.objects.create(year=2026, month=9)
+        MonthlySettlement.objects.create(year=2026, month=10)
+        before_updated_at = july.updated_at
+        self.client.force_login(self.admin)
+
+        response = self.client.post(self.url, {
+            "action": "update_meta", "expense_id": expense.pk,
+            "ball_application_month": "2026-10",
+        })
+
+        self.assertEqual(response.status_code, 302)
+        expense.refresh_from_db()
+        self.assertEqual(expense.settlement_period_start, date(2026, 10, 1))
+        self.assertEqual(expense.settlement_period_end, date(2026, 10, 1))
+        july.refresh_from_db()
+        self.assertEqual(july.status, MonthlySettlement.STATUS_CLOSED)
+        self.assertEqual(july.calculation_snapshot, {"marker": "unchanged"})
+        self.assertEqual(july.closing_balance, 321)
+        self.assertEqual(july.updated_at, before_updated_at)
+        september = _approved_monthly_expenses(date(2026, 9, 1), date(2026, 10, 1))
+        october = _approved_monthly_expenses(date(2026, 10, 1), date(2026, 11, 1))
+        self.assertEqual(september, [])
+        self.assertEqual([row["amount"] for row in october], [7568])
+        self.assertEqual(sum(row["amount"] for row in september + october), 7568)
+
+    def test_application_month_service_keeps_normal_save_closed_month_protection(self):
+        expense = self.create_expense(
+            expense_date=date(2026, 7, 25), amount=7568,
+            category=CoachExpense.CATEGORY_BALL,
+            start=date(2026, 9, 1), end=date(2026, 9, 1),
+        )
+        MonthlySettlement.objects.create(
+            year=2026, month=7, status=MonthlySettlement.STATUS_CLOSED
+        )
+        with self.assertRaises(ValidationError):
+            expense.save(update_fields=["note"])
+
+    def test_service_rejects_non_admin_and_reports_closed_target_month(self):
+        expense = self.create_expense(
+            expense_date=date(2026, 10, 25), amount=7568,
+            category=CoachExpense.CATEGORY_BALL,
+            start=date(2026, 10, 1), end=date(2026, 10, 1),
+        )
+        MonthlySettlement.objects.create(
+            year=2026, month=7, status=MonthlySettlement.STATUS_CLOSED
+        )
+        with self.assertRaises(PermissionDenied):
+            update_ball_expense_application_month(
+                expense=expense,
+                application_month=date(2026, 9, 1),
+                user=self.coach,
+            )
+        self.client.force_login(self.admin)
+        response = self.client.post(self.url, {
+            "action": "update_meta", "expense_id": expense.pk,
+            "ball_application_month": "2026-07",
+        }, follow=True)
+        self.assertContains(response, "2026年7月は締め済みのため、適用月に指定できません。")
+        expense.refresh_from_db()
+        self.assertEqual(expense.settlement_period_start, date(2026, 10, 1))
 
     def test_legacy_ball_is_counted_once_in_start_month(self):
         self.create_expense(
