@@ -7,6 +7,13 @@ def create_reservation(**values):
     """Create every reservation through the model's canonical validation path."""
     reservation = Reservation(**values)
     reservation.save()
+    if reservation.availability_id and reservation.fixed_lesson_id:
+        from .fixed_lesson_occurrence_service import reconcile_fixed_lesson_availability
+
+        reconcile_fixed_lesson_availability(
+            reservation.availability,
+            reservation.fixed_lesson,
+        )
     return reservation
 
 

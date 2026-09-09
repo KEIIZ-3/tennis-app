@@ -504,6 +504,8 @@ def _reservations_by_slot(slots):
 
 
 def _canonical_availability_for_fixed(fixed_lesson, start_at, end_at):
+    from .fixed_lesson_membership_service import _canonical_availability
+
     primary_coach = (
         fixed_lesson.primary_coach()
         if hasattr(fixed_lesson, "primary_coach")
@@ -515,37 +517,13 @@ def _canonical_availability_for_fixed(fixed_lesson, start_at, end_at):
     if primary_coach is None or court is None:
         return None
 
-    defaults = {
-        "capacity": max(int(fixed_lesson.effective_capacity() or 1), 1),
-        "coach_count": max(int(fixed_lesson.coach_count or 1), 1),
-        "court_count": max(int(fixed_lesson.court_count or 1), 1),
-        "target_level": fixed_lesson.target_level,
-        "target_level_2": fixed_lesson.target_level_2 or "",
-        "status": CoachAvailability.STATUS_OPEN,
-        "note": (
-            f"固定レッスン: "
-            f"{fixed_lesson.title or fixed_lesson.get_weekday_display()}"
-        ),
-    }
-    availability, _created = CoachAvailability.objects.get_or_create(
-        coach=primary_coach,
-        court=court,
-        lesson_type=fixed_lesson.lesson_type,
-        start_at=start_at,
-        end_at=end_at,
-        defaults=defaults,
+    return _canonical_availability(
+        fixed_lesson,
+        start_at,
+        end_at,
+        max(int(fixed_lesson.effective_capacity() or 1), 1),
+        occurrence_court=court,
     )
-
-    update_fields = []
-    for field_name, expected_value in defaults.items():
-        if getattr(availability, field_name) != expected_value:
-            setattr(availability, field_name, expected_value)
-            update_fields.append(field_name)
-
-    if update_fields:
-        availability.save(update_fields=update_fields)
-
-    return availability
 
 
 def _canonical_slots(year, month):

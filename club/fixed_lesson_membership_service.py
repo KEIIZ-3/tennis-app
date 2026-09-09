@@ -11,6 +11,7 @@ from .family_reservations import (
 )
 from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation
 from .lesson_participants import CAPACITY_CONSUMING_STATUSES
+from .fixed_lesson_occurrence_service import reconcile_fixed_lesson_availability
 
 
 MEMBER_CANCEL_REASON = "会員が予約確認画面からキャンセル"
@@ -63,9 +64,12 @@ def _fixed_note(fixed_lesson):
     return f"固定レッスン: {fixed_lesson.title or fixed_lesson.get_weekday_display()}"
 
 
-def _canonical_availability(fixed_lesson, start_at, end_at, required_capacity):
+def _canonical_availability(
+    fixed_lesson, start_at, end_at, required_capacity, *, occurrence_court=None
+):
     """同一コーチ・種別・日時を1つの開催枠として扱う。"""
     primary_coach = fixed_lesson.primary_coach()
+    occurrence_court = occurrence_court or fixed_lesson.court
     candidates = list(
         CoachAvailability.objects.select_for_update()
         .filter(lesson_type=fixed_lesson.lesson_type, start_at=start_at, end_at=end_at)
@@ -82,7 +86,7 @@ def _canonical_availability(fixed_lesson, start_at, end_at, required_capacity):
         availability = CoachAvailability(
             coach=primary_coach,
             coach_2=fixed_lesson.coach_2,
-            court=fixed_lesson.court,
+            court=occurrence_court,
             lesson_type=fixed_lesson.lesson_type,
             start_at=start_at,
             end_at=end_at,
@@ -98,27 +102,13 @@ def _canonical_availability(fixed_lesson, start_at, end_at, required_capacity):
         availability.save()
         candidates = [availability]
 
-    has_competing_source = Reservation.objects.filter(
-        availability=availability,
-    ).exclude(fixed_lesson=fixed_lesson).exclude(fixed_lesson__isnull=True).exists()
-    source_value = None if has_competing_source else fixed_lesson
     desired_values = {
-        "fixed_lesson_source": source_value,
-        "court": fixed_lesson.court,
+        "court": occurrence_court,
         "court_count": fixed_lesson.court_count,
         "target_level": fixed_lesson.target_level,
         "target_level_2": fixed_lesson.target_level_2,
         "note": _fixed_note(fixed_lesson),
     }
-    if (
-        not availability.coach_assignment_overridden
-        and availability.fixed_lesson_source_id in (None, fixed_lesson.pk)
-    ):
-        desired_values.update({
-            "coach": primary_coach,
-            "coach_2": fixed_lesson.coach_2,
-            "coach_count": fixed_lesson.coach_count,
-        })
     updated_fields = []
     for field_name, desired_value in desired_values.items():
         current_id = getattr(availability, f"{field_name}_id", None)
@@ -133,6 +123,8 @@ def _canonical_availability(fixed_lesson, start_at, end_at, required_capacity):
             updated_fields.append(field_name)
     if updated_fields:
         availability.save(update_fields=updated_fields)
+
+    reconcile_fixed_lesson_availability(availability, fixed_lesson)
 
     duplicate_ids = [item.pk for item in candidates[1:]]
     if duplicate_ids:
