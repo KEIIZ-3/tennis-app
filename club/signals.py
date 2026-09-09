@@ -2,6 +2,7 @@ import logging
 
 from django.db.models.signals import m2m_changed, post_save, pre_save
 from django.dispatch import receiver
+from django.utils import timezone
 
 from .fixed_lesson_sync_facade import (
     membership_signal_is_suppressed,
@@ -11,6 +12,31 @@ from .models import FixedLesson, Reservation
 from .reservation_notification_service import schedule_reservation_canceled_notification
 
 logger = logging.getLogger(__name__)
+
+
+@receiver(pre_save, sender=FixedLesson, dispatch_uid="club.fixed_lesson_store_old_coaches", weak=False)
+def fixed_lesson_store_old_coaches(sender, instance, raw=False, **kwargs):
+    if raw or not instance.pk:
+        instance._coach_assignment_changed = False
+        return
+    old = sender.objects.filter(pk=instance.pk).values(
+        "coach_id", "coach_2_id", "coach_3_id", "coach_count"
+    ).first()
+    instance._coach_assignment_changed = bool(old) and any(
+        old[field] != getattr(instance, field)
+        for field in ("coach_id", "coach_2_id", "coach_3_id", "coach_count")
+    )
+
+
+@receiver(post_save, sender=FixedLesson, dispatch_uid="club.fixed_lesson_coaches_changed", weak=False)
+def fixed_lesson_coaches_changed(sender, instance, created, raw=False, **kwargs):
+    if raw or created or not getattr(instance, "_coach_assignment_changed", False):
+        return
+    if not instance.generated_availabilities.filter(
+        start_at__date__gte=timezone.localdate()
+    ).exists():
+        return
+    synchronize_fixed_lesson_membership(instance.pk)
 
 
 @receiver(
