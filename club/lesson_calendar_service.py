@@ -26,6 +26,54 @@ def lesson_calendar_slot_key(*, lesson_type, coach_id, court_id, start_at, end_a
     return (lesson_type, coach_id, court_id, start_at, end_at)
 
 
+def resolve_calendar_occurrence_display(*, fixed_lesson, availability, start_at, end_at, fallback_court):
+    """Resolve all occurrence-owned display fields from one canonical source."""
+    if availability is not None:
+        capacity = max(
+            int(availability.effective_capacity()),
+            int(availability.capacity or 0),
+            1,
+        )
+        return {
+            "lesson_type": availability.lesson_type,
+            "lesson_type_label": availability.get_lesson_type_display(),
+            "target_level": availability.target_level,
+            "target_level_label": availability.target_level_display_label(),
+            "target_level_2": availability.target_level_2 or "",
+            "start_at": availability.start_at,
+            "end_at": availability.end_at,
+            "coach": availability.coach,
+            "assigned_coach_name": availability.coach_display_names(),
+            "substitute_coach": availability.substitute_coach,
+            "court": availability.court,
+            "capacity": capacity,
+            "status": availability.status,
+            "is_recruitment_closed": availability.is_recruitment_closed,
+        }
+
+    capacity = max(
+        int(fixed_lesson.effective_capacity()),
+        int(fixed_lesson.capacity or 0),
+        1,
+    )
+    return {
+        "lesson_type": fixed_lesson.lesson_type,
+        "lesson_type_label": fixed_lesson.get_lesson_type_display(),
+        "target_level": fixed_lesson.target_level,
+        "target_level_label": fixed_lesson.target_level_display_label(),
+        "target_level_2": fixed_lesson.target_level_2 or "",
+        "start_at": start_at,
+        "end_at": end_at,
+        "coach": fixed_lesson.primary_coach(),
+        "assigned_coach_name": fixed_lesson.coach_display_names(),
+        "substitute_coach": None,
+        "court": fixed_lesson.court or fallback_court,
+        "capacity": capacity,
+        "status": CoachAvailability.STATUS_OPEN,
+        "is_recruitment_closed": False,
+    }
+
+
 def build_lesson_calendar_display_data(*, user, target_year, target_month, month_start, next_month):
     """Fetch and aggregate the data used to render one lesson-calendar month."""
     calendar_settlement = MonthlySettlement.objects.filter(
@@ -41,7 +89,13 @@ def build_lesson_calendar_display_data(*, user, target_year, target_month, month
     occurrence_reservations = Reservation.objects.filter(
         start_at__date__gte=month_start,
         start_at__date__lt=next_month,
-    ).select_related("fixed_lesson", "availability")
+    ).select_related(
+        "fixed_lesson",
+        "availability__coach",
+        "availability__coach_2",
+        "availability__substitute_coach",
+        "availability__court",
+    )
     occurrence_statuses = {}
     for reservation in occurrence_reservations:
         local_start = _local_datetime(reservation.start_at)
@@ -59,7 +113,17 @@ def build_lesson_calendar_display_data(*, user, target_year, target_month, month
             start_at__date__gte=month_start,
             start_at__date__lt=next_month,
         )
-        .select_related("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
+        .select_related(
+            "user",
+            "coach",
+            "substitute_coach",
+            "court",
+            "availability__coach",
+            "availability__coach_2",
+            "availability__substitute_coach",
+            "availability__court",
+            "fixed_lesson",
+        )
         .order_by("start_at", "id")
     )
 
@@ -84,6 +148,7 @@ def build_lesson_calendar_display_data(*, user, target_year, target_month, month
     user_fixed_lesson_status_map = {}
     reservations_by_availability = {}
     reservations_by_fixed_occurrence = {}
+    availabilities_by_fixed_occurrence = {}
     for reservation in reservation_list:
         slot_key = lesson_calendar_slot_key(
             lesson_type=reservation.lesson_type,
@@ -101,6 +166,10 @@ def build_lesson_calendar_display_data(*, user, target_year, target_month, month
             ).append(reservation)
         if reservation.availability_id:
             reservations_by_availability.setdefault(reservation.availability_id, []).append(reservation)
+            if fixed_key:
+                availabilities_by_fixed_occurrence.setdefault(fixed_key, []).append(
+                    reservation.availability
+                )
 
         if reservation.status == Reservation.STATUS_ACTIVE:
             active_slot_counts[slot_key] = active_slot_counts.get(slot_key, 0) + 1
@@ -173,7 +242,7 @@ def build_lesson_calendar_display_data(*, user, target_year, target_month, month
             Q(completed_registration__isnull=True)
             | Q(completed_registration__canceled_at__isnull=True)
         )
-        .select_related("coach", "substitute_coach", "court", "completed_registration")
+        .select_related("coach", "coach_2", "substitute_coach", "court", "completed_registration")
         .order_by("start_at", "coach__username", "court__name", "id")
     )
     availabilities_by_schedule = {}
@@ -202,4 +271,5 @@ def build_lesson_calendar_display_data(*, user, target_year, target_month, month
         "availabilities_by_schedule": availabilities_by_schedule,
         "reservations_by_availability": reservations_by_availability,
         "reservations_by_fixed_occurrence": reservations_by_fixed_occurrence,
+        "availabilities_by_fixed_occurrence": availabilities_by_fixed_occurrence,
     }
