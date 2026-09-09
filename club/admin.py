@@ -763,12 +763,49 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
         "start_at",
         "end_at",
         "status",
+        "coach_assignment_status_admin",
     )
-    list_filter = ("status", "coach", "coach_2", "court", "lesson_type", "target_level", "target_level_2")
+    list_filter = ("status", "coach_assignment_overridden", "coach", "coach_2", "court", "lesson_type", "target_level", "target_level_2")
     search_fields = ("coach__username", "coach__full_name", "coach_2__username", "coach_2__full_name", "court__name")
     date_hierarchy = "start_at"
     ordering = ("-start_at", "-id")
     list_select_related = ("coach", "coach_2", "court")
+    readonly_fields = ("fixed_lesson_source", "coach_assignment_status_admin")
+    actions = ("restore_fixed_lesson_coach_assignment",)
+
+    @admin.display(description="コーチ構成")
+    def coach_assignment_status_admin(self, obj):
+        if not obj or not obj.fixed_lesson_source_id:
+            return "単発開催"
+        if obj.coach_assignment_overridden:
+            return "この開催回のみ個別変更"
+        return "固定設定を継承中"
+
+    def save_model(self, request, obj, form, change):
+        assignment_fields = ("coach_id", "coach_2_id", "coach_count")
+        changed_assignment = False
+        if change and obj.fixed_lesson_source_id:
+            previous = CoachAvailability.objects.filter(pk=obj.pk).values(
+                *assignment_fields
+            ).first()
+            changed_assignment = bool(previous) and any(
+                previous[field] != getattr(obj, field) for field in assignment_fields
+            )
+        if changed_assignment:
+            obj.coach_assignment_overridden = True
+        super().save_model(request, obj, form, change)
+
+    @admin.action(description="固定レッスンのコーチ設定に戻す")
+    def restore_fixed_lesson_coach_assignment(self, request, queryset):
+        from .fixed_lesson_membership_service import restore_fixed_lesson_coach_assignment
+
+        restored = 0
+        for availability_id in queryset.filter(
+            fixed_lesson_source__isnull=False
+        ).order_by("pk").values_list("pk", flat=True):
+            restore_fixed_lesson_coach_assignment(availability_id)
+            restored += 1
+        self.message_user(request, f"{restored}件を固定レッスンのコーチ設定に戻しました。")
 
     def changelist_view(self, request, extra_context=None):
         context = {

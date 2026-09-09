@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
@@ -177,8 +179,17 @@ class FixedOccurrenceCalendarCountTests(TestCase):
         self.assertEqual(fixed_row["member_count"], 1)
 
     def test_calendar_query_count_does_not_scale_with_fixed_occurrences(self):
+        fixture_date = date(2026, 9, 3)
+        self.fixed_lesson.start_date = fixture_date
+        self.fixed_lesson.weekday = fixture_date.weekday()
+        self.fixed_lesson.save(update_fields=["start_date", "weekday"])
+        start_at, end_at = self.fixed_lesson._build_datetimes_for_date(fixture_date)
+        Reservation.objects.filter(pk=self.reservation.pk).update(
+            start_at=start_at,
+            end_at=end_at,
+        )
         url = reverse("club:lesson_calendar")
-        params = {"year": self.target_date.year, "month": self.target_date.month}
+        params = {"year": fixture_date.year, "month": fixture_date.month}
         with CaptureQueriesContext(connection) as single_context:
             self.client.get(url, params)
 

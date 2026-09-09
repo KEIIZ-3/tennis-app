@@ -271,6 +271,18 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         related_name="coach_availabilities_as_coach_2",
         limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
     )
+    fixed_lesson_source = models.ForeignKey(
+        "FixedLesson",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="generated_availabilities",
+        verbose_name="由来固定レッスン",
+    )
+    coach_assignment_overridden = models.BooleanField(
+        default=False,
+        verbose_name="コーチ構成の個別変更",
+    )
     substitute_coach = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
