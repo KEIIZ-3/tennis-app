@@ -14,6 +14,23 @@ from .reservation_notification_service import schedule_reservation_canceled_noti
 logger = logging.getLogger(__name__)
 
 
+@receiver(
+    post_save,
+    sender=Reservation,
+    dispatch_uid="club.reservation_fixed_lesson_availability_provenance",
+    weak=False,
+)
+def reservation_fixed_lesson_availability_provenance(
+    sender, instance, raw=False, **kwargs
+):
+    """Safety net for reservation writers outside the canonical service."""
+    if raw or not instance.availability_id or not instance.fixed_lesson_id:
+        return
+    from .fixed_lesson_occurrence_service import reconcile_fixed_lesson_availability
+
+    reconcile_fixed_lesson_availability(instance.availability, instance.fixed_lesson)
+
+
 @receiver(pre_save, sender=FixedLesson, dispatch_uid="club.fixed_lesson_store_old_coaches", weak=False)
 def fixed_lesson_store_old_coaches(sender, instance, raw=False, **kwargs):
     if raw or not instance.pk:
