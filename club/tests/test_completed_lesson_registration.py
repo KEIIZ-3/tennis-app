@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -222,7 +223,13 @@ class CompletedLessonUnifiedViewTests(TestCase):
     def test_member_candidates_use_normalized_display_name_order_and_exclude_coaches(self):
         User.objects.create_user(username="member-kata", full_name="カナ", role=User.ROLE_MEMBER)
         User.objects.create_user(username="member-hira", full_name="あい", role=User.ROLE_MEMBER)
-        response = self.client.get(reverse("club:completed_lesson_register"))
+        fixed_now = timezone.make_aware(datetime(2026, 9, 10, 12, 0))
+        with (
+            patch("club.completed_lesson_views.timezone.localdate", return_value=fixed_now.date()),
+            patch("club.completed_lesson_views.timezone.now", return_value=fixed_now),
+        ):
+            response = self.client.get(reverse("club:completed_lesson_register"))
+        self.assertEqual(response.status_code, 200)
         options = response.context["member_options"]
         labels = [row["label"] for row in options]
         self.assertLess(labels.index("あい"), labels.index("カナ"))
