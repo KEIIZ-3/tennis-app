@@ -17,6 +17,7 @@ from club.models import (
     User,
 )
 from club.fixed_lesson_sync_facade import replace_fixed_lesson_members
+from club.fixed_lesson_sync_facade import synchronize_fixed_lesson_membership
 from club.admin import FixedLessonAdmin, FixedLessonAdminForm
 
 
@@ -285,6 +286,70 @@ class FixedLessonMembershipServiceTests(TestCase):
     def test_canonical_service_rejects_non_participant_role(self):
         with self.assertRaises(ValidationError):
             replace_fixed_lesson_members(self.fixed_lesson, [self.coach])
+
+    def test_new_fixed_occurrences_copy_the_complete_coach_configuration(self):
+        second_coach = User.objects.create_user(
+            username="fixed-second-coach",
+            role=User.ROLE_COACH,
+            full_name="第2固定担当コーチ",
+        )
+        self.fixed_lesson.coach_2 = second_coach
+        self.fixed_lesson.save(update_fields=["coach_2"])
+
+        synchronize_fixed_lesson_membership(self.fixed_lesson.pk)
+
+        availabilities = CoachAvailability.objects.filter(
+            coach=self.coach,
+            note="固定レッスン: 固定メンバー同期テスト",
+        )
+        self.assertEqual(availabilities.count(), 3)
+        self.assertTrue(
+            all(
+                availability.coach_id == self.coach.pk
+                and availability.coach_2_id == second_coach.pk
+                and availability.coach_count == 2
+                for availability in availabilities
+            )
+        )
+
+    def test_existing_fixed_occurrence_repairs_missing_second_coach(self):
+        second_coach = User.objects.create_user(
+            username="fixed-repair-second-coach",
+            role=User.ROLE_COACH,
+        )
+        self.fixed_lesson.coach_2 = second_coach
+        self.fixed_lesson.save(update_fields=["coach_2"])
+        self.fixed_lesson.members.add(self.member)
+        availability = Reservation.objects.filter(
+            fixed_lesson=self.fixed_lesson,
+        ).earliest("start_at").availability
+        CoachAvailability.objects.filter(pk=availability.pk).update(coach_2=None)
+
+        synchronize_fixed_lesson_membership(self.fixed_lesson.pk)
+
+        availability.refresh_from_db()
+        self.assertEqual(availability.coach_2_id, second_coach.pk)
+        self.assertEqual(availability.coach_count, 2)
+
+    def test_fixed_occurrence_removes_stale_second_coach(self):
+        second_coach = User.objects.create_user(
+            username="fixed-removed-second-coach",
+            role=User.ROLE_COACH,
+        )
+        self.fixed_lesson.coach_2 = second_coach
+        self.fixed_lesson.save(update_fields=["coach_2"])
+        self.fixed_lesson.members.add(self.member)
+        availability = Reservation.objects.filter(
+            fixed_lesson=self.fixed_lesson,
+        ).earliest("start_at").availability
+
+        self.fixed_lesson.coach_2 = None
+        self.fixed_lesson.save(update_fields=["coach_2"])
+        synchronize_fixed_lesson_membership(self.fixed_lesson.pk)
+
+        availability.refresh_from_db()
+        self.assertIsNone(availability.coach_2_id)
+        self.assertEqual(availability.coach_count, 1)
 
     def test_admin_form_routes_membership_through_canonical_service_once(self):
         form = object.__new__(FixedLessonAdminForm)

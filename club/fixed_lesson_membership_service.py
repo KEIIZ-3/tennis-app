@@ -82,6 +82,7 @@ def _canonical_availability(fixed_lesson, start_at, end_at, required_capacity):
     else:
         availability = CoachAvailability(
             coach=primary_coach,
+            coach_2=fixed_lesson.coach_2,
             court=fixed_lesson.court,
             lesson_type=fixed_lesson.lesson_type,
             start_at=start_at,
@@ -97,6 +98,8 @@ def _canonical_availability(fixed_lesson, start_at, end_at, required_capacity):
         candidates = [availability]
 
     desired_values = {
+        "coach": primary_coach,
+        "coach_2": fixed_lesson.coach_2,
         "court": fixed_lesson.court,
         "capacity": required_capacity,
         "coach_count": fixed_lesson.coach_count,

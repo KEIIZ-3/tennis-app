@@ -4,6 +4,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from club.fixed_lesson_sync_facade import synchronize_fixed_lesson_membership
 from club.models import CoachAvailability, Court, FixedLesson, Reservation, User
 
 
@@ -109,6 +110,24 @@ class LessonCalendarOccurrenceCanonicalTests(TestCase):
         row = self._calendar_row()
 
         self.assertEqual(row["coach_name"], "井上春佳 / 清水峻平")
+
+    def test_synced_two_coach_occurrence_is_displayed_with_both_coaches(self):
+        self.fixed_lesson.members.add(self.member)
+        synchronize_fixed_lesson_membership(self.fixed_lesson.pk)
+
+        row = self._calendar_row()
+
+        availability = CoachAvailability.objects.get(
+            reservations__fixed_lesson=self.fixed_lesson,
+            reservations__user=self.member,
+        )
+        self.assertEqual(availability.coach_id, self.inoue.pk)
+        self.assertEqual(availability.coach_2_id, self.shimizu.pk)
+        self.assertEqual(availability.coach_count, 2)
+        self.assertEqual(availability.capacity, 10)
+        self.assertEqual(row["coach_name"], "井上春佳 / 清水峻平")
+        self.assertEqual(row["capacity"], 10)
+        self.assertEqual(row["member_count"], 1)
 
     def test_fixed_lesson_fields_remain_the_fallback_without_availability(self):
         row = self._calendar_row()
