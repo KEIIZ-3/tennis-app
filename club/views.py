@@ -79,6 +79,7 @@ from .lesson_participants import (
 from .lesson_calendar_service import (
     build_lesson_calendar_display_data,
     lesson_calendar_slot_key,
+    resolve_calendar_occurrence_display,
 )
 from .reservation_display_service import (
     build_member_reservation_list_display,
@@ -2122,6 +2123,7 @@ def lesson_calendar_view(request):
     availabilities_by_schedule = display_data["availabilities_by_schedule"]
     reservations_by_availability = display_data["reservations_by_availability"]
     reservations_by_fixed_occurrence = display_data["reservations_by_fixed_occurrence"]
+    availabilities_by_fixed_occurrence = display_data["availabilities_by_fixed_occurrence"]
 
     fixed_occurrences_by_datetimes = {}
     occurrence_dates_by_fixed = {}
@@ -2155,25 +2157,31 @@ def lesson_calendar_view(request):
                 continue
 
             primary_coach = fixed_lesson.primary_coach() if hasattr(fixed_lesson, "primary_coach") else fixed_lesson.coach
-            availability_candidates = availabilities_by_schedule.get(
-                (primary_coach.pk, fixed_lesson.lesson_type, start_at, end_at), []
-            )
-            matching_availability = next(
-                (
-                    candidate for candidate in availability_candidates
-                    if not fixed_lesson.court_id or candidate.court_id == fixed_lesson.court_id
-                ),
-                None,
+            fixed_key = (str(fixed_lesson.pk), cursor_date.isoformat())
+            linked_availabilities = availabilities_by_fixed_occurrence.get(fixed_key, [])
+            matching_availability = next(iter(linked_availabilities), None)
+            if matching_availability is None:
+                availability_candidates = availabilities_by_schedule.get(
+                    (primary_coach.pk, fixed_lesson.lesson_type, start_at, end_at), []
+                )
+                matching_availability = next(
+                    (
+                        candidate for candidate in availability_candidates
+                        if not fixed_lesson.court_id or candidate.court_id == fixed_lesson.court_id
+                    ),
+                    None,
+                )
+
+            occurrence_display = resolve_calendar_occurrence_display(
+                fixed_lesson=fixed_lesson,
+                availability=matching_availability,
+                start_at=start_at,
+                end_at=end_at,
+                fallback_court=first_active_court,
             )
             if matching_availability:
                 represented_availability_ids.add(matching_availability.pk)
-                court = matching_availability.court
-                capacity = _capacity_for_availability(matching_availability)
-                status = matching_availability.status
-                is_recruitment_closed = matching_availability.is_recruitment_closed
                 availability_id = str(matching_availability.pk)
-                substitute_coach = matching_availability.substitute_coach
-                slot_coach = matching_availability.coach
                 slot_key = _slot_key(
                     lesson_type=matching_availability.lesson_type,
                     coach_id=matching_availability.coach_id,
@@ -2182,22 +2190,15 @@ def lesson_calendar_view(request):
                     end_at=matching_availability.end_at,
                 )
             else:
-                court = fixed_lesson.court or first_active_court
-                capacity = _capacity_for_fixed_lesson(fixed_lesson)
-                status = CoachAvailability.STATUS_OPEN
-                is_recruitment_closed = False
                 availability_id = ""
-                substitute_coach = None
-                slot_coach = primary_coach
                 slot_key = _slot_key(
                     lesson_type=fixed_lesson.lesson_type,
                     coach_id=getattr(primary_coach, "pk", None),
-                    court_id=getattr(court, "pk", None),
+                    court_id=getattr(occurrence_display["court"], "pk", None),
                     start_at=start_at,
                     end_at=end_at,
                 )
 
-            fixed_key = (str(fixed_lesson.pk), cursor_date.isoformat())
             # 固定メンバー設定ではなく、この開催回に存在する有効予約だけを表示人数とする。
             # 物理枠の一致を混ぜると、同時刻・同コートの別レッスンまで数えるため、
             # FixedLesson に明示的に紐づく Reservation のみを使用する。
@@ -2233,7 +2234,7 @@ def lesson_calendar_view(request):
             # 固定メンバーであっても、個別開催回をキャンセルした場合は
             # 有効予約がないため「予約済み」へ強制変換しない。
 
-            coach_names = _fixed_lesson_coach_names(fixed_lesson)
+            coach_names = occurrence_display["assigned_coach_name"]
 
             item = _build_display_item(
                 item_id=f"fixed-{fixed_lesson.pk}-{cursor_date:%Y%m%d}",
@@ -2242,31 +2243,31 @@ def lesson_calendar_view(request):
                 lesson_date=cursor_date.isoformat(),
                 source_kind="fixed_lesson",
                 title=_lesson_calendar_title(fixed_lesson),
-                lesson_type=fixed_lesson.lesson_type,
-                lesson_type_label=fixed_lesson.get_lesson_type_display(),
-                target_level=fixed_lesson.target_level,
-                target_level_label=_lesson_level_label(fixed_lesson) or fixed_lesson.get_target_level_display(),
-                target_level_2=getattr(fixed_lesson, "target_level_2", "") or "",
-                start_at=start_at,
-                end_at=end_at,
-                coach=slot_coach,
+                lesson_type=occurrence_display["lesson_type"],
+                lesson_type_label=occurrence_display["lesson_type_label"],
+                target_level=occurrence_display["target_level"],
+                target_level_label=occurrence_display["target_level_label"],
+                target_level_2=occurrence_display["target_level_2"],
+                start_at=occurrence_display["start_at"],
+                end_at=occurrence_display["end_at"],
+                coach=occurrence_display["coach"],
                 assigned_coach_name=coach_names,
-                substitute_coach=substitute_coach,
-                court=court,
-                capacity=capacity,
+                substitute_coach=occurrence_display["substitute_coach"],
+                court=occurrence_display["court"],
+                capacity=occurrence_display["capacity"],
                 member_count=member_count,
                 pending_count=pending_count,
                 waitlist_count=max(
                     int(waitlist_counts.get(slot_key, 0)),
                     int(fixed_lesson_waitlist_counts.get(fixed_key, 0)),
                 ),
-                status=status,
+                status=occurrence_display["status"],
                 color_class=_coach_color_from_names(coach_names, getattr(primary_coach, "pk", None)),
                 color_combo_class=_coach_combo_class_from_names(coach_names),
-                allow_fixed_booking=bool(court),
+                allow_fixed_booking=bool(occurrence_display["court"]),
                 user_slot_status_override=fixed_user_status,
                 user_waitlist_id_override=fixed_user_waitlist_id,
-                is_recruitment_closed=is_recruitment_closed,
+                is_recruitment_closed=occurrence_display["is_recruitment_closed"],
                 fixed_lesson=fixed_lesson,
                 availability=matching_availability,
                 participant_user_ids=[
