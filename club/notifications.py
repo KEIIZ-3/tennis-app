@@ -50,6 +50,17 @@ def _court_label(obj):
     return "-"
 
 
+def _lesson_type_value_label(value):
+    from .models import LessonTypeMixin
+
+    return dict(LessonTypeMixin.LESSON_TYPE_CHOICES).get(value, value or "-")
+
+
+def _coach_context_label(context):
+    coaches = context.display_coaches
+    return " / ".join(_safe_display_name(coach) for coach in coaches) if coaches else "ユーザー"
+
+
 def _payment_label(obj):
     if not obj:
         return "-"
@@ -93,19 +104,17 @@ def _reservation_participant_label(reservation):
 
 
 def _reservation_common_lines(reservation):
-    assigned_coach = None
-    try:
-        assigned_coach = reservation.assigned_coach()
-    except Exception:
-        assigned_coach = getattr(reservation, "substitute_coach", None) or getattr(reservation, "coach", None)
+    from .notification_service import resolve_lesson_notification_context
+
+    context = resolve_lesson_notification_context(reservation)
 
     return [
         f"会員: {_safe_display_name(getattr(reservation, 'user', None))}",
         f"参加者: {_reservation_participant_label(reservation)}",
-        f"コーチ: {_safe_display_name(assigned_coach)}",
-        f"種別: {_lesson_type_label(reservation)}",
-        f"日時: {_format_datetime_range(getattr(reservation, 'start_at', None), getattr(reservation, 'end_at', None))}",
-        f"コート: {_court_label(reservation)}",
+        f"コーチ: {_coach_context_label(context)}",
+        f"種別: {_lesson_type_value_label(context.lesson_type)}",
+        f"日時: {_format_datetime_range(context.start_at, context.end_at)}",
+        f"コート: {str(context.court) if context.court else '-'}",
         f"お支払い・チケット: {_payment_label(reservation)}",
     ]
 
@@ -192,20 +201,18 @@ def build_reservation_created_message(reservation):
 
 
 def build_waitlist_registered_for_member_email_message(waitlist):
-    assigned_coach = None
-    try:
-        assigned_coach = waitlist.assigned_coach()
-    except Exception:
-        assigned_coach = getattr(waitlist, "substitute_coach", None) or getattr(waitlist, "coach", None)
+    from .notification_service import resolve_lesson_notification_context
+
+    context = resolve_lesson_notification_context(waitlist)
 
     lines = [
         "【Play Design Tennis】キャンセル待ちに登録しました。",
         "",
         f"会員: {_safe_display_name(getattr(waitlist, 'user', None))}",
-        f"コーチ: {_safe_display_name(assigned_coach)}",
-        f"種別: {_lesson_type_label(waitlist)}",
-        f"日時: {_format_datetime_range(getattr(waitlist, 'start_at', None), getattr(waitlist, 'end_at', None))}",
-        f"コート: {_court_label(waitlist)}",
+        f"コーチ: {_coach_context_label(context)}",
+        f"種別: {_lesson_type_value_label(context.lesson_type)}",
+        f"日時: {_format_datetime_range(context.start_at, context.end_at)}",
+        f"コート: {str(context.court) if context.court else '-'}",
         "",
         "空きが出た場合は、LINEでご案内します。",
         "この時点では予約は確定していません。",
