@@ -72,8 +72,11 @@ def _canonical_availability(
     occurrence_court = occurrence_court or fixed_lesson.court
     candidates = list(
         CoachAvailability.objects.select_for_update()
-        .filter(lesson_type=fixed_lesson.lesson_type, start_at=start_at, end_at=end_at)
-        .filter(coach=primary_coach)
+        .filter(start_at=start_at, end_at=end_at)
+        .filter(
+            models.Q(fixed_lesson_source=fixed_lesson)
+            | models.Q(lesson_type=fixed_lesson.lesson_type, coach=primary_coach)
+        )
         .order_by(models.Case(
             models.When(fixed_lesson_source=fixed_lesson, then=0),
             default=1,
@@ -98,17 +101,52 @@ def _canonical_availability(
             note=_fixed_note(fixed_lesson),
             fixed_lesson_source=fixed_lesson,
             coach_assignment_overridden=False,
+            capacity_overridden=False,
+            court_assignment_overridden=False,
+            level_overridden=False,
+            lesson_type_overridden=False,
+            note_overridden=False,
         )
         availability.save()
         candidates = [availability]
 
-    desired_values = {
-        "court": occurrence_court,
-        "court_count": fixed_lesson.court_count,
-        "target_level": fixed_lesson.target_level,
-        "target_level_2": fixed_lesson.target_level_2,
-        "note": _fixed_note(fixed_lesson),
-    }
+    active_count = Reservation.objects.filter(
+        availability=availability,
+        status__in=CAPACITY_CONSUMING_STATUSES,
+    ).count()
+    if not availability.capacity_overridden and required_capacity < active_count:
+        raise ValidationError(
+            f"開催回の参加者{active_count}名を下回る定員{required_capacity}名には変更できません。"
+        )
+    if (
+        not availability.lesson_type_overridden
+        and availability.lesson_type != fixed_lesson.lesson_type
+        and (
+            Reservation.objects.filter(availability=availability).exists()
+            or LessonWaitlist.objects.filter(
+                availability=availability,
+                status=LessonWaitlist.STATUS_WAITING,
+            ).exists()
+        )
+    ):
+        raise ValidationError(
+            "予約またはキャンセル待ちがある未来開催回のレッスン種別は変更できません。"
+        )
+
+    desired_values = {}
+    if not availability.capacity_overridden:
+        desired_values["capacity"] = required_capacity
+    if not availability.court_assignment_overridden:
+        desired_values.update(court=occurrence_court, court_count=fixed_lesson.court_count)
+    if not availability.level_overridden:
+        desired_values.update(
+            target_level=fixed_lesson.target_level,
+            target_level_2=fixed_lesson.target_level_2,
+        )
+    if not availability.lesson_type_overridden:
+        desired_values["lesson_type"] = fixed_lesson.lesson_type
+    if not availability.note_overridden:
+        desired_values["note"] = _fixed_note(fixed_lesson)
     updated_fields = []
     for field_name, desired_value in desired_values.items():
         current_id = getattr(availability, f"{field_name}_id", None)
@@ -135,12 +173,12 @@ def _canonical_availability(
             end_at=end_at,
             status__in=CAPACITY_CONSUMING_STATUSES,
         ).update(
-            coach=primary_coach,
-            court=fixed_lesson.court,
+            coach=availability.coach,
+            court=availability.court,
             availability=availability,
-            lesson_type=fixed_lesson.lesson_type,
-            target_level=fixed_lesson.target_level,
-            target_level_2=fixed_lesson.target_level_2,
+            lesson_type=availability.lesson_type,
+            target_level=availability.target_level,
+            target_level_2=availability.target_level_2,
             substitute_coach=availability.substitute_coach,
             custom_ticket_price=availability.custom_ticket_price,
             custom_duration_hours=availability.custom_duration_hours,
@@ -152,12 +190,12 @@ def _canonical_availability(
             end_at=end_at,
             status=LessonWaitlist.STATUS_WAITING,
         ).update(
-            coach=primary_coach,
-            court=fixed_lesson.court,
+            coach=availability.coach,
+            court=availability.court,
             availability=availability,
-            lesson_type=fixed_lesson.lesson_type,
-            target_level=fixed_lesson.target_level,
-            target_level_2=fixed_lesson.target_level_2,
+            lesson_type=availability.lesson_type,
+            target_level=availability.target_level,
+            target_level_2=availability.target_level_2,
             substitute_coach=availability.substitute_coach,
         )
 
@@ -193,6 +231,36 @@ def restore_fixed_lesson_coach_assignment(availability_id):
         return availability
 
 
+def restore_fixed_lesson_occurrence_attributes(availability_id):
+    """Discard occurrence attribute overrides and immediately restore the template values."""
+    with transaction.atomic():
+        availability = (
+            CoachAvailability.objects.select_for_update()
+            .select_related("fixed_lesson_source")
+            .get(pk=availability_id)
+        )
+        fixed_lesson = availability.fixed_lesson_source
+        if fixed_lesson is None:
+            raise ValidationError("固定レッスン由来ではない開催回です。")
+        for field_name in (
+            "capacity_overridden", "court_assignment_overridden", "level_overridden",
+            "lesson_type_overridden", "note_overridden",
+        ):
+            setattr(availability, field_name, False)
+        availability.save(update_fields=[
+            "capacity_overridden", "court_assignment_overridden", "level_overridden",
+            "lesson_type_overridden", "note_overridden",
+        ])
+        required_capacity = max(fixed_lesson.effective_capacity(), 1)
+        return _canonical_availability(
+            fixed_lesson,
+            availability.start_at,
+            availability.end_at,
+            required_capacity,
+            occurrence_court=fixed_lesson.court,
+        )
+
+
 def _ensure_self_snapshot(reservation):
     participant = resolve_reservation_participant(reservation.user, PARTICIPANT_SELF)
     save_reservation_participant_snapshot(reservation, participant)
@@ -210,9 +278,8 @@ def rebind_occurrence_links(
     if (
         availability.start_at != start_at
         or availability.end_at != end_at
-        or availability.lesson_type != fixed_lesson.lesson_type
     ):
-        raise ValidationError("開催枠と固定レッスンの日時・種別が一致しません。")
+        raise ValidationError("開催枠と固定レッスンの日時が一致しません。")
 
     from .lesson_participants import competing_fixed_lesson_ids
 
@@ -223,7 +290,7 @@ def rebind_occurrence_links(
     )
     reservations = Reservation.objects.filter(
         availability=availability,
-        lesson_type=fixed_lesson.lesson_type,
+        lesson_type=availability.lesson_type,
         start_at=start_at,
         end_at=end_at,
     ).exclude(fixed_lesson=fixed_lesson).exclude(fixed_lesson_id__in=competing_ids)
@@ -231,7 +298,7 @@ def rebind_occurrence_links(
         reservations = reservations.filter(pk__in=reservation_ids)
     waitlists = LessonWaitlist.objects.filter(
         availability=availability,
-        lesson_type=fixed_lesson.lesson_type,
+        lesson_type=availability.lesson_type,
         start_at=start_at,
         end_at=end_at,
     ).exclude(fixed_lesson=fixed_lesson).exclude(fixed_lesson_id__in=competing_ids)
@@ -252,7 +319,6 @@ def _active_occurrence_reservations(fixed_lesson, member, availability, start_at
         Reservation.objects.select_for_update()
         .filter(
             user=member,
-            lesson_type=fixed_lesson.lesson_type,
             start_at=start_at,
             end_at=end_at,
             status__in=CAPACITY_CONSUMING_STATUSES,
@@ -265,8 +331,9 @@ def _active_occurrence_reservations(fixed_lesson, member, availability, start_at
             models.Q(fixed_lesson=fixed_lesson)
             | models.Q(availability=availability)
             | models.Q(
-                coach=fixed_lesson.primary_coach(),
-                court=fixed_lesson.court,
+                coach=availability.coach,
+                court=availability.court,
+                lesson_type=availability.lesson_type,
             )
         )
         .order_by("-is_fixed_entry", "id")
@@ -318,15 +385,15 @@ def _create_or_update_reservation(
 
         canonical = Reservation(
             user=member,
-            coach=fixed_lesson.primary_coach(),
+            coach=availability.coach,
             substitute_coach=availability.substitute_coach,
-            court=fixed_lesson.court,
+            court=availability.court,
             availability=availability,
             fixed_lesson=fixed_lesson,
             is_fixed_entry=True,
-            lesson_type=fixed_lesson.lesson_type,
-            target_level=fixed_lesson.target_level,
-            target_level_2=fixed_lesson.target_level_2,
+            lesson_type=availability.lesson_type,
+            target_level=availability.target_level,
+            target_level_2=availability.target_level_2,
             start_at=start_at,
             end_at=end_at,
             status=Reservation.STATUS_ACTIVE,
@@ -337,15 +404,15 @@ def _create_or_update_reservation(
         canonical.save()
     else:
         desired_values = {
-            "coach": fixed_lesson.primary_coach(),
+            "coach": availability.coach,
             "substitute_coach": availability.substitute_coach,
-            "court": fixed_lesson.court,
+            "court": availability.court,
             "availability": availability,
             "fixed_lesson": fixed_lesson,
             "is_fixed_entry": True,
-            "lesson_type": fixed_lesson.lesson_type,
-            "target_level": fixed_lesson.target_level,
-            "target_level_2": fixed_lesson.target_level_2,
+            "lesson_type": availability.lesson_type,
+            "target_level": availability.target_level,
+            "target_level_2": availability.target_level_2,
             "custom_ticket_price": availability.custom_ticket_price,
             "custom_duration_hours": availability.custom_duration_hours,
         }
@@ -403,7 +470,7 @@ def synchronize_fixed_lesson_membership(fixed_lesson_id, created_by=None):
         }
         members = list(fixed_lesson.members.select_for_update().order_by("pk"))
         member_ids = {member.pk for member in members}
-        required_capacity = max(fixed_lesson.effective_capacity(), len(members), 1)
+        required_capacity = max(fixed_lesson.effective_capacity(), 1)
         changed_count = 0
 
         extra_reservations = Reservation.objects.select_for_update().filter(
@@ -443,12 +510,12 @@ def synchronize_fixed_lesson_membership(fixed_lesson_id, created_by=None):
                 end_at=end_at,
                 status__in=CAPACITY_CONSUMING_STATUSES,
             ).update(
-                coach=fixed_lesson.primary_coach(),
-                court=fixed_lesson.court,
+                coach=availability.coach,
+                court=availability.court,
                 availability=availability,
-                lesson_type=fixed_lesson.lesson_type,
-                target_level=fixed_lesson.target_level,
-                target_level_2=fixed_lesson.target_level_2,
+                lesson_type=availability.lesson_type,
+                target_level=availability.target_level,
+                target_level_2=availability.target_level_2,
                 substitute_coach=availability.substitute_coach,
                 custom_ticket_price=availability.custom_ticket_price,
                 custom_duration_hours=availability.custom_duration_hours,
@@ -459,12 +526,12 @@ def synchronize_fixed_lesson_membership(fixed_lesson_id, created_by=None):
                 end_at=end_at,
                 status=LessonWaitlist.STATUS_WAITING,
             ).update(
-                coach=fixed_lesson.primary_coach(),
-                court=fixed_lesson.court,
+                coach=availability.coach,
+                court=availability.court,
                 availability=availability,
-                lesson_type=fixed_lesson.lesson_type,
-                target_level=fixed_lesson.target_level,
-                target_level_2=fixed_lesson.target_level_2,
+                lesson_type=availability.lesson_type,
+                target_level=availability.target_level,
+                target_level_2=availability.target_level_2,
                 substitute_coach=availability.substitute_coach,
             )
 
@@ -511,7 +578,6 @@ def synchronize_fixed_lesson_membership(fixed_lesson_id, created_by=None):
                     continue
                 active_qs = Reservation.objects.filter(
                     user=member,
-                    lesson_type=fixed_lesson.lesson_type,
                     start_at=start_at,
                     end_at=end_at,
                     status__in=CAPACITY_CONSUMING_STATUSES,

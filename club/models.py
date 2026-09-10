@@ -283,6 +283,11 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         default=False,
         verbose_name="コーチ構成の個別変更",
     )
+    capacity_overridden = models.BooleanField(default=False, verbose_name="定員の個別変更")
+    court_assignment_overridden = models.BooleanField(default=False, verbose_name="コート構成の個別変更")
+    level_overridden = models.BooleanField(default=False, verbose_name="対象レベルの個別変更")
+    lesson_type_overridden = models.BooleanField(default=False, verbose_name="レッスン種別の個別変更")
+    note_overridden = models.BooleanField(default=False, verbose_name="メモの個別変更")
     substitute_coach = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
