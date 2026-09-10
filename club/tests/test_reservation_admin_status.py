@@ -170,6 +170,68 @@ class ReservationAdminStatusTests(TestCase):
         self.reservation.refresh_from_db()
         self.assertEqual(self.reservation.status, Reservation.STATUS_ACTIVE)
 
+    def test_admin_change_form_only_allows_status_to_be_edited(self):
+        form_class = self.model_admin.get_form(self.request, self.reservation)
+
+        self.assertEqual(set(form_class.base_fields), {"status"})
+        self.assertTrue(
+            {
+                "coach",
+                "substitute_coach",
+                "court",
+                "start_at",
+                "end_at",
+                "lesson_type",
+                "target_level",
+                "target_level_2",
+                "tickets_used",
+                "availability",
+                "fixed_lesson",
+                "participant_ticket_price_snapshot",
+                "payment_status",
+                "payment_amount",
+                "payment_method",
+            }.issubset(self.model_admin.get_readonly_fields(self.request, self.reservation))
+        )
+        self.assertEqual(self.model_admin.list_editable, ())
+        self.assertEqual(self.model_admin.actions, ())
+
+    def test_admin_post_cannot_tamper_with_protected_fields(self):
+        original = Reservation.objects.values(
+            "coach_id",
+            "court_id",
+            "start_at",
+            "end_at",
+            "lesson_type",
+            "availability_id",
+            "fixed_lesson_id",
+            "tickets_used",
+        ).get(pk=self.reservation.pk)
+        self.client.force_login(self.admin_user)
+        url = reverse("admin:club_reservation_change", args=[self.reservation.pk])
+
+        response = self.client.post(
+            url,
+            {
+                "status": Reservation.STATUS_ACTIVE,
+                "coach": self.admin_user.pk,
+                "court": "",
+                "start_at": "2000-01-01 00:00:00",
+                "end_at": "2000-01-01 01:00:00",
+                "lesson_type": Reservation.LESSON_PRIVATE,
+                "availability": "",
+                "fixed_lesson": "",
+                "tickets_used": 99,
+                "_save": "Save",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            Reservation.objects.values(*original.keys()).get(pk=self.reservation.pk),
+            original,
+        )
+
     @patch("club.models.Reservation.refund_tickets", side_effect=RuntimeError("refund failed"))
     def test_admin_cancel_rolls_back_status_when_refund_fails(self, _refund):
         form = self._bound_form(Reservation.STATUS_CANCELED)

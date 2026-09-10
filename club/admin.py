@@ -388,9 +388,11 @@ class ReservationAdminForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         coach_qs = coach_user_queryset()
-        self.fields["coach"].queryset = coach_qs
-        self.fields["substitute_coach"].queryset = coach_qs
-        self.fields["substitute_coach"].required = False
+        if "coach" in self.fields:
+            self.fields["coach"].queryset = coach_qs
+        if "substitute_coach" in self.fields:
+            self.fields["substitute_coach"].queryset = coach_qs
+            self.fields["substitute_coach"].required = False
 
         if self.instance and self.instance.pk:
             if getattr(self.instance, "start_at", None):
@@ -541,6 +543,7 @@ class UserAdmin(UserAdminTicketSummaryMixin, BaseUserAdmin):
     ordering = ("id",)
     actions = ("grant_tickets_selected", "grant_single_ticket", "grant_set4_tickets")
     action_form = IdempotentTicketActionForm
+    readonly_fields = (*BaseUserAdmin.readonly_fields, "ticket_balance")
 
     fieldsets = (
         (None, {"fields": ("username", "password")}),
@@ -1196,6 +1199,11 @@ class ParticipantPriceChangeAdmin(admin.ModelAdmin):
 @admin.register(Reservation)
 class ReservationAdmin(ReservationAdminHistoryMixin, admin.ModelAdmin):
     form = ReservationAdminForm
+    protected_change_fields = tuple(
+        field.name
+        for field in Reservation._meta.fields
+        if field.name != "status"
+    )
     list_display = (
         "id",
         "user",
@@ -1234,6 +1242,11 @@ class ReservationAdmin(ReservationAdminHistoryMixin, admin.ModelAdmin):
         "requested_court_note",
         "approved_court_note",
     )
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj is None:
+            return ()
+        return self.protected_change_fields
 
     def has_delete_permission(self, request, obj=None):
         """Reservationの業務履歴を迂回する物理削除を管理画面から許可しない。"""

@@ -4,7 +4,7 @@ from django.contrib.auth.models import Permission
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
-from club.admin import TicketConsumptionAdmin, TicketLedgerAdmin, TicketPurchaseAdmin
+from club.admin import TicketConsumptionAdmin, TicketLedgerAdmin, TicketPurchaseAdmin, UserAdmin
 from club.models import TicketCashReceipt, TicketConsumption, TicketLedger, TicketPurchase
 
 
@@ -231,3 +231,60 @@ class TicketAdminSafetyTests(TestCase):
         }
         self.assertEqual(self.client.post(url, data).status_code, 302)
         self.assertFalse(TicketCashReceipt.objects.exists())
+
+    def test_user_admin_displays_ticket_balance_as_read_only(self):
+        model_admin = UserAdmin(type(self.member), admin.site)
+        request = self._request_for(self.superuser)
+
+        self.assertIn("ticket_balance", model_admin.get_readonly_fields(request, self.member))
+        self.assertNotIn("ticket_balance", model_admin.get_form(request, self.member).base_fields)
+        self.assertNotIn("ticket_balance", model_admin.list_editable)
+        self.assertTrue(
+            all("ticket_balance" not in action_name for action_name in model_admin.actions)
+        )
+
+        self.client.force_login(self.superuser)
+        response = self.client.get(
+            reverse("admin:club_user_change", args=[self.member.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "field-ticket_balance")
+
+    def test_user_admin_post_cannot_tamper_with_ticket_balance(self):
+        self.client.force_login(self.superuser)
+        url = reverse("admin:club_user_change", args=[self.member.pk])
+        response = self.client.post(
+            url,
+            {
+                "username": self.member.username,
+                "full_name": "Updated Member",
+                "email": self.member.email,
+                "phone_number": self.member.phone_number,
+                "member_level": self.member.member_level,
+                "ticket_balance": 999,
+                "is_profile_completed": self.member.is_profile_completed,
+                "contractor_hourly_wage": self.member.contractor_hourly_wage,
+                "first_name": self.member.first_name,
+                "last_name": self.member.last_name,
+                "role": self.member.role,
+                "is_active": self.member.is_active,
+                "is_staff": self.member.is_staff,
+                "is_superuser": self.member.is_superuser,
+                "groups": [],
+                "user_permissions": [],
+                "date_joined_0": self.member.date_joined.strftime("%Y-%m-%d"),
+                "date_joined_1": self.member.date_joined.strftime("%H:%M:%S"),
+                "_save": "Save",
+            },
+        )
+
+        self.assertEqual(
+            response.status_code,
+            302,
+            getattr(response.context.get("adminform"), "form", None).errors
+            if response.context
+            else None,
+        )
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.full_name, "Updated Member")
+        self.assertEqual(self.member.ticket_balance, 4)
