@@ -2,6 +2,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 from io import BytesIO
+from pathlib import Path
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -220,6 +221,13 @@ class ShopWorkflowTests(TestCase):
         self.assertFalse(invalid.is_valid())
         self.assertIn('value="25"', str(invalid["discount_rate"]))
 
+        cleared = ShopQuoteItemForm({
+            "description": "", "quantity": "1", "list_price": "4000",
+            "sale_price": "3000", "discount_rate": "", "pricing_source": "discount",
+        })
+        self.assertFalse(cleared.is_valid())
+        self.assertNotIn('value=', str(cleared["discount_rate"]))
+
     def test_unit_prices_stay_constant_while_quantity_scales_totals(self):
         quote = create_quote(customer=self.customer, creator=self.coach, items=[{
             "description": "商品", "quantity": 1, "list_price": 4000,
@@ -256,6 +264,20 @@ class ShopWorkflowTests(TestCase):
         self.assertEqual(form.cleaned_data["sale_price"], 3000)
         quote = create_quote(customer=self.customer, creator=self.coach, items=[form.cleaned_data])
         self.assertEqual((quote.items.get().sale_price, quote.total), (3000, 6000))
+
+    def test_quote_form_pricing_events_only_update_in_the_selected_direction(self):
+        template = Path("club/templates/shop/quote_form.html").read_text(encoding="utf-8")
+
+        self.assertIn("function updateFromDiscount(row)", template)
+        self.assertIn("if(rate.value==='')return;", template)
+        self.assertIn("source.value='discount';updateFromDiscount(row)", template)
+        self.assertIn("source.value='sale';updateFromSalePrice(row)", template)
+        self.assertIn("function updateTotals()", template)
+        self.assertNotIn("else if(list>0&&saleEl.value!=='')", template)
+
+        list_price_handler = "if(source.value==='discount'){updateFromDiscount(row);}" \
+                             "else if(sale.value!==''){updateFromSalePrice(row);}"
+        self.assertIn(list_price_handler, template)
 
     def test_cost_profit_totals_and_purchase_snapshot(self):
         quote = create_quote(customer=self.customer, creator=self.coach, items=[
