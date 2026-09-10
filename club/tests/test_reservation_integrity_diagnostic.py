@@ -197,7 +197,59 @@ class ReservationIntegrityDiagnosticTests(TestCase):
             end_at=reservation.end_at + timedelta(hours=1), capacity=2,
         )
         Reservation.objects.filter(pk=reservation.pk).update(availability=availability)
-        with self.assertRaisesMessage(CommandError, "日時・種別が一致しません"):
+        with self.assertRaisesMessage(
+            CommandError,
+            "開催枠と固定レッスンの日時が一致しません。",
+        ):
+            call_command(
+                "repair_occurrence_linkage",
+                "--reservation-id", reservation.pk,
+                "--canonical-fixed-lesson-id", self.fixed.pk,
+            )
+
+    def test_repair_command_accepts_recorded_lesson_type_override(self):
+        reservation = self.reservation(self.members[0])
+        availability = CoachAvailability.objects.create(
+            coach=self.coach, court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            lesson_type_overridden=True,
+            start_at=reservation.start_at, end_at=reservation.end_at, capacity=2,
+            fixed_lesson_source=self.fixed,
+        )
+        Reservation.objects.filter(pk=reservation.pk).update(
+            availability=availability,
+            lesson_type=availability.lesson_type,
+        )
+
+        stdout = StringIO()
+        call_command(
+            "repair_occurrence_linkage",
+            "--reservation-id", reservation.pk,
+            "--canonical-fixed-lesson-id", self.fixed.pk,
+            stdout=stdout,
+        )
+
+        self.assertEqual(json.loads(stdout.getvalue())["reservation_ids"], [])
+
+    def test_repair_command_rejects_unrecorded_lesson_type_mismatch(self):
+        reservation = self.reservation(self.members[0])
+        availability = CoachAvailability.objects.create(
+            coach=self.coach, court=self.court,
+            lesson_type=Reservation.LESSON_PRIVATE,
+            lesson_type_overridden=False,
+            start_at=reservation.start_at, end_at=reservation.end_at, capacity=2,
+            fixed_lesson_source=self.fixed,
+        )
+        Reservation.objects.filter(pk=reservation.pk).update(
+            availability=availability,
+            lesson_type=availability.lesson_type,
+        )
+
+        with self.assertRaisesMessage(
+            CommandError,
+            "開催枠のレッスン種別が固定レッスンと一致せず、"
+            "個別変更として記録されていません。",
+        ):
             call_command(
                 "repair_occurrence_linkage",
                 "--reservation-id", reservation.pk,
