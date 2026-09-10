@@ -27,6 +27,7 @@ from .models import (
     Reservation,
 )
 from .settlement_balance_policy import main_coaches
+from .settlement_models import MonthlySettlement
 from .settlement_service import calculate_monthly_settlement, get_or_create_monthly_settlement
 
 
@@ -222,7 +223,7 @@ def status_by_availability(user, year_month_pairs):
     """受付・精算画面でも実施管理と同じ判定結果を表示する。"""
     result = {}
     for year, month in sorted(set(year_month_pairs)):
-        settlement = get_or_create_monthly_settlement(year, month)
+        settlement = MonthlySettlement.objects.filter(year=year, month=month).first()
         status_map = read_status_map(settlement)
         slots = _canonical_slots(year, month)
         reservations_by_slot = _reservations_by_slot(slots)
@@ -504,26 +505,11 @@ def _reservations_by_slot(slots):
 
 
 def _canonical_availability_for_fixed(fixed_lesson, start_at, end_at):
-    from .fixed_lesson_membership_service import _canonical_availability
-
-    primary_coach = (
-        fixed_lesson.primary_coach()
-        if hasattr(fixed_lesson, "primary_coach")
-        else fixed_lesson.coach
+    from .fixed_lesson_occurrence_service import (
+        resolve_fixed_lesson_availability_readonly,
     )
-    court = fixed_lesson.court or Court.objects.filter(
-        is_active=True,
-    ).order_by("id").first()
-    if primary_coach is None or court is None:
-        return None
 
-    return _canonical_availability(
-        fixed_lesson,
-        start_at,
-        end_at,
-        max(int(fixed_lesson.effective_capacity() or 1), 1),
-        occurrence_court=court,
-    )
+    return resolve_fixed_lesson_availability_readonly(fixed_lesson, start_at, end_at)
 
 
 def _canonical_slots(year, month):
