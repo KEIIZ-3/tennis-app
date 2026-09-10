@@ -277,7 +277,7 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertNotContains(response, ">雨天中止</button>", html=False)
         self.assertContains(response, f"open_rain={availability.pk}")
 
-        settlement = MonthlySettlement.objects.get(
+        settlement = MonthlySettlement.objects.create(
             year=self.lesson_date.year,
             month=self.lesson_date.month,
         )
@@ -804,15 +804,23 @@ class ReservationFlowSmokeTests(TestCase):
         )
         own_start, own_end = own_lesson._build_datetimes_for_date(self.lesson_date)
         other_start, other_end = other_lesson._build_datetimes_for_date(self.lesson_date)
-        own_availability = lesson_execution._canonical_availability_for_fixed(
-            own_lesson,
-            own_start,
-            own_end,
+        own_availability = CoachAvailability.objects.create(
+            coach=self.contractor,
+            court=self.court,
+            lesson_type=own_lesson.lesson_type,
+            start_at=own_start,
+            end_at=own_end,
+            capacity=own_lesson.effective_capacity(),
+            fixed_lesson_source=own_lesson,
         )
-        other_availability = lesson_execution._canonical_availability_for_fixed(
-            other_lesson,
-            other_start,
-            other_end,
+        other_availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=other_court,
+            lesson_type=other_lesson.lesson_type,
+            start_at=other_start,
+            end_at=other_end,
+            capacity=other_lesson.effective_capacity(),
+            fixed_lesson_source=other_lesson,
         )
         self.client.force_login(self.contractor)
 
@@ -841,10 +849,14 @@ class ReservationFlowSmokeTests(TestCase):
         fixed_lesson = self._create_fixed_lesson(title="実施管理対象")
         other_lesson = self._create_fixed_lesson(title="同一物理枠の別レッスン")
         start_at, end_at = fixed_lesson._build_datetimes_for_date(self.lesson_date)
-        availability = lesson_execution._canonical_availability_for_fixed(
-            fixed_lesson,
-            start_at,
-            end_at,
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=fixed_lesson.lesson_type,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=fixed_lesson.effective_capacity(),
+            fixed_lesson_source=fixed_lesson,
         )
         included = Reservation.objects.create(
             user=self.member,
@@ -2290,13 +2302,21 @@ class ReservationFlowSmokeTests(TestCase):
             ).exists()
         )
 
-    def test_lesson_execution_creates_one_canonical_availability(self):
+    def test_lesson_execution_only_reads_existing_canonical_availability(self):
         fixed_lesson = self._create_fixed_lesson()
-        fixed_lesson.court = None
-        fixed_lesson.save(update_fields=["court"])
         start_at, end_at = fixed_lesson._build_datetimes_for_date(
             self.lesson_date,
         )
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=fixed_lesson.lesson_type,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=fixed_lesson.effective_capacity(),
+            fixed_lesson_source=fixed_lesson,
+        )
+        availability_count = CoachAvailability.objects.count()
 
         first = lesson_execution._canonical_availability_for_fixed(
             fixed_lesson,
@@ -2309,20 +2329,11 @@ class ReservationFlowSmokeTests(TestCase):
             end_at,
         )
 
-        self.assertIsNotNone(first)
+        self.assertEqual(first.pk, availability.pk)
         self.assertEqual(first.pk, second.pk)
         self.assertEqual(first.court_id, self.court.pk)
         self.assertEqual(first.capacity, fixed_lesson.effective_capacity())
-        self.assertEqual(
-            CoachAvailability.objects.filter(
-                coach=self.coach,
-                court=self.court,
-                lesson_type=fixed_lesson.lesson_type,
-                start_at=start_at,
-                end_at=end_at,
-            ).count(),
-            1,
-        )
+        self.assertEqual(CoachAvailability.objects.count(), availability_count)
 
     def test_member_can_reserve_regular_preopen_lesson_without_ticket_consumption(self):
         preopen_date = date(2026, 7, 3)

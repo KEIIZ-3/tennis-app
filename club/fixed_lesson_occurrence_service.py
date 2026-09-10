@@ -19,6 +19,43 @@ from .models import (
 
 CANCELLATION_REASON = "固定レッスン開催回の中止"
 
+def resolve_fixed_lesson_availability_readonly(fixed_lesson, start_at, end_at):
+    """Resolve an existing occurrence without locking or modifying database rows."""
+    if fixed_lesson.pk is None:
+        return None
+
+    linked_reservation = Reservation.objects.filter(
+        availability_id=models.OuterRef("pk"),
+        fixed_lesson_id=fixed_lesson.pk,
+        start_at=start_at,
+        end_at=end_at,
+    )
+    return (
+        CoachAvailability.objects.filter(
+            lesson_type=fixed_lesson.lesson_type,
+            start_at=start_at,
+            end_at=end_at,
+        )
+        .annotate(
+            _linked_to_fixed=models.Exists(linked_reservation),
+            _resolution_priority=models.Case(
+                models.When(fixed_lesson_source_id=fixed_lesson.pk, then=0),
+                models.When(models.Exists(linked_reservation), then=1),
+                models.When(coach_id=fixed_lesson.coach_id, then=2),
+                default=3,
+                output_field=models.IntegerField(),
+            ),
+        )
+        .filter(
+            models.Q(fixed_lesson_source_id=fixed_lesson.pk)
+            | models.Q(_linked_to_fixed=True)
+            | models.Q(coach_id=fixed_lesson.coach_id)
+        )
+        .order_by("_resolution_priority", "id")
+        .first()
+    )
+
+
 def _linked_fixed_lesson_ids(availability_id):
     return list(
         Reservation.objects.filter(
