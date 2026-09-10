@@ -97,7 +97,12 @@ from .stringing_service import (
     stringing_revenue_amount,
     update_stringing_order_status,
 )
-from .notification_service import deliver_to_users
+from .notification_service import (
+    deliver_to_users,
+    freeze_recipients,
+    resolve_lesson_notification_context,
+    schedule_delivery,
+)
 from .notifications import (
     build_pending_request_for_coach_message,
     build_request_approved_for_member_message,
@@ -800,9 +805,14 @@ def _assign_pending_request_targets(reservation, selected_coach_id):
     reservation.requested_court_type = Court.COURT_OTHER
 
 
-def _send_notification_on_commit(recipient, subject, message):
-    transaction.on_commit(
-        lambda: _send_email_notification_safely(recipient, subject, message)
+def _send_notification_on_commit(recipients, subject, message):
+    if not isinstance(recipients, (list, tuple)):
+        recipients = (recipients,)
+    return schedule_delivery(
+        freeze_recipients(recipients),
+        subject=subject,
+        message=message,
+        media=("email",),
     )
 
 
@@ -1008,35 +1018,31 @@ def _send_email_notification_safely(user, subject, message_text):
     )
 
 def _lesson_waitlist_lesson_label(waitlist_or_reservation):
+    context = resolve_lesson_notification_context(waitlist_or_reservation)
     try:
-        start_local = timezone.localtime(waitlist_or_reservation.start_at)
+        start_local = timezone.localtime(context.start_at)
     except Exception:
-        start_local = waitlist_or_reservation.start_at
+        start_local = context.start_at
 
     try:
-        end_local = timezone.localtime(waitlist_or_reservation.end_at)
+        end_local = timezone.localtime(context.end_at)
     except Exception:
-        end_local = waitlist_or_reservation.end_at
+        end_local = context.end_at
 
     try:
-        lesson_label = waitlist_or_reservation.get_lesson_type_display()
-    except Exception:
-        lesson_label = _lesson_type_label(getattr(waitlist_or_reservation, "lesson_type", ""))
+        lesson_label = dict(waitlist_or_reservation.LESSON_TYPE_CHOICES)[context.lesson_type]
+    except (AttributeError, KeyError):
+        lesson_label = _lesson_type_label(context.lesson_type)
 
     try:
-        level_label = _lesson_level_label(waitlist_or_reservation) or waitlist_or_reservation.get_target_level_display()
-    except Exception:
-        level_label = getattr(waitlist_or_reservation, "target_level", "-")
+        level_label = get_user_model().level_label(context.target_level)
+        if context.target_level_2 and context.target_level_2 != context.target_level:
+            level_label += f"・{get_user_model().level_label(context.target_level_2)}"
+    except (AttributeError, TypeError):
+        level_label = context.target_level or "-"
 
-    try:
-        coach_name = waitlist_or_reservation.assigned_coach_display()
-    except Exception:
-        coach_name = _display_name(
-            getattr(waitlist_or_reservation, "substitute_coach", None)
-            or getattr(waitlist_or_reservation, "coach", None)
-        )
-
-    court_name = str(getattr(waitlist_or_reservation, "court", "") or "未定")
+    coach_name = " / ".join(_display_name(coach) for coach in context.display_coaches) or "-"
+    court_name = str(context.court or "未定")
 
     return {
         "date": f"{start_local:%Y/%m/%d}",
@@ -6551,17 +6557,12 @@ def reservation_create(request):
                     reservation.save()
 
                 coach_message = build_pending_request_for_coach_message(reservation)
+                notification_context = resolve_lesson_notification_context(reservation)
                 _send_notification_on_commit(
-                    reservation.coach,
+                    notification_context.display_coaches,
                     "【Play Design Tennis】個別レッスン申請",
                     coach_message,
                 )
-                if getattr(reservation, "substitute_coach_id", None):
-                    _send_notification_on_commit(
-                        reservation.substitute_coach,
-                        "【Play Design Tennis】個別レッスン申請",
-                        coach_message,
-                    )
 
                 messages.success(request, "申請を送信しました。コーチ承認後に成立します。")
                 return redirect("club:reservation_list")

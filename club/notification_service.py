@@ -6,10 +6,19 @@ from dataclasses import dataclass
 from django.db import transaction
 
 from .models import LineAccountLink
-from .notifications import send_email_to_address, send_line_to_id
-
-
 logger = logging.getLogger(__name__)
+
+
+def send_email_to_address(email, subject, message):
+    from .notifications import send_email_to_address as send
+
+    return send(email, subject, message)
+
+
+def send_line_to_id(line_user_id, message):
+    from .notifications import send_line_to_id as send
+
+    return send(line_user_id, message)
 
 
 @dataclass(frozen=True)
@@ -17,6 +26,55 @@ class NotificationRecipient:
     user_id: int | None
     email: str = ""
     line_user_id: str = ""
+
+
+@dataclass(frozen=True)
+class LessonNotificationContext:
+    assigned_coach: object | None
+    primary_coach: object | None
+    secondary_coaches: tuple
+    display_coaches: tuple
+    court: object | None
+    lesson_type: str
+    start_at: object | None
+    end_at: object | None
+    target_level: str
+    target_level_2: str
+
+
+def resolve_lesson_notification_context(lesson):
+    """Resolve occurrence fields without mutating or repairing persisted data."""
+    availability = getattr(lesson, "availability", None)
+    source = availability or lesson
+    primary_coach = getattr(source, "coach", None)
+    secondary_coach = getattr(source, "coach_2", None)
+    substitute_coach = getattr(source, "substitute_coach", None)
+
+    if substitute_coach:
+        display_coaches = (substitute_coach,)
+        assigned_coach = substitute_coach
+        secondary_coaches = ()
+    else:
+        display_coaches = tuple(
+            coach
+            for index, coach in enumerate((primary_coach, secondary_coach))
+            if coach and coach not in (primary_coach, secondary_coach)[:index]
+        )
+        assigned_coach = primary_coach
+        secondary_coaches = tuple(display_coaches[1:])
+
+    return LessonNotificationContext(
+        assigned_coach=assigned_coach,
+        primary_coach=primary_coach,
+        secondary_coaches=secondary_coaches,
+        display_coaches=display_coaches,
+        court=getattr(source, "court", None),
+        lesson_type=getattr(source, "lesson_type", "") or "",
+        start_at=getattr(source, "start_at", None),
+        end_at=getattr(source, "end_at", None),
+        target_level=getattr(source, "target_level", "") or "",
+        target_level_2=getattr(source, "target_level_2", "") or "",
+    )
 
 
 def freeze_recipients(users):

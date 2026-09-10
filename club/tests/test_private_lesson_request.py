@@ -32,6 +32,7 @@ class PrivateLessonRequestTests(TestCase):
             role=User.ROLE_COACH,
             full_name="担当コーチ",
             member_level=User.LEVEL_BEGINNER,
+            email="coach@example.com",
         )
         self.other_coach = User.objects.create_user(
             username="other-coach",
@@ -193,7 +194,7 @@ class PrivateLessonRequestTests(TestCase):
     def test_request_creates_pending_and_notifies_only_selected_coach(self):
         lesson_date = self.start_at.date()
         self.client.force_login(self.member)
-        with patch("club.views._send_email_notification_safely") as send_mock:
+        with patch("club.notification_service.send_email_to_address", return_value=True) as send_mock:
             with self.captureOnCommitCallbacks(execute=True):
                 response = self.client.post(
                     reverse("club:reservation_create"),
@@ -218,8 +219,8 @@ class PrivateLessonRequestTests(TestCase):
         self.assertEqual(reservation.requested_court_note, "自由入力の市民コート")
         self.assertEqual(reservation.tickets_used, 4)
         send_mock.assert_called_once()
-        self.assertEqual(send_mock.call_args.args[0].pk, self.coach.pk)
-        self.assertNotEqual(send_mock.call_args.args[0].pk, self.other_coach.pk)
+        self.assertEqual(send_mock.call_args.args[0], self.coach.email)
+        self.assertNotEqual(send_mock.call_args.args[0], self.other_coach.email)
 
     def test_only_active_private_is_calendar_event_without_private_details(self):
         pending = self._pending()
