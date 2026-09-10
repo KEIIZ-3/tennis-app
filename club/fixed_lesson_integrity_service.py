@@ -72,7 +72,6 @@ def _locked_occurrence_reservations(
     candidate_ids = list(
         Reservation.objects.filter(
             user=member,
-            lesson_type=fixed_lesson.lesson_type,
             start_at=start_at,
             end_at=end_at,
             status__in=CAPACITY_CONSUMING_STATUSES,
@@ -85,8 +84,9 @@ def _locked_occurrence_reservations(
             models.Q(fixed_lesson=fixed_lesson)
             | models.Q(availability=availability)
             | models.Q(
-                coach=fixed_lesson.primary_coach(),
-                court=fixed_lesson.court,
+                coach=availability.coach,
+                court=availability.court,
+                lesson_type=availability.lesson_type,
             )
         )
         .values_list("pk", flat=True)
@@ -136,15 +136,15 @@ def _create_or_update_fixed_reservation(
 
         canonical = create_reservation(
             user=member,
-            coach=fixed_lesson.primary_coach(),
+            coach=availability.coach,
             substitute_coach=availability.substitute_coach,
-            court=fixed_lesson.court,
+            court=availability.court,
             availability=availability,
             fixed_lesson=fixed_lesson,
             is_fixed_entry=True,
-            lesson_type=fixed_lesson.lesson_type,
-            target_level=fixed_lesson.target_level,
-            target_level_2=fixed_lesson.target_level_2,
+            lesson_type=availability.lesson_type,
+            target_level=availability.target_level,
+            target_level_2=availability.target_level_2,
             start_at=start_at,
             end_at=end_at,
             status=Reservation.STATUS_ACTIVE,
@@ -153,15 +153,15 @@ def _create_or_update_fixed_reservation(
         )
     else:
         desired_values = {
-            "coach": fixed_lesson.primary_coach(),
+            "coach": availability.coach,
             "substitute_coach": availability.substitute_coach,
-            "court": fixed_lesson.court,
+            "court": availability.court,
             "availability": availability,
             "fixed_lesson": fixed_lesson,
             "is_fixed_entry": True,
-            "lesson_type": fixed_lesson.lesson_type,
-            "target_level": fixed_lesson.target_level,
-            "target_level_2": fixed_lesson.target_level_2,
+            "lesson_type": availability.lesson_type,
+            "target_level": availability.target_level,
+            "target_level_2": availability.target_level_2,
             "custom_ticket_price": availability.custom_ticket_price,
             "custom_duration_hours": availability.custom_duration_hours,
         }
@@ -221,7 +221,7 @@ def _synchronize_locked_fixed_lesson(fixed_lesson_id, created_by=None):
     }
     members = list(fixed_lesson.members.select_for_update().order_by("pk"))
     member_ids = {member.pk for member in members}
-    required_capacity = max(fixed_lesson.effective_capacity(), len(members), 1)
+    required_capacity = max(fixed_lesson.effective_capacity(), 1)
     changed_count = 0
 
     extra_reservations = Reservation.objects.select_for_update().filter(
@@ -260,12 +260,12 @@ def _synchronize_locked_fixed_lesson(fixed_lesson_id, created_by=None):
             end_at=end_at,
             status__in=CAPACITY_CONSUMING_STATUSES,
         ).update(
-            coach=fixed_lesson.primary_coach(),
-            court=fixed_lesson.court,
+            coach=availability.coach,
+            court=availability.court,
             availability=availability,
-            lesson_type=fixed_lesson.lesson_type,
-            target_level=fixed_lesson.target_level,
-            target_level_2=fixed_lesson.target_level_2,
+            lesson_type=availability.lesson_type,
+            target_level=availability.target_level,
+            target_level_2=availability.target_level_2,
             substitute_coach=availability.substitute_coach,
             custom_ticket_price=availability.custom_ticket_price,
             custom_duration_hours=availability.custom_duration_hours,
@@ -276,12 +276,12 @@ def _synchronize_locked_fixed_lesson(fixed_lesson_id, created_by=None):
             end_at=end_at,
             status=LessonWaitlist.STATUS_WAITING,
         ).update(
-            coach=fixed_lesson.primary_coach(),
-            court=fixed_lesson.court,
+            coach=availability.coach,
+            court=availability.court,
             availability=availability,
-            lesson_type=fixed_lesson.lesson_type,
-            target_level=fixed_lesson.target_level,
-            target_level_2=fixed_lesson.target_level_2,
+            lesson_type=availability.lesson_type,
+            target_level=availability.target_level,
+            target_level_2=availability.target_level_2,
             substitute_coach=availability.substitute_coach,
         )
 
@@ -328,7 +328,6 @@ def _synchronize_locked_fixed_lesson(fixed_lesson_id, created_by=None):
                 continue
             active_qs = Reservation.objects.filter(
                 user=member,
-                lesson_type=fixed_lesson.lesson_type,
                 start_at=start_at,
                 end_at=end_at,
                 status__in=CAPACITY_CONSUMING_STATUSES,

@@ -768,13 +768,24 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
         "status",
         "coach_assignment_status_admin",
     )
-    list_filter = ("status", "coach_assignment_overridden", "coach", "coach_2", "court", "lesson_type", "target_level", "target_level_2")
+    list_filter = (
+        "status", "coach_assignment_overridden", "capacity_overridden",
+        "court_assignment_overridden", "level_overridden", "lesson_type_overridden",
+        "note_overridden", "coach", "coach_2", "court", "lesson_type",
+        "target_level", "target_level_2",
+    )
     search_fields = ("coach__username", "coach__full_name", "coach_2__username", "coach_2__full_name", "court__name")
     date_hierarchy = "start_at"
     ordering = ("-start_at", "-id")
     list_select_related = ("coach", "coach_2", "court")
-    readonly_fields = ("fixed_lesson_source", "coach_assignment_status_admin")
-    actions = ("restore_fixed_lesson_coach_assignment",)
+    readonly_fields = (
+        "fixed_lesson_source", "coach_assignment_status_admin",
+        "occurrence_attribute_status_admin",
+    )
+    actions = (
+        "restore_fixed_lesson_coach_assignment",
+        "restore_fixed_lesson_occurrence_attributes",
+    )
 
     @admin.display(description="コーチ構成")
     def coach_assignment_status_admin(self, obj):
@@ -785,18 +796,39 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
         return "固定設定を継承中"
 
     def save_model(self, request, obj, form, change):
-        assignment_fields = ("coach_id", "coach_2_id", "coach_count")
-        changed_assignment = False
+        override_groups = {
+            "coach_assignment_overridden": ("coach_id", "coach_2_id", "coach_count"),
+            "capacity_overridden": ("capacity",),
+            "court_assignment_overridden": ("court_id", "court_count"),
+            "level_overridden": ("target_level", "target_level_2"),
+            "lesson_type_overridden": ("lesson_type",),
+            "note_overridden": ("note",),
+        }
         if change and obj.fixed_lesson_source_id:
             previous = CoachAvailability.objects.filter(pk=obj.pk).values(
-                *assignment_fields
+                *{field for fields in override_groups.values() for field in fields}
             ).first()
-            changed_assignment = bool(previous) and any(
-                previous[field] != getattr(obj, field) for field in assignment_fields
-            )
-        if changed_assignment:
-            obj.coach_assignment_overridden = True
+            if previous:
+                for flag, fields in override_groups.items():
+                    if any(previous[field] != getattr(obj, field) for field in fields):
+                        setattr(obj, flag, True)
         super().save_model(request, obj, form, change)
+
+    @admin.display(description="開催属性の継承状態")
+    def occurrence_attribute_status_admin(self, obj):
+        if not obj or not obj.fixed_lesson_source_id:
+            return "単発開催"
+        labels = (
+            ("定員", obj.capacity_overridden),
+            ("コート", obj.court_assignment_overridden),
+            ("レベル", obj.level_overridden),
+            ("種別", obj.lesson_type_overridden),
+            ("メモ", obj.note_overridden),
+        )
+        return " / ".join(
+            f"{label}: {'この開催回のみ変更' if overridden else '固定設定を継承中'}"
+            for label, overridden in labels
+        )
 
     @admin.action(description="固定レッスンのコーチ設定に戻す")
     def restore_fixed_lesson_coach_assignment(self, request, queryset):
@@ -809,6 +841,18 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
             restore_fixed_lesson_coach_assignment(availability_id)
             restored += 1
         self.message_user(request, f"{restored}件を固定レッスンのコーチ設定に戻しました。")
+
+    @admin.action(description="固定レッスンの開催属性設定に戻す")
+    def restore_fixed_lesson_occurrence_attributes(self, request, queryset):
+        from .fixed_lesson_membership_service import restore_fixed_lesson_occurrence_attributes
+
+        restored = 0
+        for availability_id in queryset.filter(
+            fixed_lesson_source__isnull=False
+        ).order_by("pk").values_list("pk", flat=True):
+            restore_fixed_lesson_occurrence_attributes(availability_id)
+            restored += 1
+        self.message_user(request, f"{restored}件を固定レッスンの開催属性設定に戻しました。")
 
     def changelist_view(self, request, extra_context=None):
         context = {

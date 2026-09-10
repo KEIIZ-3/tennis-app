@@ -31,11 +31,7 @@ def resolve_fixed_lesson_availability_readonly(fixed_lesson, start_at, end_at):
         end_at=end_at,
     )
     return (
-        CoachAvailability.objects.filter(
-            lesson_type=fixed_lesson.lesson_type,
-            start_at=start_at,
-            end_at=end_at,
-        )
+        CoachAvailability.objects.filter(start_at=start_at, end_at=end_at)
         .annotate(
             _linked_to_fixed=models.Exists(linked_reservation),
             _resolution_priority=models.Case(
@@ -49,7 +45,10 @@ def resolve_fixed_lesson_availability_readonly(fixed_lesson, start_at, end_at):
         .filter(
             models.Q(fixed_lesson_source_id=fixed_lesson.pk)
             | models.Q(_linked_to_fixed=True)
-            | models.Q(coach_id=fixed_lesson.coach_id)
+            | models.Q(
+                coach_id=fixed_lesson.coach_id,
+                lesson_type=fixed_lesson.lesson_type,
+            )
         )
         .order_by("_resolution_priority", "id")
         .first()

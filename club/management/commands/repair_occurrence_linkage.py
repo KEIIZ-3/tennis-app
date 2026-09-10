@@ -33,6 +33,14 @@ class Command(BaseCommand):
                 availability = CoachAvailability.objects.select_for_update().get(
                     pk=reservation.availability_id
                 )
+                if (
+                    availability.lesson_type != fixed_lesson.lesson_type
+                    and not availability.lesson_type_overridden
+                ):
+                    raise ValidationError(
+                        "開催枠のレッスン種別が固定レッスンと一致せず、"
+                        "個別変更として記録されていません。"
+                    )
                 result = rebind_occurrence_links(
                     fixed_lesson,
                     availability,
