@@ -437,6 +437,23 @@ class FixedLessonAdminForm(forms.ModelForm):
             created_by=getattr(self, "membership_created_by", None),
         )
 
+    def clean(self):
+        cleaned_data = super().clean()
+        if self.instance.pk and not self.errors:
+            from copy import copy
+
+            from .fixed_lesson_schedule_service import validate_fixed_lesson_schedule_change
+
+            proposed = copy(self.instance)
+            for field in FixedLesson._meta.concrete_fields:
+                if field.name in cleaned_data:
+                    setattr(proposed, field.name, cleaned_data[field.name])
+            try:
+                validate_fixed_lesson_schedule_change(proposed)
+            except ValidationError as exc:
+                self.add_error(None, exc)
+        return cleaned_data
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -938,6 +955,14 @@ class FixedLessonAdmin(admin.ModelAdmin):
     )
     list_per_page = 50
     save_on_top = True
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            return super().save_model(request, obj, form, change)
+
+        from .fixed_lesson_schedule_service import update_fixed_lesson_schedule
+
+        update_fixed_lesson_schedule(obj, actor=request.user)
 
     readonly_fields = (
         "operation_help_admin",
