@@ -4,5 +4,5 @@
     {% if field.name == 'DELETE' %}<div class="delete-field">{{ field }} {{ field.label_tag }}</div>
     {% else %}<div>{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endif %}
   {% endfor %}
-  {% if can_edit_accounting %}<div class="profit">利益: <span data-unit-profit>原価未入力</span> / 個　利益率: <span data-margin>計算不可</span>　明細利益: <span data-line-profit>計算不可</span></div>{% endif %}
+  <div class="profit">販売金額: <span data-line-sale>0円</span>{% if can_edit_accounting %}　原価合計: <span data-line-cost>原価未入力</span>　単価利益: <span data-unit-profit>原価未入力</span>　利益率: <span data-margin>計算不可</span>　利益合計: <span data-line-profit>計算不可</span>{% endif %}</div>
 </div>

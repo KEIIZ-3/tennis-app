@@ -3451,7 +3451,10 @@ class ShopQuoteItem(models.Model):
     def discount_amount(self): return max(int(self.list_price) - int(self.sale_price), 0)
     @property
     def discount_rate(self):
-        return round(self.discount_amount * 100 / self.list_price, 1) if self.list_price else None
+        if not self.list_price:
+            return None
+        rate = round(self.discount_amount * 100 / self.list_price, 1)
+        return int(rate) if rate.is_integer() else rate
     @property
     def unit_profit(self): return None if self.cost_price is None else int(self.sale_price) - int(self.cost_price)
     @property
