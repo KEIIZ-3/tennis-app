@@ -1,9 +1,22 @@
 from django import forms
 from django.forms import BaseFormSet, formset_factory
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from .models import ShopInquiry, User
 from .shop_service import discount_rate_from_prices, sale_price_from_discount
+
+
+class NaturalDecimalInput(forms.NumberInput):
+    """Render decimal values without insignificant trailing zeroes."""
+
+    def format_value(self, value):
+        formatted = super().format_value(value)
+        if formatted in (None, ""):
+            return formatted
+        try:
+            return format(Decimal(str(formatted)).normalize(), "f")
+        except (InvalidOperation, ValueError, TypeError):
+            return formatted
 
 
 def customer_queryset():
@@ -80,10 +93,14 @@ class ShopQuoteForm(forms.Form):
 class ShopQuoteItemForm(forms.Form):
     description = forms.CharField(label="商品名・内容", max_length=255)
     quantity = forms.IntegerField(label="数量", min_value=1, initial=1)
-    list_price = forms.IntegerField(label="定価", min_value=0)
-    sale_price = forms.IntegerField(label="販売価格", min_value=0)
-    discount_rate = forms.DecimalField(label="値引率 (%)", required=False, min_value=Decimal("0"), max_value=Decimal("100"), decimal_places=1, max_digits=4)
-    cost_price = forms.IntegerField(label="原価", required=False, min_value=0)
+    list_price = forms.IntegerField(label="定価（単価）", min_value=0)
+    sale_price = forms.IntegerField(label="販売価格（単価）", min_value=0)
+    discount_rate = forms.DecimalField(
+        label="値引率 (%)", required=False, min_value=Decimal("0"),
+        max_value=Decimal("100"), decimal_places=1, max_digits=4,
+        widget=NaturalDecimalInput(attrs={"step": "0.1"}),
+    )
+    cost_price = forms.IntegerField(label="原価（単価）", required=False, min_value=0)
     pricing_source = forms.ChoiceField(required=False, choices=(("sale", "sale"), ("discount", "discount")), widget=forms.HiddenInput(), initial="sale")
 
     def __init__(self, *args, can_edit_accounting=False, **kwargs):

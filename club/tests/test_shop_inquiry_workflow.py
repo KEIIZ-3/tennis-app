@@ -143,6 +143,31 @@ class ShopWorkflowTests(TestCase):
         self.assertContains(response, "直接購入")
         self.assertNotContains(response, "None")
 
+    def test_dashboard_rollback_link_is_only_for_admin_confirmed_quote_purchase(self):
+        quote = self.make_quote()
+        confirmed = ShopPurchase.objects.create(
+            customer=self.customer, quote=quote, description="confirmed", amount=1,
+            status=ShopPurchase.STATUS_CONFIRMED, registered_by=self.coach,
+        )
+        reverted_quote = self.make_quote()
+        reverted = ShopPurchase.objects.create(
+            customer=self.customer, quote=reverted_quote, description="reverted", amount=1,
+            status=ShopPurchase.STATUS_REVERTED, registered_by=self.coach,
+        )
+        direct = create_direct_purchase(
+            customer=self.customer, actor=self.coach, description="direct", quantity=1, amount=1,
+        )
+        confirmed_url = reverse("club:shop_purchase_rollback", args=[confirmed.pk])
+
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse("club:shop_coach"))
+        self.assertContains(response, f'href="{confirmed_url}"')
+        self.assertNotContains(response, reverse("club:shop_purchase_rollback", args=[reverted.pk]))
+        self.assertNotContains(response, reverse("club:shop_purchase_rollback", args=[direct.pk]))
+
+        self.client.force_login(self.coach)
+        self.assertNotContains(self.client.get(reverse("club:shop_coach")), confirmed_url)
+
     def make_quote(self, inquiry=None, configured=True):
         quote = create_quote(customer=self.customer, creator=self.coach, inquiry=inquiry, note="",
             items=[{"description": "ラケット", "quantity": 1, "list_price": 44000, "sale_price": 35200, "cost_price": 28500},
@@ -181,6 +206,56 @@ class ShopWorkflowTests(TestCase):
         zero = ShopQuoteItemForm({"description": "x", "quantity": 1, "list_price": 0,
                                   "sale_price": 1, "pricing_source": "sale"})
         self.assertFalse(zero.is_valid())
+
+    def test_discount_rate_widget_omits_only_insignificant_zeroes(self):
+        integer = ShopQuoteItemForm(initial={"discount_rate": Decimal("25.0")})
+        fractional = ShopQuoteItemForm(initial={"discount_rate": Decimal("12.5")})
+        self.assertEqual(integer.fields["discount_rate"].widget.format_value(Decimal("25.0")), "25")
+        self.assertEqual(fractional.fields["discount_rate"].widget.format_value(Decimal("12.5")), "12.5")
+
+        invalid = ShopQuoteItemForm({
+            "description": "", "quantity": "2", "list_price": "4000",
+            "sale_price": "3000", "discount_rate": "25.0", "pricing_source": "sale",
+        })
+        self.assertFalse(invalid.is_valid())
+        self.assertIn('value="25"', str(invalid["discount_rate"]))
+
+    def test_unit_prices_stay_constant_while_quantity_scales_totals(self):
+        quote = create_quote(customer=self.customer, creator=self.coach, items=[{
+            "description": "商品", "quantity": 1, "list_price": 4000,
+            "sale_price": 3000, "cost_price": 2000,
+        }])
+        item = quote.items.get()
+        self.assertEqual(
+            (item.list_price, item.sale_price, item.cost_price, item.quantity,
+             quote.total, item.line_profit),
+            (4000, 3000, 2000, 1, 3000, 1000),
+        )
+
+        item.quantity = 2
+        item.save(update_fields=["quantity"])
+        quote.refresh_from_db()
+        item.refresh_from_db()
+        self.assertEqual(
+            (item.list_price, item.sale_price, item.cost_price, item.discount_rate,
+             item.list_total, item.line_total, item.line_profit),
+            (4000, 3000, 2000, 25, 8000, 6000, 2000),
+        )
+        self.assertEqual(profit_summary(quote.items.all()), {
+            "revenue": 6000, "cost": 4000, "profit": 2000,
+            "margin": Decimal("33.3"), "costs_complete": True,
+        })
+
+    def test_discount_input_calculates_unit_sale_price_independent_of_quantity(self):
+        form = ShopQuoteItemForm({
+            "description": "商品", "quantity": 2, "list_price": 4000,
+            "sale_price": 1, "discount_rate": "25", "cost_price": 2000,
+            "pricing_source": "discount",
+        })
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["sale_price"], 3000)
+        quote = create_quote(customer=self.customer, creator=self.coach, items=[form.cleaned_data])
+        self.assertEqual((quote.items.get().sale_price, quote.total), (3000, 6000))
 
     def test_cost_profit_totals_and_purchase_snapshot(self):
         quote = create_quote(customer=self.customer, creator=self.coach, items=[
@@ -570,7 +645,7 @@ class ShopWorkflowTests(TestCase):
                       "見積番号", quote.quote_number,
                       "見積日", "有効期限", "お客様名", self.customer.display_name(),
                       "商品名・内容", "HEAD SPEED MP", "グリップテープ", "数量",
-                      "定価", "値引き", "販売価格", "明細金額", "定価合計",
+                      "定価単価", "値引き", "販売単価", "明細金額", "定価合計",
                       "お値引き", "お見積合計", "備考"):
             self.assertIn(str(value), source)
         for private in ("原価", "利益", "利益率", "内部利益集計"):
@@ -604,7 +679,7 @@ class ShopWorkflowTests(TestCase):
 
         self.assertEqual(
             [header.getPlainText() for header in headers],
-            ["商品名・内容", "数量", "定価", "値引き", "販売価格", "明細金額"],
+            ["商品名・内容", "数量", "定価単価", "値引き", "販売単価", "明細金額"],
         )
         self.assertTrue(all(header.style.textColor == colors.white for header in headers))
         self.assertEqual(body_style.textColor, colors.HexColor("#263746"))

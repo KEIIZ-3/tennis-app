@@ -53,7 +53,7 @@ def _table_header_paragraphs(small):
     header_cell = ParagraphStyle("TableHeader", parent=small, textColor=colors.white)
     return [
         _paragraph(label, header_cell)
-        for label in ("商品名・内容", "数量", "定価", "値引き", "販売価格", "明細金額")
+        for label in ("商品名・内容", "数量", "定価単価", "値引き", "販売単価", "明細金額")
     ]
 
 

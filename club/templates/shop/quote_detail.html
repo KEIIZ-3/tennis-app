@@ -13,10 +13,10 @@
     有効期限: {{ quote.valid_until|date:"Y年m月d日" }}<br>お客様名: {{ quote.purchaser_name }} 様</p>
   <h2>お見積内容</h2>
   {% for item in quote.items.all %}
-    <div class="line"><strong>{{ item.description }}</strong><br>数量 {{ item.quantity }}<br>定価 {{ item.list_price }}円<br>
-      {% if item.discount_rate %}{{ item.discount_rate }}% OFF<br>{% endif %}販売価格 {{ item.sale_price }}円<br>金額 {{ item.line_total }}円
-      {% if can_edit_accounting %}<br>原価 {% if item.cost_price is None %}未入力{% else %}{{ item.cost_price }}円{% endif %}<br>
-        利益 {% if item.unit_profit is None %}計算不可{% else %}{{ item.unit_profit }}円 / 個<br>
+    <div class="line"><strong>{{ item.description }}</strong><br>数量 {{ item.quantity }}<br>定価（単価） {{ item.list_price }}円<br>
+      {% if item.discount_rate %}{{ item.discount_rate }}% OFF<br>{% endif %}販売単価 {{ item.sale_price }}円<br>明細金額 {{ item.line_total }}円
+      {% if can_edit_accounting %}<br>原価（単価） {% if item.cost_price is None %}未入力{% else %}{{ item.cost_price }}円{% endif %}<br>
+        単価利益 {% if item.unit_profit is None %}計算不可{% else %}{{ item.unit_profit }}円<br>
         利益率 {% if item.profit_rate is None %}計算不可{% else %}{{ item.profit_rate }}%{% endif %}<br>明細利益 {{ item.line_profit }}円{% endif %}{% endif %}
     </div>
   {% endfor %}
