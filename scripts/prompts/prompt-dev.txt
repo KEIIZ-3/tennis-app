@@ -8,6 +8,8 @@ AGENTS.mdを最初から最後まで読み、すべてのルールに従って�
 
 問題がなければ途中確認なしで、コード編集、テスト、差分相当の確認、ローカルreport.md作成、リポジトリルートへのhandoff.json作成まで完了してください。
 
+既存ファイルの改行構造（LF、CRLF、mixed-EOL）を維持し、無関係なEOL normalizationを行わないでください。trailing whitespaceを残さず、formatterによるファイル全体の不要な書き換えを禁止します。handoff.json作成前に通常diffと`--ignore-cr-at-eol`相当のdiffを比較し、EOL-onlyの巨大diff、trailing whitespace、競合マーカーがないことを確認してください。違反があれば該当diffを修正してから終了してください。品質違反だけを直す再実行では既存実装やアプリ全体を再調査せず、指摘されたdiffだけを修正してください。
+
 CodexはGitコマンドを実行せず、git fetch、git pull、git switch、git add、git commit、git push、gh pr create、およびその他のGit metadata書き込みを行わないでください。main同期とGit公開工程は親PowerShellが担当します。
 
 handoff.jsonはUTF-8の有効なJSONとし、次の必須項目を含めてください。

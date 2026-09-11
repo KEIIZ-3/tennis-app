@@ -32,6 +32,20 @@ try {
     }
 
     if (Test-Path -LiteralPath (Join-Path $repoRoot "handoff.json") -PathType Leaf) {
+        . (Join-Path $fixedScriptsRoot "common.ps1")
+        try {
+            $handoff = Get-Content -Raw -Encoding utf8 -LiteralPath (Join-Path $repoRoot "handoff.json") |
+                ConvertFrom-Json -ErrorAction Stop
+        }
+        catch {
+            throw "handoff.json is not valid JSON: $($_.Exception.Message)"
+        }
+        if ($handoff.PSObject.Properties.Name -notcontains "files" -or
+            $handoff.files -isnot [System.Array] -or $handoff.files.Count -eq 0) {
+            throw "handoff.json property files must be a non-empty array."
+        }
+        Assert-WorkingTreeDiffQuality -RepositoryRoot $repoRoot -Files @($handoff.files)
+
         $publishArguments = @{ RepositoryRoot = $repoRoot }
         if ($PSBoundParameters.ContainsKey("PrNumber")) {
             $publishArguments.PrNumber = $PrNumber

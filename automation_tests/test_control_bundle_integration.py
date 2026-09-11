@@ -64,11 +64,12 @@ class ControlBundleIntegrationTests(unittest.TestCase):
 if ($PSBoundParameters.ContainsKey('PrNumber')) {
     & git -C $RepositoryRoot switch old-pr | Out-Null
 }
-[IO.File]::WriteAllText((Join-Path $RepositoryRoot 'handoff.json'), '{}')
+[IO.File]::WriteAllText((Join-Path $RepositoryRoot 'work.txt'), 'quality checked')
+[IO.File]::WriteAllText((Join-Path $RepositoryRoot 'handoff.json'), '{"files":["work.txt"]}')
 exit 0
 """,
         )
-        self.write(repository, "scripts/common.ps1", "# fixed common marker\n")
+        shutil.copy2(ROOT / "scripts" / "common.ps1", repository / "scripts/common.ps1")
         self.write(
             repository,
             "scripts/publish-from-handoff.ps1",
