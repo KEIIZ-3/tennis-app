@@ -6,6 +6,7 @@ from django.db import transaction
 from .models import CoachExpense, ensure_accounting_month_is_open
 from .settlement_models import MonthlySettlement
 from .settlement_service import calculate_monthly_settlement
+from .expense_metadata import parse_expense_note
 
 
 def _next_month(month_start):
@@ -19,6 +20,47 @@ def _closed_month_message(month_start, *, current=False):
     if current:
         return f"現在の適用月{label}は締め済みのため変更できません。"
     return f"{label}は締め済みのため、適用月に指定できません。"
+
+
+def _expense_accounting_months(expense):
+    months = {expense.expense_date.replace(day=1)} if expense.expense_date else set()
+    if expense.category == CoachExpense.CATEGORY_BALL and expense.settlement_period_start:
+        months.add(expense.settlement_period_start.replace(day=1))
+    return months
+
+
+def validate_expense_update(*, current, candidate):
+    """Validate both sides of an accounting-significant expense edit."""
+    candidate.full_clean()
+    if not current:
+        return
+    significant_fields = (
+        "expense_date", "category", "amount", "note", "settlement_period_start",
+        "settlement_period_end", "created_by_id",
+    )
+    if not any(getattr(current, name) != getattr(candidate, name) for name in significant_fields):
+        return
+    for month in sorted(_expense_accounting_months(current) | _expense_accounting_months(candidate)):
+        try:
+            ensure_accounting_month_is_open(month)
+        except ValidationError as exc:
+            raise ValidationError(f"{month.year}年{month.month}月は締め済みのため変更できません。") from exc
+    old_type = parse_expense_note(current.note).get("expense_type")
+    new_type = parse_expense_note(candidate.note).get("expense_type")
+    if old_type != new_type and old_type == "court_transfer":
+        raise ValidationError("コート代振替の経費区分は変更できません。")
+
+
+@transaction.atomic
+def save_expense_update(*, candidate):
+    current = None
+    if candidate.pk:
+        current = CoachExpense.objects.select_for_update().get(pk=candidate.pk)
+    validate_expense_update(current=current, candidate=candidate)
+    candidate.save()
+    for month in sorted(_expense_accounting_months(current) | _expense_accounting_months(candidate) if current else _expense_accounting_months(candidate)):
+        calculate_monthly_settlement(month.year, month.month, force=True)
+    return candidate
 
 
 @transaction.atomic

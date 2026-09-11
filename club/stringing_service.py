@@ -30,6 +30,40 @@ def stringing_revenue_amount(order):
     return int(order.total_price())
 
 
+def validate_stringing_order_update(*, current, candidate):
+    candidate.base_price = STRINGING_BASE_PRICE
+    candidate.delivery_fee = STRINGING_DELIVERY_FEE if candidate.delivery_requested else 0
+    candidate.full_clean()
+    if current is None:
+        return
+    significant_fields = (
+        "user_id", "assigned_coach_id", "delivery_requested", "delivery_location",
+        "preferred_delivery_time", "base_price", "delivery_fee", "status",
+    )
+    if any(getattr(current, name) != getattr(candidate, name) for name in significant_fields):
+        try:
+            ensure_accounting_month_is_open(current.created_at)
+        except ValidationError as exc:
+            local_date = timezone.localtime(current.created_at).date()
+            raise ValidationError(
+                f"{local_date.year}年{local_date.month}月は締め済みのため変更できません。"
+            ) from exc
+
+
+@transaction.atomic
+def save_admin_stringing_order(*, candidate):
+    current = None
+    if candidate.pk:
+        current = StringingOrder.objects.select_for_update().get(pk=candidate.pk)
+    validate_stringing_order_update(current=current, candidate=candidate)
+    candidate.save()
+    if current:
+        local_date = timezone.localtime(current.created_at).date()
+        from .settlement_service import calculate_monthly_settlement
+        calculate_monthly_settlement(local_date.year, local_date.month, force=True)
+    return candidate
+
+
 @transaction.atomic
 def create_stringing_order(*, order, user):
     """Validate and persist a customer order as one business operation."""
@@ -82,6 +116,9 @@ def update_stringing_order_status(*, order_id, new_status):
         return order, False
 
     order.status = new_status
-    order.full_clean()
+    validate_stringing_order_update(current=StringingOrder.objects.get(pk=order.pk), candidate=order)
     order.save(update_fields=["status", "updated_at"])
+    local_date = timezone.localtime(order.created_at).date()
+    from .settlement_service import calculate_monthly_settlement
+    calculate_monthly_settlement(local_date.year, local_date.month, force=True)
     return order, True
