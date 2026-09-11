@@ -1,4 +1,5 @@
 import json
+import copy
 
 from django import forms
 from .models import CoachExpense
@@ -111,6 +112,23 @@ class EditableExpenseTypeAdminForm(forms.ModelForm):
         if current_type == EXPENSE_TYPE_COURT_TRANSFER:
             return EXPENSE_TYPE_COURT_TRANSFER
         return self.cleaned_data["expense_type"]
+
+    def clean(self):
+        cleaned = super().clean()
+        candidate = copy.copy(self.instance)
+        for field, value in cleaned.items():
+            if field != "expense_type" and hasattr(candidate, field):
+                setattr(candidate, field, value)
+        metadata = dict(self._stored_metadata)
+        metadata["expense_type"] = cleaned.get("expense_type", metadata.get("expense_type"))
+        candidate.note = _serialize_note(metadata, cleaned.get("note"))
+        current = CoachExpense.objects.filter(pk=self.instance.pk).first() if self.instance.pk else None
+        from .expense_service import validate_expense_update
+        try:
+            validate_expense_update(current=current, candidate=candidate)
+        except forms.ValidationError as exc:
+            raise forms.ValidationError(exc.messages)
+        return cleaned
 
     def save(self, commit=True):
         instance = super().save(commit=False)

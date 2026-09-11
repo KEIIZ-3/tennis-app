@@ -1,6 +1,7 @@
 import csv
 import io
 import uuid
+import copy
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -44,6 +45,9 @@ from .models import (
 from .reservation_admin_history import ReservationAdminHistoryMixin
 from .user_admin_ticket_summary import UserAdminTicketSummaryMixin
 from .ticket_purchase_correction_service import correct_ticket_purchase, correction_impact
+from .expense_service import save_expense_update, validate_expense_update
+from .stringing_service import save_admin_stringing_order, validate_stringing_order_update
+from .court_service import save_court_update, validate_court_update
 
 
 admin.site.site_header = "Play Design Tennis 管理サイト"
@@ -360,6 +364,10 @@ class CoachAvailabilityAdminForm(forms.ModelForm):
         self.fields["coach"].queryset = coach_qs
         self.fields["coach_2"].queryset = coach_qs
         self.fields["coach_2"].required = False
+        court_qs = Court.objects.filter(is_active=True)
+        if self.instance and self.instance.pk and self.instance.court_id:
+            court_qs = Court.objects.filter(Q(is_active=True) | Q(pk=self.instance.court_id))
+        self.fields["court"].queryset = court_qs.order_by("name", "id")
 
         if self.instance and self.instance.pk:
             if getattr(self.instance, "start_at", None):
@@ -465,6 +473,11 @@ class FixedLessonAdminForm(forms.ModelForm):
         if "coach_3" in self.fields:
             self.fields["coach_3"].queryset = coach_qs
             self.fields["coach_3"].required = False
+        if "court" in self.fields:
+            court_qs = Court.objects.filter(is_active=True)
+            if self.instance and self.instance.pk and self.instance.court_id:
+                court_qs = Court.objects.filter(Q(is_active=True) | Q(pk=self.instance.court_id))
+            self.fields["court"].queryset = court_qs.order_by("name", "id")
 
         label_map = {
             "title": "レッスン名",
@@ -520,6 +533,37 @@ class StringingOrderAdminForm(forms.ModelForm):
             )
             self.fields["assigned_coach"].required = False
             self.fields["assigned_coach"].label = "担当コーチ"
+
+    def clean(self):
+        cleaned = super().clean()
+        candidate = copy.copy(self.instance)
+        for field in cleaned:
+            if field in cleaned:
+                setattr(candidate, field, cleaned[field])
+        current = StringingOrder.objects.filter(pk=self.instance.pk).first() if self.instance.pk else None
+        try:
+            validate_stringing_order_update(current=current, candidate=candidate)
+        except ValidationError as exc:
+            raise forms.ValidationError(exc.messages)
+        return cleaned
+
+
+class CourtAdminForm(forms.ModelForm):
+    class Meta:
+        model = Court
+        fields = "__all__"
+
+    def clean(self):
+        cleaned = super().clean()
+        candidate = copy.copy(self.instance)
+        for field, value in cleaned.items():
+            setattr(candidate, field, value)
+        current = Court.objects.filter(pk=self.instance.pk).first() if self.instance.pk else None
+        try:
+            validate_court_update(current=current, candidate=candidate)
+        except ValidationError as exc:
+            raise forms.ValidationError(exc.messages)
+        return cleaned
 
 
 class CustomUserCreationForm(UserCreationForm):
@@ -762,9 +806,13 @@ class UserAdmin(UserAdminTicketSummaryMixin, BaseUserAdmin):
 
 @admin.register(Court)
 class CourtAdmin(admin.ModelAdmin):
+    form = CourtAdminForm
     list_display = ("id", "name", "court_type", "available_court_count", "is_active")
     list_filter = ("court_type", "is_active")
     search_fields = ("name",)
+
+    def save_model(self, request, obj, form, change):
+        save_court_update(candidate=obj)
 
 
 @admin.register(CoachAvailability)
@@ -1582,6 +1630,9 @@ class CoachExpenseAdmin(ExpenseTypeAdminMixin, admin.ModelAdmin):
     list_filter = ("category", "expense_date")
     search_fields = ("note",)
 
+    def save_model(self, request, obj, form, change):
+        save_expense_update(candidate=obj)
+
 
 @admin.register(LessonWaitlist)
 class LessonWaitlistAdmin(admin.ModelAdmin):
@@ -1682,7 +1733,10 @@ class StringingOrderAdmin(admin.ModelAdmin):
         "note",
     )
     autocomplete_fields = ("user",)
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = ("base_price", "delivery_fee", "created_at", "updated_at")
+
+    def save_model(self, request, obj, form, change):
+        save_admin_stringing_order(candidate=obj)
 
     fieldsets = (
         ("依頼情報", {
