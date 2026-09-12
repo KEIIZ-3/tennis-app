@@ -293,6 +293,133 @@ function Assert-LocalArtifactsIgnored {
     }
 }
 
+function Get-DiffLineCounts {
+    [CmdletBinding()]
+    param(
+        [string[]]$Arguments = @(),
+        [string[]]$Paths = @(),
+        [switch]$IgnoreCrAtEol,
+        [switch]$AllowDifferencesExitCode
+    )
+
+    $gitArguments = @("diff") + $Arguments + @("--numstat")
+    if ($IgnoreCrAtEol) {
+        $gitArguments += "--ignore-cr-at-eol"
+    }
+    $gitArguments += @("--") + $Paths
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $output = @(& git @gitArguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($exitCode -ne 0 -and -not ($AllowDifferencesExitCode -and $exitCode -eq 1)) {
+        throw "The diff size could not be inspected. $(($output | Out-String).Trim())".Trim()
+    }
+
+    $counts = @{}
+    foreach ($line in $output) {
+        $fields = @($line -split "`t")
+        if ($fields.Count -ge 3 -and $fields[0] -match '^\d+$' -and $fields[1] -match '^\d+$') {
+            $counts[$fields[2]] = [int64]$fields[0] + [int64]$fields[1]
+        }
+    }
+    return $counts
+}
+
+function Assert-DiffQuality {
+    [CmdletBinding()]
+    param(
+        [string[]]$Arguments = @(),
+        [string[]]$Paths = @(),
+        [string]$Label = "Diff",
+        [switch]$AllowDifferencesExitCode
+    )
+
+    $checkArguments = @("-c", "core.whitespace=cr-at-eol", "diff") +
+        $Arguments + @("--check", "--") + $Paths
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $checkOutput = @(& git @checkArguments 2>&1)
+        $checkExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    $details = (($checkOutput | Where-Object { $_ -notmatch '^warning: ' }) | Out-String).Trim()
+    if (($checkExitCode -ne 0 -and -not ($AllowDifferencesExitCode -and $checkExitCode -eq 1)) -or
+        -not [string]::IsNullOrWhiteSpace($details)) {
+        throw "$Label quality check failed (trailing whitespace or conflict marker). $details".Trim()
+    }
+
+    $normalCounts = Get-DiffLineCounts -Arguments $Arguments -Paths $Paths `
+        -AllowDifferencesExitCode:$AllowDifferencesExitCode
+    $crIgnoredCounts = Get-DiffLineCounts -Arguments $Arguments -Paths $Paths `
+        -IgnoreCrAtEol -AllowDifferencesExitCode:$AllowDifferencesExitCode
+    foreach ($path in $normalCounts.Keys) {
+        $normal = [int64]$normalCounts[$path]
+        $ignored = if ($crIgnoredCounts.ContainsKey($path)) { [int64]$crIgnoredCounts[$path] } else { 0 }
+        if ($normal -ge 200 -and $ignored -le [Math]::Max(20, [Math]::Floor($normal * 0.2))) {
+            throw "EOL normalization suspected: $path (normal diff lines: $normal; CR-at-EOL ignored diff lines: $ignored)."
+        }
+    }
+}
+
+function Assert-WorkingTreeDiffQuality {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$RepositoryRoot,
+        [Parameter(Mandatory = $true)][object[]]$Files
+    )
+
+    $repoRoot = (Resolve-Path -LiteralPath $RepositoryRoot).Path
+    $repoPrefix = $repoRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) +
+        [IO.Path]::DirectorySeparatorChar
+    Push-Location -LiteralPath $repoRoot
+    try {
+        $nullDevice = if ([IO.Path]::DirectorySeparatorChar -eq '\') { "NUL" } else { "/dev/null" }
+        $trackedFiles = New-Object System.Collections.Generic.List[string]
+        foreach ($file in $Files) {
+            if ($file -isnot [string] -or [string]::IsNullOrWhiteSpace($file)) {
+                throw "Every files entry must be a non-empty string."
+            }
+            $relativePath = $file.Trim().Replace('\', '/')
+            if ([IO.Path]::IsPathRooted($relativePath) -or
+                ($relativePath -split '/') -contains ".." -or
+                $relativePath.StartsWith(":") -or
+                $relativePath.IndexOfAny(@('*', '?', '[')) -ge 0) {
+                throw "Unsafe files entry: $file"
+            }
+            $candidatePath = [IO.Path]::GetFullPath((Join-Path $repoRoot $relativePath))
+            if (-not $candidatePath.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+                throw "Files outside the repository are not allowed: $file"
+            }
+            $tracked = @(& git ls-files -- $relativePath)
+            if ($LASTEXITCODE -ne 0) {
+                throw "The working tree file state could not be inspected: $relativePath"
+            }
+            if ($tracked.Count -gt 0) {
+                $trackedFiles.Add($relativePath)
+            }
+            elseif (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
+                Assert-DiffQuality -Arguments @("--no-index") -Paths @($nullDevice, $relativePath) `
+                    -Label "Working tree diff" -AllowDifferencesExitCode
+            }
+        }
+        if ($trackedFiles.Count -gt 0) {
+            Assert-DiffQuality -Arguments @("HEAD") -Paths $trackedFiles.ToArray() `
+                -Label "Working tree diff"
+        }
+    }
+    finally {
+        Pop-Location
+    }
+}
+
 function Write-WorkflowError {
     param([Parameter(Mandatory = $true)]$ErrorRecord)
     Write-Host "エラー: $($ErrorRecord.Exception.Message)" -ForegroundColor Red

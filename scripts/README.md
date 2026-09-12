@@ -70,7 +70,7 @@ OPEN中の既存PRを継続修正する場合は、PR番号を明示します。
 
 ## 内部フロー
 
-start-codex.ps1はcodex-auto.ps1を起動します。Codexが正常終了しhandoff.jsonが存在する場合だけ、start-codex.ps1がpublish-from-handoff.ps1を親PowerShellとして続けて起動します。
+start-codex.ps1はcodex-auto.ps1を起動します。Codexが正常終了しhandoff.jsonが存在する場合だけ、handoff対象のworking tree diffをread-only Gitコマンドで検査し、問題がなければpublish-from-handoff.ps1を親PowerShellとして続けて起動します。trailing whitespace、競合マーカー、通常diffと`--ignore-cr-at-eol`の差が極端なEOL normalizationを検出した場合は、stageや公開へ進みません。改行コードの自動修正は行いません。
 
 開始時に`scripts`一式をrepository外の一時ディレクトリへ固定し、repository rootは別の明示引数として保持します。既存PRのheadへ切り替えた後も、Codex起動からhandoff検出、検証、stage、commit、push、既存PR更新まで開始時点の制御コードを使います。一時コピーは正常終了時と異常終了時のどちらも`finally`で削除を試みます。
 
@@ -95,7 +95,7 @@ auto-merge登録後はGitHub Actionsの必須チェック`test`とRuleset「Prot
 
 handoff.jsonの`files`には、新規・変更・削除したパスをリポジトリ相対パスで列挙します。renameはGit内部で削除と追加として表現され得るため、旧パスと新パスの両方を列挙してください。公開処理は各パスに作業ツリーの変更があることを確認し、`git add -A -- <列挙パス>`で列挙対象だけをstageします。存在しないパスは、Gitで追跡済みの削除である場合だけ許可します。stage後はrename検出を無効にした変更パス一覧をallowlistと完全一致させるため、列挙外の変更はcommitされません。
 
-検証とstageは`Invoke-HandoffStaging`へ集約されています。統合テストは`publish-from-handoff.ps1 -FunctionsOnly`をdot-sourceし、一時Gitリポジトリでこの本番関数だけを呼び出します。GitHub CLI、remote、PR、auto-mergeは統合テストの対象に含めません。
+diff品質の判定と閾値は`common.ps1`へ集約し、Codex終了直後のworking tree検査と公開直前のstaged diff検査で共有します。検証とstageは`Invoke-HandoffStaging`へ集約されています。統合テストは一時Gitリポジトリでworking tree品質ゲートと`publish-from-handoff.ps1 -FunctionsOnly`の本番関数を呼び出します。GitHub CLI、remote、PR、auto-mergeは統合テストの対象に含めません。
 
 既存PRモードは`-PrNumber`だけを正本とし、handoff.jsonの`publish_mode: existing_pr`、`pr_number`、`branch`との一致も検証します。push後にPRがOPENのまま同じbranchを指し、head SHAが新しいcommitへ更新されたことを確認します。既存のauto-merge設定はGitHub側に保持させ、直接mergeや不要な再登録は行いません。履歴の分岐をforce push、rebase、resetで解消することはありません。
 

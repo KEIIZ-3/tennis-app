@@ -4,12 +4,14 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 PUBLISH_SCRIPT = ROOT / "scripts" / "publish-from-handoff.ps1"
+COMMON_SCRIPT = ROOT / "scripts" / "common.ps1"
 
 
 class PublishWorkflowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.text = PUBLISH_SCRIPT.read_text(encoding="utf-8")
+        cls.common = COMMON_SCRIPT.read_text(encoding="utf-8")
 
     def test_pr_is_created_as_draft_then_marked_ready(self):
         create = self.text.index("gh pr create --draft")
@@ -81,10 +83,9 @@ class PublishWorkflowTests(unittest.TestCase):
         commit = self.text.index('@("commit", "-m"')
         self.assertLess(allowlist, quality)
         self.assertLess(quality, commit)
-        self.assertIn(
-            "git -c core.whitespace=cr-at-eol diff --cached --check --", self.text
-        )
-        self.assertIn('"--ignore-cr-at-eol"', self.text)
+        self.assertIn('Assert-DiffQuality -Arguments @("--cached")', self.text)
+        self.assertIn('"core.whitespace=cr-at-eol", "diff"', self.common)
+        self.assertIn('"--ignore-cr-at-eol"', self.common)
 
     def test_quality_failure_restores_only_staged_paths(self):
         self.assertIn("git restore --staged -- $validatedFiles.ToArray()", self.text)

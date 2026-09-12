@@ -348,6 +348,26 @@ class PublishStagingIntegrationTests(unittest.TestCase):
         self.assertIn("CR-at-EOL ignored diff lines: 0", result.stdout + result.stderr)
         self.assertEqual(self.repository.staged(), [])
 
+    def test_crlf_to_lf_only_large_diff_is_rejected(self):
+        crlf_content = "".join(f"line {number}\r\n" for number in range(150))
+        self.repository.commit_files({"selected.txt": crlf_content})
+        self.repository.write_bytes(
+            "selected.txt", crlf_content.replace("\r\n", "\n").encode()
+        )
+
+        self.assert_staging_fails(
+            ["selected.txt"], "EOL normalization suspected: selected.txt"
+        )
+
+    def test_mixed_eol_small_change_does_not_trigger_eol_gate(self):
+        mixed_content = b"alpha\r\nbeta\ngamma\r\ndelta\n"
+        self.repository.commit_files({"selected.txt": mixed_content.decode()})
+        self.repository.write_bytes(
+            "selected.txt", mixed_content.replace(b"beta", b"changed")
+        )
+
+        self.assert_staging_succeeds(["selected.txt"])
+
     def test_legitimate_large_diff_does_not_trigger_eol_gate(self):
         before = "".join(f"old {number}\n" for number in range(150))
         after = "".join(f"new {number}\n" for number in range(150))
