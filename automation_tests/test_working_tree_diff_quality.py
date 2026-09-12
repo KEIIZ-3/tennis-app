@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -7,6 +8,11 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 COMMON_SCRIPT = ROOT / "scripts" / "common.ps1"
 POWERSHELL = shutil.which("powershell.exe") or shutil.which("pwsh")
+ANSI_CSI_SEQUENCE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
+
+def strip_ansi(text):
+    return ANSI_CSI_SEQUENCE.sub("", text)
 
 
 @unittest.skipUnless(POWERSHELL and shutil.which("git"), "PowerShell and Git are required")
@@ -48,7 +54,8 @@ class WorkingTreeDiffQualityTests(unittest.TestCase):
     def assert_fails(self, expected, files=("selected.txt",)):
         result = self.check(files)
         self.assertNotEqual(result.returncode, 0, result.stdout)
-        self.assertIn(expected, result.stdout + result.stderr)
+        output = strip_ansi(result.stdout + result.stderr)
+        self.assertIn(expected, output)
 
     def test_small_change_passes(self):
         self.commit_bytes(b"before\n")
