@@ -381,6 +381,7 @@ function Assert-WorkingTreeDiffQuality {
         [IO.Path]::DirectorySeparatorChar
     Push-Location -LiteralPath $repoRoot
     try {
+        $nullDevice = if ([IO.Path]::DirectorySeparatorChar -eq '\') { "NUL" } else { "/dev/null" }
         $trackedFiles = New-Object System.Collections.Generic.List[string]
         foreach ($file in $Files) {
             if ($file -isnot [string] -or [string]::IsNullOrWhiteSpace($file)) {
@@ -405,7 +406,7 @@ function Assert-WorkingTreeDiffQuality {
                 $trackedFiles.Add($relativePath)
             }
             elseif (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
-                Assert-DiffQuality -Arguments @("--no-index") -Paths @("NUL", $relativePath) `
+                Assert-DiffQuality -Arguments @("--no-index") -Paths @($nullDevice, $relativePath) `
                     -Label "Working tree diff" -AllowDifferencesExitCode
             }
         }
