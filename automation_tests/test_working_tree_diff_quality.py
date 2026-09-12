@@ -41,8 +41,9 @@ class WorkingTreeDiffQualityTests(unittest.TestCase):
         script = str(COMMON_SCRIPT).replace("'", "''")
         repository = str(self.root).replace("'", "''")
         paths = ",".join(f"'{path}'" for path in files)
-        command = (f". '{script}'; Assert-WorkingTreeDiffQuality "
-                   f"-RepositoryRoot '{repository}' -Files @({paths})")
+        command = (f"try {{ . '{script}'; Assert-WorkingTreeDiffQuality "
+                   f"-RepositoryRoot '{repository}' -Files @({paths}); exit 0 }} "
+                   "catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }")
         return subprocess.run([POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy",
                                "Bypass", "-Command", command], cwd=self.root, capture_output=True,
                               text=True, encoding="utf-8", errors="replace", check=False)
