@@ -50,6 +50,7 @@ try {
         if ($PSBoundParameters.ContainsKey("PrNumber")) {
             $publishArguments.PrNumber = $PrNumber
         }
+        $global:LASTEXITCODE = 0
         & (Join-Path $fixedScriptsRoot "publish-from-handoff.ps1") @publishArguments
         exit $LASTEXITCODE
     }
