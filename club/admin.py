@@ -1636,6 +1636,7 @@ class CoachExpenseAdmin(ExpenseTypeAdminMixin, admin.ModelAdmin):
 
 @admin.register(LessonWaitlist)
 class LessonWaitlistAdmin(admin.ModelAdmin):
+    actions = ()
     list_display = (
         "id",
         "user",
@@ -1668,7 +1669,34 @@ class LessonWaitlistAdmin(admin.ModelAdmin):
         "note",
     )
     autocomplete_fields = ("user", "coach", "substitute_coach", "court", "availability", "fixed_lesson")
-    readonly_fields = ("created_at", "updated_at", "canceled_at", "converted_at")
+    readonly_fields = (
+        "user",
+        "status",
+        "lesson_type",
+        "target_level",
+        "target_level_2",
+        "start_at",
+        "end_at",
+        "coach",
+        "substitute_coach",
+        "court",
+        "availability",
+        "fixed_lesson",
+        "note",
+        "created_at",
+        "updated_at",
+        "canceled_at",
+        "converted_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
     fieldsets = (
         ("キャンセル待ち情報", {
             "fields": (
