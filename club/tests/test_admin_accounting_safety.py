@@ -1,5 +1,5 @@
 import copy
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 
 from django.contrib.admin.sites import AdminSite
 from django.contrib.auth import get_user_model
@@ -119,7 +119,9 @@ class AccountingAdminSafetyTests(TestCase):
 
     def test_court_capacity_decrease_and_inactive_history_contract(self):
         court = Court.objects.create(name="安全コート", available_court_count=3)
-        start = (timezone.now() + timedelta(days=1)).replace(minute=0, second=0, microsecond=0)
+        start = timezone.make_aware(
+            datetime.combine(timezone.localdate() + timedelta(days=1), time(10))
+        )
         for index in range(2):
             CoachAvailability.objects.create(
                 coach=(self.iizuka, self.shimizu)[index], court=court,
