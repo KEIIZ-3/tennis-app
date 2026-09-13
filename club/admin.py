@@ -48,6 +48,10 @@ from .ticket_purchase_correction_service import correct_ticket_purchase, correct
 from .expense_service import save_expense_update, validate_expense_update
 from .stringing_service import save_admin_stringing_order, validate_stringing_order_update
 from .court_service import save_court_update, validate_court_update
+from .shop_admin_service import (
+    import_shop_product_master_rows,
+    update_shop_estimate_request_status,
+)
 
 
 admin.site.site_header = "Play Design Tennis 管理サイト"
@@ -1997,64 +2001,10 @@ class ShopProductMasterAdmin(admin.ModelAdmin):
     def _import_uploaded_products(self, *, upload_file, import_mode, default_is_active):
         rows = self._read_uploaded_rows(upload_file)
         normalized_rows = self._normalize_import_rows(rows, default_is_active=default_is_active)
-
-        created_count = 0
-        updated_count = 0
-        skipped_count = 0
-        errors = []
-
-        with transaction.atomic():
-            if import_mode == ShopProductMasterImportForm.IMPORT_MODE_REPLACE:
-                ShopProductMaster.objects.all().delete()
-
-            for index, row in enumerate(normalized_rows, start=2):
-                try:
-                    instance = self._find_existing_product(row)
-                    if instance is None:
-                        instance = ShopProductMaster()
-
-                    instance.product_type = row["product_type"]
-                    instance.category = row["category"]
-                    instance.brand = row["brand"]
-                    instance.product_name = row["product_name"]
-                    instance.display_name = row["display_name"]
-                    instance.product_code = row["product_code"]
-                    instance.official_price = row["official_price"]
-                    instance.image_url = row["image_url"]
-                    instance.product_url = row["product_url"]
-                    instance.description = row["description"]
-                    instance.spec_weight_unstrung = row["spec_weight_unstrung"]
-                    instance.spec_string_pattern = row["spec_string_pattern"]
-                    instance.spec_head_size = row["spec_head_size"]
-                    instance.spec_balance = row["spec_balance"]
-                    instance.spec_length = row["spec_length"]
-                    instance.spec_beam = row["spec_beam"]
-                    instance.spec_gauge = row["spec_gauge"]
-                    instance.spec_set_length = row["spec_set_length"]
-                    instance.sort_order = row["sort_order"]
-                    instance.is_active = row["is_active"]
-                    instance.full_clean()
-                    is_update = bool(instance.pk)
-                    instance.save()
-
-                    if is_update:
-                        updated_count += 1
-                    else:
-                        created_count += 1
-                except ValidationError as e:
-                    skipped_count += 1
-                    joined = " / ".join(e.messages)
-                    errors.append(f"{index}行目をスキップしました: {joined}")
-                except Exception as e:
-                    skipped_count += 1
-                    errors.append(f"{index}行目をスキップしました: {e}")
-
-        return {
-            "created": created_count,
-            "updated": updated_count,
-            "skipped": skipped_count,
-            "errors": errors,
-        }
+        return import_shop_product_master_rows(
+            normalized_rows=normalized_rows,
+            replace=import_mode == ShopProductMasterImportForm.IMPORT_MODE_REPLACE,
+        )
 
     def _read_uploaded_rows(self, upload_file):
         suffix = Path(upload_file.name).suffix.lower()
@@ -2196,7 +2146,9 @@ class ShopProductMasterAdmin(admin.ModelAdmin):
             product_name = clean_text(
                 pick(row, "product_name", "商品名", "name", "品名", "モデル名")
             )
-            if not product_name:
+            if not product_name and not any(
+                clean_text(value) for value in row.values()
+            ):
                 continue
 
             brand_raw = clean_text(pick(row, "brand", "ブランド"))
@@ -2373,30 +2325,62 @@ class ShopEstimateRequestAdmin(admin.ModelAdmin):
     def estimated_total_display(self, obj):
         return f"{obj.estimated_total}円"
 
+    def save_model(self, request, obj, form, change):
+        desired_status = obj.handling_status
+        with transaction.atomic():
+            if change:
+                current_status = ShopEstimateRequest.objects.only("handling_status").get(
+                    pk=obj.pk
+                ).handling_status
+            else:
+                current_status = ShopEstimateRequest.HANDLING_STATUS_NEW
+
+            obj.handling_status = current_status
+            obj.full_clean()
+            obj.save()
+            update_shop_estimate_request_status(
+                estimate_request_id=obj.pk,
+                handling_status=desired_status,
+                actor=request.user,
+            )
+            obj.handling_status = desired_status
+
+    def _mark_handling_status(self, request, queryset, handling_status, label):
+        updated = 0
+        try:
+            with transaction.atomic():
+                for estimate_request_id in queryset.values_list("pk", flat=True):
+                    _, changed = update_shop_estimate_request_status(
+                        estimate_request_id=estimate_request_id,
+                        handling_status=handling_status,
+                        actor=request.user,
+                    )
+                    updated += int(changed)
+        except Exception as exc:
+            self.message_user(request, f"更新に失敗したため変更を取り消しました: {exc}", level=messages.ERROR)
+            return
+        self.message_user(request, f"{updated}件を{label}に更新しました。", level=messages.SUCCESS)
+
     @admin.action(description="選択した物販申込を『確認済み』にする")
     def mark_as_checked(self, request, queryset):
-        updated = queryset.exclude(
-            handling_status=ShopEstimateRequest.HANDLING_STATUS_CHECKED
-        ).update(handling_status=ShopEstimateRequest.HANDLING_STATUS_CHECKED)
-        self.message_user(request, f"{updated}件を確認済みに更新しました。", level=messages.SUCCESS)
+        self._mark_handling_status(
+            request, queryset, ShopEstimateRequest.HANDLING_STATUS_CHECKED, "確認済み"
+        )
 
     @admin.action(description="選択した物販申込を『発注済み』にする")
     def mark_as_ordered(self, request, queryset):
-        updated = queryset.exclude(
-            handling_status=ShopEstimateRequest.HANDLING_STATUS_ORDERED
-        ).update(handling_status=ShopEstimateRequest.HANDLING_STATUS_ORDERED)
-        self.message_user(request, f"{updated}件を発注済みに更新しました。", level=messages.SUCCESS)
+        self._mark_handling_status(
+            request, queryset, ShopEstimateRequest.HANDLING_STATUS_ORDERED, "発注済み"
+        )
 
     @admin.action(description="選択した物販申込を『対応完了』にする")
     def mark_as_completed(self, request, queryset):
-        updated = queryset.exclude(
-            handling_status=ShopEstimateRequest.HANDLING_STATUS_COMPLETED
-        ).update(handling_status=ShopEstimateRequest.HANDLING_STATUS_COMPLETED)
-        self.message_user(request, f"{updated}件を対応完了に更新しました。", level=messages.SUCCESS)
+        self._mark_handling_status(
+            request, queryset, ShopEstimateRequest.HANDLING_STATUS_COMPLETED, "対応完了"
+        )
 
     @admin.action(description="選択した物販申込を『キャンセル』にする")
     def mark_as_canceled(self, request, queryset):
-        updated = queryset.exclude(
-            handling_status=ShopEstimateRequest.HANDLING_STATUS_CANCELED
-        ).update(handling_status=ShopEstimateRequest.HANDLING_STATUS_CANCELED)
-        self.message_user(request, f"{updated}件をキャンセルに更新しました。", level=messages.SUCCESS)
+        self._mark_handling_status(
+            request, queryset, ShopEstimateRequest.HANDLING_STATUS_CANCELED, "キャンセル"
+        )
