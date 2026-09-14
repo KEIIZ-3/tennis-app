@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
+from django.template.loader import get_template
 from django.test import TestCase
 from django.utils import timezone
 
@@ -42,12 +43,24 @@ class SettlementCarryInDatabaseTests(TestCase):
             status=MonthlySettlement.STATUS_DRAFT,
         )
 
-    def _row(self, coach, *, entitlement, unpaid, negative_carry=0):
+    def _row(
+        self,
+        coach,
+        *,
+        entitlement,
+        unpaid,
+        negative_carry=0,
+        salary_due=None,
+        reimbursement_due=0,
+        reimbursement_unpaid=0,
+    ):
         return CoachMonthlySettlement.objects.create(
             monthly_settlement=self.july,
             coach=coach,
-            salary_due=max(entitlement, 0),
+            salary_due=max(entitlement, 0) if salary_due is None else salary_due,
             salary_unpaid=unpaid,
+            reimbursement_due=reimbursement_due,
+            reimbursement_unpaid=reimbursement_unpaid,
             calculation_snapshot={
                 "wallet_final_entitlement": entitlement,
                 "negative_carry": negative_carry,
@@ -100,6 +113,59 @@ class SettlementCarryInDatabaseTests(TestCase):
             ),
             {self.coaches[0].pk: 7034},
         )
+
+    def test_salary_due_remainder_is_carried_without_reimbursement(self):
+        self._row(
+            self.coaches[0],
+            entitlement=29497,
+            salary_due=29497,
+            unpaid=7497,
+        )
+        self._payment(self.coaches[0], 22000)
+
+        self.assertEqual(
+            _unpaid_salary_carry_in_by_coach(2026, 8, [self.coaches[0].pk]),
+            {self.coaches[0].pk: 7497},
+        )
+
+    def test_reimbursement_entitlement_is_not_salary_carry(self):
+        row = self._row(
+            self.coaches[0],
+            entitlement=29497,
+            salary_due=22000,
+            unpaid=0,
+            reimbursement_due=7497,
+            reimbursement_unpaid=7497,
+        )
+        self._payment(self.coaches[0], 22000)
+
+        self.assertEqual(
+            _unpaid_salary_carry_in_by_coach(2026, 8, [self.coaches[0].pk]),
+            {},
+        )
+        row.refresh_from_db()
+        self.assertEqual(row.reimbursement_unpaid, 7497)
+
+    def test_closed_month_uses_saved_salary_due_without_changing_snapshot(self):
+        self.july.status = MonthlySettlement.STATUS_CLOSED
+        self.july.save(update_fields=["status"])
+        row = self._row(
+            self.coaches[0],
+            entitlement=29497,
+            salary_due=22000,
+            unpaid=0,
+            reimbursement_due=7497,
+            reimbursement_unpaid=7497,
+        )
+        self._payment(self.coaches[0], 22000)
+        snapshot = dict(row.calculation_snapshot)
+
+        self.assertEqual(
+            _unpaid_salary_carry_in_by_coach(2026, 8, [self.coaches[0].pk]),
+            {},
+        )
+        row.refresh_from_db()
+        self.assertEqual(row.calculation_snapshot, snapshot)
 
     def test_reversed_payment_does_not_reduce_carry(self):
         self._row(self.coaches[0], entitlement=19034, unpaid=7034)
@@ -268,7 +334,7 @@ class SettlementWalletCourtCostTests(TestCase):
                 "coach_id": 1,
                 "salary_due": 221,
                 "salary_unpaid": 221,
-                "calculation_snapshot": {"wallet_final_entitlement": 221},
+                "calculation_snapshot": {"wallet_final_entitlement": 7718},
             },
             {
                 "monthly_settlement_id": 10,
@@ -296,7 +362,6 @@ class SettlementWalletCourtCostTests(TestCase):
             payment_type=SettlementPayment.PAYMENT_TYPE_SALARY,
             is_reversed=False,
         )
-
     def test_ball_expense_without_target_month_is_not_counted(self):
         expense = SimpleNamespace(
             amount=7568,
@@ -918,3 +983,27 @@ class SettlementWalletCourtCostTests(TestCase):
         self.assertEqual(updated["rain_refund_pending_total"], 2600)
         self.assertEqual(updated["rain_refunded_rows"], [])
         self.assertEqual(updated["rain_refunded_total"], 0)
+
+
+class SettlementPaymentMeaningDisplayTests(TestCase):
+    def test_admin_settlement_separates_salary_and_reimbursement_balances(self):
+        source = get_template("coach/admin_settlement.html").template.source
+
+        for label in (
+            "給与支払済み",
+            "給与未払い",
+            "立替返金済み",
+            "立替未精算",
+            "前月給与未払い繰越",
+        ):
+            self.assertIn(label, source)
+        self.assertNotIn("<span>支払済み</span>", source)
+        self.assertNotIn("<span>未払い</span>", source)
+
+    def test_payroll_summary_final_amount_includes_separate_reimbursement_due(self):
+        source = get_template("coach/payroll_summary.html").template.source
+
+        self.assertIn("{{ salary_due|add:reimbursement_due }}円", source)
+        self.assertIn("給与未払い＋立替未精算", source)
+        self.assertIn("立替返金済み", source)
+        self.assertIn("立替未精算", source)
