@@ -139,7 +139,7 @@
     <div class="summary"><div class="summary-label">ガット張り売上</div><div class="summary-value">{{ stringing_total }}円</div><div class="summary-note">キャンセルを除く当月分</div></div>
     <div class="summary warn"><div class="summary-label">確定コート代</div><div class="summary-value">{{ court_cost_total|default:0 }}円</div><div class="summary-note">実施済み・登録済みレッスン分</div></div>
     <div class="summary warn"><div class="summary-label">業務委託報酬</div><div class="summary-value">{{ contractor_hourly_pay_total }}円</div><div class="summary-note">メインコーチ3人で均等負担</div></div>
-    <div class="summary danger"><div class="summary-label">未払い一括精算額</div><div class="summary-value">{{ unpaid_salary_total }}円</div><div class="summary-note">各コーチの最終受取額の未払い分</div></div>
+    <div class="summary danger"><div class="summary-label">給与未払い合計</div><div class="summary-value">{{ unpaid_salary_total }}円</div><div class="summary-note">各コーチの給与確定額の未払い分</div></div>
   </section>
 
   <section class="panel">
@@ -157,7 +157,7 @@
 
   <section class="panel">
     <div class="section-head">
-      <div><h2 class="section-title">一括精算支払いの記録</h2><p class="help">給与支払は最終受取額の未払い分から控除されます。個人経費の返金は経費立替返金として別管理します。</p></div>
+      <div><h2 class="section-title">一括精算支払いの記録</h2><p class="help">給与支払は給与確定額の未払い分から控除されます。個人経費の返金は経費立替返金として別管理します。</p></div>
     </div>
     {% if not is_month_closed %}
       <form method="post" class="form-grid">{% csrf_token %}
@@ -226,12 +226,14 @@
             <div class="money-row plus"><span>経費立替付与合計</span><strong>+{{ row.wallet_reimbursement|default:0 }}円</strong></div>
             <div class="money-row plus"><span>Shop仕入立替返還</span><strong>+{{ row.shop_procurement_reimbursement|default:0 }}円</strong></div>
             <div class="money-row minus"><span>業務委託費負担</span><strong>-{{ row.contractor_cost_burden|default:0 }}円</strong></div>
-            {% if row.unpaid_salary_carry_in %}<div class="money-row plus"><span>前月未払い繰越</span><strong>+{{ row.unpaid_salary_carry_in }}円</strong></div>{% endif %}
+            {% if row.unpaid_salary_carry_in %}<div class="money-row plus"><span>前月給与未払い繰越</span><strong>+{{ row.unpaid_salary_carry_in }}円</strong></div>{% endif %}
             {% if row.negative_carry_in %}<div class="money-row minus"><span>前月マイナス繰越</span><strong>-{{ row.negative_carry_in }}円</strong></div>{% endif %}
             {% if row.wallet_balance_adjustment %}<div class="money-row"><span>財布残高調整</span><strong>{{ row.wallet_balance_adjustment }}円</strong></div>{% endif %}
             <div class="money-row total"><span>最終受取額</span><strong>{{ row.wallet_final_entitlement|default:row.salary_due }}円</strong></div>
-            <div class="money-row"><span>支払済み</span><strong>{{ row.salary_paid }}円</strong></div>
-            <div class="money-row unpaid"><span>未払い</span><strong>{{ row.unpaid_salary }}円</strong></div>
+            <div class="money-row"><span>給与支払済み</span><strong>{{ row.salary_paid }}円</strong></div>
+            <div class="money-row unpaid"><span>給与未払い</span><strong>{{ row.unpaid_salary }}円</strong></div>
+            <div class="money-row"><span>立替返金済み</span><strong>{{ row.reimbursement_paid }}円</strong></div>
+            <div class="money-row unpaid"><span>立替未精算</span><strong>{{ row.unpaid_reimbursement }}円</strong></div>
           </div>
         </article>
       {% empty %}

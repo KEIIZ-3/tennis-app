@@ -73,10 +73,12 @@
   {% endif %}
 
   <section class="summary-grid">
-    <div class="summary primary"><div class="label">総未払額</div><div class="value">{{ total_unpaid }}円</div><div class="note">給与の未払額</div></div>
-    <div class="summary info"><div class="label">最終受取額</div><div class="value">{{ salary_due }}円</div><div class="note">売上・業務報酬 + 会社経費支払分 − 共通負担</div></div>
+    <div class="summary primary"><div class="label">総未払額</div><div class="value">{{ total_unpaid }}円</div><div class="note">給与未払い＋立替未精算</div></div>
+    <div class="summary info"><div class="label">最終受取額</div><div class="value">{{ salary_due|add:reimbursement_due }}円</div><div class="note">給与確定額＋立替返金額</div></div>
     <div class="summary success"><div class="label">給与支払済み</div><div class="value">{{ salary_paid }}円</div><div class="note">当月精算に登録された支払い</div></div>
     <div class="summary danger"><div class="label">給与未払い</div><div class="value">{{ unpaid_salary }}円</div><div class="note">給与確定額 − 支払済み</div></div>
+    <div class="summary success"><div class="label">立替返金済み</div><div class="value">{{ reimbursement_paid }}円</div><div class="note">当月精算に登録された立替返金</div></div>
+    <div class="summary danger"><div class="label">立替未精算</div><div class="value">{{ unpaid_reimbursement }}円</div><div class="note">立替返金額 − 返金済み</div></div>
     <div class="summary"><div class="label">担当レッスン</div><div class="value">{{ row.reservation_count }}件</div><div class="note">{% if row.is_contractor_coach %}{{ row.contractor_work_hours_text }}・{{ row.contractor_work_slot_count }}枠{% else %}当月の担当実績{% endif %}</div></div>
   </section>
 
@@ -93,7 +95,7 @@
         <div class="row"><span>共通経費負担（ボール代は利益（参加費－コート代）比例）</span><strong class="minus">-{{ row.common_expense_share }}円</strong></div>
       {% endif %}
       {% if row.wallet_reimbursement %}<div class="row"><span>会社経費支払分</span><strong class="plus">+{{ row.wallet_reimbursement }}円</strong></div>{% endif %}
-      <div class="row"><span>最終受取額</span><strong>{{ row.salary_due }}円</strong></div>
+      <div class="row"><span>給与確定額</span><strong>{{ row.salary_due }}円</strong></div>
     </div>
   </section>
 

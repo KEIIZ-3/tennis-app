@@ -1022,7 +1022,7 @@ def _negative_carry_in_by_coach(year, month, coach_ids):
 
 
 def _unpaid_salary_carry_in_by_coach(year, month, coach_ids):
-    """直前の締め済み月からコーチ別の給与未払い残高を引き継ぐ。"""
+    """直前月の保存済み給与確定額から給与未払い残高を引き継ぐ。"""
     from .settlement_models import CoachMonthlySettlement, SettlementPayment
 
     if month == 1:
@@ -1038,8 +1038,6 @@ def _unpaid_salary_carry_in_by_coach(year, month, coach_ids):
         "monthly_settlement_id",
         "coach_id",
         "salary_due",
-        "salary_unpaid",
-        "calculation_snapshot",
     )
 
     previous_rows = list(previous_rows)
@@ -1061,10 +1059,7 @@ def _unpaid_salary_carry_in_by_coach(year, month, coach_ids):
 
     carry_by_coach = {}
     for previous_row in previous_rows:
-        snapshot = dict(previous_row.get("calculation_snapshot") or {})
-        entitlement = snapshot.get("wallet_final_entitlement")
-        if entitlement is None:
-            entitlement = previous_row.get("salary_due")
+        salary_due = previous_row.get("salary_due")
         paid_total = paid_by_row.get(
             (
                 previous_row["monthly_settlement_id"],
@@ -1072,7 +1067,7 @@ def _unpaid_salary_carry_in_by_coach(year, month, coach_ids):
             ),
             0,
         )
-        unpaid_salary = max(_money(entitlement) - paid_total, 0)
+        unpaid_salary = max(_money(salary_due) - paid_total, 0)
         if unpaid_salary:
             carry_by_coach[previous_row["coach_id"]] = unpaid_salary
     return carry_by_coach
