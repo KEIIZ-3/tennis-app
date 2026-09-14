@@ -1,7 +1,7 @@
 from datetime import date, datetime, time, timedelta
 
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Sum
 from django.utils import timezone
 
 from .expense_metadata import (
@@ -791,24 +791,43 @@ def _calculate_single_month(
     return MonthlySettlementResult.from_mapping(result)
 
 
-def _existing_open_months_after(year, month):
-    """Return consecutive saved draft months following the source month."""
-    source_key = int(year) * 12 + int(month) - 1
-    candidates = MonthlySettlement.objects.filter(
-        Q(year__gt=int(year)) | Q(year=int(year), month__gt=int(month))
-    ).order_by("year", "month").values("year", "month", "status")
+def _following_month(year, month):
+    if int(month) == 12:
+        return int(year) + 1, 1
+    return int(year), int(month) + 1
 
-    expected_key = source_key + 1
-    open_months = []
-    for candidate in candidates:
-        candidate_key = candidate["year"] * 12 + candidate["month"] - 1
-        if candidate_key != expected_key:
+
+@transaction.atomic
+def recalculate_monthly_settlement_chain(
+    year, month, *, force=False, trace_performance=False
+):
+    """Recalculate the source and each consecutive saved DRAFT month."""
+    result = _calculate_single_month(
+        year,
+        month,
+        force=force,
+        trace_performance=trace_performance,
+    )
+    if result.get("is_closed"):
+        return result
+
+    next_year, next_month = _following_month(year, month)
+    while True:
+        dependent = (
+            MonthlySettlement.objects.select_for_update()
+            .filter(year=next_year, month=next_month)
+            .first()
+        )
+        if dependent is None or dependent.is_closed:
             break
-        if candidate["status"] == MonthlySettlement.STATUS_CLOSED:
-            break
-        open_months.append((candidate["year"], candidate["month"]))
-        expected_key += 1
-    return open_months
+        _calculate_single_month(
+            next_year,
+            next_month,
+            force=True,
+            trace_performance=False,
+        )
+        next_year, next_month = _following_month(next_year, next_month)
+    return result
 
 
 @transaction.atomic
@@ -816,20 +835,9 @@ def calculate_monthly_settlement(
     year, month, *, force=False, trace_performance=False
 ):
     """Calculate one month and refresh saved draft months that depend on it."""
-    result = _calculate_single_month(
+    return recalculate_monthly_settlement_chain(
         year,
         month,
         force=force,
         trace_performance=trace_performance,
     )
-    if not result.get("is_closed"):
-        for dependent_year, dependent_month in _existing_open_months_after(
-            year, month
-        ):
-            _calculate_single_month(
-                dependent_year,
-                dependent_month,
-                force=True,
-                trace_performance=False,
-            )
-    return result
