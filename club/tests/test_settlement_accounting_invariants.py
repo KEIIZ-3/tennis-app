@@ -145,9 +145,9 @@ class ShopAccountingInvariantTests(TestCase):
     def test_closed_purchase_month_cannot_be_rolled_back(self):
         quote, purchase = self.make_confirmed_quote(sale=30000, cost=25000)
         local_date = timezone.localdate(purchase.purchased_at)
-        MonthlySettlement.objects.create(
+        MonthlySettlement.objects.update_or_create(
             year=local_date.year, month=local_date.month,
-            status=MonthlySettlement.STATUS_CLOSED,
+            defaults={"status": MonthlySettlement.STATUS_CLOSED},
         )
         with self.assertRaises(ValidationError):
             rollback_purchase_to_quote(

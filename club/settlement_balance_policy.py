@@ -1049,6 +1049,7 @@ def _unpaid_salary_carry_in_by_coach(year, month, coach_ids):
     active_payments = SettlementPayment.objects.filter(
         monthly_settlement_id__in=settlement_ids,
         coach_id__in=coach_ids,
+        payment_type=SettlementPayment.PAYMENT_TYPE_SALARY,
         is_reversed=False,
     ).values("monthly_settlement_id", "coach_id").annotate(total=Sum("amount"))
     paid_by_row = {
