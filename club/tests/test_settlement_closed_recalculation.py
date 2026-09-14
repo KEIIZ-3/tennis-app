@@ -174,6 +174,41 @@ class ClosedSettlementRecalculationTests(TestCase):
 
 
 class OpenSettlementRecalculationTests(TestCase):
+    @patch("club.settlement_service._calculate_single_month")
+    def test_recalculation_refreshes_consecutive_open_carry_chain(self, calculate):
+        calculate.side_effect = lambda year, month, **kwargs: {
+            "is_closed": False,
+            "year": year,
+            "month": month,
+        }
+        MonthlySettlement.objects.create(year=2099, month=8)
+        MonthlySettlement.objects.create(year=2099, month=9)
+
+        calculate_monthly_settlement(2099, 8, force=True)
+
+        self.assertEqual(
+            [(call.args[0], call.args[1]) for call in calculate.call_args_list],
+            [(2099, 8), (2099, 9)],
+        )
+
+    @patch("club.settlement_service._calculate_single_month")
+    def test_closed_dependent_month_stops_chain_without_overwrite(self, calculate):
+        calculate.return_value = {"is_closed": False}
+        MonthlySettlement.objects.create(year=2099, month=8)
+        MonthlySettlement.objects.create(
+            year=2099, month=9, status=MonthlySettlement.STATUS_CLOSED,
+            calculation_snapshot={"sentinel": "unchanged"},
+        )
+        MonthlySettlement.objects.create(year=2099, month=10)
+
+        calculate_monthly_settlement(2099, 8, force=True)
+
+        calculate.assert_called_once_with(
+            2099, 8, force=True, trace_performance=False
+        )
+        september = MonthlySettlement.objects.get(year=2099, month=9)
+        self.assertEqual(september.calculation_snapshot, {"sentinel": "unchanged"})
+
     def test_admin_get_recalculates_open_month_once_and_renders_fresh_result(self):
         User = get_user_model()
         admin = User.objects.create_user(

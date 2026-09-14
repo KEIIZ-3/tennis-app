@@ -734,11 +734,10 @@ def _calculate_monthly_settlement_base(
     )
 
 
-@transaction.atomic
-def calculate_monthly_settlement(
+def _calculate_single_month(
     year, month, *, force=False, trace_performance=False
 ):
-    """月次精算の標準計算と会社財布ポリシーを一つの正式な入口で実行する。"""
+    """Calculate exactly one month without following carry dependencies."""
     from .settlement_balance_policy import _apply_wallet_policy
 
     performance_trace = SettlementPerformanceTrace(
@@ -763,3 +762,47 @@ def calculate_monthly_settlement(
                 result.get("coach_rows", []), monthly_shop_allocations(year, month)
             )
     return MonthlySettlementResult.from_mapping(result)
+
+
+def _existing_open_months_after(year, month):
+    """Return consecutive saved draft months following the source month."""
+    source_key = int(year) * 12 + int(month) - 1
+    candidates = MonthlySettlement.objects.filter(
+        Q(year__gt=int(year)) | Q(year=int(year), month__gt=int(month))
+    ).order_by("year", "month").values("year", "month", "status")
+
+    expected_key = source_key + 1
+    open_months = []
+    for candidate in candidates:
+        candidate_key = candidate["year"] * 12 + candidate["month"] - 1
+        if candidate_key != expected_key:
+            break
+        if candidate["status"] == MonthlySettlement.STATUS_CLOSED:
+            break
+        open_months.append((candidate["year"], candidate["month"]))
+        expected_key += 1
+    return open_months
+
+
+@transaction.atomic
+def calculate_monthly_settlement(
+    year, month, *, force=False, trace_performance=False
+):
+    """Calculate one month and refresh saved draft months that depend on it."""
+    result = _calculate_single_month(
+        year,
+        month,
+        force=force,
+        trace_performance=trace_performance,
+    )
+    if not result.get("is_closed"):
+        for dependent_year, dependent_month in _existing_open_months_after(
+            year, month
+        ):
+            _calculate_single_month(
+                dependent_year,
+                dependent_month,
+                force=True,
+                trace_performance=False,
+            )
+    return result

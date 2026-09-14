@@ -211,6 +211,7 @@ def confirm_quote_purchase(*, quote, actor):
         ShopInquiry.objects.filter(pk=quote.inquiry_id).update(
             status=ShopInquiry.STATUS_PURCHASED, purchased_at=purchase.purchased_at,
         )
+    _recalculate_purchase_month(purchase)
     return purchase, True
 
 
@@ -336,6 +337,15 @@ def _ensure_purchase_month_open(purchase):
     ensure_accounting_month_is_open(purchase.purchased_at)
 
 
+def _recalculate_purchase_month(purchase):
+    from .settlement_service import calculate_monthly_settlement
+
+    purchased_date = timezone.localtime(purchase.purchased_at).date()
+    calculate_monthly_settlement(
+        purchased_date.year, purchased_date.month, force=True
+    )
+
+
 @transaction.atomic
 def save_allocations(
     *, purchase, actor, amounts, sale_amount=None, purchase_cost=None,
@@ -391,6 +401,7 @@ def save_allocations(
         procurement_coach=procurement_id, amounts=normalized)
     ShopRevenueAllocationAudit.objects.create(purchase=purchase, previous_snapshot=before,
         allocation_snapshot=after, changed_by=actor)
+    _recalculate_purchase_month(purchase)
     return allocation_summary(purchase)
 
 
@@ -436,6 +447,7 @@ def cancel_purchase(*, purchase, actor):
         raise ValidationError("このShop販売は既に取り消されています。")
     purchase.status = ShopPurchase.STATUS_CANCELED
     purchase.save(update_fields=["status", "updated_at"])
+    _recalculate_purchase_month(purchase)
     return purchase
 
 
@@ -483,4 +495,5 @@ def rollback_purchase_to_quote(*, purchase, actor, reason):
             status=ShopInquiry.STATUS_QUOTED, purchased_at=None,
             quoted_amount=quote.total,
         )
+    _recalculate_purchase_month(purchase)
     return purchase

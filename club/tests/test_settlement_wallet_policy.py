@@ -110,8 +110,9 @@ class SettlementCarryInDatabaseTests(TestCase):
             {self.coaches[0].pk: 19034},
         )
 
-    def test_reimbursement_payment_reduces_combined_wallet_balance_once(self):
-        self._row(self.coaches[0], entitlement=19034, unpaid=19034)
+    def test_reimbursement_payment_does_not_reduce_salary_carry(self):
+        self._row(self.coaches[0], entitlement=12221, unpaid=221)
+        self._payment(self.coaches[0], 12000)
         self._payment(
             self.coaches[0], 3000,
             payment_type=SettlementPayment.PAYMENT_TYPE_REIMBURSEMENT,
@@ -119,7 +120,23 @@ class SettlementCarryInDatabaseTests(TestCase):
 
         self.assertEqual(
             _unpaid_salary_carry_in_by_coach(2026, 8, [self.coaches[0].pk]),
-            {self.coaches[0].pk: 16034},
+            {self.coaches[0].pk: 221},
+        )
+
+    def test_reimbursement_only_and_reversed_reimbursement_do_not_reduce_salary_carry(self):
+        self._row(self.coaches[0], entitlement=12221, unpaid=12221)
+        self._payment(
+            self.coaches[0], 3000,
+            payment_type=SettlementPayment.PAYMENT_TYPE_REIMBURSEMENT,
+        )
+        self._payment(
+            self.coaches[0], 2000, reversed=True,
+            payment_type=SettlementPayment.PAYMENT_TYPE_REIMBURSEMENT,
+        )
+
+        self.assertEqual(
+            _unpaid_salary_carry_in_by_coach(2026, 8, [self.coaches[0].pk]),
+            {self.coaches[0].pk: 12221},
         )
 
 
@@ -227,7 +244,6 @@ class SettlementWalletCourtCostTests(TestCase):
             monthly_settlement__month=7,
             coach_id__in=[1, 2, 3],
         )
-
     @patch("club.settlement_models.CoachMonthlySettlement.objects.filter")
     def test_negative_carry_crosses_year_boundary(self, filter_mock):
         filter_mock.return_value.values.return_value = []
@@ -273,6 +289,12 @@ class SettlementWalletCourtCostTests(TestCase):
             monthly_settlement__year=2026,
             monthly_settlement__month=7,
             coach_id__in=[1, 2, 3],
+        )
+        payment_filter_mock.assert_called_once_with(
+            monthly_settlement_id__in={10},
+            coach_id__in=[1, 2, 3],
+            payment_type=SettlementPayment.PAYMENT_TYPE_SALARY,
+            is_reversed=False,
         )
 
     def test_ball_expense_without_target_month_is_not_counted(self):
