@@ -192,6 +192,76 @@ class OpenSettlementRecalculationTests(TestCase):
         )
 
     @patch("club.settlement_service._calculate_single_month")
+    def test_recalculation_refreshes_three_months_in_chronological_order(
+        self, calculate
+    ):
+        calculate.return_value = {"is_closed": False}
+        for month in (7, 8, 9):
+            MonthlySettlement.objects.create(year=2099, month=month)
+
+        calculate_monthly_settlement(2099, 7, force=True)
+
+        self.assertEqual(
+            [(call.args[0], call.args[1]) for call in calculate.call_args_list],
+            [(2099, 7), (2099, 8), (2099, 9)],
+        )
+
+    @patch("club.settlement_service._calculate_single_month")
+    def test_chain_does_not_create_a_missing_future_month(self, calculate):
+        calculate.return_value = {"is_closed": False}
+        MonthlySettlement.objects.create(year=2099, month=8)
+
+        calculate_monthly_settlement(2099, 8, force=True)
+
+        self.assertFalse(
+            MonthlySettlement.objects.filter(year=2099, month=9).exists()
+        )
+        calculate.assert_called_once_with(
+            2099, 8, force=True, trace_performance=False
+        )
+
+    @patch("club.settlement_service._calculate_single_month")
+    def test_missing_month_stops_chain_before_later_draft(self, calculate):
+        calculate.return_value = {"is_closed": False}
+        MonthlySettlement.objects.create(year=2099, month=7)
+        MonthlySettlement.objects.create(year=2099, month=9)
+
+        calculate_monthly_settlement(2099, 7, force=True)
+
+        calculate.assert_called_once_with(
+            2099, 7, force=True, trace_performance=False
+        )
+
+    @patch("club.settlement_service._calculate_single_month")
+    def test_chain_continues_across_year_boundary(self, calculate):
+        calculate.return_value = {"is_closed": False}
+        MonthlySettlement.objects.create(year=2099, month=12)
+        MonthlySettlement.objects.create(year=2100, month=1)
+
+        calculate_monthly_settlement(2099, 12, force=True)
+
+        self.assertEqual(
+            [(call.args[0], call.args[1]) for call in calculate.call_args_list],
+            [(2099, 12), (2100, 1)],
+        )
+
+    @patch("club.settlement_service._calculate_single_month")
+    def test_repeating_chain_is_idempotent_and_keeps_the_same_order(
+        self, calculate
+    ):
+        calculate.return_value = {"is_closed": False}
+        MonthlySettlement.objects.create(year=2099, month=8)
+        MonthlySettlement.objects.create(year=2099, month=9)
+
+        calculate_monthly_settlement(2099, 8, force=True)
+        calculate_monthly_settlement(2099, 8, force=True)
+
+        self.assertEqual(
+            [(call.args[0], call.args[1]) for call in calculate.call_args_list],
+            [(2099, 8), (2099, 9), (2099, 8), (2099, 9)],
+        )
+
+    @patch("club.settlement_service._calculate_single_month")
     def test_closed_dependent_month_stops_chain_without_overwrite(self, calculate):
         calculate.return_value = {"is_closed": False}
         MonthlySettlement.objects.create(year=2099, month=8)
