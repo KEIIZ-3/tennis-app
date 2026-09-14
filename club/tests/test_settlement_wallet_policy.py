@@ -18,6 +18,8 @@ from club.settlement_balance_policy import (
     _lighting_start_hour,
     _negative_carry_in_by_coach,
     _rain_refund_policy,
+    _reimbursement_balance_carry_in_by_coach,
+    _salary_balance_carry_in_by_coach,
     _unpaid_salary_carry_in_by_coach,
 )
 from club.settlement_service import matching_active_payment
@@ -90,7 +92,11 @@ class SettlementCarryInDatabaseTests(TestCase):
 
         self.assertEqual(
             _unpaid_salary_carry_in_by_coach(2026, 8, coach_ids),
-            {self.coaches[0].pk: 19034, self.coaches[2].pk: 30781},
+            {
+                self.coaches[0].pk: 19034,
+                self.coaches[1].pk: -17281,
+                self.coaches[2].pk: 30781,
+            },
         )
         self.assertEqual(
             _negative_carry_in_by_coach(2026, 8, coach_ids),
@@ -203,6 +209,72 @@ class SettlementCarryInDatabaseTests(TestCase):
         self.assertEqual(
             _unpaid_salary_carry_in_by_coach(2026, 8, [self.coaches[0].pk]),
             {self.coaches[0].pk: 12221},
+        )
+
+    def test_salary_overpayment_is_carried_as_a_negative_balance(self):
+        self._row(self.coaches[0], entitlement=10000, unpaid=0)
+        self._payment(self.coaches[0], 15000)
+
+        self.assertEqual(
+            _salary_balance_carry_in_by_coach(
+                2026, 8, [self.coaches[0].pk]
+            ),
+            {self.coaches[0].pk: -5000},
+        )
+
+    def test_zero_salary_due_overpayment_is_carried(self):
+        self._row(self.coaches[0], entitlement=0, unpaid=0)
+        self._payment(self.coaches[0], 10000)
+
+        self.assertEqual(
+            _salary_balance_carry_in_by_coach(
+                2026, 8, [self.coaches[0].pk]
+            ),
+            {self.coaches[0].pk: -10000},
+        )
+
+    def test_reimbursement_balances_are_signed_and_separate(self):
+        self._row(
+            self.coaches[0], entitlement=221, unpaid=221,
+            reimbursement_due=16000, reimbursement_unpaid=16000,
+        )
+        self._row(
+            self.coaches[1], entitlement=10000, unpaid=0,
+            reimbursement_due=5000, reimbursement_unpaid=0,
+        )
+        self._payment(self.coaches[0], 12000)
+        self._payment(
+            self.coaches[1], 8000,
+            payment_type=SettlementPayment.PAYMENT_TYPE_REIMBURSEMENT,
+        )
+        self._payment(
+            self.coaches[1], 2000, reversed=True,
+            payment_type=SettlementPayment.PAYMENT_TYPE_REIMBURSEMENT,
+        )
+
+        coach_ids = [coach.pk for coach in self.coaches]
+        self.assertEqual(
+            _salary_balance_carry_in_by_coach(2026, 8, coach_ids),
+            {self.coaches[0].pk: -11779, self.coaches[1].pk: 10000},
+        )
+        self.assertEqual(
+            _reimbursement_balance_carry_in_by_coach(2026, 8, coach_ids),
+            {self.coaches[0].pk: 16000, self.coaches[1].pk: -3000},
+        )
+
+    def test_canonical_snapshot_balance_prevents_legacy_negative_double_count(self):
+        row = self._row(
+            self.coaches[0], entitlement=-5000, unpaid=0,
+            negative_carry=5000,
+        )
+        row.calculation_snapshot.update({"salary_balance": -7000})
+        row.save(update_fields=["calculation_snapshot"])
+
+        self.assertEqual(
+            _salary_balance_carry_in_by_coach(
+                2026, 8, [self.coaches[0].pk]
+            ),
+            {self.coaches[0].pk: -7000},
         )
 
 
@@ -882,8 +954,8 @@ class SettlementWalletCourtCostTests(TestCase):
 
     @patch("club.settlement_balance_policy._active_salary_payment_total", return_value=0)
     @patch("club.settlement_balance_policy._active_reimbursement_payment_total", return_value=2000)
-    @patch("club.settlement_balance_policy._unpaid_salary_carry_in_by_coach", return_value={1: 221})
-    @patch("club.settlement_balance_policy._negative_carry_in_by_coach", return_value={1: 2080})
+    @patch("club.settlement_balance_policy._reimbursement_balance_carry_in_by_coach", return_value={})
+    @patch("club.settlement_balance_policy._salary_balance_carry_in_by_coach", return_value={1: -1859})
     @patch(
         "club.settlement_balance_policy._rain_refund_policy",
         return_value={
@@ -906,8 +978,8 @@ class SettlementWalletCourtCostTests(TestCase):
         court_policy_mock,
         other_expense_policy_mock,
         _rain_refund_mock,
-        _negative_carry_mock,
-        _unpaid_salary_carry_mock,
+        _salary_carry_mock,
+        _reimbursement_carry_mock,
         _reimbursement_payment_mock,
         _salary_payment_mock,
     ):
@@ -965,8 +1037,9 @@ class SettlementWalletCourtCostTests(TestCase):
         self.assertEqual(row["other_expense_burden"], 4800)
         self.assertEqual(row["common_expense_share"], 7800)
         self.assertEqual(row["wallet_balance_adjustment"], 0)
-        self.assertEqual(row["negative_carry_in"], 2080)
-        self.assertEqual(row["unpaid_salary_carry_in"], 221)
+        self.assertEqual(row["negative_carry_in"], 1859)
+        self.assertEqual(row["unpaid_salary_carry_in"], 0)
+        self.assertEqual(row["salary_carry_in"], -1859)
         self.assertEqual(row["salary_due"], 16341)
         self.assertEqual(row["reimbursement_due"], 3000)
         self.assertEqual(row["reimbursement_paid"], 2000)
@@ -991,10 +1064,11 @@ class SettlementPaymentMeaningDisplayTests(TestCase):
 
         for label in (
             "給与支払済み",
-            "給与未払い",
+            "給与残高（＋未払い／－過払い）",
             "立替返金済み",
-            "立替未精算",
-            "前月給与未払い繰越",
+            "立替残高（＋未精算／－過払い）",
+            "前月給与繰越（＋未払い／－過払い）",
+            "前月立替繰越（＋未精算／－過払い）",
         ):
             self.assertIn(label, source)
         self.assertNotIn("<span>支払済み</span>", source)

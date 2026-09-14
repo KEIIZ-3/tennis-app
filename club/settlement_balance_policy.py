@@ -1021,8 +1021,10 @@ def _negative_carry_in_by_coach(year, month, coach_ids):
     return carry_by_coach
 
 
-def _unpaid_salary_carry_in_by_coach(year, month, coach_ids):
-    """直前月の保存済み給与確定額から給与未払い残高を引き継ぐ。"""
+def _signed_balance_carry_in_by_coach(
+    year, month, coach_ids, *, payment_type, snapshot_key, due_field
+):
+    """直前月の保存済み残高を符号付きで引き継ぐ。"""
     from .settlement_models import CoachMonthlySettlement, SettlementPayment
 
     if month == 1:
@@ -1037,7 +1039,8 @@ def _unpaid_salary_carry_in_by_coach(year, month, coach_ids):
     ).values(
         "monthly_settlement_id",
         "coach_id",
-        "salary_due",
+        due_field,
+        "calculation_snapshot",
     )
 
     previous_rows = list(previous_rows)
@@ -1047,7 +1050,7 @@ def _unpaid_salary_carry_in_by_coach(year, month, coach_ids):
     active_payments = SettlementPayment.objects.filter(
         monthly_settlement_id__in=settlement_ids,
         coach_id__in=coach_ids,
-        payment_type=SettlementPayment.PAYMENT_TYPE_SALARY,
+        payment_type=payment_type,
         is_reversed=False,
     ).values("monthly_settlement_id", "coach_id").annotate(total=Sum("amount"))
     paid_by_row = {
@@ -1059,7 +1062,12 @@ def _unpaid_salary_carry_in_by_coach(year, month, coach_ids):
 
     carry_by_coach = {}
     for previous_row in previous_rows:
-        salary_due = previous_row.get("salary_due")
+        snapshot = dict(previous_row.get("calculation_snapshot") or {})
+        if snapshot_key in snapshot:
+            balance = _money(snapshot.get(snapshot_key))
+            if balance:
+                carry_by_coach[previous_row["coach_id"]] = balance
+            continue
         paid_total = paid_by_row.get(
             (
                 previous_row["monthly_settlement_id"],
@@ -1067,10 +1075,44 @@ def _unpaid_salary_carry_in_by_coach(year, month, coach_ids):
             ),
             0,
         )
-        unpaid_salary = max(_money(salary_due) - paid_total, 0)
-        if unpaid_salary:
-            carry_by_coach[previous_row["coach_id"]] = unpaid_salary
+        balance = _money(previous_row.get(due_field)) - paid_total
+        if payment_type == SettlementPayment.PAYMENT_TYPE_SALARY:
+            # Legacy snapshots stored a negative entitlement separately.
+            balance -= max(_money(snapshot.get("negative_carry")), 0)
+        if balance:
+            carry_by_coach[previous_row["coach_id"]] = balance
     return carry_by_coach
+
+
+def _salary_balance_carry_in_by_coach(year, month, coach_ids):
+    from .settlement_models import SettlementPayment
+
+    return _signed_balance_carry_in_by_coach(
+        year,
+        month,
+        coach_ids,
+        payment_type=SettlementPayment.PAYMENT_TYPE_SALARY,
+        snapshot_key="salary_balance",
+        due_field="salary_due",
+    )
+
+
+def _reimbursement_balance_carry_in_by_coach(year, month, coach_ids):
+    from .settlement_models import SettlementPayment
+
+    return _signed_balance_carry_in_by_coach(
+        year,
+        month,
+        coach_ids,
+        payment_type=SettlementPayment.PAYMENT_TYPE_REIMBURSEMENT,
+        snapshot_key="reimbursement_balance",
+        due_field="reimbursement_due",
+    )
+
+
+def _unpaid_salary_carry_in_by_coach(year, month, coach_ids):
+    """Legacy-compatible alias for the canonical signed salary carry."""
+    return _salary_balance_carry_in_by_coach(year, month, coach_ids)
 
 
 def _apply_wallet_policy(result, year, month, *, performance_trace=None):
@@ -1093,15 +1135,15 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
         if getattr(row.get("coach"), "pk", None) is not None
     ]
     with performance_trace.step("carry_opening_balance"):
-        negative_carry_in_by_coach = _negative_carry_in_by_coach(
+        salary_balance_carry_in_by_coach = _salary_balance_carry_in_by_coach(
             year,
             month,
             eligible_coach_ids,
         )
-        unpaid_salary_carry_in_by_coach = _unpaid_salary_carry_in_by_coach(
-            year,
-            month,
-            eligible_coach_ids,
+        reimbursement_balance_carry_in_by_coach = (
+            _reimbursement_balance_carry_in_by_coach(
+                year, month, eligible_coach_ids
+            )
         )
 
     with performance_trace.step("court_common_expense_allocation"):
@@ -1162,8 +1204,12 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
             other_expense_policy=other_expense_policy,
             rain_refund_policy=rain_refund_policy,
             contractor_share_by_main=contractor_share_by_main,
-            negative_carry_in_by_coach=negative_carry_in_by_coach,
-            unpaid_salary_carry_in_by_coach=unpaid_salary_carry_in_by_coach,
+            salary_balance_carry_in_by_coach=(
+                salary_balance_carry_in_by_coach
+            ),
+            reimbursement_balance_carry_in_by_coach=(
+                reimbursement_balance_carry_in_by_coach
+            ),
             total_company_revenue=total_company_revenue,
             money=_money,
             active_salary_payment_total=_active_salary_payment_total,
