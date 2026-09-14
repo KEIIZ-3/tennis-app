@@ -12,8 +12,8 @@ def calculate_coach_wallets(
     other_expense_policy,
     rain_refund_policy,
     contractor_share_by_main,
-    negative_carry_in_by_coach,
-    unpaid_salary_carry_in_by_coach,
+    salary_balance_carry_in_by_coach,
+    reimbursement_balance_carry_in_by_coach,
     total_company_revenue,
     money,
     active_salary_payment_total,
@@ -77,9 +77,11 @@ def calculate_coach_wallets(
             + rain_refund_reimbursement
             + shop_procurement_reimbursement
         )
-        negative_carry_in = money(negative_carry_in_by_coach.get(coach_id))
-        unpaid_salary_carry_in = money(
-            unpaid_salary_carry_in_by_coach.get(coach_id)
+        salary_carry_in = money(
+            salary_balance_carry_in_by_coach.get(coach_id)
+        )
+        reimbursement_carry_in = money(
+            reimbursement_balance_carry_in_by_coach.get(coach_id)
         )
 
         if is_contractor:
@@ -100,11 +102,11 @@ def calculate_coach_wallets(
 
         salary_entitlement = (
             earned_amount
-            + unpaid_salary_carry_in
+            + salary_carry_in
             - burden_total
-            - negative_carry_in
         )
-        final_entitlement = salary_entitlement + reimbursement_total
+        reimbursement_due = reimbursement_total + reimbursement_carry_in
+        final_entitlement = salary_entitlement + reimbursement_due
         row.update(
             {
                 "is_main_coach": coach_id in main_coach_id_set,
@@ -124,8 +126,11 @@ def calculate_coach_wallets(
                 "shop_procurement_reimbursement": shop_procurement_reimbursement,
                 "wallet_earned_amount": earned_amount,
                 "salary_entitlement": salary_entitlement,
-                "negative_carry_in": negative_carry_in,
-                "unpaid_salary_carry_in": unpaid_salary_carry_in,
+                "salary_carry_in": salary_carry_in,
+                "negative_carry_in": max(-salary_carry_in, 0),
+                "unpaid_salary_carry_in": max(salary_carry_in, 0),
+                "reimbursement_carry_in": reimbursement_carry_in,
+                "reimbursement_due": reimbursement_due,
                 "wallet_final_entitlement": final_entitlement,
                 "wallet_balance_adjustment": 0,
             }
@@ -150,15 +155,18 @@ def calculate_coach_wallets(
         )
         total_paid = salary_paid + reimbursement_paid
         salary_due = max(salary_entitlement, 0)
-        reimbursement_due = money(row.get("wallet_reimbursement"))
-        unpaid_salary = max(salary_due - salary_paid, 0)
-        unpaid_reimbursement = max(reimbursement_due - reimbursement_paid, 0)
+        reimbursement_due = money(row.get("reimbursement_due"))
+        salary_balance = salary_entitlement - salary_paid
+        reimbursement_balance = reimbursement_due - reimbursement_paid
+        unpaid_salary = max(salary_balance, 0)
+        unpaid_reimbursement = max(reimbursement_balance, 0)
         closing_balance = final_entitlement - total_paid
         negative_carry = max(-salary_entitlement, 0)
         row.update(
             {
                 "salary_due": salary_due,
                 "salary_paid": salary_paid,
+                "salary_balance": salary_balance,
                 "unpaid_salary": unpaid_salary,
                 "negative_carry": negative_carry,
                 "closing_compensation_balance": closing_balance,
@@ -167,6 +175,7 @@ def calculate_coach_wallets(
                 ),
                 "reimbursement_due": reimbursement_due,
                 "reimbursement_paid": reimbursement_paid,
+                "reimbursement_balance": reimbursement_balance,
                 "unpaid_reimbursement": unpaid_reimbursement,
                 "total_unpaid": unpaid_salary + unpaid_reimbursement,
                 "total_paid": total_paid,
@@ -221,6 +230,14 @@ def calculate_coach_wallets(
                     "unpaid_salary_carry_in": money(
                         row.get("unpaid_salary_carry_in")
                     ),
+                    "salary_carry_in": money(row.get("salary_carry_in")),
+                    "salary_balance": salary_balance,
+                    "salary_carry_out": salary_balance,
+                    "reimbursement_carry_in": money(
+                        row.get("reimbursement_carry_in")
+                    ),
+                    "reimbursement_balance": reimbursement_balance,
+                    "reimbursement_carry_out": reimbursement_balance,
                     "wallet_balance_adjustment": money(
                         row.get("wallet_balance_adjustment")
                     ),
@@ -236,7 +253,9 @@ def calculate_coach_wallets(
             saved_row.reimbursement_current_month = money(
                 row.get("wallet_reimbursement")
             )
-            saved_row.reimbursement_carry_in = 0
+            saved_row.reimbursement_carry_in = money(
+                row.get("reimbursement_carry_in")
+            )
             saved_row.salary_due = salary_due
             saved_row.salary_paid = salary_paid
             saved_row.salary_unpaid = unpaid_salary

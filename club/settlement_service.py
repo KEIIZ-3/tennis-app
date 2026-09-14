@@ -491,6 +491,16 @@ def _calculate_monthly_settlement_base(
                     "negative_carry_in": money(
                         saved.calculation_snapshot.get("negative_carry_in")
                     ),
+                    "salary_carry_in": money(
+                        saved.calculation_snapshot.get(
+                            "salary_carry_in",
+                            money(saved.calculation_snapshot.get(
+                                "unpaid_salary_carry_in"
+                            )) - money(saved.calculation_snapshot.get(
+                                "negative_carry_in"
+                            )),
+                        )
+                    ),
                     "unpaid_salary_carry_in": money(
                         saved.calculation_snapshot.get(
                             "unpaid_salary_carry_in"
@@ -508,9 +518,26 @@ def _calculate_monthly_settlement_base(
                     "salary_due": saved.salary_due,
                     "salary_paid": saved.salary_paid,
                     "unpaid_salary": saved.salary_unpaid,
+                    "salary_balance": money(
+                        saved.calculation_snapshot.get(
+                            "salary_balance",
+                            saved.salary_due
+                            - saved.salary_paid
+                            - money(saved.calculation_snapshot.get(
+                                "negative_carry"
+                            )),
+                        )
+                    ),
                     "reimbursement_due": saved.reimbursement_due,
                     "reimbursement_paid": saved.reimbursement_paid,
                     "unpaid_reimbursement": saved.reimbursement_unpaid,
+                    "reimbursement_balance": money(
+                        saved.calculation_snapshot.get(
+                            "reimbursement_balance",
+                            saved.reimbursement_due
+                            - saved.reimbursement_paid,
+                        )
+                    ),
                     "total_unpaid": (
                         saved.salary_unpaid + saved.reimbursement_unpaid
                     ),
