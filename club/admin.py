@@ -941,14 +941,25 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
 
         delete_or_cancel_availability(availability_id=obj.pk, actor=request.user)
 
+    def delete_view(self, request, object_id, extra_context=None):
+        try:
+            return super().delete_view(request, object_id, extra_context=extra_context)
+        except ValidationError as exc:
+            self.message_user(request, "; ".join(exc.messages), level=messages.ERROR)
+            return HttpResponseRedirect(reverse("admin:club_coachavailability_changelist"))
+
     def delete_queryset(self, request, queryset):
         from .fixed_lesson_occurrence_service import delete_or_cancel_availability
 
-        for availability_id in queryset.order_by("pk").values_list("pk", flat=True):
-            delete_or_cancel_availability(
-                availability_id=availability_id,
-                actor=request.user,
-            )
+        try:
+            with transaction.atomic():
+                for availability_id in queryset.order_by("pk").values_list("pk", flat=True):
+                    delete_or_cancel_availability(
+                        availability_id=availability_id,
+                        actor=request.user,
+                    )
+        except ValidationError as exc:
+            self.message_user(request, "; ".join(exc.messages), level=messages.ERROR)
 
 
 @admin.register(FixedLesson)
