@@ -6,10 +6,10 @@ from .expense_metadata import parse_expense_note
 from .models import (
     CoachAvailability,
     CoachExpense,
-    FixedLesson,
     Reservation,
 )
 from .lesson_participants import CAPACITY_CONSUMING_STATUSES
+from .lesson_occurrence_resolver import resolve_authoritative_fixed_lesson
 from .court_cost_allocation import allocate_court_cost
 
 
@@ -74,81 +74,16 @@ def _local_datetime(value):
 
 
 def _scheduled_fixed_lesson_match(availability, eligible_id_set):
-    """カレンダーと同じ固定レッスン設定から開催回担当を特定する。"""
-    if availability is None or availability.start_at is None:
+    """明示リレーションまたは一意なlegacy証拠から開催回担当を特定する。"""
+    if availability is None:
         return [], []
-
-    local_start = _local_datetime(availability.start_at)
-    local_end = _local_datetime(availability.end_at)
-    target_date = local_start.date()
-
-    candidates = (
-        FixedLesson.objects.filter(
-            is_active=True,
-            weekday=target_date.weekday(),
-            start_hour=local_start.hour,
-            lesson_type=availability.lesson_type,
-        )
-        .select_related("coach", "coach_2", "coach_3", "court")
-        .order_by("id")
+    fixed_lesson = resolve_authoritative_fixed_lesson(availability)
+    if fixed_lesson is None:
+        return [], []
+    return (
+        _coach_ids_from_fixed_lesson(fixed_lesson, eligible_id_set),
+        [fixed_lesson.pk],
     )
-
-    exact_matches = []
-    fallback_matches = []
-
-    for fixed_lesson in candidates:
-        try:
-            occurrence_dates = set(fixed_lesson.scheduled_occurrence_dates())
-        except Exception:
-            occurrence_dates = set()
-        if target_date not in occurrence_dates:
-            continue
-
-        try:
-            fixed_start, fixed_end = fixed_lesson._build_datetimes_for_date(
-                target_date
-            )
-        except Exception:
-            fixed_start = None
-            fixed_end = None
-
-        if fixed_start is not None and fixed_end is not None:
-            if (
-                _local_datetime(fixed_start) != local_start
-                or _local_datetime(fixed_end) != local_end
-            ):
-                continue
-
-        availability_court_id = getattr(availability, "court_id", None)
-        fixed_court_id = getattr(fixed_lesson, "court_id", None)
-        court_is_exact = bool(
-            availability_court_id
-            and fixed_court_id
-            and availability_court_id == fixed_court_id
-        )
-        court_is_compatible = (
-            not availability_court_id
-            or not fixed_court_id
-            or availability_court_id == fixed_court_id
-        )
-        if not court_is_compatible:
-            continue
-
-        item = (
-            fixed_lesson,
-            _coach_ids_from_fixed_lesson(fixed_lesson, eligible_id_set),
-        )
-        if court_is_exact:
-            exact_matches.append(item)
-        else:
-            fallback_matches.append(item)
-
-    matches = exact_matches or fallback_matches
-    for fixed_lesson, coach_ids in matches:
-        if coach_ids:
-            return coach_ids, [fixed_lesson.pk]
-
-    return [], [fixed_lesson.pk for fixed_lesson, _coach_ids in matches]
 
 
 def _fixed_occurrence_coach_ids(availability, eligible_id_set):
@@ -238,11 +173,10 @@ def reconcile_court_policy(
     contractor_coach_ids,
 ):
     """
-    カレンダーと同じ固定レッスン開催設定を最優先にコート代を再配賦する。
+    開催回の明示リレーションを最優先にコート代を再配賦する。
 
-    固定開催回のカレンダー表示は FixedLesson の開催日・時間・コート・担当設定を
-    基準に生成される。予約や開催枠、コート代登録メタデータに変更前担当者が
-    残っていても、月次精算をカレンダー表示と一致させる。
+    予約または開催枠に固定レッスンの正本が保存されている場合は現在の担当設定を使う。
+    独立開催枠は、同じ日時・コートに別の固定レッスンがあっても混同しない。
     """
     policy = dict(court_policy or {})
     detail_rows = [dict(row) for row in policy.get("detail_rows") or []]
@@ -293,7 +227,12 @@ def reconcile_court_policy(
         availability.pk: availability
         for availability in CoachAvailability.objects.filter(
             pk__in=availability_ids
-        ).select_related("coach", "substitute_coach", "court")
+        ).select_related(
+            "coach", "substitute_coach", "court",
+            "fixed_lesson_source", "fixed_lesson_source__coach",
+            "fixed_lesson_source__coach_2", "fixed_lesson_source__coach_3",
+            "fixed_lesson_source__court",
+        )
     }
 
     eligible_id_set = set(eligible_coach_ids or [])
@@ -361,11 +300,7 @@ def reconcile_court_policy(
         saved_ids = _saved_using_coach_ids(meta, eligible_id_set)
 
         target_ids = scheduled_ids
-        source_label = "カレンダー固定レッスン設定"
-
-        if not target_ids:
-            target_ids = fixed_occurrence_ids
-            source_label = "予約に保存された固定レッスン担当"
+        source_label = "開催回の正本固定レッスン担当"
 
         if not target_ids:
             target_ids = availability_ids_for_row
