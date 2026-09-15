@@ -111,12 +111,12 @@
 
   {% if rain_refund_pending_rows or rain_refunded_rows %}
     <section class="panel">
-      <div class="section-head"><div><h2 class="section-title">雨天中止・返金状況</h2><p class="help">返金待ちは精算へ未反映、返金済みはコーチ別精算の負担・付与へ反映済みです。</p></div></div>
+      <div class="section-head"><div><h2 class="section-title">雨天中止・返金状況</h2><p class="help">返金待ちは精算へ未反映です。返金確認後は会社財布への入金として記録し、コート支払者への返金予定額を最終精算へ反映します。</p></div></div>
       {% for refund in rain_refund_pending_rows %}
-        <article class="payment-row operation-record rain-record"><span class="status-badge open">返金待ち</span><strong class="record-date">{{ refund.expense_date }}</strong><div class="record-main">{{ refund.lesson_label|default:"雨天中止レッスン" }}<br><span class="muted">予約アカウント：{{ refund.account_name }} / 回収予定：{{ refund.collection_coach_name }} / コート支払者：{{ refund.payer_coach_name }}</span></div><strong class="record-amount">{{ refund.amount }}円</strong>{% if not is_month_closed %}<form method="post" class="record-action">{% csrf_token %}<input type="hidden" name="action" value="confirm_rain_refund"><input type="hidden" name="expense_id" value="{{ refund.expense_id }}"><input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}"><button type="submit" class="btn success-button" onclick="return confirm('返金済みにして月次精算へ反映しますか？');">返金済みにする</button></form>{% else %}<span class="muted record-action">締め済み</span>{% endif %}</article>
+        <article class="payment-row operation-record rain-record"><span class="status-badge open">返金待ち</span><strong class="record-date">{{ refund.expense_date }}</strong><div class="record-main">{{ refund.lesson_label|default:"雨天中止レッスン" }}<br><span class="muted">予約アカウント：{{ refund.account_name }} / 回収予定：{{ refund.collection_coach_name }} / コート支払者：{{ refund.payer_coach_name }}</span></div><strong class="record-amount">{{ refund.amount }}円</strong>{% if not is_month_closed %}<form method="post" class="record-action">{% csrf_token %}<input type="hidden" name="action" value="confirm_rain_refund"><input type="hidden" name="expense_id" value="{{ refund.expense_id }}"><input type="hidden" name="year" value="{{ selected_year }}"><input type="hidden" name="month" value="{{ selected_month }}"><button type="submit" class="btn success-button" onclick="return confirm('会社財布への返金を確認し、月次精算へ反映しますか？');">会社財布への返金を確認</button></form>{% else %}<span class="muted record-action">締め済み</span>{% endif %}</article>
       {% endfor %}
       {% for refund in rain_refunded_rows %}
-        <article class="payment-row operation-record rain-record"><span class="status-badge closed">返金済み・精算反映済み</span><strong class="record-date">{{ refund.expense_date }}</strong><div class="record-main">{{ refund.lesson_label|default:"雨天中止レッスン" }}<br><span class="muted">予約アカウント：{{ refund.account_name }} / 回収担当：{{ refund.collection_coach_name|default:"-" }} / コート支払者：{{ refund.payer_coach_name }}</span></div><strong class="record-amount">{{ refund.amount }}円</strong></article>
+        <article class="payment-row operation-record rain-record"><span class="status-badge closed">会社財布入金済み・精算反映済み</span><strong class="record-date">{{ refund.expense_date }}</strong><div class="record-main">{{ refund.lesson_label|default:"雨天中止レッスン" }}<br><span class="muted">予約アカウント：{{ refund.account_name }} / 回収担当：{{ refund.collection_coach_name|default:"-" }} / コート支払者：{{ refund.payer_coach_name }}</span></div><strong class="record-amount">{{ refund.amount }}円</strong></article>
       {% endfor %}
     </section>
   {% endif %}
@@ -132,7 +132,7 @@
 
   <section class="summary-grid">
     <div class="summary primary"><div class="summary-label">会社財布の支払可能残高</div><div class="summary-value">{{ company_balance }}円</div><div class="summary-note">前月末残高＋当月実入金−記録済み一括精算支払い</div></div>
-    <div class="summary success"><div class="summary-label">当月実入金</div><div class="summary-value">{{ wallet_revenue_total|default:cash_in_total }}円</div><div class="summary-note">チケット購入現金＋回収済み現金＋ガット張り</div></div>
+    <div class="summary success"><div class="summary-label">当月実入金</div><div class="summary-value">{{ wallet_revenue_total|default:cash_in_total }}円</div><div class="summary-note">チケット購入現金＋回収済み現金＋ガット張り＋Shop現金＋雨天中止コート代返金</div></div>
     <div class="summary info"><div class="summary-label">チケット購入現金</div><div class="summary-value">{{ ticket_purchase_total }}円</div><div class="summary-note">旧データ移行lotを除く購入時実額</div></div>
     <div class="summary info"><div class="summary-label">実施済みチケット売上</div><div class="summary-value">{{ ticket_amount_total }}円</div><div class="summary-note">販売時入金ではなく実施確認済み開催の消費金額</div></div>
     <div class="summary info"><div class="summary-label">現金回収売上</div><div class="summary-value">{{ preopen_paid_total }}円</div><div class="summary-note">未回収 {{ preopen_unpaid_total }}円</div></div>
@@ -220,8 +220,7 @@
             {% if row.is_contractor_coach %}<div class="money-row plus"><span>業務委託報酬</span><strong>+{{ row.contractor_hourly_pay_amount }}円</strong></div>{% endif %}
             <div class="money-row minus"><span>自身のコート代負担</span><strong>-{{ row.court_cost_burden|default:0 }}円</strong></div>
             {% court_cost_breakdown settlement row %}
-            {% if row.rain_refund_burden %}<div class="money-row minus"><span>雨天中止返金負担</span><strong>-{{ row.rain_refund_burden }}円</strong></div>{% endif %}
-            {% if row.rain_refund_reimbursement %}<div class="money-row plus"><span>雨天中止返金付与</span><strong>+{{ row.rain_refund_reimbursement }}円</strong></div>{% endif %}
+            {% if row.rain_refund_reimbursement %}<div class="money-row plus"><span>雨天中止コート代返金</span><strong>+{{ row.rain_refund_reimbursement }}円</strong></div>{% endif %}
             <div class="money-row minus"><span>共通経費負担</span><strong>-{{ row.ball_expense_burden|default:0|add:row.other_expense_burden|default:0 }}円</strong></div>
             <div class="money-row plus"><span>経費立替付与合計</span><strong>+{{ row.wallet_reimbursement|default:0 }}円</strong></div>
             <div class="money-row plus"><span>Shop仕入立替返還</span><strong>+{{ row.shop_procurement_reimbursement|default:0 }}円</strong></div>

@@ -43,12 +43,22 @@ def _money(value):
         return 0
 
 
-def _company_cash_in_total(result, coach_rows, shop_cash=0):
+def _company_cash_in_total(
+    result,
+    coach_rows,
+    shop_cash=0,
+    rain_refund_cash_in=0,
+):
     """Cash received this month; ticket consumption is intentionally excluded."""
-    return _money(result.get("ticket_purchase_total")) + _money(shop_cash) + sum(
-        _money(row.get("preopen_paid_amount"))
-        + _money(row.get("stringing_amount"))
-        for row in coach_rows
+    return (
+        _money(result.get("ticket_purchase_total"))
+        + _money(shop_cash)
+        + _money(rain_refund_cash_in)
+        + sum(
+            _money(row.get("preopen_paid_amount"))
+            + _money(row.get("stringing_amount"))
+            for row in coach_rows
+        )
     )
 
 
@@ -406,7 +416,7 @@ def _approved_monthly_expenses(month_start, next_month):
 
 
 def _rain_refund_policy(year, month, main_coach_ids):
-    """返金確認済みだけを回収者から支払者への振替として精算する。"""
+    """返金確認済み額を会社財布入金と元の支払者への返金に計上する。"""
     from .models import RainRefund
 
     month_start, next_month = _month_range(year, month)
@@ -449,20 +459,14 @@ def _rain_refund_policy(year, month, main_coach_ids):
             pending_rows.append(row)
             continue
 
-        debit_coach_id = refund.debit_coach_id
         payer_coach_id = refund.payer_coach_id
-        if (
-            amount <= 0
-            or debit_coach_id not in main_coach_id_set
-            or payer_coach_id not in main_coach_id_set
-        ):
+        if amount <= 0:
             continue
-        burden_by_coach[debit_coach_id] += amount
-        reimbursement_by_coach[payer_coach_id] += amount
+        if payer_coach_id in main_coach_id_set:
+            reimbursement_by_coach[payer_coach_id] += amount
         refunded_rows.append(
             {
                 **row,
-                "debit_coach_id": debit_coach_id,
                 "payer_coach_id": payer_coach_id,
             }
         )
@@ -1251,7 +1255,13 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
     shop_reimbursement_by_coach = monthly_shop_procurement_reimbursements(year, month)
     shop_cash = monthly_shop_cash_total(year, month)
     ticket_purchase_cash = _money(result.get("ticket_purchase_total"))
-    total_company_revenue = _company_cash_in_total(result, coach_rows, shop_cash)
+    rain_refund_cash_in = _money(rain_refund_policy["refunded_total"])
+    total_company_revenue = _company_cash_in_total(
+        result,
+        coach_rows,
+        shop_cash,
+        rain_refund_cash_in,
+    )
 
     with performance_trace.step("wallet_coach_payment_aggregate"):
         coach_calculation = calculate_coach_wallets(
@@ -1318,7 +1328,8 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
             "wallet_policy": True,
             "company_internal_reserve": company_internal_reserve,
             "company_revenue_definition": (
-                "ticket_purchase_cash + collected_cash + stringing + shop_cash"
+                "ticket_purchase_cash + collected_cash + stringing + shop_cash "
+                "+ confirmed_rain_refund_cash (cash in; not revenue)"
             ),
             "ticket_consumption_revenue": _money(
                 result.get("ticket_amount_total")
@@ -1327,6 +1338,7 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
             "main_coach_ids": main_coach_ids,
             "total_company_revenue": total_company_revenue,
             "shop_cash_in": shop_cash,
+            "rain_refund_cash_in": rain_refund_cash_in,
             "shop_profit_by_coach": shop_profit_by_coach,
             "shop_procurement_reimbursement_by_coach": shop_reimbursement_by_coach,
             "contractor_pay_total": contractor_pay_total,

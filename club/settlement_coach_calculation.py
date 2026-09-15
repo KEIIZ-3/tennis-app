@@ -61,9 +61,7 @@ def calculate_coach_wallets(
             ).get(coach_id)
         )
         contractor_burden = money(contractor_share_by_main.get(coach_id))
-        rain_refund_burden = money(
-            rain_refund_policy["burden_by_coach"].get(coach_id)
-        )
+        rain_refund_burden = 0
         court_reimbursement = money(
             court_policy["reimbursement_by_coach"].get(coach_id)
         )
@@ -108,7 +106,6 @@ def calculate_coach_wallets(
                 + ball_expense_burden
                 + other_expense_burden
                 + contractor_burden
-                + rain_refund_burden
             )
 
         salary_entitlement = (
