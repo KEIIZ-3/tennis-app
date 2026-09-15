@@ -11,6 +11,7 @@ from club.settlement_balance_policy import (
     _apply_wallet_policy,
     _automatic_court_cost,
     _ball_expense_amount_for_month,
+    _canonical_balance_carry_in_by_coach,
     _build_other_expense_policy,
     _court_transfer_allocation,
     _held_execution_reservations,
@@ -23,6 +24,7 @@ from club.settlement_balance_policy import (
     _unpaid_salary_carry_in_by_coach,
 )
 from club.settlement_service import matching_active_payment
+from club.settlement_coach_calculation import canonical_settlement_balance
 from club.settlement_models import (
     CoachMonthlySettlement,
     MonthlySettlement,
@@ -275,6 +277,82 @@ class SettlementCarryInDatabaseTests(TestCase):
                 2026, 8, [self.coaches[0].pk]
             ),
             {self.coaches[0].pk: -7000},
+        )
+
+    def test_canonical_carry_uses_saved_net_closing_balances(self):
+        balances = [4414, 7497, 2663]
+        for coach, balance in zip(self.coaches, balances):
+            row = self._row(coach, entitlement=balance, unpaid=balance)
+            row.calculation_snapshot["closing_compensation_balance"] = balance
+            row.save(update_fields=["calculation_snapshot"])
+
+        self.assertEqual(
+            _canonical_balance_carry_in_by_coach(
+                2026, 8, [coach.pk for coach in self.coaches]
+            ),
+            {coach.pk: balance for coach, balance in zip(self.coaches, balances)},
+        )
+
+    def test_august_combined_payments_leave_expected_september_carries(self):
+        august = MonthlySettlement.objects.create(year=2026, month=8)
+        final_amounts = [61414, 29497, 64663]
+        payments = [57000, 22000, 62000]
+        expected = [4414, 7497, 2663]
+        for coach, final_amount, payment in zip(
+            self.coaches, final_amounts, payments
+        ):
+            CoachMonthlySettlement.objects.create(
+                monthly_settlement=august,
+                coach=coach,
+                salary_due=max(final_amount, 0),
+                calculation_snapshot={"wallet_final_entitlement": final_amount},
+            )
+            SettlementPayment.objects.bulk_create([SettlementPayment(
+                monthly_settlement=august,
+                coach=coach,
+                payment_type=SettlementPayment.PAYMENT_TYPE_SALARY,
+                amount=payment,
+                paid_date=date(2026, 8, 29),
+            )])
+
+        self.assertEqual(
+            _canonical_balance_carry_in_by_coach(
+                2026, 9, [coach.pk for coach in self.coaches]
+            ),
+            {coach.pk: balance for coach, balance in zip(self.coaches, expected)},
+        )
+
+    def test_negative_salary_component_is_not_overpayment_when_net_is_positive(self):
+        self.assertEqual(
+            canonical_settlement_balance(-47596, 52010, 0),
+            4414,
+        )
+        self.assertGreater(canonical_settlement_balance(-5000, 8000, 0), 0)
+
+    def test_canonical_carry_nets_salary_and_reimbursement_components(self):
+        row = self._row(
+            self.coaches[0], entitlement=4414, unpaid=4414,
+            salary_due=0, reimbursement_due=52010,
+        )
+        row.calculation_snapshot.update({
+            "salary_balance": -47596,
+            "reimbursement_balance": 52010,
+            "closing_compensation_balance": 4414,
+        })
+        row.save(update_fields=["calculation_snapshot"])
+
+        self.assertEqual(
+            _canonical_balance_carry_in_by_coach(2026, 8, [self.coaches[0].pk]),
+            {self.coaches[0].pk: 4414},
+        )
+
+    def test_canonical_carry_is_negative_only_after_actual_overpayment(self):
+        self._row(self.coaches[0], entitlement=10000, unpaid=0)
+        self._payment(self.coaches[0], 12000)
+
+        self.assertEqual(
+            _canonical_balance_carry_in_by_coach(2026, 8, [self.coaches[0].pk]),
+            {self.coaches[0].pk: -2000},
         )
 
 
@@ -954,8 +1032,7 @@ class SettlementWalletCourtCostTests(TestCase):
 
     @patch("club.settlement_balance_policy._active_salary_payment_total", return_value=0)
     @patch("club.settlement_balance_policy._active_reimbursement_payment_total", return_value=2000)
-    @patch("club.settlement_balance_policy._reimbursement_balance_carry_in_by_coach", return_value={})
-    @patch("club.settlement_balance_policy._salary_balance_carry_in_by_coach", return_value={1: -1859})
+    @patch("club.settlement_balance_policy._canonical_balance_carry_in_by_coach", return_value={1: -1859})
     @patch(
         "club.settlement_balance_policy._rain_refund_policy",
         return_value={
@@ -978,8 +1055,7 @@ class SettlementWalletCourtCostTests(TestCase):
         court_policy_mock,
         other_expense_policy_mock,
         _rain_refund_mock,
-        _salary_carry_mock,
-        _reimbursement_carry_mock,
+        _canonical_carry_mock,
         _reimbursement_payment_mock,
         _salary_payment_mock,
     ):
@@ -1043,8 +1119,10 @@ class SettlementWalletCourtCostTests(TestCase):
         self.assertEqual(row["salary_due"], 16341)
         self.assertEqual(row["reimbursement_due"], 3000)
         self.assertEqual(row["reimbursement_paid"], 2000)
-        self.assertEqual(row["unpaid_salary"], 16341)
-        self.assertEqual(row["unpaid_reimbursement"], 1000)
+        self.assertEqual(row["raw_salary_balance"], 16341)
+        self.assertEqual(row["raw_reimbursement_balance"], 1000)
+        self.assertEqual(row["unpaid_salary"], 17341)
+        self.assertEqual(row["unpaid_reimbursement"], 0)
         self.assertEqual(updated["cash_out_total"], 2000)
         self.assertEqual(updated["opening_balance"], 6000)
         self.assertEqual(updated["company_balance"], 30000)
@@ -1059,16 +1137,14 @@ class SettlementWalletCourtCostTests(TestCase):
 
 
 class SettlementPaymentMeaningDisplayTests(TestCase):
-    def test_admin_settlement_separates_salary_and_reimbursement_balances(self):
+    def test_admin_settlement_displays_canonical_settlement_balance(self):
         source = get_template("coach/admin_settlement.html").template.source
 
         for label in (
             "給与支払済み",
-            "給与残高（＋未払い／－過払い）",
             "立替返金済み",
-            "立替残高（＋未精算／－過払い）",
-            "前月給与繰越（＋未払い／－過払い）",
-            "前月立替繰越（＋未精算／－過払い）",
+            "前月精算繰越（＋未払い／－翌月調整）",
+            "最終精算残高（＋未払い／－翌月調整）",
         ):
             self.assertIn(label, source)
         self.assertNotIn("<span>支払済み</span>", source)

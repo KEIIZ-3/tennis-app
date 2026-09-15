@@ -3,6 +3,17 @@ from django.utils import timezone
 from .settlement_models import CoachMonthlySettlement
 
 
+def canonical_settlement_balance(
+    salary_entitlement, reimbursement_due, total_paid, *, money=int
+):
+    """給与・立替の内訳を相殺したコーチ単位の最終精算残高。"""
+    return (
+        money(salary_entitlement)
+        + money(reimbursement_due)
+        - money(total_paid)
+    )
+
+
 def calculate_coach_wallets(
     *,
     coach_rows,
@@ -156,16 +167,24 @@ def calculate_coach_wallets(
         total_paid = salary_paid + reimbursement_paid
         salary_due = max(salary_entitlement, 0)
         reimbursement_due = money(row.get("reimbursement_due"))
-        salary_balance = salary_entitlement - salary_paid
-        reimbursement_balance = reimbursement_due - reimbursement_paid
+        raw_salary_balance = salary_entitlement - salary_paid
+        raw_reimbursement_balance = reimbursement_due - reimbursement_paid
+        closing_balance = canonical_settlement_balance(
+            salary_entitlement,
+            reimbursement_due,
+            total_paid,
+            money=money,
+        )
+        salary_balance = closing_balance
+        reimbursement_balance = 0
         unpaid_salary = max(salary_balance, 0)
         unpaid_reimbursement = max(reimbursement_balance, 0)
-        closing_balance = final_entitlement - total_paid
-        negative_carry = max(-salary_entitlement, 0)
+        negative_carry = max(-closing_balance, 0)
         row.update(
             {
                 "salary_due": salary_due,
                 "salary_paid": salary_paid,
+                "raw_salary_balance": raw_salary_balance,
                 "salary_balance": salary_balance,
                 "unpaid_salary": unpaid_salary,
                 "negative_carry": negative_carry,
@@ -175,9 +194,10 @@ def calculate_coach_wallets(
                 ),
                 "reimbursement_due": reimbursement_due,
                 "reimbursement_paid": reimbursement_paid,
+                "raw_reimbursement_balance": raw_reimbursement_balance,
                 "reimbursement_balance": reimbursement_balance,
                 "unpaid_reimbursement": unpaid_reimbursement,
-                "total_unpaid": unpaid_salary + unpaid_reimbursement,
+                "total_unpaid": max(closing_balance, 0),
                 "total_paid": total_paid,
                 "common_expense_share": money(row.get("total_cost_burden")),
             }
@@ -231,11 +251,13 @@ def calculate_coach_wallets(
                         row.get("unpaid_salary_carry_in")
                     ),
                     "salary_carry_in": money(row.get("salary_carry_in")),
+                    "raw_salary_balance": raw_salary_balance,
                     "salary_balance": salary_balance,
                     "salary_carry_out": salary_balance,
                     "reimbursement_carry_in": money(
                         row.get("reimbursement_carry_in")
                     ),
+                    "raw_reimbursement_balance": raw_reimbursement_balance,
                     "reimbursement_balance": reimbursement_balance,
                     "reimbursement_carry_out": reimbursement_balance,
                     "wallet_balance_adjustment": money(
