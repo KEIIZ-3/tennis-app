@@ -7,6 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .lesson_participants import participant_details_by_reservation
+from .lesson_occurrence_resolver import resolve_authoritative_fixed_lesson
 from .models import CoachAvailability, FixedLesson, LessonWaitlist, Reservation
 from .participant_levels import current_participant_level_label
 
@@ -263,63 +264,11 @@ def build_today_lessons_display(
         fixed_queryset側から先に行が作られなかった場合でも、旧Availability単独行として
         旧コーチ名を表示させないための最終防御です。
         """
-        if not availability:
-            return None
-
-        linked_reservation = next(
-            (
-                reservation for reservation in reservations_by_availability[availability.pk]
-                if reservation.fixed_lesson_id
-                and reservation.start_at == availability.start_at
-                and reservation.end_at == availability.end_at
-            ),
-            None,
+        return resolve_authoritative_fixed_lesson(
+            availability,
+            reservations=reservations_by_availability[availability.pk],
+            fixed_lessons=all_fixed_lessons,
         )
-        if linked_reservation is None:
-            linked_reservation = next(
-                (
-                    reservation for reservation in all_period_reservations
-                    if reservation.fixed_lesson_id
-                    and reservation.lesson_type == availability.lesson_type
-                    and reservation.start_at == availability.start_at
-                    and reservation.end_at == availability.end_at
-                    and (
-                        reservation.court_id == availability.court_id
-                        or reservation.availability_id == availability.pk
-                    )
-                ),
-                None,
-            )
-
-        if linked_reservation is not None:
-            return linked_reservation.fixed_lesson
-
-        start_local = _local(availability.start_at)
-        target_date = start_local.date()
-
-        candidates = [
-            fixed_lesson for fixed_lesson in all_fixed_lessons
-            if fixed_lesson.is_active
-            and fixed_lesson.lesson_type == availability.lesson_type
-            and fixed_lesson.start_hour == start_local.hour
-            and (
-                not availability.court_id
-                or fixed_lesson.court_id in (availability.court_id, None)
-            )
-        ]
-
-        for fixed_lesson in candidates:
-            try:
-                if target_date in _scheduled_dates(fixed_lesson):
-                    return fixed_lesson
-            except Exception:
-                repeat_start = getattr(fixed_lesson, "start_date", None)
-                if repeat_start and target_date < repeat_start:
-                    continue
-                if int(getattr(fixed_lesson, "weekday", -1)) == target_date.weekday():
-                    return fixed_lesson
-
-        return None
 
     all_fixed_lessons = list(
         FixedLesson.objects.filter(is_active=True)
@@ -336,7 +285,12 @@ def build_today_lessons_display(
             start_at__date__gte=range_start,
             start_at__date__lte=range_end,
         )
-        .select_related("coach", "substitute_coach", "court")
+        .select_related(
+            "coach", "substitute_coach", "court",
+            "fixed_lesson_source", "fixed_lesson_source__coach",
+            "fixed_lesson_source__coach_2", "fixed_lesson_source__coach_3",
+            "fixed_lesson_source__court",
+        )
         .order_by("start_at", "id")
     )
     availability_qs = all_period_availabilities
@@ -487,13 +441,16 @@ def build_today_lessons_display(
             if not court:
                 continue
 
-            # 固定レッスンの担当変更前に作成された旧Availabilityも、
-            # 参加者・回収状況を同じ枠へ統合するために取得します。
-            # 現在の担当コーチとの一致は条件にせず、日時・種別・コートを正とします。
-            matching_availabilities = availability_by_physical_slot[(
+            # 同じ物理枠に独立Availabilityが共存し得るため、明示リレーションまたは
+            # 一意なlegacy生成証拠でこのFixedLessonへ解決された枠だけを統合します。
+            physical_availabilities = availability_by_physical_slot[(
                 court.pk, fixed.lesson_type, start_at, end_at,
             )]
-            availability = matching_availabilities[0] if matching_availabilities else None
+            matching_availabilities = [
+                candidate for candidate in physical_availabilities
+                if _authoritative_fixed_lesson_for_availability(candidate) == fixed
+            ]
+            availability = matching_availabilities[0] if len(matching_availabilities) == 1 else None
 
             capacity = fixed.effective_capacity() if hasattr(fixed, "effective_capacity") else fixed.capacity
             if availability:
