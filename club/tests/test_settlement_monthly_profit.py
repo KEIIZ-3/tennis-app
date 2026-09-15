@@ -29,7 +29,7 @@ class MonthlyProfitCalculationTests(SimpleTestCase):
     def test_revenue_only_equals_profit(self):
         self.assertEqual(self.profit()["monthly_profit"], 10000)
 
-    def test_each_official_revenue_and_burden_is_used_once(self):
+    def test_rain_refund_is_excluded_from_revenue_and_burden(self):
         result = self.profit(
             preopen_paid_amount=2000,
             stringing_amount=3000,
@@ -40,9 +40,9 @@ class MonthlyProfitCalculationTests(SimpleTestCase):
             contractor_cost_burden=500,
         )
         self.assertEqual(result["revenue_total"], 15000)
-        self.assertEqual(result["common_expense_burden"], 900)
-        self.assertEqual(result["expense_total"], 2400)
-        self.assertEqual(result["monthly_profit"], 12600)
+        self.assertEqual(result["common_expense_burden"], 700)
+        self.assertEqual(result["expense_total"], 2200)
+        self.assertEqual(result["monthly_profit"], 12800)
 
     def test_shop_allocation_is_added_once(self):
         row = self.row()

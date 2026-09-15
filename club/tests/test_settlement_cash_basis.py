@@ -117,3 +117,15 @@ class SettlementCashBasisTests(TestCase):
     def test_company_cash_total_uses_same_receipt_total(self):
         result = {"ticket_purchase_total": 14000, "ticket_amount_total": 3500}
         self.assertEqual(_company_cash_in_total(result, []), 14000)
+
+    def test_company_cash_total_includes_confirmed_rain_refund_once(self):
+        result = {"ticket_purchase_total": 14000}
+
+        self.assertEqual(
+            _company_cash_in_total(
+                result,
+                [],
+                rain_refund_cash_in=2400,
+            ),
+            16400,
+        )

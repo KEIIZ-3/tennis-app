@@ -792,7 +792,7 @@ class SettlementWalletCourtCostTests(TestCase):
         self.assertEqual(sum(policy["ball_burden_by_coach"].values()), 7568)
 
     @patch("club.models.RainRefund.objects.filter")
-    def test_rain_refund_waits_then_transfers_after_confirmation(
+    def test_rain_refund_waits_then_credits_payer_after_confirmation(
         self,
         filter_mock,
     ):
@@ -832,14 +832,10 @@ class SettlementWalletCourtCostTests(TestCase):
         policy = _rain_refund_policy(2026, 7, [1, 2, 3])
 
         self.assertEqual(policy["pending_total"], 2600)
-        self.assertEqual(policy["burden_by_coach"], {2: 3200})
+        self.assertEqual(policy["burden_by_coach"], {})
         self.assertEqual(policy["reimbursement_by_coach"], {1: 3200})
         self.assertEqual(policy["refunded_total"], 3200)
-        self.assertEqual(
-            sum(policy["reimbursement_by_coach"].values())
-            - sum(policy["burden_by_coach"].values()),
-            0,
-        )
+        self.assertEqual(sum(policy["reimbursement_by_coach"].values()), 3200)
 
     def test_contractor_lesson_court_cost_is_shared_by_main_coaches_once(self):
         allocation = _court_transfer_allocation(

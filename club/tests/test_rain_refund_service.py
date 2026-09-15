@@ -230,8 +230,16 @@ class RainRefundSettlementViewTests(TestCase):
         rows = {
             row["coach_name"]: row for row in response.context["coach_rows"]
         }
-        self.assertEqual(rows["清水峻平"]["rain_refund_burden"], 2400)
+        self.assertEqual(rows["清水峻平"]["rain_refund_burden"], 0)
+        self.assertEqual(rows["清水峻平"]["rain_refund_reimbursement"], 0)
         self.assertEqual(rows["井上春佳"]["rain_refund_reimbursement"], 2400)
+        self.assertEqual(response.context["cash_in_total"], 2400)
+        self.assertEqual(
+            response.context["settlement"].calculation_snapshot[
+                "rain_refund_cash_in"
+            ],
+            2400,
+        )
 
         first_confirmed_at = RainRefund.objects.get(pk=self.refund.pk).confirmed_at
         self.client.post(

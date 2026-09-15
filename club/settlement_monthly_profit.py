@@ -24,7 +24,6 @@ def build_monthly_profit_rows(coach_rows, shop_revenue_by_coach=None):
         common_expense_burden = (
             _money(row.get("ball_expense_burden"))
             + _money(row.get("other_expense_burden"))
-            + _money(row.get("rain_refund_burden"))
         )
         contractor_burden = _money(row.get("contractor_cost_burden"))
         expense_total = (
