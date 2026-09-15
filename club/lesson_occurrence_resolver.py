@@ -1,9 +1,18 @@
+from dataclasses import dataclass
+
 from django.utils import timezone
 
-from .models import FixedLesson, Reservation
+from .models import FixedLesson, LessonWaitlist, Reservation
 
 
 LEGACY_FIXED_LESSON_NOTE_PREFIX = "固定レッスン:"
+
+
+@dataclass(frozen=True)
+class FixedLessonResolution:
+    fixed_lesson: FixedLesson | None
+    status: str
+    linked_ids: tuple[int, ...] = ()
 
 
 def _local(value):
@@ -46,42 +55,63 @@ def resolve_authoritative_fixed_lesson(
     availability,
     *,
     reservations=None,
+    waitlists=None,
     fixed_lessons=None,
 ):
     """Resolve an availability occurrence only from explicit or unique legacy identity."""
+    return resolve_fixed_lesson_occurrence(
+        availability,
+        reservations=reservations,
+        waitlists=waitlists,
+        fixed_lessons=fixed_lessons,
+    ).fixed_lesson
+
+
+def resolve_fixed_lesson_occurrence(
+    availability,
+    *,
+    reservations=None,
+    waitlists=None,
+    fixed_lessons=None,
+):
+    """Resolve identity while preserving ambiguity information for mutating callers."""
     if availability is None:
-        return None
+        return FixedLessonResolution(None, "none")
 
     if reservations is None:
         reservations = (
             Reservation.objects.filter(
                 availability=availability,
-                start_at=availability.start_at,
-                end_at=availability.end_at,
                 fixed_lesson_id__isnull=False,
             )
             .select_related("fixed_lesson")
             .order_by("id")
         )
-    explicit = {
-        reservation.fixed_lesson_id: reservation.fixed_lesson
-        for reservation in reservations
-        if reservation.availability_id == availability.pk
-        and reservation.fixed_lesson_id
-        and reservation.start_at == availability.start_at
-        and reservation.end_at == availability.end_at
-    }
+    if waitlists is None:
+        waitlists = (
+            LessonWaitlist.objects.filter(
+                availability=availability,
+                fixed_lesson_id__isnull=False,
+            )
+            .select_related("fixed_lesson")
+            .order_by("id")
+        )
+    explicit = {}
+    for participant in (*reservations, *waitlists):
+        if participant.availability_id == availability.pk and participant.fixed_lesson_id:
+            explicit[participant.fixed_lesson_id] = participant.fixed_lesson
+    linked_ids = tuple(sorted(explicit))
     if len(explicit) == 1:
-        return next(iter(explicit.values()))
+        return FixedLessonResolution(next(iter(explicit.values())), "explicit", linked_ids)
     if len(explicit) > 1:
-        return None
+        return FixedLessonResolution(None, "ambiguous_explicit", linked_ids)
 
     if availability.fixed_lesson_source_id:
-        return availability.fixed_lesson_source
+        return FixedLessonResolution(availability.fixed_lesson_source, "source")
 
     legacy_title = _legacy_title(availability)
     if not legacy_title:
-        return None
+        return FixedLessonResolution(None, "none")
 
     if fixed_lessons is None:
         fixed_lessons = FixedLesson.objects.filter(
@@ -94,4 +124,8 @@ def resolve_authoritative_fixed_lesson(
         for fixed_lesson in fixed_lessons
         if _legacy_candidate_matches(availability, fixed_lesson, legacy_title)
     ]
-    return matches[0] if len(matches) == 1 else None
+    if len(matches) == 1:
+        return FixedLessonResolution(matches[0], "legacy")
+    if len(matches) > 1:
+        return FixedLessonResolution(None, "ambiguous_legacy")
+    return FixedLessonResolution(None, "none")

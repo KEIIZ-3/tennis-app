@@ -3,6 +3,7 @@ from django.db import models, transaction
 from django.utils import timezone
 
 from .lesson_participants import CAPACITY_CONSUMING_STATUSES
+from .lesson_occurrence_resolver import resolve_fixed_lesson_occurrence
 from .fixed_lesson_provenance import (
     RECONCILE_AMBIGUOUS_ASSIGNMENT,
     RECONCILE_COHERENT_OVERRIDE,
@@ -180,45 +181,19 @@ def reconcile_future_unclassified_availabilities(*, reference_date=None):
     return result
 
 
-def _candidate_fixed_lessons(availability):
-    target_date = timezone.localtime(availability.start_at).date()
-    candidates = []
-    queryset = FixedLesson.objects.select_for_update().filter(
-        is_active=True,
-        coach=availability.coach,
-        court=availability.court,
-        lesson_type=availability.lesson_type,
-        start_hour=timezone.localtime(availability.start_at).hour,
-    )
-    for fixed_lesson in queryset.order_by("pk"):
-        if target_date not in fixed_lesson.configured_occurrence_dates():
-            continue
-        start_at, end_at = fixed_lesson._build_datetimes_for_date(target_date)
-        if start_at == availability.start_at and end_at == availability.end_at:
-            candidates.append(fixed_lesson)
-    return target_date, candidates
-
-
 def _fixed_lesson_for_availability(availability):
-    linked_ids = set(
-        Reservation.objects.filter(availability=availability, fixed_lesson_id__isnull=False)
-        .values_list("fixed_lesson_id", flat=True)
-    )
-    linked_ids.update(
-        LessonWaitlist.objects.filter(availability=availability, fixed_lesson_id__isnull=False)
-        .values_list("fixed_lesson_id", flat=True)
-    )
-    target_date, candidates = _candidate_fixed_lessons(availability)
-    if linked_ids:
-        linked_candidates = [item for item in candidates if item.pk in linked_ids]
-        if len(linked_candidates) == 1:
-            return target_date, linked_candidates[0]
-        raise ValidationError("開催枠に複数の固定レッスンが紐づいているため削除できません。")
-    if len(candidates) == 1:
-        return target_date, candidates[0]
-    if len(candidates) > 1:
-        raise ValidationError("同日時に複数の固定レッスン候補があるため削除できません。")
-    return target_date, None
+    target_date = timezone.localtime(availability.start_at).date()
+    resolution = resolve_fixed_lesson_occurrence(availability)
+    if resolution.status == "ambiguous_explicit":
+        linked_ids = ", ".join(str(item) for item in resolution.linked_ids)
+        raise ValidationError(
+            f"開催枠の予約・キャンセル待ちが異なる固定レッスンを参照しています（ID: {linked_ids}）。削除できません。"
+        )
+    if resolution.status == "ambiguous_legacy":
+        raise ValidationError(
+            "旧固定レッスン開催枠に一致する候補が複数あるため削除できません。"
+        )
+    return target_date, resolution.fixed_lesson
 
 
 def delete_or_cancel_availability(*, availability_id, actor=None):
