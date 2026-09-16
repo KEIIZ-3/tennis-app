@@ -14,7 +14,8 @@ from club.models import (MAIN_COACH_NAMES, ShopInquiry, ShopPurchase, ShopQuote,
 from club.shop_pdf import (_table_header_paragraphs, _total_paragraph_styles,
                            build_quote_pdf)
 from club.shop_service import (allocation_summary, confirm_quote_purchase,
-    create_direct_purchase, create_inquiry, create_quote, monthly_shop_allocations,
+    create_direct_purchase, create_inquiry, create_quote, customer_discount_rate_display,
+    monthly_shop_allocations,
     one_month_after, request_purchase, save_allocations, sale_price_from_discount,
     discount_rate_from_prices, profit_summary, save_quote_accounting, update_quote)
 from club.shop_forms import ShopQuoteForm, ShopQuoteItemForm, ShopQuoteItemFormSet
@@ -207,6 +208,57 @@ class ShopWorkflowTests(TestCase):
         zero = ShopQuoteItemForm({"description": "x", "quantity": 1, "list_price": 0,
                                   "sale_price": 1, "pricing_source": "sale"})
         self.assertFalse(zero.is_valid())
+
+    def test_customer_discount_rates_are_half_up_in_html_and_pdf_only(self):
+        self.assertEqual(
+            [customer_discount_rate_display(rate) for rate in
+             (Decimal("24.4"), Decimal("24.5"), Decimal("24.9"), Decimal("25.0"), Decimal("0"), None)],
+            [24, 25, 25, 25, None, None],
+        )
+        quote = create_quote(customer=self.customer, creator=self.coach, items=[
+            {"description": description, "quantity": 1, "list_price": 1000, "sale_price": sale_price,
+             "cost_price": 500}
+            for description, sale_price in (("rate-24.4", 756), ("rate-24.5", 755),
+                                             ("rate-24.9", 751), ("rate-25.0", 750),
+                                             ("rate-zero", 1000))
+        ])
+        items = list(quote.items.all())
+        before = [(item.discount_rate, item.sale_price, item.line_total, item.unit_profit,
+                   item.profit_rate) for item in items]
+
+        self.client.force_login(self.customer)
+        html = self.client.get(reverse("club:shop_quote_detail", args=[quote.pk])).content.decode()
+        pdf_text = "\n".join(page.extract_text() or "" for page in
+                             PdfReader(BytesIO(build_quote_pdf(quote))).pages)
+        for expected in ("24% OFF", "25% OFF"):
+            self.assertIn(expected, html)
+            self.assertIn(expected, pdf_text)
+        self.assertEqual((html.count("24% OFF"), html.count("25% OFF")), (1, 3))
+        self.assertEqual((pdf_text.count("24% OFF"), pdf_text.count("25% OFF")), (1, 3))
+        for hidden in ("24.4% OFF", "24.5% OFF", "24.9% OFF", "25.0% OFF", "0% OFF"):
+            self.assertNotIn(hidden, html)
+            self.assertNotIn(hidden, pdf_text)
+
+        quote.refresh_from_db()
+        refreshed = list(quote.items.all())
+        self.assertEqual([item.discount_rate for item in refreshed], [24.4, 24.5, 24.9, 25.0, 0.0])
+        self.assertEqual(
+            [(item.discount_rate, item.sale_price, item.line_total, item.unit_profit,
+              item.profit_rate) for item in refreshed],
+            before,
+        )
+        self.assertEqual((quote.total, quote.discount_total), (4012, 988))
+
+        self.client.force_login(self.coach)
+        edit_html = self.client.get(reverse("club:shop_quote_edit", args=[quote.pk])).content.decode()
+        self.assertIn('value="24.9"', edit_html)
+        response = self._edit_post(quote, [{
+            "description": "rate-24.9", "quantity": "1", "list_price": "1000",
+            "sale_price": "751", "discount_rate": "24.9", "pricing_source": "sale",
+        }])
+        self.assertRedirects(response, reverse("club:shop_quote_detail", args=[quote.pk]))
+        edited_item = quote.items.get()
+        self.assertEqual((edited_item.discount_rate, edited_item.sale_price), (24.9, 751))
 
     def test_discount_rate_widget_omits_only_insignificant_zeroes(self):
         integer = ShopQuoteItemForm(initial={"discount_rate": Decimal("25.0")})
