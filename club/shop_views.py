@@ -10,7 +10,7 @@ from .shop_forms import DirectPurchaseForm, ShopInquiryForm, ShopQuoteForm, Shop
 from .shop_pdf import build_quote_pdf
 from .shop_service import (allocation_summary, confirm_quote_purchase, create_direct_purchase,
                            cancel_purchase, create_inquiry, create_quote, request_purchase, save_allocations,
-                           quote_accounting_summary, rollback_purchase_to_quote,
+                           customer_discount_rate_display, quote_accounting_summary, rollback_purchase_to_quote,
                            update_quote, can_manage_shop_accounting)
 from .settlement_balance_policy import main_coaches
 
@@ -52,6 +52,8 @@ def shop_history(request):
 def quote_detail(request, pk):
     query = ShopQuote.objects.prefetch_related("items")
     quote = get_object_or_404(query if _coach(request.user) else query.filter(customer=request.user), pk=pk)
+    for item in quote.items.all():
+        item.customer_discount_rate = customer_discount_rate_display(item.discount_rate)
     can_account = can_manage_shop_accounting(request.user)
     coaches = list(main_coaches()) if can_account else []
     amounts = {int(key): int(value) for key, value in (quote.planned_profit_allocations or {}).items()}

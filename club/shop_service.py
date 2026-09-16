@@ -28,6 +28,12 @@ def discount_rate_from_prices(list_price, sale_price):
     return ((Decimal(str(list_price)) - Decimal(str(sale_price))) * Decimal("100") / Decimal(str(list_price))).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
 
 
+def customer_discount_rate_display(discount_rate):
+    if not discount_rate:
+        return None
+    return int(Decimal(str(discount_rate)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
 def profit_summary(items):
     rows = list(items)
     revenue = sum(int(item.sale_price) * int(item.quantity) for item in rows)

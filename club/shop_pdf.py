@@ -13,6 +13,8 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (Image, KeepTogether, Paragraph, SimpleDocTemplate,
                                Spacer, Table, TableStyle)
 
+from .shop_service import customer_discount_rate_display
+
 
 FONT_NAME = "BIZUDGothic"
 FONT_PATH = Path(__file__).resolve().parent / "static" / "club" / "fonts" / "BIZ-UDGothicR.ttc"
@@ -119,10 +121,11 @@ def build_quote_pdf(quote):
     ]
     rows = [_table_header_paragraphs(small)]
     for item in items:
+        customer_discount_rate = customer_discount_rate_display(item.discount_rate)
         rows.append([
             _paragraph(item.description, small), _paragraph(item.quantity, small),
             _paragraph(f"{item.list_price:,}円", small),
-            _paragraph("-" if item.discount_rate is None else f"{item.discount_rate:g}% OFF", small),
+            _paragraph("-" if customer_discount_rate is None else f"{customer_discount_rate}% OFF", small),
             _paragraph(f"{item.sale_price:,}円", small), _paragraph(f"{item.line_total:,}円", small),
         ])
     story.append(Table(rows, repeatRows=1,
