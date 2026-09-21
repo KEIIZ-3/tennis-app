@@ -48,6 +48,16 @@ class LegacyTicketAccountingRepairTests(TestCase):
         TicketLedger.objects.filter(pk=ledger.pk).update(created_at=when)
         return row
 
+    def guest_reservation(self, when, *, snapshot=2300):
+        row = Reservation(
+            user=None, guest_name="Legacy Guest", coach=self.coach, court=self.court,
+            start_at=when, end_at=when + timedelta(hours=1), tickets_used=1,
+            participant_ticket_price_snapshot=snapshot, status=Reservation.STATUS_ACTIVE,
+            lesson_type=Reservation.LESSON_PRIVATE,
+        )
+        Reservation.objects.bulk_create([row])
+        return row
+
     def set_balance(self, value):
         self.member.ticket_balance = value
         self.member.save(update_fields=["ticket_balance"])
@@ -69,6 +79,40 @@ class LegacyTicketAccountingRepairTests(TestCase):
         self.assertEqual(status[april.id], "excluded_test_period")
         self.assertEqual(status[may.id], "excluded_test_period")
         self.assertNotEqual(status[august.id], "excluded_test_period")
+
+    def test_guest_reservations_are_excluded_from_inspection_and_apply(self):
+        guest = self.guest_reservation(self.at(2026, 8, 5))
+        self.purchase(self.at(2026, 8, 1), tickets=1, remaining=0)
+        member = self.reservation(self.at(2026, 8, 10))
+        self.set_balance(0)
+
+        rows = self.inspect()
+
+        self.assertEqual([row.reservation_id for row in rows], [member.id])
+        self.assertEqual(rows[0].repair_status, "repairable")
+
+        apply_legacy_ticket_accounting(from_date=date(2026, 8, 1))
+
+        guest.refresh_from_db()
+        self.assertIsNone(guest.user_id)
+        self.assertEqual(guest.guest_name, "Legacy Guest")
+        self.assertEqual(guest.tickets_used, 1)
+        self.assertEqual(guest.participant_ticket_price_snapshot, 2300)
+        self.assertFalse(TicketConsumption.objects.filter(reservation=guest).exists())
+
+    def test_manual_balance_history_remains_ambiguous(self):
+        self.purchase(self.at(2026, 8, 1), tickets=1, remaining=0)
+        reservation = self.reservation(self.at(2026, 8, 10))
+        adjustment = TicketLedger.objects.create(
+            user=self.member, change_amount=0, balance_after=0,
+            reason=TicketLedger.REASON_ADMIN_ADJUST,
+        )
+        TicketLedger.objects.filter(pk=adjustment.pk).update(created_at=self.at(2026, 8, 11))
+        self.set_balance(0)
+
+        row = self.inspect(reservation_ids=[reservation.id])[0]
+
+        self.assertEqual((row.repair_status, row.reason), ("ambiguous", "manual_balance_history"))
 
     def test_fifo_repairs_missing_consumption_and_snapshot_only_on_apply(self):
         first = self.purchase(self.at(2026, 8, 1), tickets=2, remaining=0, price=3500)
