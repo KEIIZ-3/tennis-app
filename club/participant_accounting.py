@@ -84,7 +84,7 @@ def add_member_to_lesson_occurrence(*, actor, member, availability, fixed_lesson
         raise ValidationError("参加可能な会員を選択してください。")
 
     locked_availability = (
-        CoachAvailability.objects.select_for_update()
+        CoachAvailability.objects.select_for_update(of=("self",))
         .select_related("coach", "substitute_coach", "court", "fixed_lesson_source")
         .get(pk=availability.pk)
     )

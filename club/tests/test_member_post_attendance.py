@@ -1,5 +1,5 @@
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -115,6 +115,21 @@ class MemberPostAttendanceTests(TestCase):
             2,
         )
         notify.assert_not_called()
+
+    def test_locks_only_availability_with_nullable_related_rows(self):
+        self.assertIsNone(self.availability.substitute_coach_id)
+        self.assertIsNone(self.availability.fixed_lesson_source_id)
+        select_for_update = CoachAvailability.objects.select_for_update
+
+        with patch.object(
+            CoachAvailability.objects,
+            "select_for_update",
+            wraps=select_for_update,
+        ) as lock:
+            reservation = self.add_member()
+
+        self.assertEqual(lock.call_args_list[0], call(of=("self",)))
+        self.assertEqual(reservation.availability_id, self.availability.pk)
 
     def test_fifo_consumption_records_complete_evidence_and_purchase_price(self):
         TicketPurchase.objects.filter(user=self.member_b).delete()
