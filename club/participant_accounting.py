@@ -96,9 +96,15 @@ def add_member_to_lesson_occurrence(*, actor, member, availability, fixed_lesson
         actor,
         {(locked_availability.start_at.year, locked_availability.start_at.month)},
     ).get(locked_availability.pk, {}).get("execution_status")
-    allowed_statuses = {lesson_execution.STATUS_SCHEDULED, lesson_execution.STATUS_HELD}
+    allowed_statuses = {
+        lesson_execution.STATUS_SCHEDULED,
+        lesson_execution.STATUS_UNCONFIRMED,
+        lesson_execution.STATUS_HELD,
+    }
     if status not in allowed_statuses:
-        raise ValidationError("開催予定または実施済みのレッスンにのみ会員を追加できます。")
+        raise ValidationError(
+            "開催予定・実施確認待ち・実施済みのレッスンにのみ会員を追加できます。"
+        )
 
     canonical_fixed_lesson = fixed_lesson or locked_availability.fixed_lesson_source
     occurrence_reservations = reservations_for_lesson(

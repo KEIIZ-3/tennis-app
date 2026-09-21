@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from club.lesson_execution_storage import save_status
+from club.lesson_execution_storage import read_status_map, save_status
 from club.models import (
     CoachAvailability,
     Court,
@@ -115,6 +115,67 @@ class MemberPostAttendanceTests(TestCase):
             2,
         )
         notify.assert_not_called()
+
+    def test_unconfirmed_occurrence_accepts_member_and_can_then_be_marked_held(self):
+        settlement = get_or_create_monthly_settlement(self.start.year, self.start.month)
+        slot_key = f"availability:{self.availability.pk}"
+        save_status(settlement, slot_key, "unconfirmed", self.coach)
+        participant_count = Reservation.objects.filter(
+            availability=self.availability,
+            status=Reservation.STATUS_ACTIVE,
+        ).count()
+
+        reservation = self.add_member()
+
+        reservation.refresh_from_db()
+        self.assertEqual(
+            Reservation.objects.filter(
+                availability=self.availability,
+                status=Reservation.STATUS_ACTIVE,
+            ).count(),
+            participant_count + 1,
+        )
+        self.assertEqual(
+            TicketConsumption.objects.get(reservation=reservation).tickets_used,
+            1,
+        )
+        self.assertEqual(
+            TicketLedger.objects.get(reservation=reservation).change_amount,
+            -1,
+        )
+        self.client.force_login(self.coach)
+        response = self.client.post(
+            reverse("club:lesson_execution_manage"),
+            {
+                "year": self.start.year,
+                "month": self.start.month,
+                "availability_id": self.availability.pk,
+                "action": "held",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        settlement.refresh_from_db()
+        self.assertEqual(read_status_map(settlement)[slot_key]["status"], "held")
+        coach_settlement = CoachMonthlySettlement.objects.get(
+            monthly_settlement=settlement,
+            coach=self.coach,
+        )
+        self.assertEqual(coach_settlement.ticket_revenue, 3500)
+
+    def test_scheduled_occurrence_still_accepts_member(self):
+        settlement = get_or_create_monthly_settlement(self.start.year, self.start.month)
+        save_status(
+            settlement,
+            f"availability:{self.availability.pk}",
+            "scheduled",
+            self.coach,
+        )
+
+        reservation = self.add_member()
+
+        self.assertEqual(reservation.availability_id, self.availability.pk)
+        self.assertEqual(reservation.tickets_used, 1)
 
     def test_locks_only_availability_with_nullable_related_rows(self):
         self.assertIsNone(self.availability.substitute_coach_id)
@@ -360,8 +421,23 @@ class MemberPostAttendanceTests(TestCase):
             cancellation_type="rain",
         )
         fourth = User.objects.create_user(username="post-attendance-fourth", role=User.ROLE_MEMBER)
-        with self.assertRaisesMessage(ValidationError, "開催予定または実施済み"):
+        with self.assertRaisesMessage(ValidationError, "開催予定・実施確認待ち・実施済み"):
             self.add_member(fourth)
+
+        for status in ("refund_pending", "refunded"):
+            with self.subTest(status=status):
+                save_status(
+                    settlement,
+                    f"availability:{self.availability.pk}",
+                    status,
+                    self.coach,
+                    cancellation_type="rain",
+                )
+                with self.assertRaisesMessage(
+                    ValidationError,
+                    "開催予定・実施確認待ち・実施済み",
+                ):
+                    self.add_member(fourth)
 
         settlement.status = MonthlySettlement.STATUS_CLOSED
         settlement.save(update_fields=["status"])
