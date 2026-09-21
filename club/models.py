@@ -2127,6 +2127,7 @@ class Reservation(models.Model, LessonTypeMixin):
             self.user
             and getattr(self.user, "role", "") in User.LESSON_PARTICIPANT_ROLE_VALUES
             and not self.is_preopen_cash_lesson()
+            and not getattr(self, "_allow_admin_attendance_level_override", False)
         ):
             if not self.user.can_book_any_level(self.target_level, self.target_level_2):
                 raise ValidationError("ご自身のレベルでは、このレベルのレッスンは予約できません。")

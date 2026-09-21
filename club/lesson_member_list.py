@@ -540,8 +540,13 @@ def lesson_calendar_member_list(request):
             except (ValidationError, Reservation.DoesNotExist, User.DoesNotExist, ValueError, TypeError) as exc:
                 messages.error(request, "; ".join(getattr(exc, "messages", [str(exc)])))
             return redirect(request.get_full_path())
-        if action in ("add_guest", "change_amount", "cancel_guest"):
-            from .participant_accounting import add_guest, cancel_guest, change_participation_amount
+        if action in ("add_guest", "add_member", "change_amount", "cancel_guest"):
+            from .participant_accounting import (
+                add_guest,
+                add_member_to_lesson_occurrence,
+                cancel_guest,
+                change_participation_amount,
+            )
             try:
                 if action == "add_guest":
                     add_guest(
@@ -553,6 +558,21 @@ def lesson_calendar_member_list(request):
                         target_level=getattr(fixed_lesson or availability, "target_level", "beginner"),
                     )
                     messages.success(request, "ゲスト参加者を追加しました。")
+                elif action == "add_member":
+                    if availability is None:
+                        raise ValidationError("既存の開催回を特定できないため会員を追加できません。")
+                    member = User.objects.get(
+                        pk=request.POST.get("member_id"),
+                        role__in=User.LESSON_PARTICIPANT_ROLE_VALUES,
+                        is_active=True,
+                    )
+                    add_member_to_lesson_occurrence(
+                        actor=request.user,
+                        member=member,
+                        availability=availability,
+                        fixed_lesson=fixed_lesson,
+                    )
+                    messages.success(request, "会員を参加登録しました。")
                 elif action == "change_amount":
                     change_participation_amount(
                         reservation_id=request.POST.get("reservation_id"),
@@ -911,6 +931,15 @@ def lesson_calendar_member_list(request):
     completed_registration = None
     if availability is not None:
         completed_registration = getattr(availability, "completed_registration", None)
+    member_options = []
+    if is_coach_view:
+        from .completed_lesson_views import member_sort_key
+
+        member_options = list(User.objects.filter(
+            role__in=User.LESSON_PARTICIPANT_ROLE_VALUES,
+            is_active=True,
+        ).order_by("id"))
+        member_options.sort(key=member_sort_key)
     with performance_trace.step("template_render"):
         response = render(
             request,
@@ -952,6 +981,7 @@ def lesson_calendar_member_list(request):
             "pending_count": pending_count,
             "waitlist_count": waitlist_count,
             "active_rows": active_rows,
+            "member_options": member_options,
             "ticket_payer_options": ticket_payer_options,
             "purchase_reservations": purchase_reservations,
             "purchase_reservation_count": len(purchase_reservations),

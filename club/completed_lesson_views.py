@@ -20,7 +20,7 @@ from .lesson_ticket_rules import standard_ticket_count
 from .models import BUSINESS_END_HOUR, BUSINESS_START_HOUR
 
 
-def _member_sort_key(member):
+def member_sort_key(member):
     # Userにはかな項目がないため、読みを推測せずcanonical表示名で安定ソートする。
     value = unicodedata.normalize("NFKC", member.display_name()).strip()
     hiragana = "".join(
@@ -42,7 +42,7 @@ def register(request):
     members = list(User.objects.filter(
         role__in=User.LESSON_PARTICIPANT_ROLE_VALUES, is_active=True
     ).order_by("id"))
-    members.sort(key=_member_sort_key)
+    members.sort(key=member_sort_key)
     members_by_id = {str(member.pk): member for member in members}
     member_options = [
         {"id": member.pk, "label": member.display_name() if not member.display_name().startswith("line_") else "氏名未登録"}

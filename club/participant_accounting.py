@@ -3,7 +3,14 @@ from django.db import transaction
 from django.utils import timezone
 
 from .lesson_participants import reservations_for_lesson
-from .models import ParticipantPriceChange, Reservation
+from .models import (
+    CoachAvailability,
+    ParticipantPriceChange,
+    Reservation,
+    TicketLedger,
+    User,
+    ensure_accounting_month_is_open,
+)
 
 
 def participant_name(reservation):
@@ -58,6 +65,90 @@ def add_guest(*, actor, guest_name, coach, court, start_at, end_at,
     ParticipantPriceChange.objects.create(
         reservation=reservation, participant_name=f"ゲスト：{guest_name}",
         old_amount=0, new_amount=amount, changed_by=actor,
+    )
+    return reservation
+
+
+@transaction.atomic
+def add_member_to_lesson_occurrence(*, actor, member, availability, fixed_lesson=None):
+    """Record an administrator-confirmed attendee on one existing occurrence."""
+    if not actor or not getattr(actor, "is_authenticated", False):
+        raise ValidationError("参加者を追加する権限がありません。")
+    if not (
+        actor.is_staff
+        or actor.is_superuser
+        or getattr(actor, "role", "") in User.COACH_ROLE_VALUES
+    ):
+        raise ValidationError("参加者を追加する権限がありません。")
+    if not member or not member.is_active or member.role not in User.LESSON_PARTICIPANT_ROLE_VALUES:
+        raise ValidationError("参加可能な会員を選択してください。")
+
+    locked_availability = (
+        CoachAvailability.objects.select_for_update()
+        .select_related("coach", "substitute_coach", "court", "fixed_lesson_source")
+        .get(pk=availability.pk)
+    )
+    ensure_accounting_month_is_open(locked_availability.start_at)
+
+    from . import lesson_execution
+
+    status = lesson_execution.status_by_availability(
+        actor,
+        {(locked_availability.start_at.year, locked_availability.start_at.month)},
+    ).get(locked_availability.pk, {}).get("execution_status")
+    allowed_statuses = {lesson_execution.STATUS_SCHEDULED, lesson_execution.STATUS_HELD}
+    if status not in allowed_statuses:
+        raise ValidationError("開催予定または実施済みのレッスンにのみ会員を追加できます。")
+
+    canonical_fixed_lesson = fixed_lesson or locked_availability.fixed_lesson_source
+    occurrence_reservations = reservations_for_lesson(
+        fixed_lesson=canonical_fixed_lesson,
+        availability=locked_availability,
+        coach=locked_availability.coach,
+        court=locked_availability.court,
+        lesson_type=locked_availability.lesson_type,
+        start_at=locked_availability.start_at,
+        end_at=locked_availability.end_at,
+        statuses=(Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING),
+    )
+    if occurrence_reservations.filter(user=member).exists():
+        raise ValidationError("この会員はすでにこのレッスンに参加登録されています。")
+    if occurrence_reservations.count() >= max(
+        int(locked_availability.effective_capacity()),
+        int(locked_availability.capacity or 0),
+    ):
+        raise ValidationError("このレッスンは満員のため会員を追加できません。")
+
+    reservation = Reservation(
+        user=member,
+        coach=locked_availability.coach,
+        substitute_coach=locked_availability.substitute_coach,
+        court=locked_availability.court,
+        availability=locked_availability,
+        fixed_lesson=canonical_fixed_lesson,
+        lesson_type=locked_availability.lesson_type,
+        target_level=locked_availability.target_level,
+        target_level_2=locked_availability.target_level_2,
+        start_at=locked_availability.start_at,
+        end_at=locked_availability.end_at,
+        custom_ticket_price=locked_availability.custom_ticket_price,
+        custom_duration_hours=locked_availability.custom_duration_hours,
+        status=Reservation.STATUS_ACTIVE,
+    )
+    reservation._allow_admin_attendance_level_override = True
+    reservation.save()
+    reservation.consume_tickets(
+        reason=TicketLedger.REASON_RESERVATION_USE,
+        created_by=actor,
+        note="管理者による参加者事後追加",
+    )
+
+    from .settlement_service import calculate_monthly_settlement
+
+    calculate_monthly_settlement(
+        locked_availability.start_at.year,
+        locked_availability.start_at.month,
+        force=True,
     )
     return reservation
 
