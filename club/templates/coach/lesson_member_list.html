@@ -184,6 +184,16 @@
         <input name="amount" type="number" min="0" step="1" required placeholder="会計金額（円）" style="min-height:42px;padding:8px;border:1px solid #cbd5e1;border-radius:10px;">
         <button class="btn btn-primary" type="submit">ゲスト追加</button>
       </form>
+      {% if availability %}
+        <form method="post" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin:12px 0;">
+          {% csrf_token %}<input type="hidden" name="action" value="add_member">
+          <select name="member_id" required aria-label="会員を選択" style="min-height:42px;padding:8px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;">
+            <option value="">会員を選択</option>
+            {% for member in member_options %}<option value="{{ member.pk }}">{{ member.display_name }}</option>{% endfor %}
+          </select>
+          <button class="btn btn-primary" type="submit" onclick="return confirm('選択した会員をこの開催回へ参加登録しますか？');">会員追加</button>
+        </form>
+      {% endif %}
       {% if active_rows %}
         <div class="person-list">
           {% for row in active_rows %}
