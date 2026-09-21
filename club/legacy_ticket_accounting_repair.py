@@ -209,7 +209,7 @@ def _classify(reservation, allocations, history_error):
 def inspect_legacy_ticket_accounting(*, from_date=DEFAULT_FROM_DATE, to_date=None, reservation_ids=None):
     start = timezone.make_aware(datetime.combine(from_date, time.min))
     queryset = Reservation.objects.filter(
-        start_at__gte=start, tickets_used__gt=0
+        start_at__gte=start, tickets_used__gt=0, user_id__isnull=False
     ).select_related("user", "coach").order_by("start_at", "id")
     if to_date:
         end = timezone.make_aware(datetime.combine(to_date, time.max))
@@ -220,6 +220,8 @@ def inspect_legacy_ticket_accounting(*, from_date=DEFAULT_FROM_DATE, to_date=Non
     cache = {}
     results = []
     for reservation in rows:
+        if reservation.user_id is None:
+            continue
         if reservation.user_id not in cache:
             cache[reservation.user_id] = _rebuild_user_fifo(reservation.user_id)
         results.append(_classify(reservation, *cache[reservation.user_id]))
