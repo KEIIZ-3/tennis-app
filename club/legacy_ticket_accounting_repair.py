@@ -68,6 +68,30 @@ def _current_consumptions(reservation):
     ]
 
 
+def _has_consistent_accounting_evidence(reservation, current):
+    """Return whether this reservation's own persisted accounting is complete."""
+    if reservation.participant_ticket_price_snapshot is None:
+        return False
+    active = [row for row in current if not row["refunded"]]
+    if not active or any(
+        row["purchase_id"] is None or row["unit_price_snapshot"] is None
+        for row in active
+    ):
+        return False
+    purchase_ids = {row["purchase_id"] for row in active}
+    valid_purchase_ids = set(TicketPurchase.objects.filter(
+        id__in=purchase_ids,
+        user_id=reservation.user_id,
+        reversed_at__isnull=True,
+    ).values_list("id", flat=True))
+    return (
+        valid_purchase_ids == purchase_ids
+        and sum(row["tickets_used"] for row in active) == int(reservation.tickets_used or 0)
+        and sum(row["unit_price_snapshot"] * row["tickets_used"] for row in active)
+        == reservation.participant_ticket_price_snapshot
+    )
+
+
 def _rebuild_user_fifo(user_id):
     """Return reservation allocations only when the persisted history has one meaning."""
     purchases = list(TicketPurchase.objects.filter(user_id=user_id).order_by("purchased_at", "id"))
@@ -164,6 +188,8 @@ def _classify(reservation, allocations, history_error):
         return RepairResult(**base, reason="reservation_not_active_consumption", repair_status="ambiguous")
     if int(reservation.tickets_used or 0) <= 0:
         return RepairResult(**base, reason="tickets_used_not_positive", repair_status="already_ok")
+    if _has_consistent_accounting_evidence(reservation, current):
+        return RepairResult(**base, reason="accounting_already_consistent", repair_status="already_ok")
     ledgers = list(TicketLedger.objects.filter(
         reservation=reservation, user=reservation.user,
         reason=TicketLedger.REASON_RESERVATION_USE,
@@ -209,7 +235,11 @@ def _classify(reservation, allocations, history_error):
 def inspect_legacy_ticket_accounting(*, from_date=DEFAULT_FROM_DATE, to_date=None, reservation_ids=None):
     start = timezone.make_aware(datetime.combine(from_date, time.min))
     queryset = Reservation.objects.filter(
-        start_at__gte=start, tickets_used__gt=0, user_id__isnull=False
+        start_at__gte=start,
+        tickets_used__gt=0,
+        user_id__isnull=False,
+        status=Reservation.STATUS_ACTIVE,
+        participant_ticket_price_snapshot__isnull=True,
     ).select_related("user", "coach").order_by("start_at", "id")
     if to_date:
         end = timezone.make_aware(datetime.combine(to_date, time.max))
