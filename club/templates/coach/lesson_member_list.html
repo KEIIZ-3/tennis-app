@@ -185,7 +185,7 @@
         <button class="btn btn-primary" type="submit">ゲスト追加</button>
       </form>
       {% if availability %}
-        <form method="post" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin:12px 0;">
+        <form method="post" data-testid="member-add-candidates" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin:12px 0;">
           {% csrf_token %}<input type="hidden" name="action" value="add_member">
           <select name="member_id" required aria-label="会員を選択" style="min-height:42px;padding:8px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;">
             <option value="">会員を選択</option>
@@ -195,7 +195,7 @@
         </form>
       {% endif %}
       {% if active_rows %}
-        <div class="person-list">
+        <div class="person-list" data-testid="active-participants">
           {% for row in active_rows %}
             <div class="person-row {% if row.kind == 'fixed_member' %}fixed{% endif %}">
               <div>
@@ -258,7 +258,7 @@
 
   {% if is_coach_view %}
     {% if is_main_coach %}
-      <section class="section-card ticket-purchases">
+      <section class="section-card ticket-purchases" data-testid="pending-ticket-purchases">
         <h2 class="section-title"><span>🎫 チケット購入予約</span><span class="count-badge">{{ purchase_reservation_count }}</span></h2>
         {% if purchase_reservations %}
           <div class="person-list">

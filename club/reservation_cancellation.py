@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.views.decorators.http import require_POST
 
 from .models import Reservation
+from .reservation_service import cancel_reservation_with_settlement
 
 
 def _can_cancel_reservation(user, reservation):
@@ -57,7 +58,8 @@ def reservation_cancel(request, pk):
         reason = "コーチまたは管理者が予約詳細画面からキャンセル"
 
     try:
-        canceled = reservation.cancel(
+        reservation, canceled = cancel_reservation_with_settlement(
+            reservation.pk,
             created_by=request.user,
             reason=reason,
         )

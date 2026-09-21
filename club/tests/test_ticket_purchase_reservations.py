@@ -1,3 +1,4 @@
+from collections import Counter
 from datetime import datetime, timedelta
 
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -248,9 +249,13 @@ class TicketPurchaseReservationCoachFlowTests(TestCase):
         response = self._member_list()
 
         self.assertContains(response, "チケット購入予約")
-        # Main coaches also see both participants in each burden-payer selector.
-        self.assertContains(response, "飯塚セカンド", count=6)
-        self.assertContains(response, "購入 二人目", count=5)
+        purchase_rows = response.context["purchase_reservations"]
+        self.assertEqual(len(purchase_rows), 3)
+        self.assertEqual(
+            Counter(row.user.display_name() for row in purchase_rows),
+            Counter({"飯塚セカンド": 2, "購入 二人目": 1}),
+        )
+        self.assertContains(response, 'data-testid="pending-ticket-purchases"')
         self.assertContains(response, "1枚")
         self.assertContains(response, "4000円")
         self.assertContains(response, "4枚セット")

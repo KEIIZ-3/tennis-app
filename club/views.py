@@ -6624,11 +6624,13 @@ def reservation_cancel(request, pk):
         return redirect("club:reservation_list")
 
     try:
-        with transaction.atomic():
-            reservation.cancel(
-                created_by=request.user,
-                reason="会員キャンセル" if reservation.user_id == request.user.pk else "コーチ/管理者キャンセル",
-            )
+        from .reservation_service import cancel_reservation_with_settlement
+
+        reservation, _changed = cancel_reservation_with_settlement(
+            reservation.pk,
+            created_by=request.user,
+            reason="会員キャンセル" if reservation.user_id == request.user.pk else "コーチ/管理者キャンセル",
+        )
     except Exception as e:
         messages.error(request, f"予約のキャンセルに失敗しました: {e}")
         return redirect("club:reservation_list")

@@ -81,7 +81,8 @@ class FixedLessonCancelCoachViewsTests(TestCase):
         self.assertEqual(response.context["active_count"], 0)
         self.assertEqual(response.context["remaining_count"], 5)
         self.assertEqual(response.context["active_rows"], [])
-        self.assertNotContains(response, self.member.display_name())
+        self.assertContains(response, 'data-testid="member-add-candidates"')
+        self.assertContains(response, self.member.display_name())
 
     def test_weekly_list_counts_only_active_occurrence_reservations(self):
         response = self.client.get(reverse("club:coach_fixed_lesson_weekly"))
