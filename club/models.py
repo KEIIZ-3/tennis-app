@@ -1633,9 +1633,9 @@ def purchase_tickets(
                     idempotency_key=(f"{normalized_key}:cash" if normalized_key else f"ticket-purchase:{purchase.pk}:cash"),
                 )
 
-            from .deferred_ticket_consumption import allocate_pending_ticket_consumptions
+            from .deferred_ticket_consumption import allocate_new_ticket_purchase_to_deferred
 
-            allocate_pending_ticket_consumptions(purchase)
+            allocate_new_ticket_purchase_to_deferred(purchase)
 
             user.ticket_balance = locked_user.ticket_balance
             return ledger, purchase

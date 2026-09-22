@@ -10,6 +10,7 @@ from club.models import (
     CoachAvailability, Court, Reservation, ReservationParticipant, TicketConsumption, TicketLedger,
     TicketPurchase, purchase_tickets,
 )
+from club.settlement_models import MonthlySettlement
 
 
 class DeferredTicketConsumptionTests(TestCase):
@@ -136,10 +137,62 @@ class DeferredTicketConsumptionTests(TestCase):
     def test_allocation_failure_rolls_back_purchase_and_balance(self):
         self.consume()
         self.user.refresh_from_db()
-        with patch("club.deferred_ticket_consumption.allocate_pending_ticket_consumptions", side_effect=RuntimeError("link failed")):
+        with patch("club.deferred_ticket_consumption.allocate_new_ticket_purchase_to_deferred", side_effect=RuntimeError("link failed")):
             with self.assertRaises(RuntimeError):
                 self.purchase()
         self.user.refresh_from_db()
         self.assertEqual(self.user.ticket_balance, -1)
         self.assertFalse(TicketPurchase.objects.exists())
         self.assertEqual(TicketLedger.objects.count(), 1)
+
+    def test_recalculates_each_affected_draft_month_once(self):
+        first = self.consume()
+        second = self.consume(offset=1)
+        MonthlySettlement.objects.create(
+            year=first.start_at.year,
+            month=first.start_at.month,
+            status=MonthlySettlement.STATUS_DRAFT,
+        )
+
+        with patch("club.settlement_service.calculate_monthly_settlement") as calculate:
+            self.purchase(tickets=2)
+
+        calculate.assert_called_once_with(
+            first.start_at.year,
+            first.start_at.month,
+            force=True,
+        )
+        first.refresh_from_db(); second.refresh_from_db()
+        self.assertEqual(first.participant_ticket_price_snapshot, 3500)
+        self.assertEqual(second.participant_ticket_price_snapshot, 3500)
+
+    def test_closed_month_pending_is_left_unallocated(self):
+        reservation = self.consume()
+        MonthlySettlement.objects.create(
+            year=reservation.start_at.year,
+            month=reservation.start_at.month,
+            status=MonthlySettlement.STATUS_CLOSED,
+        )
+
+        lot = self.purchase(tickets=1)
+
+        lot.refresh_from_db(); reservation.refresh_from_db()
+        pending = TicketConsumption.objects.get(reservation=reservation)
+        self.assertIsNone(pending.purchase_id)
+        self.assertIsNone(pending.unit_price_snapshot)
+        self.assertIsNone(reservation.participant_ticket_price_snapshot)
+        self.assertEqual(lot.remaining_tickets, 1)
+
+    def test_fifo_prefers_pending_creation_time_with_stable_ties(self):
+        first = self.consume()
+        second = self.consume(offset=1)
+        first_pending = TicketConsumption.objects.get(reservation=first)
+        second_pending = TicketConsumption.objects.get(reservation=second)
+        older = timezone.now() - timedelta(days=10)
+        TicketConsumption.objects.filter(pk=second_pending.pk).update(created_at=older)
+
+        lot = self.purchase(tickets=1)
+
+        first_pending.refresh_from_db(); second_pending.refresh_from_db()
+        self.assertIsNone(first_pending.purchase_id)
+        self.assertEqual(second_pending.purchase_id, lot.pk)
