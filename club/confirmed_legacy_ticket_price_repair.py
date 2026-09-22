@@ -58,6 +58,10 @@ def _member_name(reservation):
     return reservation.user.full_name or reservation.user.username
 
 
+def _normalize_member_name(value):
+    return "".join(character for character in value if not character.isspace())
+
+
 def _consumption_values(rows):
     return [
         {
@@ -77,7 +81,9 @@ def _inspect_one(reservation, target):
     current = _consumption_values(rows)
     local_date = timezone.localtime(reservation.start_at).date()
     errors = []
-    if _member_name(reservation) != target.member_name:
+    if _normalize_member_name(_member_name(reservation)) != _normalize_member_name(
+        target.member_name
+    ):
         errors.append("member_name_mismatch")
     if local_date != target.lesson_date:
         errors.append("lesson_date_mismatch")

@@ -28,6 +28,9 @@ consumption evidence. A 3,500-yen row may have one active, purchase-less,
 NULL-price consumption or no consumption. In the latter case only a purchase-less
 legacy evidence row is created; no purchase lot is invented.
 
+Member-name validation ignores Unicode whitespace (including half-width and
+full-width spaces) but still rejects any difference in the name characters.
+
 Only `TicketConsumption.unit_price_snapshot` (or the missing evidence row) and
 `Reservation.participant_ticket_price_snapshot` are changed. Ticket balances,
 ledgers, purchase totals/remnants, reservation state, lesson execution state, and
