@@ -8,6 +8,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from club.legacy_ticket_accounting_repair import (
+    _classify,
     apply_legacy_ticket_accounting,
     inspect_legacy_ticket_accounting,
 )
@@ -114,6 +115,47 @@ class LegacyTicketAccountingRepairTests(TestCase):
 
         self.assertEqual((row.repair_status, row.reason), ("ambiguous", "manual_balance_history"))
 
+    def test_consistent_accounting_is_outside_default_scope_despite_manual_history(self):
+        purchase = self.purchase(self.at(2026, 8, 1), tickets=1, remaining=0)
+        reservation = self.reservation(self.at(2026, 8, 10), snapshot=3500)
+        TicketConsumption.objects.create(
+            user=self.member, reservation=reservation, purchase=purchase,
+            tickets_used=1, unit_price_snapshot=3500,
+        )
+        TicketLedger.objects.create(
+            user=self.member, change_amount=0, balance_after=0,
+            reason=TicketLedger.REASON_ADMIN_ADJUST,
+        )
+        self.set_balance(0)
+
+        self.assertEqual(self.inspect(), [])
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.participant_ticket_price_snapshot, 3500)
+        self.assertEqual(
+            list(reservation.ticket_consumptions.values_list("purchase_id", "unit_price_snapshot")),
+            [(purchase.id, 3500)],
+        )
+
+        row = _classify(reservation, {}, "manual_balance_history")
+        self.assertEqual((row.repair_status, row.reason), ("already_ok", "accounting_already_consistent"))
+
+    def test_missing_snapshot_variants_remain_in_default_scope(self):
+        purchase = self.purchase(self.at(2026, 8, 1), tickets=3, remaining=0)
+        missing = self.reservation(self.at(2026, 8, 10))
+        null_price = self.reservation(self.at(2026, 8, 11))
+        zero_price = self.reservation(self.at(2026, 8, 12))
+        TicketConsumption.objects.create(user=self.member, reservation=null_price, tickets_used=1)
+        TicketConsumption.objects.create(
+            user=self.member, reservation=zero_price, purchase=purchase,
+            tickets_used=1, unit_price_snapshot=0,
+        )
+        self.set_balance(0)
+
+        self.assertEqual(
+            [row.reservation_id for row in self.inspect()],
+            [missing.id, null_price.id, zero_price.id],
+        )
+
     def test_fifo_repairs_missing_consumption_and_snapshot_only_on_apply(self):
         first = self.purchase(self.at(2026, 8, 1), tickets=2, remaining=0, price=3500)
         second = self.purchase(self.at(2026, 9, 1), tickets=2, remaining=2, price=4000)
@@ -188,7 +230,7 @@ class LegacyTicketAccountingRepairTests(TestCase):
         self.set_balance(0)
         self.assertEqual(self.inspect()[0].repair_status, "ambiguous")
 
-    def test_closed_month_is_skipped_and_normal_reservation_is_unchanged(self):
+    def test_closed_month_is_skipped_and_normal_reservation_is_outside_scope(self):
         purchase = self.purchase(self.at(2026, 8, 1), tickets=2, remaining=0)
         closed = self.reservation(self.at(2026, 8, 10))
         normal = self.reservation(self.at(2026, 9, 10), snapshot=3500)
@@ -197,7 +239,7 @@ class LegacyTicketAccountingRepairTests(TestCase):
         MonthlySettlement.objects.create(year=2026, month=8, status=MonthlySettlement.STATUS_CLOSED)
         statuses = {row.reservation_id: row.repair_status for row in self.inspect()}
         self.assertEqual(statuses[closed.id], "skipped_closed_month")
-        self.assertEqual(statuses[normal.id], "already_ok")
+        self.assertNotIn(normal.id, statuses)
 
     def test_refunded_reservation_is_not_treated_as_active_consumption(self):
         purchase = self.purchase(self.at(2026, 8, 1), tickets=1, remaining=1)
@@ -210,9 +252,15 @@ class LegacyTicketAccountingRepairTests(TestCase):
         )
         TicketLedger.objects.filter(pk=refund.pk).update(created_at=refund_at)
         self.set_balance(1)
-        row = self.inspect()[0]
-        self.assertEqual((row.repair_status, row.reason), ("ambiguous", "reservation_not_active_consumption"))
+        self.assertEqual(self.inspect(), [])
         self.assertEqual(purchase.remaining_tickets, 1)
+
+    def test_rain_canceled_reservation_is_outside_default_scope(self):
+        self.purchase(self.at(2026, 8, 1), tickets=1, remaining=1)
+        self.reservation(self.at(2026, 8, 10), status=Reservation.STATUS_RAIN_CANCELED)
+        self.set_balance(1)
+
+        self.assertEqual(self.inspect(), [])
 
     def test_dry_run_command_writes_nothing_and_reports_required_fields(self):
         self.purchase(self.at(2026, 8, 1), tickets=1, remaining=0)

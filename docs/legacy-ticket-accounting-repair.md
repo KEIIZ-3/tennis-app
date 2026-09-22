@@ -4,7 +4,11 @@
 persisted `TicketPurchase` and `TicketLedger` events in chronological FIFO
 order. It is intentionally separate from the older one-off linkage repairs.
 
-The command is read-only by default and starts at 2026-08-01 JST:
+The command is read-only by default and starts at 2026-08-01 JST. Its output
+scope is limited to active member reservations that used tickets but still have
+no `participant_ticket_price_snapshot`. Reservations with an existing snapshot,
+guests, canceled reservations, and rain-canceled reservations are excluded.
+Canceled and refunded ledger events remain part of each member's FIFO history.
 
 ```powershell
 python manage.py repair_legacy_ticket_accounting
