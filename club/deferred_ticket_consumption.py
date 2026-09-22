@@ -6,7 +6,12 @@ from .models import Reservation, TicketConsumption, TicketPurchase, User
 from .participant_price_snapshot import set_participant_ticket_price_snapshot
 from .settlement_models import MonthlySettlement
 
-TICKET_CONSUMPTION_FIFO_ORDER = ("reservation__ticket_consumed_at", "id")
+TICKET_CONSUMPTION_FIFO_ORDER = (
+    "created_at",
+    "reservation__ticket_consumed_at",
+    "reservation_id",
+    "id",
+)
 
 
 def create_pending_ticket_consumption(*, reservation, tickets_used=None):
@@ -29,7 +34,7 @@ def _month_is_closed(reservation):
     ).exists()
 
 
-def allocate_pending_ticket_consumptions(purchase):
+def allocate_new_ticket_purchase_to_deferred(purchase):
     """Allocate a new lot FIFO without changing balance, ledger, wallet, or court data."""
     with transaction.atomic():
         # Match consume_tickets' user -> purchase lock order to avoid a
@@ -58,6 +63,8 @@ def allocate_pending_ticket_consumptions(purchase):
         for consumption in pending:
             if available <= 0:
                 break
+            if _month_is_closed(consumption.reservation):
+                continue
             allocated = min(available, int(consumption.tickets_used))
             if allocated == int(consumption.tickets_used):
                 consumption.purchase = locked_purchase
@@ -84,12 +91,32 @@ def allocate_pending_ticket_consumptions(purchase):
             locked_purchase.save(update_fields=["remaining_tickets"])
             purchase.remaining_tickets = available
 
+        recalculation_months = set()
         for reservation in Reservation.objects.filter(pk__in=affected_reservation_ids):
-            if reservation.participant_ticket_price_snapshot is not None or _month_is_closed(reservation):
+            if reservation.participant_ticket_price_snapshot is not None:
                 continue
             active_rows = list(
                 reservation.ticket_consumptions.filter(refunded_at__isnull=True)
             )
             if active_rows and all(row.purchase_id is not None for row in active_rows):
-                set_participant_ticket_price_snapshot(reservation, active_rows)
+                snapshot = set_participant_ticket_price_snapshot(reservation, active_rows)
+                if snapshot is not None and MonthlySettlement.objects.filter(
+                    year=reservation.start_at.year,
+                    month=reservation.start_at.month,
+                    status=MonthlySettlement.STATUS_DRAFT,
+                ).exists():
+                    recalculation_months.add(
+                        (reservation.start_at.year, reservation.start_at.month)
+                    )
+
+        if recalculation_months:
+            from .settlement_service import calculate_monthly_settlement
+
+            for year, month in sorted(recalculation_months):
+                calculate_monthly_settlement(year, month, force=True)
         return linked
+
+
+def allocate_pending_ticket_consumptions(purchase):
+    """Backward-compatible name for the canonical deferred allocator."""
+    return allocate_new_ticket_purchase_to_deferred(purchase)
