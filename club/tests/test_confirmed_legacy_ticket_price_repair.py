@@ -145,6 +145,34 @@ class ConfirmedLegacyTicketPriceRepairTests(TestCase):
         reservation.refresh_from_db()
         self.assertEqual(reservation.participant_ticket_price_snapshot, 4000)
 
+    def test_member_name_matches_with_half_width_or_full_width_space(self):
+        reservation = self.reservations[1527]
+        reservation.user.full_name = CONFIRMED_TARGETS[1527].member_name.replace(" ", "　")
+        reservation.user.save(update_fields=["full_name"])
+
+        row = inspect_confirmed_legacy_prices(reservation_ids=[reservation.pk])[0]
+
+        self.assertEqual(row.validation_result, "ok")
+
+    def test_member_name_matches_with_multiple_unicode_whitespace_characters(self):
+        reservation = self.reservations[1527]
+        compact_name = CONFIRMED_TARGETS[1527].member_name.replace(" ", "")
+        reservation.user.full_name = "\t\u00a0　".join(compact_name)
+        reservation.user.save(update_fields=["full_name"])
+
+        row = inspect_confirmed_legacy_prices(reservation_ids=[reservation.pk])[0]
+
+        self.assertEqual(row.validation_result, "ok")
+
+    def test_member_name_mismatch_remains_when_name_characters_differ(self):
+        reservation = self.reservations[1527]
+        reservation.user.full_name = f"{CONFIRMED_TARGETS[1527].member_name}別"
+        reservation.user.save(update_fields=["full_name"])
+
+        row = inspect_confirmed_legacy_prices(reservation_ids=[reservation.pk])[0]
+
+        self.assertIn("member_name_mismatch", row.validation_result)
+
     def test_refunded_and_multiple_consumptions_block_the_whole_apply(self):
         row = TicketConsumption.objects.get(reservation_id=1535)
         row.refunded_at = timezone.now()
