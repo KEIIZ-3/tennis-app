@@ -39,6 +39,15 @@ def validate_amount(value):
     return amount
 
 
+def _recalculate_reservation_month(start_at):
+    local_start = timezone.localtime(start_at) if timezone.is_aware(start_at) else start_at
+    ensure_accounting_month_is_open(local_start)
+
+    from .settlement_service import calculate_monthly_settlement
+
+    calculate_monthly_settlement(local_start.year, local_start.month, force=True)
+
+
 @transaction.atomic
 def add_guest(*, actor, guest_name, coach, court, start_at, end_at,
               lesson_type, amount, capacity, availability=None,
@@ -47,6 +56,7 @@ def add_guest(*, actor, guest_name, coach, court, start_at, end_at,
     if not guest_name:
         raise ValidationError("ゲスト氏名を入力してください。")
     amount = validate_amount(amount)
+    ensure_accounting_month_is_open(start_at)
     list(Reservation.objects.select_for_update().filter(start_at=start_at, end_at=end_at))
     current = reservations_for_lesson(
         fixed_lesson=fixed_lesson, availability=availability, coach=coach,
@@ -66,6 +76,7 @@ def add_guest(*, actor, guest_name, coach, court, start_at, end_at,
         reservation=reservation, participant_name=f"ゲスト：{guest_name}",
         old_amount=0, new_amount=amount, changed_by=actor,
     )
+    _recalculate_reservation_month(reservation.start_at)
     return reservation
 
 
@@ -149,13 +160,7 @@ def add_member_to_lesson_occurrence(*, actor, member, availability, fixed_lesson
         note="管理者による参加者事後追加",
     )
 
-    from .settlement_service import calculate_monthly_settlement
-
-    calculate_monthly_settlement(
-        locked_availability.start_at.year,
-        locked_availability.start_at.month,
-        force=True,
-    )
+    _recalculate_reservation_month(locked_availability.start_at)
     return reservation
 
 
@@ -163,6 +168,7 @@ def add_member_to_lesson_occurrence(*, actor, member, availability, fixed_lesson
 def change_participation_amount(*, reservation_id, amount, actor):
     reservation = Reservation.objects.select_for_update(of=("self",)).get(pk=reservation_id)
     amount = validate_amount(amount)
+    ensure_accounting_month_is_open(reservation.start_at)
     old_amount = reservation.participant_ticket_price_snapshot
     if old_amount != amount:
         reservation.participant_ticket_price_snapshot = amount
@@ -171,15 +177,18 @@ def change_participation_amount(*, reservation_id, amount, actor):
             reservation=reservation, participant_name=participant_name(reservation),
             old_amount=old_amount, new_amount=amount, changed_by=actor,
         )
+        _recalculate_reservation_month(reservation.start_at)
     return reservation
 
 
 @transaction.atomic
 def cancel_guest(*, reservation_id):
     reservation = Reservation.objects.select_for_update().get(pk=reservation_id, user__isnull=True)
+    ensure_accounting_month_is_open(reservation.start_at)
     if reservation.status == Reservation.STATUS_ACTIVE:
         reservation.status = Reservation.STATUS_CANCELED
         reservation.canceled_at = timezone.now()
         reservation.cancellation_reason = "ゲスト誤登録・参加キャンセル"
         reservation.save(update_fields=["status", "canceled_at", "cancellation_reason"])
+        _recalculate_reservation_month(reservation.start_at)
     return reservation

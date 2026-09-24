@@ -32,6 +32,8 @@ def ensure_accounting_month_is_open(value):
     """会計対象月が締め済みなら、正本モデルの変更を拒否する。"""
     if not value:
         return
+    if isinstance(value, datetime) and timezone.is_aware(value):
+        value = timezone.localtime(value)
     target_date = value.date() if hasattr(value, "date") else value
     from .settlement_models import MonthlySettlement
 
