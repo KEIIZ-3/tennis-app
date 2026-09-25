@@ -21,6 +21,7 @@
 .confirm{display:flex;gap:8px;align-items:flex-start;margin-top:14px;padding:12px;border:1px solid #bfdbfe;border-radius:14px;background:#eff6ff;font-size:13px;line-height:1.6;font-weight:850;}
 .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
 .empty{padding:15px;text-align:center;color:#64748b;font-weight:800;}
+.history-card{margin-top:14px;padding:12px 14px;border:1px solid #86efac;border-radius:14px;background:#f0fdf4;color:#166534;font-weight:850;line-height:1.65;}
 @media(max-width:768px){.grid{grid-template-columns:1fr}.notice-title{font-size:22px}.actions .btn{width:100%;}}
 </style>
 <div class="notice-page">
@@ -47,6 +48,12 @@
       {% endif %}
     </div>
     {% if selected_slot %}
+      {% if latest_notice_history %}
+        <div class="history-card" data-testid="previous-notice-history">
+          前回送信：{{ latest_notice_history.sent_at|date:"n/j H:i" }}<br>
+          LINE {{ latest_notice_history.line_sent_count }}名{% if latest_notice_history.email_sent_count %} / メール {{ latest_notice_history.email_sent_count }}名{% endif %}{% if latest_notice_history.undelivered_count %} / 未送信 {{ latest_notice_history.undelivered_count }}名{% endif %}
+        </div>
+      {% endif %}
       <div class="grid">
         <div class="field">
           <label for="court_number">コート番号</label>

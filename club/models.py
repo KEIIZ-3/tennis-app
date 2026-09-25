@@ -2809,6 +2809,43 @@ class LessonWaitlist(models.Model):
         return True
 
 
+class CourtNumberNoticeHistory(models.Model):
+    availability = models.ForeignKey(
+        CoachAvailability,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="court_number_notice_histories",
+    )
+    fixed_lesson = models.ForeignKey(
+        FixedLesson,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="court_number_notice_histories",
+    )
+    start_at = models.DateTimeField()
+    end_at = models.DateTimeField()
+    court_number = models.CharField(max_length=120)
+    line_sent_count = models.PositiveIntegerField(default=0)
+    email_sent_count = models.PositiveIntegerField(default=0)
+    undelivered_count = models.PositiveIntegerField(default=0)
+    sent_at = models.DateTimeField(default=timezone.now)
+    sent_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="court_number_notice_histories",
+    )
+    message_digest = models.CharField(max_length=64)
+
+    class Meta:
+        ordering = ("-sent_at", "-id")
+        indexes = [
+            models.Index(fields=("fixed_lesson", "start_at", "end_at")),
+            models.Index(fields=("availability", "start_at", "end_at")),
+        ]
+
+
 class ReservationParticipant(models.Model):
     reservation = models.OneToOneField(Reservation, on_delete=models.CASCADE, related_name="participant_snapshot", verbose_name="予約")
     parent = models.ForeignKey(User, on_delete=models.CASCADE, related_name="reservation_participant_snapshots", verbose_name="親アカウント")

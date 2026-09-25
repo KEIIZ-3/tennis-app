@@ -16,7 +16,7 @@ from .lesson_participants import (
     reservations_for_object,
     unique_contact_reservations,
 )
-from .models import Reservation
+from .models import CourtNumberNoticeHistory, Reservation
 from .notification_service import deliver_to_users
 
 
@@ -185,6 +185,18 @@ def _delivery_cache_key(slot, message_text):
     return f"court-number-line-delivery:{digest}"
 
 
+def _notice_histories_for_slot(slot):
+    histories = CourtNumberNoticeHistory.objects.filter(
+        start_at=slot.start_at,
+        end_at=slot.end_at,
+    )
+    if slot.fixed_lesson_id:
+        return histories.filter(fixed_lesson_id=slot.fixed_lesson_id)
+    if slot.availability_id:
+        return histories.filter(availability_id=slot.availability_id, fixed_lesson__isnull=True)
+    return histories.none()
+
+
 def _acquire_delivery_lock(cache_key):
     try:
         return cache.add(cache_key, "sending", timeout=120)
@@ -225,8 +237,10 @@ def court_number_line_notice(request):
     rows = []
     preview = ""
     line_ready_count = 0
+    latest_notice_history = None
 
     if selected_slot:
+        latest_notice_history = _notice_histories_for_slot(selected_slot).first()
         participants = list(_slot_participants(selected_slot))
         details = participant_details_by_reservation(participants)
         for reservation in participants:
@@ -284,6 +298,20 @@ def court_number_line_notice(request):
             delivered = line_sent + email_sent
             _finish_delivery_lock(delivery_cache_key, delivered)
 
+            if delivered:
+                CourtNumberNoticeHistory.objects.create(
+                    availability=selected_slot.availability,
+                    fixed_lesson=selected_slot.fixed_lesson,
+                    start_at=selected_slot.start_at,
+                    end_at=selected_slot.end_at,
+                    court_number=court_number,
+                    line_sent_count=line_sent,
+                    email_sent_count=email_sent,
+                    undelivered_count=failed,
+                    sent_by=request.user,
+                    message_digest=sha256(message_text.encode("utf-8")).hexdigest(),
+                )
+
             if line_sent:
                 messages.success(
                     request,
@@ -313,5 +341,6 @@ def court_number_line_notice(request):
             "participant_rows": rows,
             "line_ready_count": line_ready_count,
             "message_preview": preview,
+            "latest_notice_history": latest_notice_history,
         },
     )

@@ -18,6 +18,7 @@ from .lesson_participants import (
 from .lesson_member_list_performance import LessonMemberListPerformanceTrace
 from .models import (
     CoachAvailability,
+    CourtNumberNoticeHistory,
     FixedLesson,
     LessonWaitlist,
     RainRefund,
@@ -932,6 +933,8 @@ def lesson_calendar_member_list(request):
     if availability is not None:
         completed_registration = getattr(availability, "completed_registration", None)
     member_options = []
+    latest_notice_history = None
+    notice_history_count = 0
     if is_coach_view:
         from .completed_lesson_views import member_sort_key
 
@@ -940,6 +943,21 @@ def lesson_calendar_member_list(request):
             is_active=True,
         ).order_by("id"))
         member_options.sort(key=member_sort_key)
+        notice_histories = CourtNumberNoticeHistory.objects.filter(
+            start_at=start_at,
+            end_at=end_at,
+        )
+        if fixed_lesson:
+            notice_histories = notice_histories.filter(fixed_lesson=fixed_lesson)
+        elif availability:
+            notice_histories = notice_histories.filter(
+                availability=availability,
+                fixed_lesson__isnull=True,
+            )
+        else:
+            notice_histories = notice_histories.none()
+        latest_notice_history = notice_histories.first()
+        notice_history_count = notice_histories.count()
     with performance_trace.step("template_render"):
         response = render(
             request,
@@ -1013,6 +1031,8 @@ def lesson_calendar_member_list(request):
                 is_public_member_view
             ),
             "is_coach_view": is_coach_view,
+            "latest_notice_history": latest_notice_history,
+            "notice_history_count": notice_history_count,
             "is_recruitment_closed": bool(
                 availability and availability.is_recruitment_closed
             ),
