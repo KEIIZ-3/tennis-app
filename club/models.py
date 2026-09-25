@@ -347,6 +347,8 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         return int(delta.total_seconds() // 3600)
 
     def effective_capacity(self):
+        if self.capacity_overridden:
+            return int(self.capacity or 0)
         if self.lesson_type == self.LESSON_GENERAL:
             return general_lesson_capacity(self.coach_count, self.start_at)
         return int(self.capacity or 0)
@@ -453,7 +455,8 @@ class CoachAvailability(models.Model, LessonTypeMixin):
             if int(self.coach_count or 0) < 1:
                 raise ValidationError("一般レッスンのコーチ人数は1以上にしてください。")
             self.court_count = int(self.coach_count or 1)
-            self.capacity = self.effective_capacity()
+            if not self.capacity_overridden:
+                self.capacity = self.effective_capacity()
 
         elif self.lesson_type == self.LESSON_PRIVATE:
             self.coach_count = 1
@@ -478,6 +481,20 @@ class CoachAvailability(models.Model, LessonTypeMixin):
 
         if self.target_level_2 == self.target_level:
             self.target_level_2 = ""
+
+        if self.pk and self.capacity_overridden:
+            from .lesson_participants import CAPACITY_CONSUMING_STATUSES
+
+            active_count = self.reservations.filter(
+                status__in=CAPACITY_CONSUMING_STATUSES,
+            ).count()
+            if int(self.capacity or 0) < active_count:
+                raise ValidationError({
+                    "capacity": (
+                        f"開催回の参加者{active_count}名を下回る定員"
+                        f"{self.capacity}名には変更できません。"
+                    ),
+                })
 
         selected_coach_ids = [coach.pk for coach in self.all_coaches()]
         overlap_qs = CoachAvailability.objects.filter(

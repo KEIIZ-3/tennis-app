@@ -177,7 +177,7 @@ def _coach_names_from_fixed_lesson(fixed_lesson):
 
 
 def _capacity_for_slot(availability=None, fixed_lesson=None):
-    target = fixed_lesson or availability
+    target = availability or fixed_lesson
 
     if target and hasattr(target, "effective_capacity"):
         try:
