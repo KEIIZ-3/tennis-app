@@ -15,6 +15,7 @@ from .admin import StringingOrderAdminForm
 from .models import (
     CoachAvailability,
     CoachExpense,
+    CourtNumberNoticeHistory,
     Court,
     FamilyMember,
     FixedLesson,
@@ -2833,6 +2834,137 @@ class ReservationFlowSmokeTests(TestCase):
         self.assertEqual(first_send.status_code, 302)
         self.assertEqual(duplicate_send.status_code, 302)
         deliver_mock.assert_called_once()
+
+    def test_court_number_notice_persists_actual_delivery_result_only_after_success(self):
+        fixed_lesson = self._create_fixed_lesson(title="送信履歴テスト")
+        start_at, end_at = fixed_lesson._build_datetimes_for_date(self.lesson_date)
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=6,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        reservation = Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            availability=availability,
+            fixed_lesson=fixed_lesson,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            status=Reservation.STATUS_ACTIVE,
+        )
+        payload = {
+            "slot_id": reservation.pk,
+            "court_number": "3コート",
+            "confirm_send": "yes",
+            "action": "send",
+        }
+        self.client.force_login(self.coach)
+        cache.clear()
+
+        with patch(
+            "club.court_number_line_notice.deliver_to_users",
+            return_value={"line_sent": 2, "email_sent": 1, "failed": 1, "skipped": 1},
+        ):
+            response = self.client.post(reverse("club:court_number_line_notice"), payload)
+
+        self.assertEqual(response.status_code, 302)
+        history = CourtNumberNoticeHistory.objects.get()
+        self.assertEqual(history.fixed_lesson, fixed_lesson)
+        self.assertEqual(history.availability, availability)
+        self.assertEqual(history.line_sent_count, 2)
+        self.assertEqual(history.email_sent_count, 1)
+        self.assertEqual(history.undelivered_count, 2)
+        self.assertEqual(history.sent_by, self.coach)
+
+        cache.clear()
+        with patch(
+            "club.court_number_line_notice.deliver_to_users",
+            return_value={"line_sent": 0, "email_sent": 0, "failed": 1, "skipped": 0},
+        ):
+            self.client.post(
+                reverse("club:court_number_line_notice"),
+                {**payload, "court_number": "4コート"},
+            )
+        self.assertEqual(CourtNumberNoticeHistory.objects.count(), 1)
+
+    def test_notice_pages_show_latest_matching_history_only_to_coaches(self):
+        fixed_lesson = self._create_fixed_lesson(title="最新履歴表示テスト")
+        start_at, end_at = fixed_lesson._build_datetimes_for_date(self.lesson_date)
+        availability = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            capacity=6,
+            status=CoachAvailability.STATUS_OPEN,
+        )
+        reservation = Reservation.objects.create(
+            user=self.member,
+            coach=self.coach,
+            court=self.court,
+            availability=availability,
+            fixed_lesson=fixed_lesson,
+            lesson_type=Reservation.LESSON_GENERAL,
+            target_level=self.User.LEVEL_BEGINNER,
+            start_at=start_at,
+            end_at=end_at,
+            status=Reservation.STATUS_ACTIVE,
+        )
+        for court_number, line_count, email_count in (("1", 1, 0), ("2", 3, 1)):
+            CourtNumberNoticeHistory.objects.create(
+                availability=availability,
+                fixed_lesson=fixed_lesson,
+                start_at=start_at,
+                end_at=end_at,
+                court_number=court_number,
+                line_sent_count=line_count,
+                email_sent_count=email_count,
+                undelivered_count=1,
+                sent_by=self.coach,
+                message_digest=court_number * 64,
+            )
+        other_lesson = self._create_fixed_lesson(title="別開催回")
+        other_start, other_end = other_lesson._build_datetimes_for_date(self.lesson_date + timedelta(days=7))
+        CourtNumberNoticeHistory.objects.create(
+            fixed_lesson=other_lesson,
+            start_at=other_start,
+            end_at=other_end,
+            court_number="9",
+            line_sent_count=9,
+            sent_by=self.coach,
+            message_digest="9" * 64,
+        )
+        params = {
+            "fixed_lesson_id": fixed_lesson.pk,
+            "lesson_date": self.lesson_date.isoformat(),
+        }
+
+        self.client.force_login(self.coach)
+        member_page = self.client.get(reverse("club:lesson_calendar_member_list"), params)
+        self.assertEqual(member_page.context["latest_notice_history"].line_sent_count, 3)
+        self.assertEqual(member_page.context["notice_history_count"], 2)
+        self.assertContains(member_page, "LINE 3名 / メール 1名 / 未送信 1名")
+        self.assertContains(member_page, "送信履歴 2回")
+        notice_page = self.client.get(
+            reverse("club:court_number_line_notice"),
+            {"slot_id": reservation.pk},
+        )
+        self.assertContains(notice_page, "前回送信：")
+        self.assertContains(notice_page, "LINE 3名")
+
+        self.client.force_login(self.member)
+        public_page = self.client.get(reverse("club:lesson_calendar_member_list"), params)
+        self.assertNotContains(public_page, "latest-notice-history", status_code=403)
 
     def test_today_lessons_keeps_same_physical_slot_lessons_separate(self):
         first_lesson = self._create_fixed_lesson(title="同時刻レッスンA")
