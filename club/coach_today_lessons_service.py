@@ -454,15 +454,7 @@ def build_today_lessons_display(
 
             capacity = fixed.effective_capacity() if hasattr(fixed, "effective_capacity") else fixed.capacity
             if availability:
-                try:
-                    capacity = max(
-                        int(availability.effective_capacity()),
-                        int(availability.capacity or 0),
-                        int(capacity or 0),
-                        1,
-                    )
-                except Exception:
-                    capacity = max(int(availability.capacity or 0), int(capacity or 0), 1)
+                capacity = _availability_capacity(availability)
 
             # 旧Availabilityがある場合は、そのコーチIDをスロットキーに使います。
             # これにより後段のAvailability一覧で同じ枠が重複追加されません。
@@ -532,16 +524,7 @@ def build_today_lessons_display(
             if key in slot_map:
                 continue
 
-            fixed_capacity = (
-                authoritative_fixed_lesson.effective_capacity()
-                if hasattr(authoritative_fixed_lesson, "effective_capacity")
-                else authoritative_fixed_lesson.capacity
-            )
-            capacity = max(
-                _availability_capacity(availability),
-                int(fixed_capacity or 0),
-                1,
-            )
+            capacity = _availability_capacity(availability)
 
             _add_slot(
                 key=key,
