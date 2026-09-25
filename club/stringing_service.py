@@ -98,6 +98,12 @@ def create_recorded_stringing_order(*, order, user, assigned_coach, performed_da
     )
     StringingOrder.objects.filter(pk=order.pk).update(created_at=performed_at)
     order.created_at = performed_at
+    from .settlement_service import calculate_monthly_settlement
+    calculate_monthly_settlement(
+        performed_date.year,
+        performed_date.month,
+        force=True,
+    )
     return order
 
 

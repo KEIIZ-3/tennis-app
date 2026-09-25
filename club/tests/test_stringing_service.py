@@ -1,4 +1,5 @@
-from datetime import timedelta
+from datetime import date, timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -6,8 +7,10 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from club import settlement_service
 from club.forms import StringingOrderRecordForm
 from club.models import StringingOrder
+from club.settlement_models import CoachMonthlySettlement, MonthlySettlement
 from club.settlement_service import calculate_monthly_settlement
 from club.stringing_service import (
     create_stringing_order,
@@ -245,6 +248,141 @@ class StringingServiceTests(TestCase):
         }
         self.assertEqual(canceled["stringing_total"], 0)
         self.assertEqual(canceled_amounts[self.iizuka.pk], 0)
+
+    def test_recorded_order_immediately_refreshes_existing_monthly_settlement(self):
+        performed_date = date(2026, 8, 7)
+        calculate_monthly_settlement(2026, 8, force=True)
+
+        create_recorded_stringing_order(
+            order=self._order(),
+            user=self.member,
+            assigned_coach=self.shimizu,
+            performed_date=performed_date,
+        )
+
+        row = CoachMonthlySettlement.objects.get(
+            monthly_settlement__year=2026,
+            monthly_settlement__month=8,
+            coach=self.shimizu,
+        )
+        self.assertEqual(row.stringing_revenue, 1200)
+
+    def test_recorded_delivery_immediately_adds_1700_to_assigned_iizuka(self):
+        performed_date = date(2026, 8, 21)
+
+        create_recorded_stringing_order(
+            order=self._order(
+                delivery_requested=True,
+                delivery_location="テストコート",
+            ),
+            user=self.member,
+            assigned_coach=self.iizuka,
+            performed_date=performed_date,
+        )
+
+        row = CoachMonthlySettlement.objects.get(
+            monthly_settlement__year=2026,
+            monthly_settlement__month=8,
+            coach=self.iizuka,
+        )
+        self.assertEqual(row.stringing_revenue, 1700)
+
+    def test_recorded_order_uses_performed_month_and_assigned_shimizu(self):
+        performed_date = date(2026, 7, 31)
+
+        create_recorded_stringing_order(
+            order=self._order(),
+            user=self.member,
+            assigned_coach=self.shimizu,
+            performed_date=performed_date,
+        )
+
+        row = CoachMonthlySettlement.objects.get(
+            monthly_settlement__year=2026,
+            monthly_settlement__month=7,
+            coach=self.shimizu,
+        )
+        self.assertEqual(row.stringing_revenue, 1200)
+        self.assertFalse(
+            MonthlySettlement.objects.filter(
+                year=timezone.localdate().year,
+                month=timezone.localdate().month,
+            ).exclude(year=2026, month=7).exists()
+        )
+
+    def test_recorded_order_uses_canonical_carry_chain_for_following_draft(self):
+        MonthlySettlement.objects.create(
+            year=2026,
+            month=9,
+            status=MonthlySettlement.STATUS_DRAFT,
+        )
+
+        with patch(
+            "club.settlement_service._calculate_single_month",
+            wraps=settlement_service._calculate_single_month,
+        ) as calculate_single:
+            create_recorded_stringing_order(
+                order=self._order(),
+                user=self.member,
+                assigned_coach=self.shimizu,
+                performed_date=date(2026, 8, 7),
+            )
+
+        calculated_months = [call.args[:2] for call in calculate_single.call_args_list]
+        self.assertIn((2026, 8), calculated_months)
+        self.assertIn((2026, 9), calculated_months)
+
+    def test_recorded_order_rejects_closed_month_before_creation(self):
+        MonthlySettlement.objects.create(
+            year=2026,
+            month=8,
+            status=MonthlySettlement.STATUS_CLOSED,
+        )
+
+        with self.assertRaises(ValidationError):
+            create_recorded_stringing_order(
+                order=self._order(),
+                user=self.member,
+                assigned_coach=self.shimizu,
+                performed_date=date(2026, 8, 7),
+            )
+
+        self.assertEqual(StringingOrder.objects.count(), 0)
+
+    def test_recorded_order_rolls_back_when_settlement_calculation_fails(self):
+        with patch(
+            "club.settlement_service.calculate_monthly_settlement",
+            side_effect=RuntimeError("settlement failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "settlement failed"):
+                create_recorded_stringing_order(
+                    order=self._order(),
+                    user=self.member,
+                    assigned_coach=self.shimizu,
+                    performed_date=date(2026, 8, 7),
+                )
+
+        self.assertEqual(StringingOrder.objects.count(), 0)
+
+    def test_customer_order_does_not_recalculate_monthly_settlement(self):
+        with patch("club.settlement_service.calculate_monthly_settlement") as calculate:
+            create_stringing_order(order=self._order(), user=self.member)
+
+        calculate.assert_not_called()
+
+    def test_status_update_still_recalculates_monthly_settlement(self):
+        order = create_stringing_order(order=self._order(), user=self.member)
+        local_date = timezone.localtime(order.created_at).date()
+
+        with patch("club.settlement_service.calculate_monthly_settlement") as calculate:
+            updated, changed = update_stringing_order_status(
+                order_id=order.pk,
+                new_status=StringingOrder.STATUS_COMPLETED,
+            )
+
+        self.assertTrue(changed)
+        self.assertEqual(updated.status, StringingOrder.STATUS_COMPLETED)
+        calculate.assert_called_once_with(local_date.year, local_date.month, force=True)
 
     def test_customer_order_form_still_creates_requested_order(self):
         self.member.is_profile_completed = True
