@@ -61,6 +61,7 @@ from .models import (
     PREOPEN_CASH_PRICE,
     ensure_accounting_month_is_open,
     is_preopen_cash_lesson_date,
+    ticket_unit_price_label,
 )
 from .family_reservations import (
     build_participant_choices_for_user,
@@ -4069,7 +4070,7 @@ def coach_ticket_summary(request):
             row_amount = 0
 
             for consumption in active_consumptions:
-                unit_price = int(consumption.unit_price_snapshot or 0)
+                unit_price = consumption.unit_price_snapshot
                 tickets_used = int(consumption.tickets_used or 0)
 
                 row_breakdown_map.setdefault(unit_price, 0)
@@ -4079,7 +4080,7 @@ def coach_ticket_summary(request):
                 breakdown_map[unit_price] += tickets_used
 
                 row_tickets += tickets_used
-                row_amount += unit_price * tickets_used
+                row_amount += (unit_price or 0) * tickets_used
 
             if reservation.ticket_consumed_at:
                 evidenced_tickets = sum(
@@ -4091,10 +4092,10 @@ def coach_ticket_summary(request):
                     0,
                 )
                 if unknown_tickets:
-                    row_breakdown_map.setdefault(0, 0)
-                    row_breakdown_map[0] += unknown_tickets
-                    breakdown_map.setdefault(0, 0)
-                    breakdown_map[0] += unknown_tickets
+                    row_breakdown_map.setdefault(None, 0)
+                    row_breakdown_map[None] += unknown_tickets
+                    breakdown_map.setdefault(None, 0)
+                    breakdown_map[None] += unknown_tickets
                     row_tickets += unknown_tickets
 
             if row_tickets <= 0:
@@ -4107,14 +4108,15 @@ def coach_ticket_summary(request):
             total_amount += row_amount
 
             breakdown_items = []
-            for unit_price, ticket_count in sorted(row_breakdown_map.items(), key=lambda x: x[0]):
-                label = f"{unit_price}円券" if unit_price > 0 else "価格不明券"
+            for unit_price, ticket_count in sorted(
+                row_breakdown_map.items(), key=lambda item: (item[0] is None, item[0] or 0)
+            ):
                 breakdown_items.append(
                     {
                         "unit_price": unit_price,
-                        "label": label,
+                        "label": ticket_unit_price_label(unit_price),
                         "tickets": ticket_count,
-                        "amount": unit_price * ticket_count,
+                        "amount": (unit_price or 0) * ticket_count,
                     }
                 )
 
@@ -4134,13 +4136,15 @@ def coach_ticket_summary(request):
             )
 
     breakdown_rows = []
-    for unit_price, ticket_count in sorted(breakdown_map.items(), key=lambda x: x[0]):
+    for unit_price, ticket_count in sorted(
+        breakdown_map.items(), key=lambda item: (item[0] is None, item[0] or 0)
+    ):
         breakdown_rows.append(
             {
                 "unit_price": unit_price,
-                "label": f"{unit_price}円券" if unit_price > 0 else "価格不明券",
+                "label": ticket_unit_price_label(unit_price),
                 "tickets": ticket_count,
-                "amount": unit_price * ticket_count,
+                "amount": (unit_price or 0) * ticket_count,
             }
         )
 
@@ -4709,14 +4713,14 @@ def coach_payroll_summary(request):
             row_gross_amount = 0
 
             for consumption in active_consumptions:
-                unit_price = _money(consumption.unit_price_snapshot)
+                unit_price = consumption.unit_price_snapshot
                 tickets_used = _money(consumption.tickets_used)
 
                 row_breakdown_map.setdefault(unit_price, 0)
                 row_breakdown_map[unit_price] += tickets_used
 
                 row_tickets += tickets_used
-                row_gross_amount += unit_price * tickets_used
+                row_gross_amount += _money(unit_price) * tickets_used
 
             if reservation.participant_ticket_price_snapshot is not None:
                 row_gross_amount = _money(reservation.participant_ticket_price_snapshot)
@@ -4726,15 +4730,20 @@ def coach_payroll_summary(request):
                 total_tickets += row_tickets
                 ticket_lesson_amount += row_share_amount
 
-                for unit_price, tickets in sorted(row_breakdown_map.items(), key=lambda x: x[0]):
-                    split_amount = int((unit_price * tickets) * share_numerator / share_denominator)
+                for unit_price, tickets in sorted(
+                    row_breakdown_map.items(),
+                    key=lambda item: (item[0] is None, item[0] or 0),
+                ):
+                    split_amount = int(
+                        (_money(unit_price) * tickets) * share_numerator / share_denominator
+                    )
                     breakdown_map.setdefault(unit_price, {"tickets": 0, "amount": 0})
                     breakdown_map[unit_price]["tickets"] += tickets
                     breakdown_map[unit_price]["amount"] += split_amount
 
                     row_breakdown_items.append(
                         {
-                            "label": f"{unit_price}円券" if unit_price > 0 else "価格不明券",
+                            "label": ticket_unit_price_label(unit_price),
                             "tickets": tickets,
                             "amount": split_amount,
                         }
@@ -4801,10 +4810,12 @@ def coach_payroll_summary(request):
                     }
                 )
 
-        for unit_price, values in sorted(breakdown_map.items(), key=lambda x: x[0]):
+        for unit_price, values in sorted(
+            breakdown_map.items(), key=lambda item: (item[0] is None, item[0] or 0)
+        ):
             breakdown_rows.append(
                 {
-                    "label": f"{unit_price}円券" if unit_price > 0 else "価格不明券",
+                    "label": ticket_unit_price_label(unit_price),
                     "tickets": values["tickets"],
                     "amount": values["amount"],
                 }
@@ -8208,7 +8219,7 @@ def coach_revenue_summary(request):
             row_amount += amount
             breakdown_items.append(
                 {
-                    "label": f"{unit_price}円券" if unit_price > 0 else "価格不明券",
+                    "label": ticket_unit_price_label(consumption.unit_price_snapshot),
                     "tickets": tickets_used,
                     "amount": amount,
                 }
