@@ -420,11 +420,7 @@
                 <td>{{ purchase.purchased_at|date:"Y-m-d H:i" }}</td>
                 <td>{{ purchase.get_purchase_type_display }}{% if purchase.reversed_at %}<br><strong>承認取消済み</strong>{% endif %}</td>
                 <td>
-                  {% if purchase.unit_price > 0 %}
-                    <span class="ticket-chip">{{ purchase.unit_price }}円券</span>
-                  {% else %}
-                    <span class="ticket-chip unknown">価格不明券</span>
-                  {% endif %}
+                  <span class="ticket-chip">{{ purchase.unit_price_label }}</span>
                 </td>
                 <td>{{ purchase.total_tickets }}枚</td>
                 <td>{% widthratio purchase.total_tickets 1 purchase.unit_price %}円</td>
@@ -461,11 +457,7 @@
             <div class="mobile-info-row">
               <div class="mobile-info-label">価格帯</div>
               <div class="mobile-info-value">
-                {% if purchase.unit_price > 0 %}
-                  <span class="ticket-chip">{{ purchase.unit_price }}円券</span>
-                {% else %}
-                  <span class="ticket-chip unknown">価格不明券</span>
-                {% endif %}
+                <span class="ticket-chip">{{ purchase.unit_price_label }}</span>
               </div>
             </div>
             <div class="mobile-info-row">
@@ -531,11 +523,9 @@
                   {% endif %}
                 </td>
                 <td>
-                  {% if consumption.unit_price_snapshot > 0 %}
-                    <span class="ticket-chip">{{ consumption.unit_price_snapshot }}円券</span>
-                  {% else %}
-                    <span class="ticket-chip unknown">価格不明券</span>
-                  {% endif %}
+                  <span class="ticket-chip{% if consumption.unit_price_snapshot == None %} unknown{% endif %}">
+                    {{ consumption.unit_price_label }}
+                  </span>
                 </td>
                 <td>{{ consumption.tickets_used }}枚</td>
                 <td>
@@ -582,11 +572,9 @@
             <div class="mobile-info-row">
               <div class="mobile-info-label">価格帯</div>
               <div class="mobile-info-value">
-                {% if consumption.unit_price_snapshot > 0 %}
-                  <span class="ticket-chip">{{ consumption.unit_price_snapshot }}円券</span>
-                {% else %}
-                  <span class="ticket-chip unknown">価格不明券</span>
-                {% endif %}
+                <span class="ticket-chip{% if consumption.unit_price_snapshot == None %} unknown{% endif %}">
+                  {{ consumption.unit_price_label }}
+                </span>
               </div>
             </div>
           </div>

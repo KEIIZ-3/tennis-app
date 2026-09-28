@@ -286,8 +286,11 @@ class TicketLifecycleE2ETests(TestCase):
         self.assertEqual(response.context["total_tickets"], 3)
         self.assertEqual(response.context["total_amount"], 3600)
         self.assertEqual(
-            [(row["unit_price"], row["tickets"]) for row in response.context["breakdown_rows"]],
-            [(0, 2), (3600, 1)],
+            [
+                (row["unit_price"], row["tickets"], row["label"])
+                for row in response.context["breakdown_rows"]
+            ],
+            [(3600, 1, "3600円券"), (None, 2, "価格不明券")],
         )
 
     def test_ticket_summary_does_not_revive_refunded_or_canceled_evidence_as_unknown(self):

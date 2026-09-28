@@ -28,6 +28,12 @@ STRINGING_BASE_PRICE = 1200
 STRINGING_DELIVERY_FEE = 500
 
 
+def ticket_unit_price_label(unit_price):
+    if unit_price is None:
+        return "価格不明券"
+    return f"{unit_price}円券"
+
+
 def ensure_accounting_month_is_open(value):
     """会計対象月が締め済みなら、正本モデルの変更を拒否する。"""
     if not value:
@@ -963,9 +969,7 @@ class TicketPurchase(models.Model):
             raise ValidationError("単価は0以上にしてください。")
 
     def unit_price_label(self):
-        if self.unit_price > 0:
-            return f"{self.unit_price}円券"
-        return "価格不明券"
+        return ticket_unit_price_label(self.unit_price)
 
 
 class TicketCashReceipt(models.Model):
@@ -1144,9 +1148,7 @@ class TicketConsumption(models.Model):
         return f"{self.user} / {self.unit_price_label()} / {self.tickets_used}枚"
 
     def unit_price_label(self):
-        if self.unit_price_snapshot is not None and self.unit_price_snapshot > 0:
-            return f"{self.unit_price_snapshot}円券"
-        return "価格不明券"
+        return ticket_unit_price_label(self.unit_price_snapshot)
 
     @property
     def is_refunded(self):
@@ -2293,21 +2295,19 @@ class Reservation(models.Model, LessonTypeMixin):
     def ticket_breakdown_items(self):
         summary = {}
         for consumption in self.ticket_consumption_queryset():
-            unit_price = int(consumption.unit_price_snapshot or 0)
+            unit_price = consumption.unit_price_snapshot
             summary.setdefault(unit_price, 0)
             summary[unit_price] += int(consumption.tickets_used or 0)
 
         items = []
-        for unit_price, tickets in sorted(summary.items(), key=lambda x: (x[0],)):
-            if unit_price > 0:
-                label = f"{unit_price}円券"
-            else:
-                label = "価格不明券"
+        for unit_price, tickets in sorted(
+            summary.items(), key=lambda item: (item[0] is None, item[0] or 0)
+        ):
             items.append(
                 {
                     "unit_price": unit_price,
                     "tickets": tickets,
-                    "label": label,
+                    "label": ticket_unit_price_label(unit_price),
                 }
             )
         return items
