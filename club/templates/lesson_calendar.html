@@ -468,6 +468,41 @@
     font-weight:950;
   }
 
+  .lesson-type-badge{
+    display:inline-flex;
+    align-items:center;
+    align-self:flex-start;
+    width:fit-content;
+    max-width:100%;
+    padding:1px 5px;
+    border:1px solid #93c5fd;
+    border-radius:999px;
+    background:#eff6ff;
+    color:#1d4ed8;
+    font-size:10px;
+    font-weight:900;
+    line-height:1.25;
+    white-space:nowrap;
+  }
+
+  .lesson-type-badge.lesson-type-private{
+    border-color:#c4b5fd;
+    background:#f5f3ff;
+    color:#6d28d9;
+  }
+
+  .lesson-type-badge.lesson-type-group{
+    border-color:#86efac;
+    background:#f0fdf4;
+    color:#15803d;
+  }
+
+  .lesson-type-badge.lesson-type-event{
+    border-color:#fdba74;
+    background:#fff7ed;
+    color:#c2410c;
+  }
+
   .event-meta{
     margin-top:2px;
     color:#111827;
@@ -1369,6 +1404,7 @@
                             <a href="{{ item.calendar_url }}" data-member-list-url="{{ item.member_list_url }}" class="calendar-event {{ item.color_class }} {{ item.color_combo_class }} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}">
                               <div class="event-date">{{ item.date_label_jp }}</div>
                               <div class="event-time">{{ item.time_label }}</div>
+                              <div class="lesson-type-badge lesson-type-{{ item.lesson_type }}">{{ item.lesson_type_label }}</div>
                               {% if not item.is_private_event %}<div class="event-court">コート：{{ item.court_name }}</div>
                               <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>{% endif %}
                               <div class="lesson-status-label {% if not item.can_book %}is-unavailable{% endif %}">{{ item.customer_status_label }}</div>
@@ -1393,6 +1429,7 @@
                             <a href="{{ item.calendar_login_url }}" data-member-list-url="{{ item.member_list_url }}" class="calendar-event {{ item.color_class }} {{ item.color_combo_class }} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}">
                               <div class="event-date">{{ item.date_label_jp }}</div>
                               <div class="event-time">{{ item.time_label }}</div>
+                              <div class="lesson-type-badge lesson-type-{{ item.lesson_type }}">{{ item.lesson_type_label }}</div>
                               {% if not item.is_private_event %}<div class="event-court">コート：{{ item.court_name }}</div>
                               <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>{% endif %}
                               <div class="lesson-status-label {% if not item.can_book %}is-unavailable{% endif %}">{{ item.customer_status_label }}</div>
@@ -1417,6 +1454,7 @@
                             <a href="{{ item.calendar_unavailable_url }}" data-member-list-url="{{ item.member_list_url }}" class="calendar-event {{ item.color_class }} {{ item.color_combo_class }} {% if item.is_reserved_by_user %}is-reserved{% endif %} {% if item.is_waitlisted_by_user %}is-waitlisted{% endif %}">
                               <div class="event-date">{{ item.date_label_jp }}</div>
                               <div class="event-time">{{ item.time_label }}</div>
+                              <div class="lesson-type-badge lesson-type-{{ item.lesson_type }}">{{ item.lesson_type_label }}</div>
                               {% if not item.is_private_event %}<div class="event-court">コート：{{ item.court_name }}</div>
                               <div class="event-meta">{{ item.member_count }}/{{ item.capacity }}名</div>{% endif %}
                               <div class="lesson-status-label {% if not item.can_book %}is-unavailable{% endif %}">{{ item.customer_status_label }}</div>
@@ -1462,6 +1500,7 @@
             <div class="schedule-date">{{ item.date_label_jp }}</div>
             <div class="schedule-detail">
               <span>{{ item.time_label }}</span>
+              <span class="lesson-type-badge lesson-type-{{ item.lesson_type }}">{{ item.lesson_type_label }}</span>
               {% if not item.is_private_event %}<span class="schedule-court">コート：{{ item.court_name }}</span>
               <span class="schedule-level">{{ item.target_level_label }}</span>
               <span>参加：{{ item.member_count }}/{{ item.capacity }}名</span>

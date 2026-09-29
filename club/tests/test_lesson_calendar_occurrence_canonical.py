@@ -5,7 +5,10 @@ from django.urls import reverse
 from django.utils import timezone
 
 from club.fixed_lesson_sync_facade import synchronize_fixed_lesson_membership
+from club import lesson_execution
+from club.lesson_execution_storage import save_status
 from club.models import CoachAvailability, Court, FixedLesson, Reservation, User
+from club.settlement_models import MonthlySettlement
 
 
 class LessonCalendarOccurrenceCanonicalTests(TestCase):
@@ -44,12 +47,16 @@ class LessonCalendarOccurrenceCanonicalTests(TestCase):
             weeks_ahead=1,
         )
 
-    def _calendar_row(self):
+    def _calendar_response(self):
         response = self.client.get(
             reverse("club:lesson_calendar"),
             {"year": self.target_date.year, "month": self.target_date.month},
         )
         self.assertEqual(response.status_code, 200)
+        return response
+
+    def _calendar_row(self):
+        response = self._calendar_response()
         return next(
             row
             for row in response.context["schedule_rows"]
@@ -100,6 +107,81 @@ class LessonCalendarOccurrenceCanonicalTests(TestCase):
         self.assertEqual(row["court_name"], self.occurrence_court.name)
         self.assertEqual(row["time_label"], "11:00〜13:00")
         self.assertEqual(row["substitute_coach_name"], "代行コーチ")
+
+    def test_linked_availability_custom_court_and_group_label_are_canonical(self):
+        availability = self._create_linked_occurrence()
+        availability.lesson_type = Reservation.LESSON_GROUP
+        availability.court = None
+        availability.custom_court_name = "ミズノスポーツプラザ舞洲"
+        availability.save(update_fields=["lesson_type", "court", "custom_court_name"])
+
+        response = self._calendar_response()
+        row = next(
+            item
+            for item in response.context["schedule_rows"]
+            if item["fixed_lesson_id"] == str(self.fixed_lesson.pk)
+        )
+
+        self.assertEqual(row["court_name"], "ミズノスポーツプラザ舞洲")
+        self.assertEqual(row["lesson_type_label"], "グループレッスン")
+        self.assertContains(response, "コート：ミズノスポーツプラザ舞洲")
+        self.assertContains(
+            response,
+            '<div class="lesson-type-badge lesson-type-group">グループレッスン</div>',
+            html=True,
+        )
+
+    def test_availability_court_display_fallbacks(self):
+        availability = self._create_linked_occurrence()
+
+        self.assertEqual(self._calendar_row()["court_name"], self.occurrence_court.name)
+
+        availability.court = None
+        availability.save(update_fields=["court"])
+
+        self.assertEqual(self._calendar_row()["court_name"], "未定")
+
+    def test_general_lesson_type_label_is_rendered(self):
+        response = self._calendar_response()
+
+        self.assertContains(
+            response,
+            '<div class="lesson-type-badge lesson-type-general">一般レッスン</div>',
+            html=True,
+        )
+
+    def test_existing_closed_held_and_canceled_statuses_remain_visible(self):
+        availability = self._create_linked_occurrence()
+        availability.is_recruitment_closed = True
+        availability.save(update_fields=["is_recruitment_closed"])
+        settlement = MonthlySettlement.objects.create(
+            year=self.target_date.year,
+            month=self.target_date.month,
+        )
+        execution_key = f"fixed:{self.fixed_lesson.pk}:{self.target_date.isoformat()}"
+        save_status(
+            settlement,
+            execution_key,
+            lesson_execution.STATUS_HELD,
+            self.inoue,
+        )
+
+        held_row = self._calendar_row()
+
+        self.assertTrue(held_row["is_recruitment_closed"])
+        self.assertEqual(held_row["customer_status_label"], "実施済み 1/5名")
+
+        save_status(
+            settlement,
+            execution_key,
+            lesson_execution.STATUS_RAIN_CANCELED,
+            self.inoue,
+        )
+
+        canceled_row = self._calendar_row()
+
+        self.assertEqual(canceled_row["customer_status_label"], "雨天中止")
+        self.assertEqual(canceled_row["target_level_label"], "雨天中止")
 
     def test_availability_second_coach_overrides_empty_fixed_second_coach(self):
         self.fixed_lesson.coach_2 = None
