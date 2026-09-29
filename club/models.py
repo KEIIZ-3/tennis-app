@@ -338,6 +338,10 @@ class CoachAvailability(models.Model, LessonTypeMixin):
     )
     custom_ticket_price = models.PositiveIntegerField(default=0)
     custom_duration_hours = models.PositiveIntegerField(default=0)
+    group_tickets_per_person_per_hour = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1783,6 +1787,10 @@ class Reservation(models.Model, LessonTypeMixin):
     cancellation_reason = models.CharField(max_length=255, blank=True, default="")
     custom_ticket_price = models.PositiveIntegerField(default=0)
     custom_duration_hours = models.PositiveIntegerField(default=0)
+    group_tickets_per_person_per_hour = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+    )
     payment_status = models.CharField(
         max_length=20,
         choices=PAYMENT_STATUS_CHOICES,
@@ -1949,6 +1957,12 @@ class Reservation(models.Model, LessonTypeMixin):
 
         if self.is_preopen_cash_lesson():
             return 0
+
+        if (
+            self.lesson_type == self.LESSON_GROUP
+            and self.group_tickets_per_person_per_hour is not None
+        ):
+            return duration_hours * int(self.group_tickets_per_person_per_hour)
 
         participant_count = 1
         if self.lesson_type == self.LESSON_GROUP:
@@ -2238,6 +2252,10 @@ class Reservation(models.Model, LessonTypeMixin):
                 self.target_level_2 = availability.target_level_2
                 self.custom_ticket_price = availability.custom_ticket_price
                 self.custom_duration_hours = availability.custom_duration_hours
+                if self.group_tickets_per_person_per_hour is None:
+                    self.group_tickets_per_person_per_hour = (
+                        availability.group_tickets_per_person_per_hour
+                    )
                 if availability.substitute_coach_id:
                     self.substitute_coach = availability.substitute_coach
 

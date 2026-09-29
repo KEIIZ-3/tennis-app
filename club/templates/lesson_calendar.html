@@ -1360,7 +1360,8 @@
                     <div class="day-number">{{ day.day_number }}</div>
                     {% if day.holiday_name %}<div class="holiday-name">{{ day.holiday_name }}</div>{% endif %}
                     {% if day.can_create_single_lesson %}
-                      <a class="single-lesson-create-link" href="{% if day.is_past %}{% url 'club:completed_lesson_register' %}{% else %}{% url 'club:coach_availability_create' %}{% endif %}?date={{ day.date|date:'Y-m-d' }}&amp;source=calendar">＋ レッスン作成</a>
+                      <a class="single-lesson-create-link" href="{% if day.is_past %}{% url 'club:completed_lesson_register' %}{% else %}{% url 'club:coach_availability_create' %}{% endif %}?date={{ day.date|date:'Y-m-d' }}&amp;source=calendar">＋ 一般レッスン</a>
+                      {% if not day.is_past %}<a class="single-lesson-create-link" href="{% url 'club:group_lesson_create' %}?date={{ day.date|date:'Y-m-d' }}&amp;source=calendar">＋ グループレッスン</a>{% endif %}
                     {% endif %}
                     {% if day.items %}
                       <div class="calendar-event-list">

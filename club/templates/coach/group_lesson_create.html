@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}グループレッスン作成{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>グループレッスン作成</h1>
+  <p class="muted">選択した全参加者の予約とチケット消費をまとめて登録します。</p>
+</div>
+<div class="card">
+  <form method="post" id="group-lesson-form">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="message error">{{ form.non_field_errors }}</div>{% endif %}
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px;">
+      {% for field in form %}
+        <div class="{% if field.name|slice:':7' == 'member_' %}group-member-field{% endif %}"{% if field.name|slice:':7' == 'member_' %} data-member-index="{{ field.name|slice:'7:' }}"{% endif %}>
+          <label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="muted">（必須）</span>{% endif %}</label>
+          {{ field }}
+          {% if field.errors %}<div class="message error">{{ field.errors }}</div>{% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    <div style="margin-top:18px; display:flex; gap:10px;">
+      <button type="submit" class="btn btn-primary">登録する</button>
+      <a href="{% url 'club:lesson_calendar' %}" class="btn">カレンダーへ戻る</a>
+    </div>
+  </form>
+</div>
+<script>
+(function () {
+  const count = document.getElementById("id_customer_count");
+  const memberFields = Array.from(document.querySelectorAll(".group-member-field"));
+  function refreshMembers() {
+    const selectedCount = Number.parseInt(count.value, 10) || 0;
+    memberFields.forEach(function (wrapper) {
+      const visible = Number.parseInt(wrapper.dataset.memberIndex, 10) <= selectedCount;
+      wrapper.hidden = !visible;
+      const select = wrapper.querySelector("select");
+      if (select) {
+        select.required = visible;
+        if (!visible) select.value = "";
+      }
+    });
+  }
+  count.addEventListener("change", refreshMembers);
+  refreshMembers();
+})();
+</script>
+{% endblock %}
