@@ -6,13 +6,14 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from club.forms import GroupLessonCreationForm
+from club.forms import CoachAvailabilityForm
 from club.models import (
     CoachAvailability,
     Court,
     Reservation,
     TicketConsumption,
     TicketLedger,
+    TicketPurchase,
     User,
 )
 
@@ -40,15 +41,23 @@ class CalendarGroupLessonCreationTests(TestCase):
     def data(self, *, count=2, end_hour=10, rate=1, members=None):
         members = members or [self.member1, self.member2]
         data = {
+            "source": "calendar",
             "start_date": self.target_date.isoformat(),
             "start_hour": "9",
+            "end_date": self.target_date.isoformat(),
             "end_hour": str(end_hour),
             "coach": self.coach.pk,
             "coach_2": "",
             "substitute_coach": "",
             "court": self.court.pk,
+            "lesson_type": Reservation.LESSON_GROUP,
             "target_level": User.LEVEL_BEGINNER,
             "target_level_2": "",
+            "coach_count": 1,
+            "court_count": 1,
+            "capacity": count,
+            "custom_ticket_price": 0,
+            "custom_duration_hours": 0,
             "customer_count": str(count),
             "tickets_per_person_per_hour": str(rate),
             "note": "",
@@ -63,23 +72,28 @@ class CalendarGroupLessonCreationTests(TestCase):
             reverse("club:lesson_calendar"),
             {"year": self.target_date.year, "month": self.target_date.month},
         )
-        self.assertContains(calendar, reverse("club:group_lesson_create"))
+        self.assertContains(calendar, "＋ レッスン作成")
+        self.assertNotContains(calendar, "＋ 一般レッスン")
+        self.assertNotContains(calendar, "＋ グループレッスン")
         response = self.client.get(
-            reverse("club:group_lesson_create"), {"date": self.target_date.isoformat()}
+            reverse("club:coach_availability_create"),
+            {"date": self.target_date.isoformat(), "source": "calendar"},
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["form"]["start_date"].value(), self.target_date)
         self.client.force_login(self.member1)
-        self.assertEqual(self.client.get(reverse("club:group_lesson_create")).status_code, 403)
+        self.assertEqual(self.client.get(reverse("club:coach_availability_create")).status_code, 403)
 
     def test_count_requires_exact_distinct_members(self):
-        form = GroupLessonCreationForm(
-            data=self.data(count=2, members=[self.member1]), request_user=self.coach
+        form = CoachAvailabilityForm(
+            data=self.data(count=2, members=[self.member1]), request_user=self.coach,
+            calendar_creation=True,
         )
         self.assertFalse(form.is_valid())
         self.assertIn("顧客人数と選択メンバー数", str(form.errors))
-        duplicate = GroupLessonCreationForm(
-            data=self.data(members=[self.member1, self.member1]), request_user=self.coach
+        duplicate = CoachAvailabilityForm(
+            data=self.data(members=[self.member1, self.member1]), request_user=self.coach,
+            calendar_creation=True,
         )
         self.assertFalse(duplicate.is_valid())
         self.assertIn("同じ会員", str(duplicate.errors))
@@ -95,7 +109,7 @@ class CalendarGroupLessonCreationTests(TestCase):
                 ).update(ticket_balance=0)
                 members = [self.member1, self.member2, self.member3][:count]
                 response = self.client.post(
-                    reverse("club:group_lesson_create"),
+                    reverse("club:coach_availability_create"),
                     self.data(count=count, end_hour=end_hour, rate=rate, members=members),
                 )
                 self.assertEqual(response.status_code, 302)
@@ -111,7 +125,7 @@ class CalendarGroupLessonCreationTests(TestCase):
     def test_zero_rate_creates_no_ticket_accounting(self):
         self.client.force_login(self.coach)
         response = self.client.post(
-            reverse("club:group_lesson_create"), self.data(rate=0)
+            reverse("club:coach_availability_create"), self.data(rate=0)
         )
         self.assertEqual(response.status_code, 302)
         self.assertEqual(set(Reservation.objects.values_list("tickets_used", flat=True)), {0})
@@ -133,7 +147,7 @@ class CalendarGroupLessonCreationTests(TestCase):
             return real_create(**values)
 
         with patch("club.views.create_reservation", side_effect=fail_second):
-            response = self.client.post(reverse("club:group_lesson_create"), self.data())
+            response = self.client.post(reverse("club:coach_availability_create"), self.data())
         self.assertEqual(response.status_code, 200)
         self.assertFalse(CoachAvailability.objects.exists())
         self.assertFalse(Reservation.objects.exists())
@@ -151,3 +165,40 @@ class CalendarGroupLessonCreationTests(TestCase):
         )
         self.assertIsNone(reservation.group_tickets_per_person_per_hour)
         self.assertEqual(reservation.calculate_tickets_used(), 1)
+
+    def test_private_creation_uses_canonical_ticket_consumption(self):
+        TicketPurchase.objects.create(
+            user=self.member1,
+            total_tickets=6,
+            remaining_tickets=6,
+            unit_price=2000,
+            purchased_at=timezone.now() - timedelta(days=1),
+        )
+        self.member1.ticket_balance = 6
+        self.member1.save(update_fields=["ticket_balance"])
+        self.client.force_login(self.coach)
+        for offset, end_hour, expected_tickets in ((0, 10, 2), (1, 11, 4)):
+            with self.subTest(end_hour=end_hour):
+                target_date = self.target_date + timedelta(days=offset)
+                data = self.data(end_hour=end_hour)
+                data.update({
+                    "start_date": target_date.isoformat(),
+                    "end_date": target_date.isoformat(),
+                    "lesson_type": Reservation.LESSON_PRIVATE,
+                    "private_member": self.member1.pk,
+                })
+                response = self.client.post(
+                    reverse("club:coach_availability_create"), data
+                )
+                self.assertEqual(
+                    response.status_code,
+                    302,
+                    getattr(response.context.get("form"), "errors", "") if response.context else "",
+                )
+                reservation = Reservation.objects.get(start_at__date=target_date)
+                self.assertEqual(reservation.user, self.member1)
+                self.assertEqual(reservation.tickets_used, expected_tickets)
+                self.assertEqual(
+                    sum(reservation.ticket_consumptions.values_list("tickets_used", flat=True)),
+                    expected_tickets,
+                )
