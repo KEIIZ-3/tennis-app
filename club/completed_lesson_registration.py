@@ -37,7 +37,7 @@ def can_manage_completed_lessons(user, coach=None):
     )
 
 
-def _canceled_conflict_ids(*, coach, court, start_at, end_at):
+def _canceled_conflict_ids(*, coach, court, custom_court_name, start_at, end_at):
     """Return only overlapping occurrences with canonical non-held evidence.
 
     This is deliberately scoped to completed-lesson registration. Normal
@@ -50,7 +50,7 @@ def _canceled_conflict_ids(*, coach, court, start_at, end_at):
         ).filter(
             Q(coach=coach)
             | Q(coach_2=coach)
-            | Q(court=court)
+            | (Q(court=court) if court else Q(court__isnull=True, custom_court_name=custom_court_name))
         ).prefetch_related("reservations", "rain_refunds")
     )
     settlements = {
@@ -107,6 +107,7 @@ def _court_transfer_note(*, registration, availability, payer, amount, actor, ca
 
 @transaction.atomic
 def register_completed_lesson(*, actor, start_at, end_at, lesson_type, coach, court,
+                              custom_court_name="",
                               participants, court_cost, court_payer, note, idempotency_key):
     if not can_manage_completed_lessons(actor, coach):
         raise ValidationError("この担当コーチの実績を登録する権限がありません。")
@@ -133,17 +134,24 @@ def register_completed_lesson(*, actor, start_at, end_at, lesson_type, coach, co
     ).first()
     if existing:
         return existing, False
-    Court.objects.select_for_update().get(pk=court.pk)
+    custom_court_name = (custom_court_name or "").strip()
+    if court:
+        Court.objects.select_for_update().get(pk=court.pk)
+        custom_court_name = ""
+    elif not custom_court_name:
+        raise ValidationError("その他のコート名を入力してください。")
     User.objects.select_for_update().get(pk=coach.pk)
     availability = CoachAvailability(
-        coach=coach, court=court, lesson_type=lesson_type, start_at=start_at,
+        coach=coach, court=court, custom_court_name=custom_court_name,
+        lesson_type=lesson_type, start_at=start_at,
         end_at=end_at, capacity=len(participants), target_level=User.LEVEL_ALL,
         custom_duration_hours=max(int((end_at-start_at).total_seconds() // 3600), 1),
         is_recruitment_closed=True, status=CoachAvailability.STATUS_APPROVED,
         note=(note or "").strip(),
     )
     availability._validated_conflict_exclusion_ids = _canceled_conflict_ids(
-        coach=coach, court=court, start_at=start_at, end_at=end_at
+        coach=coach, court=court, custom_court_name=custom_court_name,
+        start_at=start_at, end_at=end_at
     )
     availability.save()
     if availability.capacity != len(participants):
@@ -171,6 +179,7 @@ def register_completed_lesson(*, actor, start_at, end_at, lesson_type, coach, co
             raise ValidationError("チケット枚数または金額は1以上で入力してください。")
         reservation = Reservation(
             user=user, guest_name=guest_name, coach=coach, court=court,
+            custom_court_name=custom_court_name,
             availability=availability, lesson_type=lesson_type,
             target_level=User.LEVEL_ALL, start_at=start_at, end_at=end_at,
             status=Reservation.STATUS_ACTIVE,

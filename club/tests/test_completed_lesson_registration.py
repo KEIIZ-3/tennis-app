@@ -90,7 +90,9 @@ class CompletedLessonRegistrationTests(TestCase):
     def test_ticket_rule_helper_matches_reservation_canonical_rules(self):
         self.assertEqual(standard_ticket_count(lesson_type="private", duration_hours=2), 4)
         self.assertEqual(standard_ticket_count(lesson_type="private", duration_hours=1), 2)
-        self.assertEqual(standard_ticket_count(lesson_type="group", duration_hours=2, participant_count=2), 4)
+        self.assertEqual(standard_ticket_count(lesson_type="group", duration_hours=2, participant_count=2), 2)
+        self.assertEqual(standard_ticket_count(lesson_type="group", duration_hours=1, participant_count=3), 1)
+        self.assertEqual(standard_ticket_count(lesson_type="group", duration_hours=3, participant_count=2), 3)
         self.assertEqual(standard_ticket_count(lesson_type="general", duration_hours=2), 1)
         self.assertEqual(standard_ticket_count(lesson_type="event", duration_hours=2), 0)
 

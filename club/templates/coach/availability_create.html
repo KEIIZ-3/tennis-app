@@ -15,7 +15,7 @@
         {% endif %}
       </h1>
       <p class="muted" style="margin:8px 0 0;">
-        {% if is_calendar_source %}レッスン種別を選択すると、必要な入力項目へ切り替わります。{% else %}一般レッスンは2時間 / 1枚、プライベートは1時間 / 2枚、グループは1時間 / 人数分、イベントは都度設定です。{% endif %}
+        {% if is_calendar_source %}レッスン種別を選択すると、必要な入力項目へ切り替わります。{% else %}一般レッスンは2時間 / 1枚、プライベートは1時間 / 2枚、グループは1人あたり1時間 / 1枚、イベントは都度設定です。{% endif %}
       </p>
     </div>
     <div>
@@ -111,10 +111,11 @@
       const courtCount = document.getElementById("id_court_count");
       const capacity = document.getElementById("id_capacity");
       const customerCount = document.getElementById("id_customer_count");
+      const court = document.getElementById("id_court_selection");
       const wrappers = Array.from(document.querySelectorAll(".availability-field"));
       const generalFields = new Set(["coach_2", "coach_count", "court_count", "capacity"]);
       const privateFields = new Set(["private_member"]);
-      const groupFields = new Set(["customer_count", "tickets_per_person_per_hour"]);
+      const groupFields = new Set(["customer_count"]);
       const calendarHiddenFields = new Set(["custom_ticket_price", "custom_duration_hours"]);
       function refreshFields() {
         const selectedType = lessonType ? lessonType.value : "general";
@@ -125,12 +126,13 @@
           if (generalFields.has(name)) visible = selectedType === "general";
           if (privateFields.has(name)) visible = selectedType === "private";
           if (groupFields.has(name)) visible = selectedType === "group";
+          if (name === "custom_court_name") visible = court && court.value === "other";
           if (name.startsWith("member_")) {
             visible = selectedType === "group" && Number.parseInt(wrapper.dataset.memberIndex, 10) <= selectedCount;
           }
           wrapper.hidden = !visible;
           const control = wrapper.querySelector("select, input, textarea");
-          if (control && (name === "private_member" || name.startsWith("member_"))) {
+          if (control && (name === "private_member" || name === "custom_court_name" || name.startsWith("member_"))) {
             control.required = visible;
           }
         });
@@ -146,6 +148,7 @@
       if (coach2) coach2.addEventListener("change", updateGeneralLessonTotals);
       if (lessonType) lessonType.addEventListener("change", refreshFields);
       if (customerCount) customerCount.addEventListener("change", refreshFields);
+      if (court) court.addEventListener("change", refreshFields);
       refreshFields();
       startHour.addEventListener("change", function () {
         const hour = Number.parseInt(startHour.value, 10);

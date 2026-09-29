@@ -307,8 +307,11 @@ class CoachAvailability(models.Model, LessonTypeMixin):
     court = models.ForeignKey(
         Court,
         on_delete=models.CASCADE,
+        null=True,
+        blank=True,
         related_name="coach_availabilities",
     )
+    custom_court_name = models.CharField(max_length=255, blank=True, default="")
     lesson_type = models.CharField(
         max_length=20,
         choices=LessonTypeMixin.LESSON_TYPE_CHOICES,
@@ -348,7 +351,10 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         ordering = ["start_at", "coach_id", "court_id"]
 
     def __str__(self):
-        return f"{self.coach} / {self.court} / {self.get_lesson_type_display()} / {self.start_at:%Y-%m-%d %H:%M}"
+        return f"{self.coach} / {self.court_display()} / {self.get_lesson_type_display()} / {self.start_at:%Y-%m-%d %H:%M}"
+
+    def court_display(self):
+        return self.custom_court_name or (str(self.court) if self.court else "未定")
 
     def duration_hours(self):
         if not self.start_at or not self.end_at:
@@ -520,24 +526,25 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         if overlap_qs.exists():
             raise ValidationError("同じコーチで重複する空き時間があります。")
 
-        court_overlap_qs = CoachAvailability.objects.filter(
-            court=self.court,
-            start_at__lt=self.end_at,
-            end_at__gt=self.start_at,
-        )
-        if self.pk:
-            court_overlap_qs = court_overlap_qs.exclude(pk=self.pk)
-        if conflict_exclusion_ids:
-            court_overlap_qs = court_overlap_qs.exclude(pk__in=conflict_exclusion_ids)
-        used_court_count = court_overlap_qs.aggregate(total=Sum("court_count"))["total"] or 0
-        added_court_count = int(self.court_count or 0)
-        available_court_count = int(self.court.available_court_count or 0)
-        if used_court_count + added_court_count > available_court_count:
-            raise ValidationError(
-                f"この時間帯は{self.court.name}の利用可能コート面数を超えています。"
-                f"利用中 {used_court_count}面 / 追加 {added_court_count}面 / "
-                f"利用可能 {available_court_count}面"
+        if self.court_id:
+            court_overlap_qs = CoachAvailability.objects.filter(
+                court=self.court,
+                start_at__lt=self.end_at,
+                end_at__gt=self.start_at,
             )
+            if self.pk:
+                court_overlap_qs = court_overlap_qs.exclude(pk=self.pk)
+            if conflict_exclusion_ids:
+                court_overlap_qs = court_overlap_qs.exclude(pk__in=conflict_exclusion_ids)
+            used_court_count = court_overlap_qs.aggregate(total=Sum("court_count"))["total"] or 0
+            added_court_count = int(self.court_count or 0)
+            available_court_count = int(self.court.available_court_count or 0)
+            if used_court_count + added_court_count > available_court_count:
+                raise ValidationError(
+                    f"この時間帯は{self.court.name}の利用可能コート面数を超えています。"
+                    f"利用中 {used_court_count}面 / 追加 {added_court_count}面 / "
+                    f"利用可能 {available_court_count}面"
+                )
 
     def save(self, *args, **kwargs):
         update_fields = kwargs.get("update_fields")
@@ -1732,8 +1739,11 @@ class Reservation(models.Model, LessonTypeMixin):
     court = models.ForeignKey(
         Court,
         on_delete=models.CASCADE,
+        null=True,
+        blank=True,
         related_name="reservations",
     )
+    custom_court_name = models.CharField(max_length=255, blank=True, default="")
     availability = models.ForeignKey(
         CoachAvailability,
         on_delete=models.SET_NULL,
@@ -1992,6 +2002,9 @@ class Reservation(models.Model, LessonTypeMixin):
             participant_count=participant_count,
             custom_ticket_count=self.custom_ticket_price,
         )
+
+    def court_display(self):
+        return self.custom_court_name or (str(self.court) if self.court else "未定")
 
     def matching_availability(self):
         if self.availability_id:

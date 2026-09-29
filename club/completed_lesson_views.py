@@ -89,12 +89,21 @@ def register(request):
                 })
             coach = coaches.get(pk=request.POST.get("coach"))
             court_payer = coaches.get(pk=request.POST.get("court_payer"))
+            court_value = request.POST.get("court")
+            custom_court_name = (request.POST.get("custom_court_name") or "").strip()
+            if court_value == "other":
+                court = None
+                if not custom_court_name:
+                    raise ValidationError("その他のコート名を入力してください。")
+            else:
+                court = Court.objects.get(pk=court_value, is_active=True)
+                custom_court_name = ""
             registration, created = register_completed_lesson(
                 actor=request.user,
                 start_at=_parse_datetime(request.POST.get("date"), request.POST.get("start_time")),
                 end_at=_parse_datetime(request.POST.get("date"), request.POST.get("end_time")),
                 lesson_type=request.POST.get("lesson_type"), coach=coach,
-                court=Court.objects.get(pk=request.POST.get("court")), participants=participants,
+                court=court, custom_court_name=custom_court_name, participants=participants,
                 court_cost=request.POST.get("court_cost", 0), court_payer=court_payer,
                 note=request.POST.get("note", ""), idempotency_key=token,
             )
@@ -103,7 +112,8 @@ def register(request):
         except (ValidationError, ValueError, TypeError, User.DoesNotExist, Court.DoesNotExist) as exc:
             messages.error(request, exc.messages[0] if getattr(exc, "messages", None) else "入力内容を確認してください。")
     return render(request, "coach/completed_lesson_register.html", {
-        "members": members, "member_options": member_options, "coaches": coaches, "courts": Court.objects.all(),
+        "members": members, "member_options": member_options, "coaches": coaches,
+        "courts": Court.objects.filter(is_active=True).exclude(name="コート未定（後日決定）"),
         "lesson_types": LessonTypeMixin.LESSON_TYPE_CHOICES,
         "participant_range": range(10), "idempotency_key": token,
         "selected_date": selected_date, "start_time": start_time, "end_time": end_time,
