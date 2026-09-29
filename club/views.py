@@ -1918,6 +1918,13 @@ def lesson_calendar_view(request):
         availability=None,
         participant_user_ids=(),
     ):
+        if availability is not None:
+            court_name = availability.court_display()
+        elif fixed_lesson is not None:
+            court_name = fixed_lesson.court_display()
+        else:
+            court_name = str(court) if court else "未定"
+
         start_local = _local_dt(start_at)
         end_local = _local_dt(end_at)
         target_date = start_local.date()
@@ -2093,7 +2100,8 @@ def lesson_calendar_view(request):
             "normal_coach_name": _display_name(coach),
             "substitute_coach_name": _display_name(substitute_coach) if substitute_coach else "",
             "has_substitute": bool(substitute_coach),
-            "court_name": str(court) if court else "未定",
+            "court_name": court_name,
+            "lesson_type": lesson_type,
             "lesson_type_label": lesson_type_label,
             "target_level_label": (
                 ("中止" if cancellation_type == "other" else "雨天中止")

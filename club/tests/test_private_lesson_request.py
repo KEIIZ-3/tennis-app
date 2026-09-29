@@ -242,7 +242,13 @@ class PrivateLessonRequestTests(TestCase):
         self.assertEqual([row["id"] for row in private_rows], [f"private-{active.pk}"])
         self.assertFalse(private_rows[0]["can_book"])
         self.assertEqual(private_rows[0]["court_name"], "")
+        self.assertEqual(private_rows[0]["lesson_type_label"], "プライベートレッスン")
         content = response.content.decode()
+        self.assertContains(
+            response,
+            '<div class="lesson-type-badge lesson-type-private">プライベートレッスン</div>',
+            html=True,
+        )
         self.assertNotIn(self.member.full_name, content)
         self.assertNotIn(pending.requested_court_note, content)
         self.assertNotIn(f"private-{pending.pk}", content)
