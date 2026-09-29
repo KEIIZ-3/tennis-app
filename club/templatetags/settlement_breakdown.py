@@ -8,11 +8,38 @@ from club.models import CoachExpense, RainRefund
 register = template.Library()
 
 
+REIMBURSEMENT_BREAKDOWN_FIELDS = (
+    ("court_reimbursement", "コート代立替返還"),
+    ("ball_expense_reimbursement", "ボール代立替返還"),
+    ("other_expense_reimbursement", "その他経費立替返還"),
+    ("rain_refund_reimbursement", "雨天中止コート代返金"),
+    ("shop_procurement_reimbursement", "Shop仕入立替返還"),
+)
+
+
 def _money(value):
     try:
         return int(value or 0)
     except (TypeError, ValueError):
         return 0
+
+
+@register.inclusion_tag("coach/_reimbursement_breakdown.html")
+def reimbursement_breakdown(row):
+    row = row or {}
+    items = [
+        {"label": label, "amount": _money(row.get(field_name))}
+        for field_name, label in REIMBURSEMENT_BREAKDOWN_FIELDS
+        if _money(row.get(field_name)) != 0
+    ]
+    canonical_total = _money(row.get("wallet_reimbursement"))
+    breakdown_total = sum(item["amount"] for item in items)
+    return {
+        "items": items,
+        "canonical_total": canonical_total,
+        "breakdown_total": breakdown_total,
+        "has_mismatch": breakdown_total != canonical_total,
+    }
 
 
 def _split_amount(amount, coach_ids):

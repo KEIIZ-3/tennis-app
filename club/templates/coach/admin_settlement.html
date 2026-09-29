@@ -42,6 +42,12 @@
   .money-row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid #f1f5f9;font-size:13px}
   .money-row span{color:#64748b;font-weight:800}.money-row strong{white-space:nowrap;color:#0f172a}
   .money-row.plus strong{color:#047857}.money-row.minus strong{color:#b91c1c}
+  .money-row.reimbursement-total{margin-top:3px;padding:10px 9px;border-top:1px solid #bbf7d0;background:#f0fdf4;border-radius:9px;font-size:14px}
+  .money-row.reimbursement-total span{color:#166534;font-weight:1000}.money-row.reimbursement-total strong{color:#047857;font-weight:1000}
+  .reimbursement-breakdown{margin:0 9px 4px;padding:5px 0 5px 13px;border-left:2px solid #cbd5e1}
+  .reimbursement-item{display:flex;justify-content:space-between;gap:10px;padding:4px 0;color:#64748b;font-size:12px}
+  .reimbursement-item span{font-weight:750}.reimbursement-item strong{white-space:nowrap;color:#475569;font-weight:850}
+  .reimbursement-warning{margin:4px 0 0;color:#b45309;font-size:11px;font-weight:850;line-height:1.5}
   .money-row.total{margin-top:3px;padding-top:11px;border-top:2px solid #cbd5e1;font-size:15px}.money-row.total span,.money-row.total strong{color:#0f172a;font-weight:1000}
   .money-row.unpaid strong{color:#c2410c}
   .profit-total{margin-top:12px;padding:12px;border-radius:13px;background:#f8fafc;text-align:center}
@@ -220,10 +226,9 @@
             {% if row.is_contractor_coach %}<div class="money-row plus"><span>業務委託報酬</span><strong>+{{ row.contractor_hourly_pay_amount }}円</strong></div>{% endif %}
             <div class="money-row minus"><span>自身のコート代負担</span><strong>-{{ row.court_cost_burden|default:0 }}円</strong></div>
             {% court_cost_breakdown settlement row %}
-            {% if row.rain_refund_reimbursement %}<div class="money-row plus"><span>雨天中止コート代返金</span><strong>+{{ row.rain_refund_reimbursement }}円</strong></div>{% endif %}
             <div class="money-row minus"><span>共通経費負担</span><strong>-{{ row.ball_expense_burden|default:0|add:row.other_expense_burden|default:0 }}円</strong></div>
-            <div class="money-row plus"><span>経費立替付与合計</span><strong>+{{ row.wallet_reimbursement|default:0 }}円</strong></div>
-            <div class="money-row plus"><span>Shop仕入立替返還</span><strong>+{{ row.shop_procurement_reimbursement|default:0 }}円</strong></div>
+            <div class="money-row reimbursement-total"><span>経費立替付与合計</span><strong>+{{ row.wallet_reimbursement|default:0 }}円</strong></div>
+            {% reimbursement_breakdown row %}
             <div class="money-row minus"><span>業務委託費負担</span><strong>-{{ row.contractor_cost_burden|default:0 }}円</strong></div>
             <div class="money-row"><span>前月精算繰越（＋未払い／－翌月調整）</span><strong>{{ row.salary_carry_in|default:0|stringformat:"+d" }}円</strong></div>
             {% if row.wallet_balance_adjustment %}<div class="money-row"><span>財布残高調整</span><strong>{{ row.wallet_balance_adjustment }}円</strong></div>{% endif %}
