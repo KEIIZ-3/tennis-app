@@ -203,10 +203,26 @@ class LineProfileCompletionForm(forms.ModelForm):
 
 
 class CoachAvailabilityForm(forms.ModelForm):
+    CUSTOMER_COUNT_CHOICES = [(value, f"{value}名") for value in range(2, 11)]
+    TICKET_RATE_CHOICES = [(value, f"{value}枚") for value in range(5)]
+    MAX_PARTICIPANTS = 10
+
     start_date = forms.DateField(label="開始日", widget=forms.DateInput(attrs={"type": "date"}))
     start_hour = forms.ChoiceField(label="開始時間", choices=START_HOUR_CHOICES)
     end_date = forms.DateField(label="終了日", widget=forms.DateInput(attrs={"type": "date"}))
     end_hour = forms.ChoiceField(label="終了時間", choices=END_HOUR_CHOICES)
+    private_member = forms.ModelChoiceField(
+        label="参加者", queryset=User.objects.none(), required=False
+    )
+    customer_count = forms.TypedChoiceField(
+        label="顧客人数", choices=CUSTOMER_COUNT_CHOICES, coerce=int, required=False
+    )
+    tickets_per_person_per_hour = forms.TypedChoiceField(
+        label="1人あたり1時間あたり消費チケット枚数",
+        choices=TICKET_RATE_CHOICES,
+        coerce=int,
+        required=False,
+    )
 
     class Meta:
         model = CoachAvailability
@@ -236,6 +252,7 @@ class CoachAvailabilityForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         self.request_user = kwargs.pop("request_user", None)
+        self.calendar_creation = kwargs.pop("calendar_creation", False)
         super().__init__(*args, **kwargs)
         coach_queryset = User.objects.filter(role__in=User.COACH_ROLE_VALUES).order_by("username", "id")
         self.fields["coach"].queryset = coach_queryset
@@ -259,6 +276,30 @@ class CoachAvailabilityForm(forms.ModelForm):
         self.fields["custom_ticket_price"].label = "イベント用チケット価格"
         self.fields["custom_duration_hours"].label = "イベント用時間（時間）"
         self.fields["lesson_type"].initial = CoachAvailability.LESSON_GENERAL
+        if self.calendar_creation:
+            self.fields["lesson_type"].choices = [
+                (Reservation.LESSON_GENERAL, "一般レッスン"),
+                (Reservation.LESSON_PRIVATE, "プライベートレッスン"),
+                (Reservation.LESSON_GROUP, "グループレッスン"),
+            ]
+            self.fields["customer_count"].initial = 2
+            self.fields["tickets_per_person_per_hour"].initial = 1
+            participants = User.objects.filter(
+                role__in=User.LESSON_PARTICIPANT_ROLE_VALUES,
+                is_active=True,
+            ).order_by("full_name", "username", "id")
+            self.fields["private_member"].queryset = participants
+            for index in range(1, self.MAX_PARTICIPANTS + 1):
+                self.fields[f"member_{index}"] = forms.ModelChoiceField(
+                    label=f"参加者{index}", queryset=participants, required=False
+                )
+        else:
+            for field_name in (
+                "private_member",
+                "customer_count",
+                "tickets_per_person_per_hour",
+            ):
+                self.fields.pop(field_name)
         self.fields["substitute_coach"].help_text = "その日のみ代行するコーチを設定できます。未設定なら通常担当のままです。"
         self.fields["coach_count"].help_text = "一般レッスンは担当コーチ1名につきコート1面・定員5名です。2名選択時は2面・10名になります。"
         self.fields["court_count"].help_text = "一般レッスンではコーチ人数に合わせて自動調整されます。"
@@ -370,10 +411,32 @@ class CoachAvailabilityForm(forms.ModelForm):
             cleaned_data["coach_count"] = 1
             cleaned_data["court_count"] = 1
             cleaned_data["capacity"] = 1
+            cleaned_data["coach_2"] = None
         elif lesson_type == Reservation.LESSON_GROUP:
-            cleaned_data["coach_count"] = 1
+            cleaned_data["coach_count"] = 2 if coach_2 else 1
             cleaned_data["court_count"] = 1
-            if int(cleaned_data.get("capacity") or 0) < 2:
+            if self.calendar_creation:
+                customer_count = cleaned_data.get("customer_count")
+                members = [
+                    cleaned_data.get(f"member_{index}")
+                    for index in range(1, self.MAX_PARTICIPANTS + 1)
+                    if cleaned_data.get(f"member_{index}") is not None
+                ]
+                if customer_count is None:
+                    self.add_error("customer_count", "顧客人数を選択してください。")
+                elif len(members) != customer_count:
+                    raise forms.ValidationError("顧客人数と選択メンバー数を一致させてください。")
+                member_ids = [member.pk for member in members]
+                if len(member_ids) != len(set(member_ids)):
+                    raise forms.ValidationError("同じ会員を複数の参加者に選択できません。")
+                if cleaned_data.get("tickets_per_person_per_hour") is None:
+                    self.add_error(
+                        "tickets_per_person_per_hour",
+                        "1人あたりの消費チケット枚数を選択してください。",
+                    )
+                cleaned_data["members"] = members
+                cleaned_data["capacity"] = customer_count or 2
+            elif int(cleaned_data.get("capacity") or 0) < 2:
                 self.add_error("capacity", "グループレッスンの定員は2名以上にしてください。")
         elif lesson_type == Reservation.LESSON_EVENT:
             cleaned_data["coach_count"] = 1
@@ -381,6 +444,11 @@ class CoachAvailabilityForm(forms.ModelForm):
 
         cleaned_data["start_at"] = start_at
         cleaned_data["end_at"] = end_at
+        if self.calendar_creation and lesson_type == Reservation.LESSON_PRIVATE:
+            private_member = cleaned_data.get("private_member")
+            if private_member is None:
+                self.add_error("private_member", "参加者を選択してください。")
+            cleaned_data["members"] = [private_member] if private_member else []
         return cleaned_data
 
     def save(self, commit=True):
@@ -392,113 +460,13 @@ class CoachAvailabilityForm(forms.ModelForm):
         instance.capacity = self.cleaned_data.get("capacity") or instance.capacity
         instance.substitute_coach = self.cleaned_data.get("substitute_coach")
         instance.coach_2 = self.cleaned_data.get("coach_2")
+        if instance.lesson_type == Reservation.LESSON_GROUP and self.calendar_creation:
+            instance.group_tickets_per_person_per_hour = self.cleaned_data.get(
+                "tickets_per_person_per_hour"
+            )
         if commit:
             instance.save()
         return instance
-
-
-class GroupLessonCreationForm(forms.Form):
-    CUSTOMER_COUNT_CHOICES = [(value, f"{value}名") for value in range(2, 11)]
-    TICKET_RATE_CHOICES = [(value, f"{value}枚") for value in range(5)]
-    MAX_PARTICIPANTS = 10
-
-    start_date = forms.DateField(label="日付", widget=forms.DateInput(attrs={"type": "date"}))
-    start_hour = forms.ChoiceField(label="開始時刻", choices=START_HOUR_CHOICES)
-    end_hour = forms.ChoiceField(label="終了時刻", choices=END_HOUR_CHOICES)
-    coach = forms.ModelChoiceField(label="担当コーチ1", queryset=User.objects.none())
-    coach_2 = forms.ModelChoiceField(
-        label="担当コーチ2", queryset=User.objects.none(), required=False
-    )
-    substitute_coach = forms.ModelChoiceField(
-        label="代行コーチ（その日だけ）", queryset=User.objects.none(), required=False
-    )
-    court = forms.ModelChoiceField(label="コート", queryset=Court.objects.none())
-    target_level = forms.ChoiceField(label="対象レベル", choices=User.TARGET_LEVEL_CHOICES)
-    target_level_2 = forms.ChoiceField(
-        label="第2対象レベル", choices=User.OPTIONAL_TARGET_LEVEL_CHOICES, required=False
-    )
-    customer_count = forms.TypedChoiceField(
-        label="顧客人数", choices=CUSTOMER_COUNT_CHOICES, coerce=int
-    )
-    tickets_per_person_per_hour = forms.TypedChoiceField(
-        label="1人あたり1時間あたり消費チケット枚数",
-        choices=TICKET_RATE_CHOICES,
-        coerce=int,
-    )
-    note = forms.CharField(label="メモ", max_length=255, required=False)
-
-    def __init__(self, *args, request_user=None, **kwargs):
-        self.request_user = request_user
-        super().__init__(*args, **kwargs)
-        coaches = User.objects.filter(role__in=User.COACH_ROLE_VALUES).order_by("username", "id")
-        if (
-            request_user
-            and not request_user.is_superuser
-            and not request_user.is_staff
-            and request_user.role in User.COACH_ROLE_VALUES
-        ):
-            coaches = coaches.filter(pk=request_user.pk)
-            self.fields["coach"].initial = request_user
-        for name in ("coach", "coach_2", "substitute_coach"):
-            self.fields[name].queryset = coaches
-        self.fields["court"].queryset = Court.objects.filter(is_active=True).order_by("name")
-        participants = User.objects.filter(
-            role__in=User.LESSON_PARTICIPANT_ROLE_VALUES,
-            is_active=True,
-        ).order_by("full_name", "username", "id")
-        for index in range(1, self.MAX_PARTICIPANTS + 1):
-            self.fields[f"member_{index}"] = forms.ModelChoiceField(
-                label=f"参加者{index}", queryset=participants, required=False
-            )
-
-    @staticmethod
-    def _aware(target_date, hour):
-        value = datetime.combine(target_date, datetime.min.time()).replace(hour=int(hour))
-        return timezone.make_aware(value) if timezone.is_naive(value) else value
-
-    def clean(self):
-        cleaned = super().clean()
-        target_date = cleaned.get("start_date")
-        start_hour = cleaned.get("start_hour")
-        end_hour = cleaned.get("end_hour")
-        count = cleaned.get("customer_count")
-        if target_date and target_date < timezone.localdate():
-            self.add_error("start_date", "過去の日付には新しいグループレッスンを登録できません。")
-        if target_date and start_hour and end_hour:
-            cleaned["start_at"] = self._aware(target_date, start_hour)
-            cleaned["end_at"] = self._aware(target_date, end_hour)
-        members = [
-            cleaned.get(f"member_{index}")
-            for index in range(1, self.MAX_PARTICIPANTS + 1)
-            if cleaned.get(f"member_{index}") is not None
-        ]
-        if count is not None and len(members) != count:
-            raise forms.ValidationError("顧客人数と選択メンバー数を一致させてください。")
-        member_ids = [member.pk for member in members]
-        if len(member_ids) != len(set(member_ids)):
-            raise forms.ValidationError("同じ会員を複数の参加者に選択できません。")
-        coach = cleaned.get("coach")
-        coach_2 = cleaned.get("coach_2")
-        if coach and coach_2 and coach.pk == coach_2.pk:
-            self.add_error("coach_2", "担当コーチ1と異なるコーチを選択してください。")
-        substitute = cleaned.get("substitute_coach")
-        if coach and substitute and coach.pk == substitute.pk:
-            cleaned["substitute_coach"] = None
-        cleaned["members"] = members
-        return cleaned
-
-    def build_availability(self):
-        data = self.cleaned_data
-        return CoachAvailability(
-            coach=data["coach"], coach_2=data.get("coach_2"),
-            substitute_coach=data.get("substitute_coach"), court=data["court"],
-            lesson_type=CoachAvailability.LESSON_GROUP,
-            target_level=data["target_level"], target_level_2=data.get("target_level_2") or "",
-            start_at=data["start_at"], end_at=data["end_at"],
-            capacity=data["customer_count"], coach_count=2 if data.get("coach_2") else 1,
-            court_count=1, note=data.get("note") or "",
-            group_tickets_per_person_per_hour=data["tickets_per_person_per_hour"],
-        )
 
 
 class ReservationCreateForm(forms.ModelForm):

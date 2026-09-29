@@ -77,6 +77,9 @@ class CalendarSingleLessonCreationTests(TestCase):
         )
         expected_query = f"date={self.target_date.isoformat()}&amp;source=calendar"
         self.assertContains(calendar_response, expected_query)
+        self.assertContains(calendar_response, "＋ レッスン作成")
+        self.assertNotContains(calendar_response, "＋ 一般レッスン")
+        self.assertNotContains(calendar_response, "＋ グループレッスン")
 
         response = self.client.get(
             reverse("club:coach_availability_create"),
@@ -88,6 +91,10 @@ class CalendarSingleLessonCreationTests(TestCase):
         self.assertEqual(form["end_date"].value(), self.target_date)
         self.assertEqual(form["lesson_type"].value(), CoachAvailability.LESSON_GENERAL)
         self.assertEqual(form["coach"].value(), self.coach.pk)
+        self.assertEqual(
+            [value for value, _label in form.fields["lesson_type"].choices],
+            [Reservation.LESSON_GENERAL, Reservation.LESSON_PRIVATE, Reservation.LESSON_GROUP],
+        )
         self.assertContains(response, 'name="source" value="calendar"')
         for field_name in (
             "target_level", "target_level_2", "coach", "coach_2",
@@ -253,7 +260,7 @@ class CalendarSingleLessonCreationTests(TestCase):
             reverse("club:coach_availability_create"),
             {"date": self.target_date.isoformat(), "source": "calendar"},
         )
-        self.assertContains(response, "const assistedEndHour = hour + 2;")
+        self.assertContains(response, 'lessonType.value === "general" ? 2 : 1')
         self.assertContains(response, "assistedEndHour > 21")
 
     def test_model_rejects_coach_overlap_and_allows_court_sharing_within_capacity(self):

@@ -1,19 +1,21 @@
 {% extends "base.html" %}
-{% block title %}{% if is_edit %}コーチスケジュール編集{% else %}コーチスケジュール登録{% endif %}{% endblock %}
+{% block title %}{% if is_calendar_source %}レッスン作成{% elif is_edit %}コーチスケジュール編集{% else %}コーチスケジュール登録{% endif %}{% endblock %}
 
 {% block content %}
 <div class="card">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
     <div>
       <h1 style="margin:0;">
-        {% if is_edit %}
+        {% if is_calendar_source %}
+          レッスン作成
+        {% elif is_edit %}
           コーチスケジュール編集
         {% else %}
           コーチスケジュール登録
         {% endif %}
       </h1>
       <p class="muted" style="margin:8px 0 0;">
-        一般レッスンは2時間 / 1枚、プライベートは1時間 / 2枚、グループは1時間 / 人数分、イベントは都度設定です。
+        {% if is_calendar_source %}レッスン種別を選択すると、必要な入力項目へ切り替わります。{% else %}一般レッスンは2時間 / 1枚、プライベートは1時間 / 2枚、グループは1時間 / 人数分、イベントは都度設定です。{% endif %}
       </p>
     </div>
     <div>
@@ -23,7 +25,7 @@
 </div>
 
 <div class="card">
-  <div style="padding:14px 16px; border:1px solid #fef3c7; background:#fffbeb; border-radius:10px; margin-bottom:18px;">
+  {% if not is_calendar_source %}<div style="padding:14px 16px; border:1px solid #fef3c7; background:#fffbeb; border-radius:10px; margin-bottom:18px;">
     <div style="font-weight:700; margin-bottom:6px;">入力のポイント</div>
     <ul style="margin:0; padding-left:18px; line-height:1.8; color:#666;">
       <li>イベント以外は通常ルールでチケット消費されます。</li>
@@ -31,7 +33,7 @@
       <li>イベント以外では、この価格欄は 0 のままで問題ありません。</li>
       <li>代行コーチを設定すると、その時間枠に紐づく予約へ自動反映されます。</li>
     </ul>
-  </div>
+  </div>{% endif %}
 
   <form method="post">
     {% csrf_token %}
@@ -45,7 +47,7 @@
 
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px;">
       {% for field in form %}
-        <div>
+        <div class="availability-field{% if field.name|slice:':7' == 'member_' %} group-member-field{% endif %}" data-field-name="{{ field.name }}"{% if field.name|slice:':7' == 'member_' %} data-member-index="{{ field.name|slice:'7:' }}"{% endif %}>
           <label for="{{ field.id_for_label }}">
             {{ field.label }}
             {% if field.field.required %}
@@ -98,6 +100,7 @@
 {% if is_calendar_source %}
   <script>
     (function () {
+      const lessonType = document.getElementById("id_lesson_type");
       const startHour = document.getElementById("id_start_hour");
       const endHour = document.getElementById("id_end_hour");
       const startDate = document.getElementById("id_start_date");
@@ -107,17 +110,46 @@
       const coachCount = document.getElementById("id_coach_count");
       const courtCount = document.getElementById("id_court_count");
       const capacity = document.getElementById("id_capacity");
+      const customerCount = document.getElementById("id_customer_count");
+      const wrappers = Array.from(document.querySelectorAll(".availability-field"));
+      const generalFields = new Set(["coach_2", "coach_count", "court_count", "capacity"]);
+      const privateFields = new Set(["private_member"]);
+      const groupFields = new Set(["customer_count", "tickets_per_person_per_hour"]);
+      const calendarHiddenFields = new Set(["custom_ticket_price", "custom_duration_hours"]);
+      function refreshFields() {
+        const selectedType = lessonType ? lessonType.value : "general";
+        const selectedCount = customerCount ? Number.parseInt(customerCount.value, 10) || 0 : 0;
+        wrappers.forEach(function (wrapper) {
+          const name = wrapper.dataset.fieldName;
+          let visible = !calendarHiddenFields.has(name);
+          if (generalFields.has(name)) visible = selectedType === "general";
+          if (privateFields.has(name)) visible = selectedType === "private";
+          if (groupFields.has(name)) visible = selectedType === "group";
+          if (name.startsWith("member_")) {
+            visible = selectedType === "group" && Number.parseInt(wrapper.dataset.memberIndex, 10) <= selectedCount;
+          }
+          wrapper.hidden = !visible;
+          const control = wrapper.querySelector("select, input, textarea");
+          if (control && (name === "private_member" || name.startsWith("member_"))) {
+            control.required = visible;
+          }
+        });
+        updateGeneralLessonTotals();
+      }
       function updateGeneralLessonTotals() {
+        if (lessonType && lessonType.value !== "general") return;
         const count = coach2 && coach2.value ? 2 : 1;
         if (coachCount) coachCount.value = count;
         if (courtCount) courtCount.value = count;
         if (capacity && coach2) capacity.value = count === 2 ? coach2.dataset.capacityTwo : coach2.dataset.capacityOne;
       }
       if (coach2) coach2.addEventListener("change", updateGeneralLessonTotals);
-      updateGeneralLessonTotals();
+      if (lessonType) lessonType.addEventListener("change", refreshFields);
+      if (customerCount) customerCount.addEventListener("change", refreshFields);
+      refreshFields();
       startHour.addEventListener("change", function () {
         const hour = Number.parseInt(startHour.value, 10);
-        const assistedEndHour = hour + 2;
+        const assistedEndHour = hour + (lessonType && lessonType.value === "general" ? 2 : 1);
         if (Number.isNaN(hour) || assistedEndHour > 21) return;
         const matchingOption = Array.from(endHour.options).find(function (option) {
           return Number.parseInt(option.value, 10) === assistedEndHour;

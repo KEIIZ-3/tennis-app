@@ -76,7 +76,6 @@ urlpatterns = [
     path("coach/court-number-line/", court_number_line_notice.court_number_line_notice, name="court_number_line_notice"),
     path("coach/availability/", views.coach_availability_list, name="coach_availability_list"),
     path("coach/availability/new/", views.coach_availability_create, name="coach_availability_create"),
-    path("coach/group-lessons/new/", views.group_lesson_create, name="group_lesson_create"),
     path("coach/availability/<int:pk>/edit/", views.coach_availability_create, name="coach_availability_edit"),
     path("coach/availability/<int:pk>/delete/", views.coach_availability_delete, name="coach_availability_delete"),
     path("coach/requests/<int:pk>/approve/", views.coach_request_approve, name="coach_request_approve"),

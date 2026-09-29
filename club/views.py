@@ -30,7 +30,6 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from .coach_today_lessons_service import build_today_lessons_display
 from .forms import (
     CoachAvailabilityForm,
-    GroupLessonCreationForm,
     LineAccountLinkForm,
     LineProfileCompletionForm,
     MemberRegistrationForm,
@@ -6949,6 +6948,7 @@ def coach_availability_create(request, pk=None):
         request_user=request.user,
         instance=instance,
         initial=initial,
+        calendar_creation=is_calendar_source,
     )
 
     if request.method == "POST":
@@ -6957,7 +6957,29 @@ def coach_availability_create(request, pk=None):
             if _is_coach_user(request.user) and not _is_staff_like(request.user):
                 availability.coach = request.user
             try:
-                availability.save()
+                with transaction.atomic():
+                    availability.save()
+                    if is_calendar_source and availability.lesson_type in (
+                        Reservation.LESSON_PRIVATE,
+                        Reservation.LESSON_GROUP,
+                    ):
+                        for member in form.cleaned_data["members"]:
+                            reservation = create_reservation(
+                                user=member,
+                                coach=availability.coach,
+                                substitute_coach=availability.substitute_coach,
+                                court=availability.court,
+                                availability=availability,
+                                lesson_type=availability.lesson_type,
+                                target_level=availability.target_level,
+                                target_level_2=availability.target_level_2,
+                                start_at=availability.start_at,
+                                end_at=availability.end_at,
+                                group_tickets_per_person_per_hour=(
+                                    availability.group_tickets_per_person_per_hour
+                                ),
+                            )
+                            reservation.consume_tickets(created_by=request.user)
             except ValidationError as exc:
                 form.add_error(None, exc)
             else:
@@ -6988,59 +7010,6 @@ def coach_availability_create(request, pk=None):
             "is_calendar_source": is_calendar_source,
         },
     )
-
-
-@login_required
-@require_http_methods(["GET", "POST"])
-def group_lesson_create(request):
-    if not (_is_coach_user(request.user) or _is_staff_like(request.user)):
-        return HttpResponse("Forbidden", status=403)
-
-    initial = {"customer_count": 2, "tickets_per_person_per_hour": 1}
-    requested_date = request.GET.get("date") if request.method == "GET" else None
-    if requested_date:
-        try:
-            initial["start_date"] = date.fromisoformat(requested_date)
-        except ValueError:
-            return HttpResponseBadRequest("日付の形式が正しくありません。")
-    if _is_coach_user(request.user) and not _is_staff_like(request.user):
-        initial["coach"] = request.user
-
-    form = GroupLessonCreationForm(
-        request.POST or None, request_user=request.user, initial=initial
-    )
-    if request.method == "POST" and form.is_valid():
-        try:
-            with transaction.atomic():
-                availability = form.build_availability()
-                availability.save()
-                for member in form.cleaned_data["members"]:
-                    reservation = create_reservation(
-                        user=member,
-                        coach=availability.coach,
-                        substitute_coach=availability.substitute_coach,
-                        court=availability.court,
-                        availability=availability,
-                        lesson_type=Reservation.LESSON_GROUP,
-                        target_level=availability.target_level,
-                        target_level_2=availability.target_level_2,
-                        start_at=availability.start_at,
-                        end_at=availability.end_at,
-                        group_tickets_per_person_per_hour=(
-                            availability.group_tickets_per_person_per_hour
-                        ),
-                    )
-                    reservation.consume_tickets(created_by=request.user)
-        except ValidationError as exc:
-            form.add_error(None, exc)
-        else:
-            messages.success(request, "グループレッスンを登録しました。")
-            local_start = timezone.localtime(availability.start_at)
-            return redirect(
-                f"{reverse('club:lesson_calendar')}?year={local_start.year}&month={local_start.month}"
-            )
-    return render(request, "coach/group_lesson_create.html", {"form": form})
-
 
 @login_required
 @require_POST
