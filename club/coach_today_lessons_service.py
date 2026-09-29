@@ -576,7 +576,7 @@ def build_today_lessons_display(
             lesson_type_label=availability.get_lesson_type_display(),
             target_level_label=_lesson_level_label(availability) or availability.get_target_level_display(),
             coach_name=availability.coach_display_names(),
-            court_name=str(availability.court),
+            court_name=availability.court_display(),
             capacity=capacity,
             title=availability.get_lesson_type_display(),
             availability=availability,

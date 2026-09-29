@@ -98,11 +98,11 @@ class CalendarGroupLessonCreationTests(TestCase):
         self.assertFalse(duplicate.is_valid())
         self.assertIn("同じ会員", str(duplicate.errors))
 
-    def test_explicit_rate_is_snapshotted_per_reservation(self):
+    def test_group_rate_is_fixed_to_one_per_person_per_hour(self):
         self.client.force_login(self.coach)
-        cases = ((2, 10, 1, 1, 2), (2, 11, 1, 2, 4), (3, 10, 2, 2, 6))
-        for count, end_hour, rate, expected_each, expected_total in cases:
-            with self.subTest(count=count, end_hour=end_hour, rate=rate):
+        cases = ((3, 10, 1, 3), (3, 11, 2, 6), (2, 12, 3, 6))
+        for count, end_hour, expected_each, expected_total in cases:
+            with self.subTest(count=count, end_hour=end_hour):
                 CoachAvailability.objects.all().delete()
                 User.objects.filter(
                     pk__in=[self.member1.pk, self.member2.pk, self.member3.pk]
@@ -110,27 +110,30 @@ class CalendarGroupLessonCreationTests(TestCase):
                 members = [self.member1, self.member2, self.member3][:count]
                 response = self.client.post(
                     reverse("club:coach_availability_create"),
-                    self.data(count=count, end_hour=end_hour, rate=rate, members=members),
+                    self.data(count=count, end_hour=end_hour, rate=4, members=members),
                 )
                 self.assertEqual(response.status_code, 302)
                 availability = CoachAvailability.objects.get()
                 reservations = list(Reservation.objects.filter(availability=availability))
                 self.assertEqual(availability.capacity, count)
-                self.assertEqual(availability.group_tickets_per_person_per_hour, rate)
+                self.assertEqual(availability.group_tickets_per_person_per_hour, 1)
                 self.assertEqual([row.tickets_used for row in reservations], [expected_each] * count)
                 self.assertEqual(sum(row.tickets_used for row in reservations), expected_total)
-                self.assertTrue(all(row.group_tickets_per_person_per_hour == rate for row in reservations))
+                self.assertTrue(all(row.group_tickets_per_person_per_hour == 1 for row in reservations))
                 Reservation.objects.all().delete()
 
-    def test_zero_rate_creates_no_ticket_accounting(self):
+    def test_rate_input_is_not_rendered_or_accepted(self):
         self.client.force_login(self.coach)
+        page = self.client.get(
+            reverse("club:coach_availability_create"),
+            {"date": self.target_date.isoformat(), "source": "calendar"},
+        )
+        self.assertNotContains(page, "tickets_per_person_per_hour")
         response = self.client.post(
             reverse("club:coach_availability_create"), self.data(rate=0)
         )
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(set(Reservation.objects.values_list("tickets_used", flat=True)), {0})
-        self.assertFalse(TicketConsumption.objects.exists())
-        self.assertFalse(TicketLedger.objects.exists())
+        self.assertEqual(set(Reservation.objects.values_list("tickets_used", flat=True)), {1})
 
     def test_second_reservation_failure_rolls_back_everything(self):
         self.client.force_login(self.coach)
@@ -165,6 +168,37 @@ class CalendarGroupLessonCreationTests(TestCase):
         )
         self.assertIsNone(reservation.group_tickets_per_person_per_hour)
         self.assertEqual(reservation.calculate_tickets_used(), 1)
+
+    def test_other_court_requires_name_and_does_not_create_master(self):
+        data = self.data()
+        data["court"] = "other"
+        data["custom_court_name"] = ""
+        invalid = CoachAvailabilityForm(
+            data=data, request_user=self.coach, calendar_creation=True
+        )
+        self.assertFalse(invalid.is_valid())
+        self.assertIn("その他のコート名", str(invalid.errors))
+
+        data["custom_court_name"] = "服部緑地 第3コート"
+        before = Court.objects.count()
+        self.client.force_login(self.coach)
+        response = self.client.post(reverse("club:coach_availability_create"), data)
+        self.assertEqual(response.status_code, 302)
+        availability = CoachAvailability.objects.get()
+        self.assertIsNone(availability.court)
+        self.assertEqual(availability.court_display(), "服部緑地 第3コート")
+        self.assertEqual(Court.objects.count(), before)
+        self.assertEqual(
+            set(Reservation.objects.values_list("custom_court_name", flat=True)),
+            {"服部緑地 第3コート"},
+        )
+
+    def test_unassigned_court_is_excluded_but_other_is_available(self):
+        Court.objects.create(name="コート未定（後日決定）", is_active=True)
+        form = CoachAvailabilityForm(request_user=self.coach, calendar_creation=True)
+        labels = [label for _, label in form.fields["court_selection"].choices]
+        self.assertIn("その他", labels)
+        self.assertNotIn("コート未定（後日決定）", labels)
 
     def test_private_creation_uses_canonical_ticket_consumption(self):
         TicketPurchase.objects.create(

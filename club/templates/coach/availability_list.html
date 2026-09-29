@@ -349,7 +349,7 @@
             <div class="info-row">
               <div class="info-label">コート</div>
               <div class="info-value">
-                {{ reservation.court }}
+                {{ reservation.court_display }}
                 {% if reservation.requested_court_note %}
                   <br><span class="muted">{{ reservation.requested_court_note }}</span>
                 {% endif %}
@@ -441,7 +441,7 @@
                     <span class="muted">未設定</span>
                   {% endif %}
                 </td>
-                <td>{{ availability.court }}</td>
+                <td>{{ availability.court_display }}</td>
                 <td>{{ availability.get_lesson_type_display }}</td>
                 <td>{{ availability.get_target_level_display }}</td>
                 <td>{{ availability.start_at|date:"Y-m-d H:i" }}</td>
@@ -527,7 +527,7 @@
                 </div>
                 <div class="info-row">
                   <div class="info-label">コート</div>
-                  <div class="info-value">{{ availability.court }}</div>
+                  <div class="info-value">{{ availability.court_display }}</div>
                 </div>
                 <div class="info-row">
                   <div class="info-label">定員</div>
