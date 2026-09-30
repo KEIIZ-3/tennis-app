@@ -45,7 +45,7 @@ class BallExpenseProfitAllocationTests(TestCase):
         for amount in range(101):
             self.assertEqual(sum(self.allocate([7, 3, 1], amount).values()), amount)
 
-    def test_distribution_subtracts_official_court_burden_from_revenue(self):
+    def test_distribution_uses_canonical_pre_common_expense_profit(self):
         captured = {}
 
         def other_policy(_year, _month, _coach_ids, profit_by_coach):
@@ -58,7 +58,12 @@ class BallExpenseProfitAllocationTests(TestCase):
             main_coach_ids=[1, 2, 3],
             eligible_coach_ids=[1, 2, 3, 4],
             contractor_coach_ids=[4],
-            lesson_revenue_by_coach={1: 100000, 2: 60000, 3: 40000},
+            common_expense_revenue_by_coach={
+                1: 110000,
+                2: 65000,
+                3: 42000,
+            },
+            contractor_burden_by_coach={1: 10000, 2: 5000, 3: 2000},
             build_court_cost_policy=lambda *args: {
                 "burden_by_coach": {1: 50000, 2: 30000, 3: 50000},
             },
@@ -67,4 +72,8 @@ class BallExpenseProfitAllocationTests(TestCase):
         )
 
         self.assertEqual(captured, {1: 50000, 2: 30000, 3: 0})
+        self.assertEqual(
+            result["common_expense_profit_base_by_coach"],
+            {1: 50000, 2: 30000, 3: 0},
+        )
         self.assertIn("court_policy", result)

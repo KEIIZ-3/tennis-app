@@ -921,28 +921,23 @@ def _build_other_expense_policy(
         payer_id = row["payer_id"]
         target_ids = list(main_coach_ids)
         is_ball_expense = getattr(row["expense"], "category", "") == "ball"
-        if is_ball_expense:
-            allocations = _split_amount_by_profit(
-                amount,
-                target_ids,
-                participant_count_by_coach,
-            )
-            rule = "利益（参加費－コート代）比例"
-        else:
-            allocations = _split_amount(amount, target_ids)
-            rule = "メインコーチ3人均等負担"
+        allocations = _split_amount_by_profit(
+            amount,
+            target_ids,
+            participant_count_by_coach,
+        )
+        rule = "当月利益比例"
 
         if payer_id:
+            # 立替者自身の按分額は本人負担として残し、他コーチから
+            # 控除する分だけを立替者への付与として計上する。
+            reimbursement_amount = max(
+                amount - _money(allocations.get(payer_id)),
+                0,
+            )
             if is_ball_expense:
-                # 立替者自身の按分額は本人負担として残し、他コーチから
-                # 控除する分だけを立替者への付与として計上する。
-                reimbursement_amount = max(
-                    amount - _money(allocations.get(payer_id)),
-                    0,
-                )
                 ball_reimbursement_by_coach[payer_id] += reimbursement_amount
             else:
-                reimbursement_amount = amount
                 other_reimbursement_by_coach[payer_id] += reimbursement_amount
             reimbursement_by_coach[payer_id] += reimbursement_amount
 
@@ -1212,35 +1207,6 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
         )
         reimbursement_balance_carry_in_by_coach = {}
 
-    with performance_trace.step("court_common_expense_allocation"):
-        expense_policies = build_expense_distribution_policies(
-            year=year,
-            month=month,
-            main_coach_ids=main_coach_ids,
-            eligible_coach_ids=eligible_coach_ids,
-            contractor_coach_ids=[
-            getattr(row.get("coach"), "pk", None)
-            for row in coach_rows
-            if row.get("is_contractor_coach")
-            and getattr(row.get("coach"), "pk", None) is not None
-            ],
-            build_court_cost_policy=_build_court_cost_policy,
-            build_other_expense_policy=_build_other_expense_policy,
-            lesson_revenue_by_coach={
-            coach_id: sum(
-                _money(row.get("ticket_amount"))
-                + _money(row.get("preopen_paid_amount"))
-                for row in coach_rows
-                if getattr(row.get("coach"), "pk", None) == coach_id
-            )
-            for coach_id in main_coach_ids
-            },
-            build_rain_refund_policy=_rain_refund_policy,
-        )
-    court_policy = expense_policies["court_policy"]
-    other_expense_policy = expense_policies["other_expense_policy"]
-    rain_refund_policy = expense_policies["rain_refund_policy"]
-
     contractor_pay_total = sum(
         _money(row.get("contractor_hourly_pay_amount"))
         for row in coach_rows
@@ -1258,6 +1224,46 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
     shop_profit_by_coach = monthly_shop_allocations(year, month)
     shop_reimbursement_by_coach = monthly_shop_procurement_reimbursements(year, month)
     shop_cash = monthly_shop_cash_total(year, month)
+
+    for row in coach_rows:
+        coach_id = getattr(row.get("coach"), "pk", None)
+        row["shop_profit_amount"] = _money(shop_profit_by_coach.get(coach_id))
+        row["contractor_cost_burden"] = _money(
+            contractor_share_by_main.get(coach_id)
+        )
+
+    with performance_trace.step("court_common_expense_allocation"):
+        expense_policies = build_expense_distribution_policies(
+            year=year,
+            month=month,
+            main_coach_ids=main_coach_ids,
+            eligible_coach_ids=eligible_coach_ids,
+            contractor_coach_ids=[
+            getattr(row.get("coach"), "pk", None)
+            for row in coach_rows
+            if row.get("is_contractor_coach")
+            and getattr(row.get("coach"), "pk", None) is not None
+            ],
+            build_court_cost_policy=_build_court_cost_policy,
+            build_other_expense_policy=_build_other_expense_policy,
+            common_expense_revenue_by_coach={
+            coach_id: sum(
+                _money(row.get("ticket_amount"))
+                + _money(row.get("preopen_paid_amount"))
+                + _money(row.get("stringing_amount"))
+                + _money(row.get("shop_profit_amount"))
+                for row in coach_rows
+                if getattr(row.get("coach"), "pk", None) == coach_id
+            )
+            for coach_id in main_coach_ids
+            },
+            contractor_burden_by_coach=contractor_share_by_main,
+            build_rain_refund_policy=_rain_refund_policy,
+        )
+    court_policy = expense_policies["court_policy"]
+    other_expense_policy = expense_policies["other_expense_policy"]
+    rain_refund_policy = expense_policies["rain_refund_policy"]
+
     ticket_purchase_cash = _money(result.get("ticket_purchase_total"))
     rain_refund_cash_in = _money(rain_refund_policy["refunded_total"])
     total_company_revenue = _company_cash_in_total(
@@ -1347,6 +1353,9 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
             "shop_procurement_reimbursement_by_coach": shop_reimbursement_by_coach,
             "contractor_pay_total": contractor_pay_total,
             "contractor_share_by_main": contractor_share_by_main,
+            "common_expense_profit_base_by_coach": expense_policies[
+                "common_expense_profit_base_by_coach"
+            ],
             "court_policy": court_policy,
             "other_expense_policy": other_expense_policy,
             "rain_refund_policy": rain_refund_policy,

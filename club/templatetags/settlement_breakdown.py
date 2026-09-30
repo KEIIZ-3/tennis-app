@@ -329,8 +329,43 @@ def common_expense_breakdown(settlement):
         return {"expense_rows": [], "expense_total": 0}
     snapshot = dict(getattr(settlement, "calculation_snapshot", None) or {})
     rows, policy = _common_expense_rows(snapshot)
+    profit_base_by_coach = snapshot.get(
+        "common_expense_profit_base_by_coach"
+    ) or {}
+    total_profit_base = sum(
+        _money(value) for value in profit_base_by_coach.values()
+    )
+    main_coach_ids = snapshot.get("main_coach_ids") or []
+    main_coach_names = snapshot.get("main_coach_names") or []
+    allocation_bases = []
+    for index, coach_id in enumerate(main_coach_ids):
+        profit_base = max(
+            _money(
+                profit_base_by_coach.get(
+                    str(coach_id),
+                    profit_base_by_coach.get(coach_id),
+                )
+            ),
+            0,
+        )
+        allocation_bases.append(
+            {
+                "coach_name": (
+                    main_coach_names[index]
+                    if index < len(main_coach_names)
+                    else str(coach_id)
+                ),
+                "profit_base": profit_base,
+                "rate": (
+                    profit_base * 100 / total_profit_base
+                    if total_profit_base > 0
+                    else (100 / len(main_coach_ids) if main_coach_ids else 0)
+                ),
+            }
+        )
     return {
         "expense_rows": rows,
         "expense_total": sum(item["amount"] for item in rows),
         "includes_history_through": policy.get("includes_history_through") or "",
+        "allocation_bases": allocation_bases,
     }
