@@ -10,7 +10,7 @@ from django.utils import timezone
 from club.court_rain_integrity_diagnostic import diagnose_court_rain_integrity
 from club.expense_metadata import build_expense_note, parse_expense_note
 from club.models import MAIN_COACH_NAMES, CoachAvailability, CoachExpense, Court, RainRefund, Reservation
-from club.rain_refund_service import confirm_rain_refund
+from club.rain_refund_service import confirm_rain_refund, void_rain_refund
 from club.settlement_models import MonthlySettlement
 from club.settlement_balance_policy import _rain_refund_policy
 
@@ -160,6 +160,58 @@ class RainRefundServiceTests(TestCase):
         self.refund.refresh_from_db()
         self.assertEqual(self.refund.status, "invalid")
 
+    def test_void_pending_refund_preserves_audit_and_excludes_settlement(self):
+        void_rain_refund(
+            self.expense.pk,
+            voided_by=self.coach,
+            reason="コート代が発生していないため",
+        )
+
+        self.refund.refresh_from_db()
+        self.expense.refresh_from_db()
+        policy = _rain_refund_policy(
+            self.refund.lesson_date.year,
+            self.refund.lesson_date.month,
+            [self.coach.pk],
+        )
+        self.assertEqual(self.refund.status, RainRefund.STATUS_VOIDED)
+        self.assertEqual(self.refund.voided_by, self.coach)
+        self.assertIsNotNone(self.refund.voided_at)
+        self.assertEqual(self.refund.void_reason, "コート代が発生していないため")
+        self.assertEqual(parse_expense_note(self.expense.note)["approval_status"], "voided")
+        self.assertEqual(policy["pending_total"], 0)
+        self.assertEqual(policy["refunded_total"], 0)
+        self.assertEqual(policy["reimbursement_by_coach"], {})
+
+    def test_void_refunded_refund_is_supported(self):
+        confirm_rain_refund(self.expense.pk, confirmed_by=self.coach)
+
+        void_rain_refund(
+            self.expense.pk,
+            voided_by=self.coach,
+            reason="誤登録",
+        )
+
+        self.refund.refresh_from_db()
+        self.assertEqual(self.refund.status, RainRefund.STATUS_VOIDED)
+        self.assertIsNotNone(self.refund.confirmed_at)
+
+    def test_void_requires_reason_and_open_month(self):
+        with self.assertRaisesMessage(ValidationError, "取消理由"):
+            void_rain_refund(self.expense.pk, voided_by=self.coach, reason="")
+
+        MonthlySettlement.objects.create(
+            year=self.refund.lesson_date.year,
+            month=self.refund.lesson_date.month,
+            status=MonthlySettlement.STATUS_CLOSED,
+        )
+        with self.assertRaisesMessage(ValidationError, "締め済みの月"):
+            void_rain_refund(
+                self.expense.pk,
+                voided_by=self.coach,
+                reason="誤登録",
+            )
+
 
 class RainRefundSettlementViewTests(TestCase):
     def setUp(self):
@@ -270,3 +322,24 @@ class RainRefundSettlementViewTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.refund.refresh_from_db()
         self.assertEqual(self.refund.status, RainRefund.STATUS_PENDING)
+
+    def test_admin_can_void_refund_without_availability_and_recalculate(self):
+        self.assertIsNone(self.refund.availability_id)
+        response = self.client.post(
+            reverse("club:coach_admin_settlement"),
+            {
+                "action": "void_rain_refund",
+                "expense_id": self.expense.pk,
+                "void_reason": "削除済みレッスンの残存記録",
+                "year": 2026,
+                "month": 7,
+            },
+            follow=True,
+        )
+
+        self.refund.refresh_from_db()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.refund.status, RainRefund.STATUS_VOIDED)
+        self.assertEqual(response.context["rain_refund_pending_total"], 0)
+        self.assertEqual(response.context["rain_refunded_total"], 0)
+        self.assertEqual(response.context["cash_in_total"], 0)

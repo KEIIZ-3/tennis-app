@@ -267,6 +267,7 @@ def court_cost_breakdown(settlement, row):
             lesson_date__year=settlement.year,
             lesson_date__month=settlement.month,
         )
+        .exclude(status=RainRefund.STATUS_VOIDED)
         .select_related("debit_coach", "payer_coach", "collection_coach")
         .order_by("lesson_date", "id")
     )

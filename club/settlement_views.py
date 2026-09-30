@@ -20,7 +20,7 @@ from .settlement_service import (
     reopen_monthly_settlement,
     reverse_settlement_payment,
 )
-from .rain_refund_service import confirm_rain_refund
+from .rain_refund_service import confirm_rain_refund, void_rain_refund
 
 
 def _month_url(year, month):
@@ -93,6 +93,35 @@ def coach_admin_settlement(request):
 
     if request.method == "POST":
         action = (request.POST.get("action") or "").strip()
+
+        if action == "void_rain_refund":
+            expense_id = (request.POST.get("expense_id") or "").strip()
+            reason = (request.POST.get("void_reason") or "").strip()
+            try:
+                refund = void_rain_refund(
+                    expense_id,
+                    voided_by=request.user,
+                    reason=reason,
+                )
+                if refund is not None:
+                    calculate_monthly_settlement(
+                        refund.lesson_date.year,
+                        refund.lesson_date.month,
+                        force=True,
+                    )
+            except (ValidationError, ValueError, TypeError) as exc:
+                message = (
+                    exc.messages[0]
+                    if isinstance(exc, ValidationError) and exc.messages
+                    else "雨天中止返金を取り消せませんでした。"
+                )
+                messages.error(request, message)
+            else:
+                if refund is None:
+                    messages.error(request, "対象の雨天中止返金が見つかりません。")
+                else:
+                    messages.success(request, "雨天中止返金を取消済みにしました。")
+            return redirect(redirect_url)
 
         if action == "confirm_rain_refund":
             expense_id = (request.POST.get("expense_id") or "").strip()

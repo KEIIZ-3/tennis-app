@@ -441,6 +441,8 @@ def _rain_refund_policy(year, month, main_coach_ids):
         .order_by("lesson_date", "id")
     )
     for refund in refunds:
+        if refund.status == RainRefund.STATUS_VOIDED:
+            continue
         amount = max(_money(refund.amount), 0)
         row = {
             "expense_id": refund.expense_id,
@@ -701,7 +703,9 @@ def _build_court_cost_policy(
             lesson_date__gte=month_start,
             lesson_date__lt=next_month,
             availability_id__isnull=False,
-        ).values_list("availability_id", flat=True)
+        )
+        .exclude(status=RainRefund.STATUS_VOIDED)
+        .values_list("availability_id", flat=True)
     )
 
     transfer = _court_transfer_allocation(

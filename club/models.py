@@ -1292,9 +1292,11 @@ class CompletedLessonRegistration(models.Model):
 class RainRefund(models.Model):
     STATUS_PENDING = "pending"
     STATUS_REFUNDED = "refunded"
+    STATUS_VOIDED = "voided"
     STATUS_CHOICES = (
         (STATUS_PENDING, "返金待ち"),
         (STATUS_REFUNDED, "返金済み"),
+        (STATUS_VOIDED, "取消済み"),
     )
     ACCOUNT_COACH = "coach"
     ACCOUNT_OTHER = "other"
@@ -1360,6 +1362,15 @@ class RainRefund(models.Model):
         blank=True,
         related_name="confirmed_rain_refunds",
     )
+    voided_at = models.DateTimeField(null=True, blank=True)
+    voided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="voided_rain_refunds",
+    )
+    void_reason = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

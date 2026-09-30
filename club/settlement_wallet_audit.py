@@ -80,7 +80,9 @@ def _court_cost_audit_rows(year, month, court_policy):
             lesson_date__gte=start,
             lesson_date__lt=end,
             availability_id__isnull=False,
-        ).values_list("availability_id", flat=True)
+        )
+        .exclude(status=RainRefund.STATUS_VOIDED)
+        .values_list("availability_id", flat=True)
     )
     reservations = list(
         Reservation.objects.filter(
