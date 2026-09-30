@@ -726,6 +726,46 @@ class SettlementWalletCourtCostTests(TestCase):
         self.assertEqual([row["expense_id"] for row in policy["detail_rows"]], [21])
 
     @patch("club.settlement_balance_policy._approved_monthly_expenses")
+    def test_non_ball_common_expenses_are_split_by_same_profit_ratio(
+        self,
+        expenses_mock,
+    ):
+        expenses_mock.return_value = [
+            {
+                "expense": SimpleNamespace(pk=24, category="server"),
+                "amount": 10000,
+                "payer_id": 1,
+                "expense_type": "common",
+                "is_court": False,
+            },
+            {
+                "expense": SimpleNamespace(pk=25, category="other"),
+                "amount": 5000,
+                "payer_id": 2,
+                "expense_type": "common",
+                "is_court": False,
+            },
+        ]
+
+        policy = _build_other_expense_policy(
+            2026,
+            9,
+            [1, 2, 3],
+            {1: 100000, 2: 60000, 3: 40000},
+        )
+
+        self.assertEqual(policy["burden_by_coach"], {1: 7500, 2: 4500, 3: 3000})
+        self.assertEqual(policy["other_burden_by_coach"], policy["burden_by_coach"])
+        self.assertEqual(policy["other_reimbursement_by_coach"], {1: 5000, 2: 3500})
+        self.assertEqual(policy["reimbursement_total"], 8500)
+        self.assertTrue(
+            all(
+                row["burden_rule"] == "当月利益比例"
+                for row in policy["detail_rows"]
+            )
+        )
+
+    @patch("club.settlement_balance_policy._approved_monthly_expenses")
     def test_ball_expense_is_split_by_profit(self, expenses_mock):
         expenses_mock.return_value = [
             {
@@ -761,7 +801,7 @@ class SettlementWalletCourtCostTests(TestCase):
         )
         self.assertEqual(
             policy["detail_rows"][0]["burden_rule"],
-            "利益（参加費－コート代）比例",
+            "当月利益比例",
         )
 
     @patch("club.settlement_balance_policy._approved_monthly_expenses")
