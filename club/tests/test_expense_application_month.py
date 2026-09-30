@@ -10,7 +10,7 @@ from club.expense_service import update_ball_expense_application_month
 from club.models import CoachExpense
 from club.settlement_balance_policy import _approved_monthly_expenses
 from club.settlement_models import MonthlySettlement
-from club.views import _expense_meta_row
+from club.views import _expense_build_note, _expense_meta_row
 
 
 class ExpenseApplicationMonthTests(TestCase):
@@ -49,7 +49,7 @@ class ExpenseApplicationMonthTests(TestCase):
         self.assertEqual(ball_row["ball_application_month_label"], "2026年8月")
 
     @patch("club.views.timezone.localdate", return_value=date(2026, 9, 8))
-    def test_history_has_three_application_month_groups_and_totals(self, _localdate):
+    def test_history_has_all_existing_application_month_groups_and_totals(self, _localdate):
         for expense_date, amount in (
             (date(2026, 7, 15), 1), (date(2026, 8, 15), 10),
             (date(2026, 9, 15), 20), (date(2026, 10, 15), 30),
@@ -67,9 +67,10 @@ class ExpenseApplicationMonthTests(TestCase):
         groups = response.context["expense_month_groups"]
 
         self.assertEqual([group["month"] for group in groups], [
-            date(2026, 8, 1), date(2026, 9, 1), date(2026, 10, 1)
+            date(2026, 11, 1), date(2026, 10, 1), date(2026, 9, 1),
+            date(2026, 8, 1), date(2026, 7, 1),
         ])
-        self.assertEqual([group["total"] for group in groups], [50, 20, 30])
+        self.assertEqual([group["total"] for group in groups], [2, 30, 20, 50, 1])
         self.assertEqual(response.context["current_month_total"], 20)
 
     @patch("club.views.timezone.localdate", return_value=date(2026, 9, 8))
@@ -91,7 +92,7 @@ class ExpenseApplicationMonthTests(TestCase):
         self.client.force_login(self.admin)
 
         response = self.client.get(self.url)
-        month_group = response.context["expense_month_groups"][1]
+        month_group = response.context["expense_month_groups"][0]
         category_groups = month_group["category_groups"]
 
         self.assertEqual(
@@ -129,7 +130,7 @@ class ExpenseApplicationMonthTests(TestCase):
         groups = response.context["expense_month_groups"]
 
         self.assertEqual(len(groups), 3)
-        self.assertEqual([group["total"] for group in groups], [5000, 0, 3000])
+        self.assertEqual([group["total"] for group in groups], [3000, 0, 5000])
         self.assertEqual([len(group["category_groups"]) for group in groups], [1, 0, 1])
         self.assertEqual(response.context["selected_history_category"], CoachExpense.CATEGORY_BALL)
         self.assertEqual(groups[1]["total_label"], "ボール費用合計")
@@ -154,7 +155,7 @@ class ExpenseApplicationMonthTests(TestCase):
         for category in ("all", "not-a-category"):
             with self.subTest(category=category):
                 response = self.client.get(self.url, {"category": category})
-                month_group = response.context["expense_month_groups"][1]
+                month_group = response.context["expense_month_groups"][0]
                 self.assertEqual(response.context["selected_history_category"], "all")
                 self.assertEqual(len(month_group["category_groups"]), 2)
                 self.assertEqual(month_group["total"], 300)
@@ -172,11 +173,115 @@ class ExpenseApplicationMonthTests(TestCase):
         self.client.force_login(self.admin)
 
         response = self.client.get(self.url)
-        other_group = response.context["expense_month_groups"][1]["category_groups"][0]
+        other_group = response.context["expense_month_groups"][0]["category_groups"][0]
         self.assertEqual(
             [row["expense"].id for row in other_group["rows"]],
             [newer_id.id, older_id.id],
         )
+
+    @patch("club.views.timezone.localdate", return_value=date(2026, 9, 8))
+    def test_history_groups_by_registrant_with_accounting_subtotals(self, _localdate):
+        second_coach = get_user_model().objects.create_user(
+            username="second-coach", full_name="清水 峻平", role="coach"
+        )
+        self.coach.full_name = "飯塚 研太朗"
+        self.coach.save(update_fields=["full_name"])
+        self.create_expense(
+            expense_date=date(2026, 9, 10), amount=0,
+            category=CoachExpense.CATEGORY_COURT, created_by=self.coach,
+        )
+        self.create_expense(
+            expense_date=date(2026, 9, 11), amount=1400,
+            category=CoachExpense.CATEGORY_COURT, created_by=self.coach,
+        )
+        self.create_expense(
+            expense_date=date(2026, 9, 12), amount=2600,
+            category=CoachExpense.CATEGORY_COURT, created_by=second_coach,
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.get(self.url)
+        category_group = response.context["expense_month_groups"][0]["category_groups"][0]
+
+        self.assertEqual(
+            [group["label"] for group in category_group["registrant_groups"]],
+            ["飯塚 研太朗", "清水 峻平"],
+        )
+        self.assertEqual(
+            [group["subtotal"] for group in category_group["registrant_groups"]],
+            [1400, 2600],
+        )
+        self.assertEqual(category_group["subtotal"], 4000)
+        self.assertEqual(response.context["expense_month_groups"][0]["total"], 4000)
+        self.assertContains(response, "0円")
+
+    @patch("club.views.timezone.localdate", return_value=date(2026, 9, 8))
+    def test_month_category_and_registrant_filters_work_together(self, _localdate):
+        september = self.create_expense(
+            expense_date=date(2026, 9, 10), amount=100,
+            category=CoachExpense.CATEGORY_COURT, created_by=self.coach,
+        )
+        self.create_expense(
+            expense_date=date(2026, 9, 11), amount=200,
+            category=CoachExpense.CATEGORY_OTHER, created_by=self.coach,
+        )
+        self.create_expense(
+            expense_date=date(2026, 8, 10), amount=300,
+            category=CoachExpense.CATEGORY_COURT, created_by=self.admin,
+        )
+        self.client.force_login(self.admin)
+
+        month_response = self.client.get(self.url, {"month": "2026-09"})
+        self.assertEqual(len(month_response.context["expense_month_groups"]), 1)
+        self.assertEqual(month_response.context["expense_month_groups"][0]["total"], 300)
+
+        registrant_response = self.client.get(self.url, {"created_by": str(self.coach.pk)})
+        self.assertEqual(
+            sum(group["total"] for group in registrant_response.context["expense_month_groups"]),
+            300,
+        )
+
+        combined_response = self.client.get(self.url, {
+            "month": "2026-09",
+            "category": CoachExpense.CATEGORY_COURT,
+            "created_by": str(self.coach.pk),
+        })
+        groups = combined_response.context["expense_month_groups"]
+        self.assertEqual(groups[0]["total"], 100)
+        self.assertEqual(groups[0]["category_groups"][0]["rows"][0]["expense"], september)
+        self.assertContains(combined_response, '<option value="2026-09" selected>', html=False)
+        self.assertContains(combined_response, f'<option value="{self.coach.pk}" selected>', html=False)
+
+    @patch("club.views.timezone.localdate", return_value=date(2026, 9, 8))
+    def test_unassigned_and_voided_expenses_remain_visible_but_voided_is_not_totaled(self, _localdate):
+        CoachExpense.objects.create(
+            expense_date=date(2026, 9, 10),
+            category=CoachExpense.CATEGORY_COURT,
+            amount=0,
+            created_by=None,
+        )
+        self.create_expense(
+            expense_date=date(2026, 9, 11), amount=5000,
+            category=CoachExpense.CATEGORY_COURT,
+        ).__class__.objects.filter(expense_date=date(2026, 9, 11)).update(
+            note=_expense_build_note(
+                "取消記録",
+                expense_type="personal",
+                receipt_status="none",
+                receipt_check_status="unchecked",
+                approval_status="voided",
+            )
+        )
+        self.client.force_login(self.admin)
+
+        response = self.client.get(self.url)
+        month_group = response.context["expense_month_groups"][0]
+
+        self.assertEqual(month_group["total"], 0)
+        self.assertContains(response, "登録者なし")
+        self.assertContains(response, "取消済み")
+        self.assertContains(response, "desktop-table-area")
+        self.assertContains(response, "mobile-expense-card")
 
     @patch("club.views.timezone.localdate", return_value=date(2026, 9, 8))
     def test_moving_ball_changes_history_group_and_totals(self, _localdate):
@@ -193,9 +298,8 @@ class ExpenseApplicationMonthTests(TestCase):
 
         response = self.client.get(self.url, {"category": CoachExpense.CATEGORY_BALL})
         groups = response.context["expense_month_groups"]
-        self.assertEqual([group["total"] for group in groups], [0, 0, 7568])
-        self.assertEqual(groups[1]["category_groups"], [])
-        self.assertEqual(groups[2]["category_groups"][0]["subtotal"], 7568)
+        self.assertEqual([group["total"] for group in groups], [7568])
+        self.assertEqual(groups[0]["category_groups"][0]["subtotal"], 7568)
 
     def test_create_ball_uses_one_application_month_for_both_internal_fields(self):
         self.client.force_login(self.admin)
