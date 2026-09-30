@@ -19,6 +19,7 @@ from .expense_metadata import (
 from .models import (
     CoachAvailability,
     CoachExpense,
+    RainRefund,
     Reservation,
     ensure_accounting_month_is_open,
 )
@@ -241,24 +242,39 @@ def coach_expense_manage(request):
         if existing_expense is not None
         else {}
     )
+    active_refunds = list(
+        RainRefund.objects.filter(availability=availability)
+        .exclude(status=RainRefund.STATUS_VOIDED)
+        .select_related("expense")
+        .order_by("id")
+    )
 
     if request.method == "POST":
         payer_id = (request.POST.get("payer_coach_id") or "").strip()
         raw_amount = (request.POST.get("amount") or "").strip()
         plain_note = (request.POST.get("note") or "").strip()
+        void_reason = (request.POST.get("void_reason") or "").strip()
+        confirm_refund_void = request.POST.get("confirm_refund_void") == "1"
         payer = payer_by_id.get(payer_id)
 
         try:
-            amount = int(raw_amount or "0")
+            amount = int(raw_amount)
         except Exception:
-            amount = 0
+            amount = -1
 
-        if not payer:
+        if amount < 0:
+            messages.error(request, "コート代は0円以上で入力してください。")
+        elif amount > 0 and not payer:
             messages.error(request, "コート代を支払ったメインコーチを選択してください。")
-        elif amount <= 0:
-            messages.error(request, "コート代は1円以上で入力してください。")
         elif not using_coaches:
             messages.error(request, "このレッスンの利用コーチを特定できませんでした。")
+        elif amount == 0 and active_refunds and not confirm_refund_void:
+            messages.error(
+                request,
+                "関連する雨天返金を精算対象外にする確認が必要です。",
+            )
+        elif amount == 0 and active_refunds and not void_reason:
+            messages.error(request, "雨天返金の取消理由を入力してください。")
         else:
             start = _local(availability.start_at)
             try:
@@ -266,6 +282,7 @@ def coach_expense_manage(request):
             except ValidationError as exc:
                 messages.error(request, exc.messages[0])
                 return redirect("club:coach_admin_settlement")
+            is_not_required = amount == 0
             meta = {
                 "expense_type": EXPENSE_TYPE_COURT_TRANSFER,
                 "receipt_status": "none",
@@ -276,12 +293,15 @@ def coach_expense_manage(request):
                 "court_refund_slot_key": _slot_key(availability),
                 "court_refund_lesson_label": _lesson_label(availability),
                 "court_refund_facility_label": _facility_label(availability.court),
-                "payer_coach_id": payer.pk,
-                "payer_coach_name": _display_name(payer),
+                "payer_coach_id": None if is_not_required else payer.pk,
+                "payer_coach_name": (
+                    "登録不要" if is_not_required else _display_name(payer)
+                ),
                 "using_coach_ids": [coach.pk for coach in using_coaches],
                 "using_coach_names": [_display_name(coach) for coach in using_coaches],
                 "recorded_by_id": request.user.pk,
                 "recorded_by_name": _display_name(request.user),
+                "court_cost_not_required": is_not_required,
             }
             with transaction.atomic():
                 CoachAvailability.objects.select_for_update().get(pk=availability.pk)
@@ -293,16 +313,37 @@ def coach_expense_manage(request):
                     )
                 expense.expense_date = start.date()
                 expense.amount = amount
-                expense.note = build_expense_note(meta, plain_note)
-                expense.created_by = payer
+                expense.note = build_expense_note(
+                    meta,
+                    plain_note or ("コート代なし" if is_not_required else ""),
+                )
+                expense.created_by = None if is_not_required else payer
                 expense.full_clean()
                 expense.save()
-                from .settlement_service import calculate_monthly_settlement
-                calculate_monthly_settlement(start.year, start.month, force=True)
+                if is_not_required:
+                    from .rain_refund_service import void_rain_refund
+                    for refund in active_refunds:
+                        void_rain_refund(
+                            refund.expense_id,
+                            voided_by=request.user,
+                            reason=void_reason,
+                        )
+                from .settlement_service import recalculate_monthly_settlement_chain
+                recalculate_monthly_settlement_chain(
+                    start.year,
+                    start.month,
+                    force=True,
+                )
 
             messages.success(
                 request,
-                f"コート代{amount:,}円を{'登録' if created else '更新'}しました。利用コーチから控除し、{_display_name(payer)}コーチへ加算します。",
+                (
+                    "コート代なし（0円）として登録し、関連する雨天返金を取消済みにしました。"
+                    if is_not_required and active_refunds
+                    else "コート代なし（0円）として登録しました。"
+                    if is_not_required
+                    else f"コート代{amount:,}円を{'登録' if created else '更新'}しました。利用コーチから控除し、{_display_name(payer)}コーチへ加算します。"
+                ),
             )
             default_url = (
                 f"{reverse('club:lesson_execution_manage')}?"
@@ -338,5 +379,7 @@ def coach_expense_manage(request):
                 reverse("club:lesson_execution_manage"),
             ),
             "is_edit": existing_expense is not None,
+            "active_refunds": active_refunds,
+            "active_refund_total": sum(refund.amount for refund in active_refunds),
         },
     )

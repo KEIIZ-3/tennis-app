@@ -62,8 +62,9 @@
 
       <div>
         <label for="amount">コート代</label>
-        <input id="amount" name="amount" type="number" min="1" step="1" inputmode="numeric" placeholder="例：2400"{% if existing_amount != None %} value="{{ existing_amount }}"{% elif fee_quote %} value="{{ fee_quote.total }}"{% endif %} required>
+        <input id="amount" name="amount" type="number" min="0" step="1" inputmode="numeric" placeholder="例：2400"{% if existing_amount != None %} value="{{ existing_amount }}"{% elif fee_quote %} value="{{ fee_quote.total }}"{% endif %} required>
         <p class="help">西猪名公園・尼崎記念公園はDjango側で公式料金から自動計算します。実際の支払額が異なる場合は上書きできます。</p>
+        <p class="help">0円の場合、この開催回は「コート代なし」として登録され、給与控除・立替返還には含まれません。</p>
       </div>
 
       {% if fee_quote %}
@@ -76,7 +77,7 @@
 
       <div>
         <label for="payer_coach_id">コート代を支払ったメインコーチ</label>
-        <select id="payer_coach_id" name="payer_coach_id" required>
+        <select id="payer_coach_id" name="payer_coach_id">
           <option value="">選択してください</option>
           {% for coach in payer_options %}
             <option value="{{ coach.id }}" {% if existing_payer_id == coach.id|stringformat:"s" %}selected{% endif %}>{{ coach.display_name }}</option>
@@ -84,6 +85,15 @@
         </select>
         <p class="help">ここで選択したコーチの給与へ、立替回収額として全額加算します。</p>
       </div>
+
+      {% if active_refunds %}
+        <div class="calculation">
+          この開催回には雨天返金記録 {{ active_refund_total }}円があります。コート代を0円にすると、この返金記録も精算対象外にします。
+          <label style="margin-top:8px;"><input name="confirm_refund_void" type="checkbox" value="1" style="width:auto;min-height:auto;"> 内容を確認し、雨天返金も取り消す</label>
+          <label for="void_reason">取消理由</label>
+          <input id="void_reason" name="void_reason" type="text" maxlength="255" placeholder="例：同時間帯の別レッスンでコートを使用したため">
+        </div>
+      {% endif %}
 
       <div>
         <label for="note">メモ（任意）</label>
@@ -114,4 +124,17 @@
     </form>
   </section>
 </div>
+<script>
+  (() => {
+    const amount = document.getElementById('amount');
+    const payer = document.getElementById('payer_coach_id');
+    const syncPayer = () => {
+      const noCost = amount.value !== '' && Number(amount.value) === 0;
+      payer.disabled = noCost;
+      payer.required = !noCost;
+    };
+    amount.addEventListener('input', syncPayer);
+    syncPayer();
+  })();
+</script>
 {% endblock %}

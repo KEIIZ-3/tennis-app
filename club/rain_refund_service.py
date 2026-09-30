@@ -127,3 +127,58 @@ def confirm_rain_refund(expense_id, *, confirmed_by):
         update_fields=["status", "confirmed_at", "confirmed_by", "updated_at"]
     )
     return refund
+
+
+@transaction.atomic
+def void_rain_refund(expense_id, *, voided_by, reason):
+    """Void an erroneous refund while retaining both audit records."""
+    reason = str(reason or "").strip()
+    if not reason:
+        raise ValidationError("取消理由を入力してください。")
+
+    refund = (
+        RainRefund.objects.select_for_update()
+        .select_related("expense")
+        .filter(expense_id=expense_id)
+        .first()
+    )
+    if refund is None:
+        return None
+    if refund.status == RainRefund.STATUS_VOIDED:
+        return refund
+    if refund.status not in (
+        RainRefund.STATUS_PENDING,
+        RainRefund.STATUS_REFUNDED,
+    ):
+        raise ValidationError("返金待ちまたは返金済みの記録だけを取り消せます。")
+
+    ensure_accounting_month_is_open(refund.lesson_date)
+    expense = CoachExpense.objects.select_for_update().get(pk=refund.expense_id)
+    voided_at = timezone.now()
+    meta = parse_expense_note(expense.note)
+    meta.update(
+        {
+            "approval_status": "voided",
+            "rain_refund_voided_at": voided_at.isoformat(),
+            "rain_refund_voided_by_id": getattr(voided_by, "pk", None),
+            "rain_refund_voided_by_name": _display_name(voided_by),
+            "rain_refund_void_reason": reason,
+        }
+    )
+    expense.note = build_expense_note(meta, meta.get("plain_note", ""))
+    expense.save(update_fields=["note"])
+
+    refund.status = RainRefund.STATUS_VOIDED
+    refund.voided_at = voided_at
+    refund.voided_by = voided_by
+    refund.void_reason = reason
+    refund.save(
+        update_fields=[
+            "status",
+            "voided_at",
+            "voided_by",
+            "void_reason",
+            "updated_at",
+        ]
+    )
+    return refund
