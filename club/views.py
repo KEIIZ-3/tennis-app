@@ -4468,6 +4468,15 @@ def _expense_meta_row(expense):
         if expense.category == CoachExpense.CATEGORY_BALL and period_start
         else expense.expense_date.replace(day=1)
     )
+    rain_refund = getattr(expense, "rain_refund", None)
+    is_voided = (
+        meta.get("approval_status") == RainRefund.STATUS_VOIDED
+        or getattr(rain_refund, "status", None) == RainRefund.STATUS_VOIDED
+    )
+    is_accounting_expense = not (
+        _expense_is_refund_status(meta["approval_status"])
+        or is_voided
+    )
     return {
         "expense": expense,
         "plain_note": meta["plain_note"],
@@ -4483,6 +4492,8 @@ def _expense_meta_row(expense):
         "approval_status_label": _choice_label(EXPENSE_APPROVAL_CHOICES, meta["approval_status"]),
         "is_refund_pending": meta["approval_status"] == EXPENSE_APPROVAL_REFUND_PENDING,
         "is_refunded": meta["approval_status"] == EXPENSE_APPROVAL_REFUNDED,
+        "is_voided": is_voided,
+        "is_accounting_expense": is_accounting_expense,
         "court_refund_slot_key": meta.get("court_refund_slot_key", ""),
         "court_refund_lesson_label": meta.get("court_refund_lesson_label", ""),
         "court_refund_facility_label": meta.get("court_refund_facility_label", ""),
@@ -5508,7 +5519,7 @@ def coach_expense_manage(request):
         return HttpResponse("Forbidden", status=403)
 
     is_admin_mode = bool(getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False))
-    visible_queryset = CoachExpense.objects.select_related("created_by").all().order_by("-expense_date", "-id")
+    visible_queryset = CoachExpense.objects.select_related("created_by", "rain_refund").all().order_by("-expense_date", "-id")
     if not is_admin_mode:
         visible_queryset = visible_queryset.filter(created_by=request.user)
 
@@ -5741,21 +5752,7 @@ def coach_expense_manage(request):
         return redirect("club:coach_expense_manage")
 
     month_start = today.replace(day=1)
-    previous_month = _shift_month(month_start, -1)
-    next_month = _shift_month(month_start, 1)
-    after_next_month = _shift_month(month_start, 2)
-    displayed_expenses = visible_queryset.filter(
-        Q(
-            category=CoachExpense.CATEGORY_BALL,
-            settlement_period_start__gte=previous_month,
-            settlement_period_start__lt=after_next_month,
-        )
-        | Q(
-            ~Q(category=CoachExpense.CATEGORY_BALL),
-            expense_date__gte=previous_month,
-            expense_date__lt=after_next_month,
-        )
-    )
+    displayed_expenses = visible_queryset
     displayed_rows = [_expense_meta_row(expense) for expense in displayed_expenses]
     rows_by_month = defaultdict(list)
     for row in displayed_rows:
@@ -5768,13 +5765,59 @@ def coach_expense_manage(request):
         selected_history_category = "all"
     category_labels = dict(category_choices)
 
+    available_months = sorted(rows_by_month, reverse=True)
+    month_values = {month.strftime("%Y-%m") for month in available_months}
+    selected_history_month = (request.GET.get("month") or "all").strip()
+    if selected_history_month not in month_values:
+        selected_history_month = "all"
+
+    registrants = {}
+    has_unassigned_registrant = False
+    for row in displayed_rows:
+        registrant = row["expense"].created_by
+        if registrant is None:
+            has_unassigned_registrant = True
+        else:
+            registrants[registrant.pk] = registrant
+
+    def registrant_sort_key(registrant):
+        display_name = _display_name(registrant)
+        compact_name = display_name.replace(" ", "").replace("　", "")
+        try:
+            main_coach_order = MAIN_COACH_NAMES.index(compact_name)
+        except ValueError:
+            main_coach_order = len(MAIN_COACH_NAMES)
+        return main_coach_order, display_name, registrant.pk
+
+    history_registrants = sorted(registrants.values(), key=registrant_sort_key)
+    valid_registrant_values = {str(registrant.pk) for registrant in history_registrants}
+    if has_unassigned_registrant:
+        valid_registrant_values.add("none")
+    selected_history_registrant = (request.GET.get("created_by") or "all").strip()
+    if selected_history_registrant not in valid_registrant_values:
+        selected_history_registrant = "all"
+
     expense_month_groups = []
-    for application_month in (previous_month, month_start, next_month):
+    filtered_months = [
+        month for month in available_months
+        if selected_history_month == "all"
+        or month.strftime("%Y-%m") == selected_history_month
+    ]
+    for application_month in filtered_months:
         all_rows = rows_by_month[application_month]
         rows = [
             row for row in all_rows
-            if selected_history_category == "all"
-            or row["expense"].category == selected_history_category
+            if (
+                selected_history_category == "all"
+                or row["expense"].category == selected_history_category
+            ) and (
+                selected_history_registrant == "all"
+                or (
+                    selected_history_registrant == "none"
+                    and row["expense"].created_by_id is None
+                )
+                or str(row["expense"].created_by_id) == selected_history_registrant
+            )
         ]
         category_groups = []
         for category_value, category_label in category_choices:
@@ -5782,20 +5825,58 @@ def coach_expense_manage(request):
                 row for row in rows if row["expense"].category == category_value
             ]
             if category_rows_for_month:
+                registrant_groups = []
+                registrant_keys = []
+                for row in category_rows_for_month:
+                    registrant_id = row["expense"].created_by_id
+                    if registrant_id not in registrant_keys:
+                        registrant_keys.append(registrant_id)
+                registrant_keys.sort(
+                    key=lambda registrant_id: (
+                        registrant_sort_key(registrants[registrant_id])
+                        if registrant_id is not None
+                        else (len(MAIN_COACH_NAMES) + 1, "登録者なし", 0)
+                    )
+                )
+                for registrant_id in registrant_keys:
+                    registrant_rows = [
+                        row for row in category_rows_for_month
+                        if row["expense"].created_by_id == registrant_id
+                    ]
+                    registrant_groups.append({
+                        "id": registrant_id,
+                        "label": (
+                            _display_name(registrants[registrant_id])
+                            if registrant_id is not None
+                            else "登録者なし"
+                        ),
+                        "rows": registrant_rows,
+                        "subtotal": sum(
+                            int(row["expense"].amount or 0)
+                            for row in registrant_rows
+                            if row["is_accounting_expense"]
+                        ),
+                    })
                 category_groups.append({
                     "value": category_value,
                     "label": category_label,
                     "rows": category_rows_for_month,
+                    "registrant_groups": registrant_groups,
                     "subtotal": sum(
                         int(row["expense"].amount or 0)
                         for row in category_rows_for_month
+                        if row["is_accounting_expense"]
                     ),
                 })
         expense_month_groups.append({
             "month": application_month,
             "rows": rows,
             "category_groups": category_groups,
-            "total": sum(int(row["expense"].amount or 0) for row in rows),
+            "total": sum(
+                int(row["expense"].amount or 0)
+                for row in rows
+                if row["is_accounting_expense"]
+            ),
             "total_label": (
                 "適用経費合計"
                 if selected_history_category == "all"
@@ -5854,6 +5935,11 @@ def coach_expense_manage(request):
             "expense_month_groups": expense_month_groups,
             "expense_category_choices": CoachExpense.CATEGORY_CHOICES,
             "selected_history_category": selected_history_category,
+            "history_months": available_months,
+            "selected_history_month": selected_history_month,
+            "history_registrants": history_registrants,
+            "history_has_unassigned_registrant": has_unassigned_registrant,
+            "selected_history_registrant": selected_history_registrant,
             "expense_type_choices": EXPENSE_TYPE_CHOICES,
             "expense_receipt_choices": EXPENSE_RECEIPT_CHOICES,
             "expense_receipt_check_choices": EXPENSE_RECEIPT_CHECK_CHOICES,
