@@ -1,0 +1,12 @@
+{% if items %}
+  <div class="reimbursement-breakdown" aria-label="経費立替付与合計の内訳">
+    {% for item in items %}
+      <div class="reimbursement-item"><span>{{ item.label }}</span><strong>{{ item.amount }}円</strong></div>
+    {% endfor %}
+    {% if has_mismatch %}
+      <p class="reimbursement-warning" role="alert">立替内訳と合計が一致していません</p>
+    {% endif %}
+  </div>
+{% elif has_mismatch %}
+  <p class="reimbursement-warning" role="alert">立替内訳と合計が一致していません</p>
+{% endif %}
