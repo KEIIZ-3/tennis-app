@@ -115,6 +115,8 @@
             <div class="fact"><div class="fact-label">キャンセル済み</div><div class="fact-value">{{ row.canceled_count }}件</div></div>
             <div class="fact"><div class="fact-label">コート数</div><div class="fact-value">{{ row.availability.court_count }}面</div></div>
             <div class="fact fact-court"><div class="fact-label">コート代</div><div class="fact-value"><span class="court-status {{ row.court_status }}">{{ row.court_status_label }}</span>{% if row.court_status == "registered" or row.status == "refund_pending" or row.status == "refunded" %}<br>{{ row.court_amount }}円{% if row.court_payer_name %}<br><span class="muted">支払者：{{ row.court_payer_name }}</span>{% endif %}{% endif %}</div></div>
+            <div class="fact"><div class="fact-label">予約アカウント</div><div class="fact-value">{{ row.availability.court_booking_account_display }}</div></div>
+            <div class="fact"><div class="fact-label">事前支払元</div><div class="fact-value">{{ row.availability.court_payer_display }}</div></div>
           </div>
 
           {% if row.status == "held" %}
@@ -134,10 +136,10 @@
                   <div class="confirmed-note">中止時のコート精算情報を入力してください。通常実施時のコート代登録とは別に保存され、中止情報が精算の正本になります。</div>
                   <fieldset><legend>中止種別</legend><label><input type="radio" name="cancellation_type" value="rain" required> 雨天中止</label><label><input type="radio" name="cancellation_type" value="other" required> 中止</label><p class="help">「中止」は人数不足・開催判断など、雨天以外の中止です。</p></fieldset>
                   <label>コート代金<input type="text" value="{{ row.cancellation_court_fee_quote.total }}円（自動計算）" readonly></label>
-                  <label>予約アカウント<select name="rain_booking_account" required onchange="const isOther=this.value==='other'; const other=this.form.querySelector('[name=rain_booking_account_other]'); other.hidden=!isOther; other.required=isOther; if(!isOther){other.value='';}"><option value="">選択してください</option>{% for coach in main_coach_options %}<option value="{{ coach.id }}">{{ coach.display_name }}</option>{% endfor %}<option value="other">その他</option></select></label>
-                  <input name="rain_booking_account_other" type="text" placeholder="その他のアカウント情報" hidden>
+                  <label>予約アカウント<select name="rain_booking_account" required onchange="const isOther=this.value==='other'; const other=this.form.querySelector('[name=rain_booking_account_other]'); other.hidden=!isOther; other.required=isOther; if(!isOther){other.value='';}"><option value="">選択してください</option>{% for coach in main_coach_options %}<option value="{{ coach.id }}"{% if row.availability.court_booking_account_coach_id == coach.id %} selected{% endif %}>{{ coach.display_name }}</option>{% endfor %}<option value="other"{% if row.availability.court_booking_account_kind == 'other' %} selected{% endif %}>その他</option></select></label>
+                  <input name="rain_booking_account_other" type="text" placeholder="その他のアカウント情報" value="{{ row.availability.court_booking_account_other }}"{% if row.availability.court_booking_account_kind != 'other' %} hidden{% else %} required{% endif %}>
                   <label data-rain-collection>回収者<select name="rain_collection_coach_id" required><option value="">選択してください</option>{% for coach in main_coach_options %}<option value="{{ coach.id }}">{{ coach.display_name }}</option>{% endfor %}</select></label>
-                  <label>コート支払元<select name="rain_court_payer_id" required><option value="">選択してください</option><option value="company_wallet">会社の財布</option>{% for coach in main_coach_options %}<option value="{{ coach.id }}">{{ coach.display_name }}</option>{% endfor %}</select></label>
+                  <label>コート支払元<select name="rain_court_payer_id" required><option value="">選択してください</option><option value="company_wallet"{% if row.availability.court_payer_kind == 'company_wallet' %} selected{% endif %}>会社の財布</option>{% for coach in main_coach_options %}<option value="{{ coach.id }}"{% if row.availability.court_payer_coach_id == coach.id %} selected{% endif %}>{{ coach.display_name }}</option>{% endfor %}</select></label>
                   <button type="submit" class="btn btn-rain" onclick="return confirm('入力内容を保存し、コート代を返金待ちにしますか？');">中止・返金情報を登録</button>
                 </form>
                 {% else %}

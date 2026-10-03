@@ -315,7 +315,7 @@ def coach_expense_manage(request):
                 "court_cost_not_required": is_not_required,
             }
             with transaction.atomic():
-                CoachAvailability.objects.select_for_update().get(pk=availability.pk)
+                locked_availability = CoachAvailability.objects.select_for_update().get(pk=availability.pk)
                 expense = _existing_transfer_for_availability(availability.pk)
                 created = expense is None
                 if created:
@@ -331,6 +331,17 @@ def coach_expense_manage(request):
                 expense.created_by = request.user
                 expense.full_clean()
                 expense.save()
+                locked_availability.court_payer_kind = (
+                    "" if is_not_required else
+                    PAYER_KIND_COMPANY_WALLET if is_company_wallet else
+                    PAYER_KIND_COACH
+                )
+                locked_availability.court_payer_coach = (
+                    None if is_not_required or is_company_wallet else payer
+                )
+                locked_availability.save(update_fields=[
+                    "court_payer_kind", "court_payer_coach",
+                ])
                 if is_not_required:
                     from .rain_refund_service import void_rain_refund
                     for refund in active_refunds:
@@ -380,7 +391,11 @@ def coach_expense_manage(request):
             "existing_payer_id": str(
                 PAYER_KIND_COMPANY_WALLET
                 if existing_meta.get("payer_kind") == PAYER_KIND_COMPANY_WALLET
-                else existing_meta.get("payer_coach_id") or ""
+                else existing_meta.get("payer_coach_id")
+                if existing_expense is not None
+                else PAYER_KIND_COMPANY_WALLET
+                if availability.court_payer_kind == PAYER_KIND_COMPANY_WALLET
+                else availability.court_payer_coach_id or ""
             ),
             "existing_note": (
                 expense_plain_note(existing_expense.note)

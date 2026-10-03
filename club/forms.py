@@ -228,6 +228,11 @@ class CoachAvailabilityForm(forms.ModelForm):
             "coach_2",
             "substitute_coach",
             "lesson_type",
+            "court_payer_kind",
+            "court_payer_coach",
+            "court_booking_account_kind",
+            "court_booking_account_coach",
+            "court_booking_account_other",
             "target_level",
             "target_level_2",
             "coach_count",
@@ -264,6 +269,14 @@ class CoachAvailabilityForm(forms.ModelForm):
         self.fields["coach"].queryset = coach_queryset
         self.fields["coach_2"].queryset = coach_queryset
         self.fields["coach_2"].required = False
+        for field_name in ("court_payer_coach", "court_booking_account_coach"):
+            self.fields[field_name].queryset = coach_queryset
+            self.fields[field_name].required = False
+        self.fields["court_payer_kind"].label = "コート支払元"
+        self.fields["court_payer_coach"].label = "支払コーチ"
+        self.fields["court_booking_account_kind"].label = "コート予約アカウント"
+        self.fields["court_booking_account_coach"].label = "予約アカウントのコーチ"
+        self.fields["court_booking_account_other"].label = "その他の予約アカウント名"
         self.fields["coach_2"].label = "担当コーチ2"
         for field_name in ("coach_count", "court_count", "capacity"):
             self.fields[field_name].widget.attrs["readonly"] = True

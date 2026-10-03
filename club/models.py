@@ -312,6 +312,27 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         related_name="coach_availabilities",
     )
     custom_court_name = models.CharField(max_length=255, blank=True, default="")
+    court_payer_kind = models.CharField(
+        max_length=20, blank=True, default="", choices=(
+            ("", "未設定"), ("company_wallet", "会社の財布"), ("coach", "コーチ"),
+        ),
+    )
+    court_payer_coach = models.ForeignKey(
+        User, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="court_payer_availabilities",
+        limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
+    )
+    court_booking_account_kind = models.CharField(
+        max_length=20, blank=True, default="", choices=(
+            ("", "未設定"), ("coach", "コーチ"), ("other", "その他"),
+        ),
+    )
+    court_booking_account_coach = models.ForeignKey(
+        User, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="court_booking_account_availabilities",
+        limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
+    )
+    court_booking_account_other = models.CharField(max_length=255, blank=True, default="")
     lesson_type = models.CharField(
         max_length=20,
         choices=LessonTypeMixin.LESSON_TYPE_CHOICES,
@@ -355,6 +376,18 @@ class CoachAvailability(models.Model, LessonTypeMixin):
 
     def court_display(self):
         return self.custom_court_name or (str(self.court) if self.court else "未定")
+
+    def court_payer_display(self):
+        from .court_accounting import payer_display
+        return payer_display(self.court_payer_kind, self.court_payer_coach)
+
+    def court_booking_account_display(self):
+        from .court_accounting import booking_account_display
+        return booking_account_display(
+            self.court_booking_account_kind,
+            self.court_booking_account_coach,
+            self.court_booking_account_other,
+        )
 
     def duration_hours(self):
         if not self.start_at or not self.end_at:
@@ -417,6 +450,14 @@ class CoachAvailability(models.Model, LessonTypeMixin):
             reservation.save(update_fields=["substitute_coach"])
 
     def clean(self):
+        from .court_accounting import validate_booking_account, validate_court_payer
+
+        validate_court_payer(self.court_payer_kind, self.court_payer_coach_id)
+        validate_booking_account(
+            self.court_booking_account_kind,
+            self.court_booking_account_coach_id,
+            self.court_booking_account_other,
+        )
         if not self.start_at or not self.end_at:
             return
 
@@ -1386,6 +1427,14 @@ class RainRefund(models.Model):
         return self.booking_account_other
 
     def clean(self):
+        from .court_accounting import validate_booking_account
+
+        validate_booking_account(
+            self.booking_account_kind,
+            self.booking_account_coach_id,
+            self.booking_account_other,
+            field_prefix="booking_account",
+        )
         if self.amount <= 0:
             raise ValidationError("雨天中止返金額は1円以上にしてください。")
         if self.booking_account_kind == self.ACCOUNT_OTHER:

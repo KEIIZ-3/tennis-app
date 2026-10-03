@@ -3,7 +3,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from .expense_metadata import build_expense_note, parse_expense_note
-from .models import CoachExpense, RainRefund, ensure_accounting_month_is_open
+from .models import CoachAvailability, CoachExpense, RainRefund, ensure_accounting_month_is_open
 
 
 def _display_name(user):
@@ -88,6 +88,16 @@ def update_pending_rain_refund(availability_id, *, refund_input):
             "updated_at",
         ]
     )
+    availability = CoachAvailability.objects.select_for_update().get(pk=availability_id)
+    availability.court_booking_account_kind = refund_input["account_kind"]
+    availability.court_booking_account_coach = account_coach
+    availability.court_booking_account_other = refund_input["account_other"]
+    availability.court_payer_kind = payer_kind
+    availability.court_payer_coach = payer_coach
+    availability.save(update_fields=[
+        "court_booking_account_kind", "court_booking_account_coach",
+        "court_booking_account_other", "court_payer_kind", "court_payer_coach",
+    ])
     return refund
 
 
