@@ -616,9 +616,11 @@ def _mark_refunded(availability, changed_by):
         meta = _expense_parse_note(expense.note)
         if meta.get("approval_status") != EXPENSE_APPROVAL_REFUND_PENDING:
             continue
+        if not meta.get("rain_refund_debit_coach_id"):
+            continue
         if not (
-            meta.get("rain_refund_debit_coach_id")
-            and meta.get("rain_refund_payer_coach_id")
+            meta.get("rain_refund_payer_coach_id")
+            or meta.get("rain_refund_payer_kind") == "company_wallet"
         ):
             continue
         if confirm_rain_refund(expense.pk, confirmed_by=changed_by) is not None:
@@ -639,6 +641,8 @@ def _rain_refund_input(request):
     payer_coach = coach_by_id.get(
         (request.POST.get("rain_court_payer_id") or "").strip()
     )
+    payer_value = (request.POST.get("rain_court_payer_id") or "").strip()
+    payer_kind = "company_wallet" if payer_value == "company_wallet" else "coach"
     account_other = (
         request.POST.get("rain_booking_account_other") or ""
     ).strip()
@@ -657,7 +661,7 @@ def _rain_refund_input(request):
     if collection_coach is None:
         return None, "回収予定コーチを選択してください。"
 
-    if payer_coach is None:
+    if payer_coach is None and payer_kind != "company_wallet":
         return None, "コート支払者を選択してください。"
 
     return {
@@ -666,6 +670,7 @@ def _rain_refund_input(request):
         "account_other": account_other,
         "collection_coach": collection_coach,
         "payer_coach": payer_coach,
+        "payer_kind": payer_kind,
         "debit_coach": debit_coach,
     }, ""
 
@@ -743,6 +748,7 @@ def _mark_court_expense_refund_pending(
     account_coach = refund_input["account_coach"]
     collection_coach = refund_input["collection_coach"]
     payer_coach = refund_input["payer_coach"]
+    payer_kind = refund_input.get("payer_kind") or "coach"
     debit_coach = refund_input["debit_coach"]
     extra_meta.update(
             {
@@ -767,8 +773,14 @@ def _mark_court_expense_refund_pending(
                 "rain_refund_collection_coach_name": (
                     _display_name(collection_coach) if collection_coach else ""
                 ),
-                "rain_refund_payer_coach_id": payer_coach.pk,
-                "rain_refund_payer_coach_name": _display_name(payer_coach),
+                "rain_refund_payer_kind": payer_kind,
+                "rain_refund_payer_coach_id": (
+                    payer_coach.pk if payer_coach else None
+                ),
+                "rain_refund_payer_coach_name": (
+                    _display_name(payer_coach)
+                    if payer_coach else "会社の財布"
+                ),
                 "rain_refund_debit_coach_id": debit_coach.pk,
                 "rain_refund_debit_coach_name": _display_name(debit_coach),
                 "rain_canceled_at": timezone.now().isoformat(),
@@ -780,7 +792,7 @@ def _mark_court_expense_refund_pending(
         expense_date=_local(availability.start_at).date(),
         category=CoachExpense.CATEGORY_COURT,
         amount=amount,
-        created_by=payer_coach,
+        created_by=changed_by,
     )
     expense.note = build_expense_note(
         {

@@ -455,7 +455,10 @@ def _rain_refund_policy(year, month, main_coach_ids):
                 if refund.collection_coach_id
                 else ""
             ),
-            "payer_coach_name": refund.payer_coach.display_name(),
+            "payer_coach_name": (
+                refund.payer_coach.display_name()
+                if refund.payer_coach_id else "会社の財布"
+            ),
         }
         if refund.status == RainRefund.STATUS_PENDING:
             pending_rows.append(row)
@@ -593,6 +596,7 @@ def _court_transfer_allocation(
     burden_by_coach = defaultdict(int)
     reimbursement_by_coach = defaultdict(int)
     detail_rows = []
+    company_paid_total = 0
     excluded_availability_id_set = set(excluded_availability_ids or [])
     from .court_transfer_service import current_court_transfer_rows
 
@@ -648,6 +652,9 @@ def _court_transfer_allocation(
             payer_id = None
         if payer_id in eligible_coach_id_set:
             reimbursement_by_coach[payer_id] += amount
+        payer_kind = meta.get("payer_kind") or ("coach" if payer_id else "")
+        if payer_kind == "company_wallet":
+            company_paid_total += amount
 
         detail_rows.append(
             {
@@ -662,6 +669,8 @@ def _court_transfer_allocation(
                 "canonical_cost": amount,
                 "amount": amount,
                 "payer_id": payer_id,
+                "payer_kind": payer_kind,
+                "payer_name": meta.get("payer_coach_name") or "",
                 "using_coach_ids": using_coach_ids,
                 "burden_target_ids": burden_target_ids,
                 "burden_rule": (
@@ -683,6 +692,7 @@ def _court_transfer_allocation(
         "detail_rows": detail_rows,
         "expense_ids": {row["expense_id"] for row in detail_rows},
         "total": sum(row["amount"] for row in detail_rows),
+        "company_paid_total": company_paid_total,
     }
 
 
@@ -708,6 +718,12 @@ def _build_court_cost_policy(
         .values_list("availability_id", flat=True)
     )
 
+    all_transfer = _court_transfer_allocation(
+        expenses,
+        eligible_coach_ids,
+        main_coach_ids=main_coach_ids,
+        contractor_coach_ids=contractor_coach_ids,
+    )
     transfer = _court_transfer_allocation(
         expenses,
         eligible_coach_ids,
@@ -715,6 +731,10 @@ def _build_court_cost_policy(
         contractor_coach_ids=contractor_coach_ids,
         excluded_availability_ids=rain_refund_availability_ids,
     )
+    # Rain cancellation removes salary burden/reimbursement, but a court fee
+    # paid directly by the company remains a real wallet cash out. A confirmed
+    # refund is recorded independently as cash in by _rain_refund_policy().
+    transfer["company_paid_total"] = all_transfer["company_paid_total"]
     transfer_expense_ids = transfer["expense_ids"]
 
     # 新方式のコート代は availability_id を正規の紐づけキーとする。
@@ -889,6 +909,7 @@ def _build_court_cost_policy(
             row["expense"].pk for row in unlinked_court_expenses
         ],
         "court_transfer_total": transfer["total"],
+        "company_paid_total": transfer["company_paid_total"],
     }
 
 
@@ -1304,6 +1325,7 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
     reimbursement_paid_total = coach_calculation[
         "reimbursement_paid_total"
     ]
+    company_paid_court_total = _money(court_policy.get("company_paid_total"))
     unpaid_salary_total = coach_calculation["unpaid_salary_total"]
     unpaid_reimbursement_total = coach_calculation["unpaid_reimbursement_total"]
     negative_carry_total = coach_calculation["negative_carry_total"]
@@ -1322,7 +1344,9 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
     settlement.reimbursement_cash_out = reimbursement_paid_total
     settlement.common_expense_cash_out = 0
     settlement.contractor_cash_out = contractor_pay_total
-    settlement.cash_out_total = salary_paid_total + reimbursement_paid_total
+    settlement.cash_out_total = (
+        salary_paid_total + reimbursement_paid_total + company_paid_court_total
+    )
     settlement.unpaid_salary_total = unpaid_salary_total
     settlement.unpaid_reimbursement_total = unpaid_reimbursement_total
     settlement.closing_balance = (
@@ -1330,6 +1354,7 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
         + total_company_revenue
         - salary_paid_total
         - reimbursement_paid_total
+        - company_paid_court_total
     )
 
     settlement_snapshot = dict(settlement.calculation_snapshot or {})
@@ -1366,6 +1391,7 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
             "rain_refund_pending_total": rain_refund_policy["pending_total"],
             "rain_refunded_rows": rain_refund_policy["refunded_rows"],
             "rain_refunded_total": rain_refund_policy["refunded_total"],
+            "company_paid_court_total": company_paid_court_total,
         }
     )
     settlement.calculation_snapshot = settlement_snapshot
@@ -1384,7 +1410,11 @@ def _apply_wallet_policy(result, year, month, *, performance_trace=None):
             "reimbursement_due_total": sum(_money(row.get("reimbursement_due")) for row in coach_rows),
             "reimbursement_paid_total": reimbursement_paid_total,
             "unpaid_reimbursement_total": unpaid_reimbursement_total,
-            "cash_out_total": salary_paid_total + reimbursement_paid_total,
+            "cash_out_total": (
+                salary_paid_total + reimbursement_paid_total
+                + company_paid_court_total
+            ),
+            "company_paid_court_total": company_paid_court_total,
             "approved_common_expense_total": (
                 other_expense_policy["expense_total"]
             ),

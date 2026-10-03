@@ -240,7 +240,7 @@ class RainRefundEditTests(TestCase):
         self.assertEqual(meta["rain_refund_collection_coach_id"], self.coaches[2].pk)
         self.assertEqual(meta["rain_refund_payer_coach_id"], self.coaches[1].pk)
         self.assertEqual(meta["rain_refund_debit_coach_id"], self.coaches[2].pk)
-        self.assertEqual(self.expense.created_by, self.coaches[1])
+        self.assertEqual(self.expense.created_by, self.coaches[0])
         self.assertEqual(self.refund.amount, 2400)
         self.assertEqual(self.expense.amount, 2400)
 

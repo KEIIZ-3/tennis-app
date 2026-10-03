@@ -1353,6 +1353,8 @@ class RainRefund(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         related_name="rain_refund_reimbursements",
+        null=True,
+        blank=True,
     )
     confirmed_at = models.DateTimeField(null=True, blank=True)
     confirmed_by = models.ForeignKey(

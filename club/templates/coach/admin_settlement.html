@@ -144,6 +144,7 @@
     <div class="summary info"><div class="summary-label">現金回収売上</div><div class="summary-value">{{ preopen_paid_total }}円</div><div class="summary-note">未回収 {{ preopen_unpaid_total }}円</div></div>
     <div class="summary"><div class="summary-label">ガット張り売上</div><div class="summary-value">{{ stringing_total }}円</div><div class="summary-note">キャンセルを除く当月分</div></div>
     <div class="summary warn"><div class="summary-label">確定コート代</div><div class="summary-value">{{ court_cost_total|default:0 }}円</div><div class="summary-note">実施済み・登録済みレッスン分</div></div>
+    <div class="summary warn"><div class="summary-label">会社支払コート代</div><div class="summary-value">-{{ company_paid_court_total|default:0 }}円</div><div class="summary-note">会社財布から直接支払った当月のコート代</div></div>
     <div class="summary warn"><div class="summary-label">業務委託報酬</div><div class="summary-value">{{ contractor_hourly_pay_total }}円</div><div class="summary-note">メインコーチ3人で均等負担</div></div>
     <div class="summary danger"><div class="summary-label">給与未払い合計</div><div class="summary-value">{{ unpaid_salary_total }}円</div><div class="summary-note">各コーチの給与確定額の未払い分</div></div>
   </section>

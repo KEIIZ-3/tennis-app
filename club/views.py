@@ -4497,6 +4497,7 @@ def _expense_meta_row(expense):
         "court_refund_slot_key": meta.get("court_refund_slot_key", ""),
         "court_refund_lesson_label": meta.get("court_refund_lesson_label", ""),
         "court_refund_facility_label": meta.get("court_refund_facility_label", ""),
+        "payer_name": meta.get("payer_coach_name", ""),
         "rain_canceled_lesson_label": meta.get("rain_canceled_lesson_label", ""),
         "application_month": application_month,
         "ball_application_month": ball_period_start,

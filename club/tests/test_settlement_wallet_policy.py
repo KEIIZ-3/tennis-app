@@ -578,6 +578,51 @@ class SettlementWalletCourtCostTests(TestCase):
         self.assertEqual(allocation["expense_ids"], {10})
         self.assertEqual(allocation["total"], 1001)
 
+    def test_company_wallet_court_transfer_has_burden_without_reimbursement(self):
+        allocation = _court_transfer_allocation(
+            [
+                {
+                    "expense": SimpleNamespace(pk=14),
+                    "amount": 2400,
+                    "meta": {
+                        "record_kind": "court_transfer",
+                        "payer_kind": "company_wallet",
+                        "payer_coach_id": None,
+                        "payer_coach_name": "会社の財布",
+                        "using_coach_ids": [1],
+                    },
+                }
+            ],
+            eligible_coach_ids=[1, 2, 3],
+        )
+
+        self.assertEqual(allocation["burden_by_coach"], {1: 2400})
+        self.assertEqual(allocation["reimbursement_by_coach"], {})
+        self.assertEqual(allocation["company_paid_total"], 2400)
+        self.assertEqual(allocation["detail_rows"][0]["payer_name"], "会社の財布")
+
+    def test_company_wallet_contractor_court_transfer_is_shared(self):
+        allocation = _court_transfer_allocation(
+            [{
+                "expense": SimpleNamespace(pk=15),
+                "amount": 3000,
+                "meta": {
+                    "record_kind": "court_transfer",
+                    "payer_kind": "company_wallet",
+                    "using_coach_ids": [4],
+                },
+            }],
+            eligible_coach_ids=[1, 2, 3, 4],
+            main_coach_ids=[1, 2, 3],
+            contractor_coach_ids=[4],
+        )
+
+        self.assertEqual(
+            allocation["burden_by_coach"], {1: 1000, 2: 1000, 3: 1000}
+        )
+        self.assertEqual(allocation["reimbursement_by_coach"], {})
+        self.assertEqual(allocation["company_paid_total"], 3000)
+
     def test_non_transfer_court_expense_is_not_allocated_twice(self):
         allocation = _court_transfer_allocation(
             [
@@ -876,6 +921,34 @@ class SettlementWalletCourtCostTests(TestCase):
         self.assertEqual(policy["reimbursement_by_coach"], {1: 3200})
         self.assertEqual(policy["refunded_total"], 3200)
         self.assertEqual(sum(policy["reimbursement_by_coach"].values()), 3200)
+
+    @patch("club.models.RainRefund.objects.filter")
+    def test_company_wallet_rain_refund_is_cash_in_without_coach_reimbursement(
+        self,
+        filter_mock,
+    ):
+        refund = SimpleNamespace(
+            expense_id=32,
+            lesson_date=date(2026, 7, 20),
+            amount=2400,
+            lesson_label="会社払い雨天中止",
+            account_name="予約アカウント",
+            collection_coach_id=2,
+            collection_coach=SimpleNamespace(display_name=lambda: "回収担当"),
+            payer_coach=None,
+            payer_coach_id=None,
+            debit_coach_id=2,
+            status="refunded",
+        )
+        filter_mock.return_value.select_related.return_value.order_by.return_value = [
+            refund
+        ]
+
+        policy = _rain_refund_policy(2026, 7, [1, 2, 3])
+
+        self.assertEqual(policy["refunded_total"], 2400)
+        self.assertEqual(policy["reimbursement_by_coach"], {})
+        self.assertEqual(policy["refunded_rows"][0]["payer_coach_name"], "会社の財布")
 
     def test_contractor_lesson_court_cost_is_shared_by_main_coaches_once(self):
         allocation = _court_transfer_allocation(
