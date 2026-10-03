@@ -40,6 +40,7 @@ def update_pending_rain_refund(availability_id, *, refund_input):
     account_coach = refund_input["account_coach"]
     collection_coach = refund_input["collection_coach"]
     payer_coach = refund_input["payer_coach"]
+    payer_kind = refund_input.get("payer_kind") or "coach"
     debit_coach = refund_input["debit_coach"]
     account_name = (
         _display_name(account_coach)
@@ -56,16 +57,18 @@ def update_pending_rain_refund(availability_id, *, refund_input):
             "rain_refund_account_other": refund_input["account_other"],
             "rain_refund_collection_coach_id": collection_coach.pk,
             "rain_refund_collection_coach_name": _display_name(collection_coach),
-            "rain_refund_payer_coach_id": payer_coach.pk,
-            "rain_refund_payer_coach_name": _display_name(payer_coach),
+            "rain_refund_payer_kind": payer_kind,
+            "rain_refund_payer_coach_id": payer_coach.pk if payer_coach else None,
+            "rain_refund_payer_coach_name": (
+                _display_name(payer_coach) if payer_coach else "会社の財布"
+            ),
             "rain_refund_debit_coach_id": debit_coach.pk,
             "rain_refund_debit_coach_name": _display_name(debit_coach),
         }
     )
     expense.note = build_expense_note(meta, meta.get("plain_note", ""))
-    expense.created_by = payer_coach
     expense.full_clean()
-    expense.save(update_fields=["note", "created_by"])
+    expense.save(update_fields=["note"])
 
     refund.booking_account_kind = refund_input["account_kind"]
     refund.booking_account_coach = account_coach

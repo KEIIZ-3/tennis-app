@@ -76,9 +76,10 @@
       {% endif %}
 
       <div>
-        <label for="payer_coach_id">コート代を支払ったメインコーチ</label>
+        <label for="payer_coach_id">コート代の支払元</label>
         <select id="payer_coach_id" name="payer_coach_id">
           <option value="">選択してください</option>
+          <option value="company_wallet" {% if existing_payer_id == "company_wallet" %}selected{% endif %}>会社の財布</option>
           {% for coach in payer_options %}
             <option value="{{ coach.id }}" {% if existing_payer_id == coach.id|stringformat:"s" %}selected{% endif %}>{{ coach.display_name }}</option>
           {% endfor %}

@@ -545,6 +545,7 @@
               <th>カテゴリ</th>
               <th>金額</th>
               <th>対象レッスン</th>
+              <th>支払元</th>
               <th>領収書</th>
               <th>領収書確認</th>
               <th>承認状態</th>
@@ -574,6 +575,7 @@
                     -
                   {% endif %}
                 </td>
+                <td>{{ row.payer_name|default:"-" }}</td>
                 <td>{{ row.receipt_status_label }}</td>
                 <td>{{ row.receipt_check_status_label }}</td>
                 <td>
@@ -665,6 +667,10 @@
               </div>
             </div>
 
+            <div class="mobile-info-row">
+              <div class="mobile-info-label">支払元</div>
+              <div class="mobile-info-value">{{ row.payer_name|default:"-" }}</div>
+            </div>
             <div class="mobile-info-row">
               <div class="mobile-info-label">領収書</div>
               <div class="mobile-info-value">{{ row.receipt_status_label }}</div>

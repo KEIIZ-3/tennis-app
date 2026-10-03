@@ -61,7 +61,7 @@ class CourtExpenseTransferZeroTests(TestCase):
         expense = CoachExpense.objects.get()
         meta = parse_expense_note(expense.note)
         self.assertEqual(expense.amount, 0)
-        self.assertIsNone(expense.created_by_id)
+        self.assertEqual(expense.created_by_id, self.admin.pk)
         self.assertTrue(meta["court_cost_not_required"])
         self.assertIsNone(meta["payer_coach_id"])
         self.assertEqual(meta["payer_coach_name"], "登録不要")
@@ -144,3 +144,25 @@ class CourtExpenseTransferZeroTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(CoachExpense.objects.exists())
         self.assertContains(response, "支払ったメインコーチを選択")
+
+    @patch("club.settlement_service.recalculate_monthly_settlement_chain")
+    def test_company_wallet_payer_is_saved_without_fake_coach(self, recalculate):
+        response = self.client.post(
+            self.url,
+            {
+                "action": "create_court_transfer",
+                "availability_id": self.availability.pk,
+                "amount": "2400",
+                "payer_coach_id": "company_wallet",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        expense = CoachExpense.objects.get()
+        meta = parse_expense_note(expense.note)
+        self.assertEqual(expense.created_by_id, self.admin.pk)
+        self.assertEqual(meta["payer_kind"], "company_wallet")
+        self.assertIsNone(meta["payer_coach_id"])
+        self.assertEqual(meta["payer_coach_name"], "会社の財布")
+        self.assertEqual(meta["recorded_by_id"], self.admin.pk)
+        recalculate.assert_called_once()

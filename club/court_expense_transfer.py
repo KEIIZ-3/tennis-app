@@ -27,6 +27,8 @@ from .court_transfer_service import get_current_court_transfer_for_availability
 from .settlement_balance_policy import main_coaches
 
 RECORD_KIND = "court_transfer"
+PAYER_KIND_COACH = "coach"
+PAYER_KIND_COMPANY_WALLET = "company_wallet"
 APPROVAL_APPROVED = EXPENSE_APPROVAL_APPROVED
 APPROVAL_REFUND_PENDING = "refund_pending"
 APPROVAL_REFUNDED = "refunded"
@@ -256,6 +258,7 @@ def coach_expense_manage(request):
         void_reason = (request.POST.get("void_reason") or "").strip()
         confirm_refund_void = request.POST.get("confirm_refund_void") == "1"
         payer = payer_by_id.get(payer_id)
+        is_company_wallet = payer_id == PAYER_KIND_COMPANY_WALLET
 
         try:
             amount = int(raw_amount)
@@ -264,7 +267,7 @@ def coach_expense_manage(request):
 
         if amount < 0:
             messages.error(request, "コート代は0円以上で入力してください。")
-        elif amount > 0 and not payer:
+        elif amount > 0 and not (payer or is_company_wallet):
             messages.error(request, "コート代を支払ったメインコーチを選択してください。")
         elif not using_coaches:
             messages.error(request, "このレッスンの利用コーチを特定できませんでした。")
@@ -293,9 +296,17 @@ def coach_expense_manage(request):
                 "court_refund_slot_key": _slot_key(availability),
                 "court_refund_lesson_label": _lesson_label(availability),
                 "court_refund_facility_label": _facility_label(availability.court),
-                "payer_coach_id": None if is_not_required else payer.pk,
+                "payer_kind": (
+                    None if is_not_required else
+                    PAYER_KIND_COMPANY_WALLET if is_company_wallet else
+                    PAYER_KIND_COACH
+                ),
+                "payer_coach_id": (
+                    None if is_not_required or is_company_wallet else payer.pk
+                ),
                 "payer_coach_name": (
-                    "登録不要" if is_not_required else _display_name(payer)
+                    "登録不要" if is_not_required else
+                    "会社の財布" if is_company_wallet else _display_name(payer)
                 ),
                 "using_coach_ids": [coach.pk for coach in using_coaches],
                 "using_coach_names": [_display_name(coach) for coach in using_coaches],
@@ -317,7 +328,7 @@ def coach_expense_manage(request):
                     meta,
                     plain_note or ("コート代なし" if is_not_required else ""),
                 )
-                expense.created_by = None if is_not_required else payer
+                expense.created_by = request.user
                 expense.full_clean()
                 expense.save()
                 if is_not_required:
@@ -367,7 +378,9 @@ def coach_expense_manage(request):
                 else None
             ),
             "existing_payer_id": str(
-                existing_meta.get("payer_coach_id") or ""
+                PAYER_KIND_COMPANY_WALLET
+                if existing_meta.get("payer_kind") == PAYER_KIND_COMPANY_WALLET
+                else existing_meta.get("payer_coach_id") or ""
             ),
             "existing_note": (
                 expense_plain_note(existing_expense.note)
