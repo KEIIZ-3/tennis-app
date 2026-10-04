@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -25,6 +26,7 @@ from .models import (
     Reservation,
     TicketConsumption,
     User,
+    ensure_accounting_month_is_open,
 )
 from .settlement_models import MonthlySettlement
 from .participant_levels import current_participant_level_label
@@ -405,6 +407,90 @@ def _build_reservation_url(
     return base_url
 
 
+def _materialize_fixed_lesson_occurrence(*, fixed_lesson, start_at, end_at):
+    from .fixed_lesson_occurrence_service import (
+        reconcile_fixed_lesson_availability,
+        resolve_fixed_lesson_availability_readonly,
+    )
+
+    availability = resolve_fixed_lesson_availability_readonly(
+        fixed_lesson, start_at, end_at
+    )
+    if availability:
+        outcome = reconcile_fixed_lesson_availability(availability, fixed_lesson)
+        if outcome["status"] in {
+            "ambiguous_relation", "source_conflict", "occurrence_mismatch",
+        }:
+            raise ValidationError("固定レッスン開催回を安全に特定できませんでした。")
+        return availability
+
+    return CoachAvailability.objects.create(
+        coach=fixed_lesson.coach,
+        coach_2=fixed_lesson.coach_2,
+        fixed_lesson_source=fixed_lesson,
+        court=fixed_lesson.court,
+        lesson_type=fixed_lesson.lesson_type,
+        target_level=fixed_lesson.target_level,
+        target_level_2=getattr(fixed_lesson, "target_level_2", "") or "",
+        start_at=start_at,
+        end_at=end_at,
+        capacity=_capacity_for_slot(fixed_lesson=fixed_lesson),
+        coach_count=max(int(getattr(fixed_lesson, "coach_count", 1) or 1), 1),
+        court_count=max(int(getattr(fixed_lesson, "court_count", 1) or 1), 1),
+        status=CoachAvailability.STATUS_OPEN,
+        note=f"固定レッスン: {fixed_lesson.title or fixed_lesson.get_lesson_type_display()}",
+    )
+
+
+def _update_court_accounting(availability, post_data):
+    from .court_accounting import validate_booking_account, validate_court_payer
+    from .court_expense_transfer import court_transfer_summary_for_availability
+    from .settlement_balance_policy import main_coaches
+
+    coaches = {str(item.pk): item for item in main_coaches()}
+    payer_choice = (post_data.get("court_payer_choice") or "").strip()
+    booking_choice = (post_data.get("court_booking_account_choice") or "").strip()
+    payer_kind = "coach" if payer_choice.startswith("coach:") else payer_choice
+    payer_coach = coaches.get(payer_choice.removeprefix("coach:"))
+    booking_kind = "coach" if booking_choice.startswith("coach:") else booking_choice
+    booking_coach = coaches.get(booking_choice.removeprefix("coach:"))
+    booking_other = (post_data.get("court_booking_account_other") or "").strip()
+
+    if payer_kind not in ("", "company_wallet", "coach"):
+        raise ValidationError("コート支払元が正しくありません。")
+    if booking_kind not in ("", "coach", "other"):
+        raise ValidationError("コート予約アカウントが正しくありません。")
+    if payer_kind == "coach" and payer_coach is None:
+        raise ValidationError("コート支払元のコーチを選択してください。")
+    if booking_kind == "coach" and booking_coach is None:
+        raise ValidationError("予約アカウントのコーチを選択してください。")
+
+    validate_court_payer(payer_kind, getattr(payer_coach, "pk", None))
+    validate_booking_account(
+        booking_kind, getattr(booking_coach, "pk", None), booking_other
+    )
+    ensure_accounting_month_is_open(availability.start_at)
+
+    # court transfer is the actual record and remains authoritative over advance data.
+    transfer_exists = (
+        court_transfer_summary_for_availability(availability)["status"] == "registered"
+    )
+    if not transfer_exists:
+        availability.court_payer_kind = payer_kind
+        availability.court_payer_coach = payer_coach
+    availability.court_booking_account_kind = booking_kind
+    availability.court_booking_account_coach = booking_coach
+    availability.court_booking_account_other = booking_other
+    update_fields = [
+        "court_booking_account_kind",
+        "court_booking_account_coach",
+        "court_booking_account_other",
+    ]
+    if not transfer_exists:
+        update_fields.extend(["court_payer_kind", "court_payer_coach"])
+    availability.save(update_fields=update_fields)
+
+
 @login_required
 def lesson_calendar_member_list(request):
     performance_trace = LessonMemberListPerformanceTrace()
@@ -515,6 +601,33 @@ def lesson_calendar_member_list(request):
             return HttpResponse("Forbidden", status=403)
 
         action = (request.POST.get("action") or "").strip()
+        if action == "update_court_accounting":
+            try:
+                ensure_accounting_month_is_open(start_at)
+                with transaction.atomic():
+                    if availability is None:
+                        if fixed_lesson is None:
+                            raise ValidationError("コート情報を保存する開催回が見つかりません。")
+                        availability = _materialize_fixed_lesson_occurrence(
+                            fixed_lesson=fixed_lesson,
+                            start_at=start_at,
+                            end_at=end_at,
+                        )
+                    else:
+                        availability = CoachAvailability.objects.select_for_update().get(
+                            pk=availability.pk
+                        )
+                        if fixed_lesson and availability.fixed_lesson_source_id is None:
+                            availability = _materialize_fixed_lesson_occurrence(
+                                fixed_lesson=fixed_lesson,
+                                start_at=start_at,
+                                end_at=end_at,
+                            )
+                    _update_court_accounting(availability, request.POST)
+                messages.success(request, "コート情報を更新しました。")
+            except (ValidationError, CoachAvailability.DoesNotExist) as exc:
+                messages.error(request, "; ".join(getattr(exc, "messages", [str(exc)])))
+            return redirect(request.get_full_path())
         if action == "change_ticket_burden":
             if not is_main_coach(request.user):
                 return HttpResponse("Forbidden", status=403)
@@ -933,11 +1046,14 @@ def lesson_calendar_member_list(request):
     if availability is not None:
         completed_registration = getattr(availability, "completed_registration", None)
     member_options = []
+    court_accounting_coaches = []
     latest_notice_history = None
     notice_history_count = 0
     if is_coach_view:
         from .completed_lesson_views import member_sort_key
+        from .settlement_balance_policy import main_coaches
 
+        court_accounting_coaches = main_coaches()
         member_options = list(User.objects.filter(
             role__in=User.LESSON_PARTICIPANT_ROLE_VALUES,
             is_active=True,
@@ -958,6 +1074,16 @@ def lesson_calendar_member_list(request):
             notice_histories = notice_histories.none()
         latest_notice_history = notice_histories.first()
         notice_history_count = notice_histories.count()
+    court_payer_display = "未設定"
+    court_booking_account_display = "未設定"
+    if availability:
+        court_payer_display = availability.court_payer_display()
+        court_booking_account_display = availability.court_booking_account_display()
+    court_payer_is_actual = bool(
+        court_summary and court_summary.get("status") == "registered"
+    )
+    if court_payer_is_actual:
+        court_payer_display = court_summary["payer_name"]
     with performance_trace.step("template_render"):
         response = render(
             request,
@@ -1000,6 +1126,10 @@ def lesson_calendar_member_list(request):
             "waitlist_count": waitlist_count,
             "active_rows": active_rows,
             "member_options": member_options,
+            "court_accounting_coaches": court_accounting_coaches,
+            "court_payer_display": court_payer_display,
+            "court_booking_account_display": court_booking_account_display,
+            "court_payer_is_actual": court_payer_is_actual,
             "ticket_payer_options": ticket_payer_options,
             "purchase_reservations": purchase_reservations,
             "purchase_reservation_count": len(purchase_reservations),
