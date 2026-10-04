@@ -239,6 +239,12 @@ def coach_expense_manage(request):
         availability.pk,
         for_update=False,
     )
+    from .court_fee_service import resolve_availability_court_fee
+    resolved_court_fee = resolve_availability_court_fee(
+        availability,
+        existing_expense=existing_expense,
+        lookup_actual=False,
+    )
     existing_meta = (
         parse_expense_note(existing_expense.note)
         if existing_expense is not None
@@ -384,9 +390,7 @@ def coach_expense_manage(request):
             "payer_options": payer_options,
             "expense_date": _local(availability.start_at).date().isoformat(),
             "existing_amount": (
-                int(existing_expense.amount or 0)
-                if existing_expense is not None
-                else None
+                resolved_court_fee["amount"]
             ),
             "existing_payer_id": str(
                 PAYER_KIND_COMPANY_WALLET

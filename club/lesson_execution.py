@@ -12,7 +12,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from .lesson_execution_storage import read_status_map, save_status
-from .court_fee_service import calculate_availability_court_fee
+from .court_fee_service import resolve_availability_court_fee
 from .expense_metadata import build_expense_note
 from .lesson_participants import (
     ALL_RESERVATION_STATUSES,
@@ -729,8 +729,12 @@ def _mark_court_expense_refund_pending(
         source_meta = meta
         break
 
-    fee_quote = calculate_availability_court_fee(availability) or {}
-    amount = int(fee_quote["total"] or 0)
+    resolved_fee = resolve_availability_court_fee(
+        availability,
+        existing_expense=source_expense,
+        lookup_actual=True,
+    )
+    amount = int(resolved_fee["amount"] or 0)
     if amount <= 0:
         return None
 
@@ -1365,7 +1369,7 @@ def lesson_execution_manage(request):
                     else (
                         int(court_expense.amount or 0)
                         if court_expense is not None
-                        else int((calculate_availability_court_fee(availability) or {}).get("total") or 0)
+                        else int(resolve_availability_court_fee(availability)["amount"] or 0)
                     )
                 ),
                 "court_payer_name": (
@@ -1388,7 +1392,11 @@ def lesson_execution_manage(request):
                 ),
                 "cancellation_type": cancellation_type,
                 "cancellation_court_fee_quote": (
-                    calculate_availability_court_fee(availability) or {"total": 0}
+                    resolve_availability_court_fee(
+                        availability,
+                        existing_expense=court_expense,
+                        lookup_actual=False,
+                    )
                 ),
                 "court_expense_url": (
                     f"{reverse('club:coach_expense_manage')}?"

@@ -73,6 +73,37 @@ class CancellationCourtSettlementTests(TestCase):
             "cancellation_court_settlement",
         )
 
+    def test_cancellation_uses_advance_override_before_automatic_fee(self):
+        self.availability.court_fee_amount = 2200
+        self.availability.court_fee_overridden = True
+        self.availability.save(update_fields=["court_fee_amount", "court_fee_overridden"])
+
+        expense = self._create_cancellation()
+        refund = RainRefund.objects.get(availability=self.availability)
+
+        self.assertEqual(expense.amount, 2200)
+        self.assertEqual(refund.amount, 2200)
+
+    def test_existing_actual_expense_is_preferred_to_advance_fee(self):
+        self.availability.court_fee_amount = 2200
+        self.availability.court_fee_overridden = True
+        self.availability.save(update_fields=["court_fee_amount", "court_fee_overridden"])
+        actual = CoachExpense.objects.create(
+            expense_date=self.availability.start_at.date(),
+            category=CoachExpense.CATEGORY_COURT,
+            amount=2100,
+            created_by=self.coaches[1],
+            note=build_expense_note({
+                "record_kind": "court_transfer",
+                "availability_id": self.availability.pk,
+                "approval_status": "approved",
+            }),
+        )
+
+        cancellation = self._create_cancellation()
+
+        self.assertEqual(cancellation.amount, actual.amount)
+
     def test_normal_expense_is_retained_and_excluded_after_cancellation(self):
         normal = CoachExpense.objects.create(
             expense_date=self.availability.start_at.date(),

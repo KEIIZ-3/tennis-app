@@ -112,6 +112,43 @@ class LessonMemberListCourtAccountingTests(TestCase):
         self.assertEqual(self.availability.court_booking_account_kind, "")
         self.assertIsNone(self.availability.court_booking_account_coach)
 
+    def test_automatic_fee_is_displayed_and_manual_zero_is_preserved(self):
+        response = self._get()
+        self.assertContains(response, "1,800円")
+        self.assertContains(response, "自動計算：1,800円")
+
+        self._post(court_fee_amount="0")
+        self.availability.refresh_from_db()
+        self.assertEqual(self.availability.court_fee_amount, 0)
+        self.assertTrue(self.availability.court_fee_overridden)
+        self.assertContains(self._get(), "0円")
+        self.assertContains(self._get(), "手動設定")
+
+    def test_manual_fee_saves_with_accounts_without_creating_accounting(self):
+        settlement_count = MonthlySettlement.objects.count()
+        expense_count = CoachExpense.objects.count()
+        self._post(
+            court_fee_amount="2200",
+            court_booking_account_choice=f"coach:{self.coaches[1].pk}",
+            court_payer_choice="company_wallet",
+        )
+        self.availability.refresh_from_db()
+        self.assertEqual(self.availability.court_fee_amount, 2200)
+        self.assertTrue(self.availability.court_fee_overridden)
+        self.assertEqual(self.availability.court_booking_account_coach, self.coaches[1])
+        self.assertEqual(self.availability.court_payer_kind, "company_wallet")
+        self.assertEqual(CoachExpense.objects.count(), expense_count)
+        self.assertEqual(MonthlySettlement.objects.count(), settlement_count)
+
+    def test_unknown_court_accepts_manual_fee(self):
+        self.court.name = "その他"
+        self.court.court_type = Court.COURT_OTHER
+        self.court.save(update_fields=["name", "court_type"])
+        self._post(court_fee_amount="900")
+        self.availability.refresh_from_db()
+        self.assertEqual(self.availability.court_fee_amount, 900)
+        self.assertTrue(self.availability.court_fee_overridden)
+
     def test_other_requires_name_and_invalid_coach_is_rejected(self):
         response = self._post(court_booking_account_choice="other")
         self.assertEqual(response.status_code, 302)
@@ -187,6 +224,7 @@ class LessonMemberListCourtAccountingTests(TestCase):
         )
         response = self.client.post(fixed_url, {
             "action": "update_court_accounting",
+            "court_fee_amount": "2200",
             "court_booking_account_choice": "other",
             "court_booking_account_other": "当日専用",
             "court_payer_choice": "company_wallet",
@@ -196,6 +234,7 @@ class LessonMemberListCourtAccountingTests(TestCase):
         self.assertEqual(occurrence.start_at, self.start)
         self.assertEqual(occurrence.court_booking_account_other, "当日専用")
         self.assertEqual(occurrence.court_payer_kind, "company_wallet")
+        self.assertEqual(occurrence.court_fee_amount, 2200)
         self.assertFalse(
             CoachAvailability.objects.filter(
                 fixed_lesson_source=fixed,
