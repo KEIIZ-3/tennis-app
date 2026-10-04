@@ -122,3 +122,38 @@ def calculate_availability_court_fee(availability):
         getattr(availability, "end_at", None),
         getattr(availability, "court_count", 1),
     )
+
+
+def resolve_availability_court_fee(availability, *, existing_expense=None, lookup_actual=True):
+    """Resolve the current fee using actual > advance override > automatic."""
+    automatic_quote = calculate_availability_court_fee(availability)
+    actual_expense = existing_expense
+    if lookup_actual and actual_expense is None and getattr(availability, "pk", None):
+        from .court_transfer_service import get_current_court_transfer_for_availability
+
+        actual_expense = get_current_court_transfer_for_availability(availability.pk)
+
+    if actual_expense is not None:
+        amount = int(actual_expense.amount or 0)
+        source = "actual"
+    elif getattr(availability, "court_fee_overridden", False):
+        amount = getattr(availability, "court_fee_amount", None)
+        source = "advance"
+    elif automatic_quote is not None:
+        amount = int(automatic_quote["total"])
+        source = "automatic"
+    else:
+        amount = None
+        source = "unset"
+
+    return {
+        "amount": amount,
+        "formatted_amount": f"{amount:,}" if amount is not None else "",
+        "total": amount,
+        "source": source,
+        "automatic_quote": automatic_quote,
+        "formatted_automatic_amount": (
+            f"{automatic_quote['total']:,}" if automatic_quote is not None else ""
+        ),
+        "actual_expense": actual_expense,
+    }

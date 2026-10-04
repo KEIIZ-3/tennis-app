@@ -76,6 +76,31 @@ class AvailabilityCourtAccountingTests(TestCase):
         })
         self.assertEqual(response.context["existing_payer_id"], str(self.coach.pk))
 
+    def test_transfer_amount_uses_advance_fee_and_existing_actual_wins(self):
+        self.availability.court_fee_amount = 2200
+        self.availability.court_fee_overridden = True
+        self.availability.save(update_fields=["court_fee_amount", "court_fee_overridden"])
+        response = self.client.get(reverse("club:coach_expense_manage"), {
+            "availability_id": self.availability.pk,
+        })
+        self.assertEqual(response.context["existing_amount"], 2200)
+
+        CoachExpense.objects.create(
+            expense_date=self.availability.start_at.date(),
+            category=CoachExpense.CATEGORY_COURT,
+            amount=2100,
+            created_by=self.admin,
+            note=build_expense_note({
+                "record_kind": "court_transfer",
+                "availability_id": self.availability.pk,
+                "approval_status": "approved",
+            }),
+        )
+        response = self.client.get(reverse("club:coach_expense_manage"), {
+            "availability_id": self.availability.pk,
+        })
+        self.assertEqual(response.context["existing_amount"], 2100)
+
     @patch("club.settlement_service.recalculate_monthly_settlement_chain")
     def test_transfer_save_synchronizes_actual_payer(self, recalculate):
         response = self.client.post(reverse("club:coach_expense_manage"), {

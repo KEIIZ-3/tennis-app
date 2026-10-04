@@ -144,6 +144,7 @@
       <h2 class="section-title">コート情報</h2>
       <dl class="court-info-grid">
         <div class="court-info-row"><dt>コート</dt><dd>{{ court_name }}</dd></div>
+        <div class="court-info-row"><dt>コート代</dt><dd>{% if court_fee.amount != None %}{{ court_fee.formatted_amount }}円{% else %}未設定{% endif %}{% if court_fee.source == 'actual' %}（実績）{% elif court_fee.source == 'advance' %}（手動設定）{% endif %}</dd></div>
         <div class="court-info-row"><dt>コート予約アカウント</dt><dd>{{ court_booking_account_display }}</dd></div>
         <div class="court-info-row"><dt>{% if court_payer_is_actual %}実績支払元{% else %}コート支払元{% endif %}</dt><dd>{{ court_payer_display }}</dd></div>
       </dl>
@@ -153,6 +154,10 @@
         <form method="post" class="court-info-form">
           {% csrf_token %}
           <input type="hidden" name="action" value="update_court_accounting">
+          <label>コート代
+            <input type="number" name="court_fee_amount" min="0" step="1" inputmode="numeric" value="{% if court_fee.amount != None %}{{ court_fee.amount }}{% endif %}" placeholder="金額を入力">
+            {% if court_fee.automatic_quote %}<span class="court-info-note">自動計算：{{ court_fee.formatted_automatic_amount }}円{% if court_fee.source == 'advance' %} / 手動設定{% endif %}</span>{% elif court_fee.source == 'advance' %}<span class="court-info-note">手動設定</span>{% endif %}
+          </label>
           <label>コート予約アカウント
             <select name="court_booking_account_choice" data-booking-account-select>
               <option value=""{% if not availability or not availability.court_booking_account_kind %} selected{% endif %}>未設定</option>

@@ -312,6 +312,8 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         related_name="coach_availabilities",
     )
     custom_court_name = models.CharField(max_length=255, blank=True, default="")
+    court_fee_amount = models.PositiveIntegerField(null=True, blank=True)
+    court_fee_overridden = models.BooleanField(default=False)
     court_payer_kind = models.CharField(
         max_length=20, blank=True, default="", choices=(
             ("", "未設定"), ("company_wallet", "会社の財布"), ("coach", "コーチ"),

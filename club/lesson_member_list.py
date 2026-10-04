@@ -455,6 +455,18 @@ def _update_court_accounting(availability, post_data):
     booking_kind = "coach" if booking_choice.startswith("coach:") else booking_choice
     booking_coach = coaches.get(booking_choice.removeprefix("coach:"))
     booking_other = (post_data.get("court_booking_account_other") or "").strip()
+    court_fee_submitted = "court_fee_amount" in post_data
+    raw_court_fee = (post_data.get("court_fee_amount") or "").strip()
+
+    if raw_court_fee:
+        try:
+            court_fee_amount = int(raw_court_fee)
+        except (TypeError, ValueError):
+            raise ValidationError("コート代は0円以上の整数で入力してください。")
+        if court_fee_amount < 0:
+            raise ValidationError("コート代は0円以上の整数で入力してください。")
+    else:
+        court_fee_amount = None
 
     if payer_kind not in ("", "company_wallet", "coach"):
         raise ValidationError("コート支払元が正しくありません。")
@@ -475,6 +487,17 @@ def _update_court_accounting(availability, post_data):
     transfer_exists = (
         court_transfer_summary_for_availability(availability)["status"] == "registered"
     )
+    from .court_fee_service import calculate_availability_court_fee
+
+    if court_fee_submitted:
+        automatic_quote = calculate_availability_court_fee(availability)
+        automatic_amount = automatic_quote["total"] if automatic_quote else None
+        availability.court_fee_overridden = (
+            court_fee_amount is not None and court_fee_amount != automatic_amount
+        )
+        availability.court_fee_amount = (
+            court_fee_amount if availability.court_fee_overridden else None
+        )
     if not transfer_exists:
         availability.court_payer_kind = payer_kind
         availability.court_payer_coach = payer_coach
@@ -486,6 +509,8 @@ def _update_court_accounting(availability, post_data):
         "court_booking_account_coach",
         "court_booking_account_other",
     ]
+    if court_fee_submitted:
+        update_fields.extend(["court_fee_amount", "court_fee_overridden"])
     if not transfer_exists:
         update_fields.extend(["court_payer_kind", "court_payer_coach"])
     availability.save(update_fields=update_fields)
@@ -1079,6 +1104,10 @@ def lesson_calendar_member_list(request):
     if availability:
         court_payer_display = availability.court_payer_display()
         court_booking_account_display = availability.court_booking_account_display()
+    from .court_fee_service import resolve_availability_court_fee
+    court_fee = resolve_availability_court_fee(availability) if availability else {
+        "amount": None, "source": "unset", "automatic_quote": None,
+    }
     court_payer_is_actual = bool(
         court_summary and court_summary.get("status") == "registered"
     )
@@ -1130,6 +1159,7 @@ def lesson_calendar_member_list(request):
             "court_payer_display": court_payer_display,
             "court_booking_account_display": court_booking_account_display,
             "court_payer_is_actual": court_payer_is_actual,
+            "court_fee": court_fee,
             "ticket_payer_options": ticket_payer_options,
             "purchase_reservations": purchase_reservations,
             "purchase_reservation_count": len(purchase_reservations),
