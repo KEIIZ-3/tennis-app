@@ -379,6 +379,12 @@ class CoachAvailabilityAdminForm(forms.ModelForm):
             if getattr(self.instance, "end_at", None):
                 self.initial["end_at"] = self.instance.end_at
 
+    def clean_capacity(self):
+        capacity = self.cleaned_data["capacity"]
+        if self.instance.pk and self.initial.get("capacity") != capacity:
+            self.instance.capacity_overridden = True
+        return capacity
+
 
 class ReservationAdminForm(forms.ModelForm):
     start_at = forms.DateTimeField(
@@ -854,7 +860,9 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
     )
     readonly_fields = (
         "fixed_lesson_source", "coach_assignment_status_admin",
-        "occurrence_attribute_status_admin",
+        "occurrence_attribute_status_admin", "coach_assignment_overridden",
+        "capacity_overridden", "court_assignment_overridden", "level_overridden",
+        "lesson_type_overridden", "note_overridden",
     )
     actions = (
         "restore_fixed_lesson_coach_assignment",
