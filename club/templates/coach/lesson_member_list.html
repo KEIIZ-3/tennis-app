@@ -51,6 +51,18 @@
   .court-state{margin-top:10px;padding:11px 12px;border:1px solid #cbd5e1;border-radius:13px;background:#f8fafc;color:#334155;font-size:13px;font-weight:900;}
   .court-state.registered{border-color:#86efac;background:#f0fdf4;color:#166534;}
   .court-state.unregistered{border-color:#fdba74;background:#fff7ed;color:#9a3412;}
+  .court-info-grid{display:grid;gap:12px;margin:0;}
+  .court-info-row{display:grid;gap:4px;padding:12px;border-radius:14px;background:#f8fafc;}
+  .court-info-row dt{color:#64748b;font-size:12px;font-weight:900;}
+  .court-info-row dd{margin:0;color:#0f172a;font-size:16px;font-weight:1000;}
+  .court-info-edit{margin-top:14px;}
+  .court-info-edit summary{display:flex;align-items:center;justify-content:center;min-height:48px;padding:10px 16px;border-radius:14px;background:#2563eb;color:#fff;font-weight:1000;cursor:pointer;list-style:none;}
+  .court-info-edit summary::-webkit-details-marker{display:none;}
+  .court-info-form{display:grid;gap:13px;margin-top:14px;padding-top:14px;border-top:1px solid #e5e7eb;}
+  .court-info-form label{display:grid;gap:6px;color:#334155;font-size:13px;font-weight:900;}
+  .court-info-form select,.court-info-form input{box-sizing:border-box;width:100%;min-height:46px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#0f172a;font:inherit;}
+  .court-info-submit{width:100%;min-height:48px;}
+  .court-info-note{margin:0;color:#64748b;font-size:12px;line-height:1.6;font-weight:750;}
   .btn-held{border-color:#16a34a!important;background:#16a34a!important;color:#fff!important;}
   .btn-rain{border-color:#dc2626!important;background:#fff!important;color:#b91c1c!important;}
   .btn-expense{border-color:#f59e0b!important;background:#fffbeb!important;color:#92400e!important;}
@@ -128,6 +140,41 @@
   {% endif %}
 
   {% if is_coach_view %}
+    <section class="section-card" data-testid="court-accounting-section">
+      <h2 class="section-title">コート情報</h2>
+      <dl class="court-info-grid">
+        <div class="court-info-row"><dt>コート</dt><dd>{{ court_name }}</dd></div>
+        <div class="court-info-row"><dt>コート予約アカウント</dt><dd>{{ court_booking_account_display }}</dd></div>
+        <div class="court-info-row"><dt>{% if court_payer_is_actual %}実績支払元{% else %}コート支払元{% endif %}</dt><dd>{{ court_payer_display }}</dd></div>
+      </dl>
+      {% if court_payer_is_actual %}<p class="court-info-note">登録済みのコート代実績を正本として表示しています。事前情報の変更では実績支払元を変更しません。</p>{% endif %}
+      <details class="court-info-edit">
+        <summary>{% if availability and availability.court_payer_kind or availability and availability.court_booking_account_kind %}コート情報を変更{% else %}コート情報を登録{% endif %}</summary>
+        <form method="post" class="court-info-form">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="update_court_accounting">
+          <label>コート予約アカウント
+            <select name="court_booking_account_choice" data-booking-account-select>
+              <option value=""{% if not availability or not availability.court_booking_account_kind %} selected{% endif %}>未設定</option>
+              {% for option in court_accounting_coaches %}<option value="coach:{{ option.pk }}"{% if availability.court_booking_account_kind == 'coach' and availability.court_booking_account_coach_id == option.pk %} selected{% endif %}>{{ option.display_name }}</option>{% endfor %}
+              <option value="other"{% if availability.court_booking_account_kind == 'other' %} selected{% endif %}>その他</option>
+            </select>
+          </label>
+          <label data-booking-account-other{% if not availability or availability.court_booking_account_kind != 'other' %} hidden{% endif %}>その他の予約アカウント名
+            <input type="text" name="court_booking_account_other" value="{% if availability %}{{ availability.court_booking_account_other }}{% endif %}" maxlength="255">
+          </label>
+          <label>コート支払元
+            <select name="court_payer_choice">
+              <option value=""{% if not availability or not availability.court_payer_kind %} selected{% endif %}>未設定</option>
+              <option value="company_wallet"{% if availability.court_payer_kind == 'company_wallet' %} selected{% endif %}>会社の財布</option>
+              {% for option in court_accounting_coaches %}<option value="coach:{{ option.pk }}"{% if availability.court_payer_kind == 'coach' and availability.court_payer_coach_id == option.pk %} selected{% endif %}>{{ option.display_name }}</option>{% endfor %}
+            </select>
+          </label>
+          <button type="submit" class="btn btn-primary court-info-submit">保存する</button>
+        </form>
+      </details>
+    </section>
+
     <section class="execution-panel">
       <h2 class="execution-title">このレッスンの終了処理</h2>
       <p class="execution-text">
@@ -392,4 +439,20 @@
     </section>
   {% endif %}
 </div>
+<script>
+  (() => {
+    const select = document.querySelector('[data-booking-account-select]');
+    const otherField = document.querySelector('[data-booking-account-other]');
+    if (!select || !otherField) return;
+    const input = otherField.querySelector('input');
+    const syncOtherField = () => {
+      const isOther = select.value === 'other';
+      otherField.hidden = !isOther;
+      input.required = isOther;
+      if (!isOther) input.value = '';
+    };
+    select.addEventListener('change', syncOtherField);
+    syncOtherField();
+  })();
+</script>
 {% endblock %}
