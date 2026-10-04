@@ -9,6 +9,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from club.admin import CoachAvailabilityAdmin
+from club.lesson_calendar_service import resolve_calendar_occurrence_display
 from club.fixed_lesson_sync_facade import synchronize_fixed_lesson_membership
 from club.lesson_member_list import _capacity_for_slot
 from club.models import CoachAvailability, Court, FixedLesson, Reservation, User
@@ -204,6 +205,9 @@ class GeneralLessonCapacityOverrideTests(TestCase):
         self.coach_2 = User.objects.create_user(
             username="general-capacity-coach-2", role=User.ROLE_COACH
         )
+        self.admin_user = User.objects.create_superuser(
+            username="general-capacity-admin", password="password"
+        )
         self.court = Court.objects.create(
             name="general-capacity-court", available_court_count=3
         )
@@ -251,6 +255,20 @@ class GeneralLessonCapacityOverrideTests(TestCase):
             end_at=self.availability.end_at,
             status=Reservation.STATUS_ACTIVE,
         )
+
+    def _admin_form(self, availability, **updates):
+        model_admin = CoachAvailabilityAdmin(CoachAvailability, AdminSite())
+        form_class = model_admin.get_form(
+            SimpleNamespace(user=self.admin_user),
+            availability,
+        )
+        data = {
+            field.name: getattr(availability, field.attname)
+            for field in availability._meta.fields
+            if field.editable and field.name in form_class.base_fields
+        }
+        data.update(updates)
+        return form_class(data=data, instance=availability)
 
     def test_non_overridden_general_capacity_remains_automatic(self):
         self.availability.capacity = 99
@@ -327,6 +345,65 @@ class GeneralLessonCapacityOverrideTests(TestCase):
         self.assertIsNone(one_time.fixed_lesson_source_id)
         self.assertFalse(one_time.capacity_overridden)
         self.assertEqual(one_time.capacity, 5)
+
+    def test_new_two_coach_one_time_general_lesson_keeps_automatic_capacity(self):
+        start_at = self.availability.start_at + timedelta(hours=3)
+        one_time = CoachAvailability.objects.create(
+            coach=self.coach,
+            coach_2=self.coach_2,
+            court=self.court,
+            lesson_type=CoachAvailability.LESSON_GENERAL,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=2),
+            capacity=99,
+        )
+
+        self.assertFalse(one_time.capacity_overridden)
+        self.assertEqual(one_time.capacity, 10)
+
+    def test_admin_form_marks_one_time_capacity_change_before_model_validation(self):
+        start_at = self.availability.start_at + timedelta(hours=3)
+        one_time = CoachAvailability.objects.create(
+            coach=self.coach,
+            court=self.court,
+            lesson_type=CoachAvailability.LESSON_GENERAL,
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=2),
+        )
+
+        form = self._admin_form(one_time, capacity=10)
+
+        self.assertTrue(form.is_valid(), form.errors)
+        saved = form.save()
+        self.assertEqual(saved.capacity, 10)
+        self.assertTrue(saved.capacity_overridden)
+        self.assertEqual(saved.effective_capacity(), 10)
+        self.assertEqual(_capacity_for_slot(availability=saved), 10)
+        display = resolve_calendar_occurrence_display(
+            fixed_lesson=None,
+            availability=saved,
+            start_at=saved.start_at,
+            end_at=saved.end_at,
+            fallback_court=saved.court,
+        )
+        self.assertEqual(display["capacity"], 10)
+
+    def test_admin_form_recalculates_automatic_capacity_for_coach_change(self):
+        form = self._admin_form(self.availability, coach_2=self.coach_2.pk)
+
+        self.assertTrue(form.is_valid(), form.errors)
+        saved = form.save()
+        self.assertFalse(saved.capacity_overridden)
+        self.assertEqual(saved.capacity, 10)
+
+    def test_admin_form_preserves_existing_override_when_other_field_changes(self):
+        self._override_capacity(10)
+        form = self._admin_form(self.availability, note="updated note")
+
+        self.assertTrue(form.is_valid(), form.errors)
+        saved = form.save()
+        self.assertTrue(saved.capacity_overridden)
+        self.assertEqual(saved.capacity, 10)
 
     def test_full_checks_and_member_counts_use_overridden_capacity(self):
         self._override_capacity()
