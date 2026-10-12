@@ -8,11 +8,11 @@ from django.utils import timezone
 from .court_expense_transfer import (
     PAYER_KIND_COACH,
     PAYER_KIND_COMPANY_WALLET,
+    _availability_for_update,
     save_court_transfer,
 )
 from .court_fee_service import calculate_availability_court_fee
 from .court_transfer_service import get_current_court_transfer_for_availability
-from .models import CoachAvailability
 from .settlement_models import MonthlySettlement
 
 
@@ -92,8 +92,9 @@ def inspect_prepaid_court_transfer(availability, *, lock=False):
 @transaction.atomic
 def repair_prepaid_court_transfer(availability_id):
     availability = (
-        CoachAvailability.objects.select_for_update()
-        .select_related("coach", "substitute_coach", "court", "court_payer_coach")
+        _availability_for_update(
+            "coach", "substitute_coach", "court", "court_payer_coach"
+        )
         .get(pk=availability_id)
     )
     preview = inspect_prepaid_court_transfer(availability, lock=True)

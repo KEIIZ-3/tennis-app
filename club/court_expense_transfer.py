@@ -64,6 +64,14 @@ def _existing_transfer_for_availability(availability_id, *, for_update=True):
     )
 
 
+def _availability_for_update(*related_fields):
+    """Lock only the availability row while loading related display data."""
+    return (
+        CoachAvailability.objects.select_for_update(of=("self",))
+        .select_related(*related_fields)
+    )
+
+
 def court_transfer_summary_for_availability(availability):
     expense = _existing_transfer_for_availability(
         availability.pk,
@@ -239,8 +247,7 @@ def save_court_transfer(
 
     with transaction.atomic():
         availability = (
-            CoachAvailability.objects.select_for_update()
-            .select_related("coach", "substitute_coach", "court")
+            _availability_for_update("coach", "substitute_coach", "court")
             .get(pk=availability_id)
         )
         start = _local(availability.start_at)
