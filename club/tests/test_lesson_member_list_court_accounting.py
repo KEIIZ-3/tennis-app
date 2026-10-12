@@ -5,12 +5,14 @@ from django.urls import reverse
 from django.utils import timezone
 
 from club.expense_metadata import build_expense_note, parse_expense_note
+from club.lesson_execution_storage import save_status
 from club.models import (
     MAIN_COACH_NAMES,
     CoachAvailability,
     CoachExpense,
     Court,
     FixedLesson,
+    RainRefund,
     Reservation,
     User,
 )
@@ -28,6 +30,10 @@ class LessonMemberListCourtAccountingTests(TestCase):
             for index, name in enumerate(MAIN_COACH_NAMES)
         ]
         self.court = Court.objects.create(name="西猪名公園", is_active=True)
+        self.member = User.objects.create_user(
+            username="court-info-member-fixture",
+            role=User.ROLE_MEMBER,
+        )
         self.start = timezone.make_aware(datetime.combine(date(2026, 7, 10), time(10)))
         self.availability = CoachAvailability.objects.create(
             coach=self.coaches[0],
@@ -182,6 +188,77 @@ class LessonMemberListCourtAccountingTests(TestCase):
             "会社財布から直接支払った当月のコート代</div>",
             html=True,
         )
+
+    def test_rain_canceled_overlap_allows_fee_update_and_reuses_transfer(self):
+        canceled = CoachAvailability.objects.create(
+            coach=self.coaches[0],
+            court=self.court,
+            lesson_type=Reservation.LESSON_GENERAL,
+            start_at=self.start + timedelta(days=1),
+            end_at=self.start + timedelta(days=1, hours=2),
+            capacity=4,
+        )
+        CoachAvailability.objects.filter(pk=canceled.pk).update(
+            start_at=self.start,
+            end_at=self.start + timedelta(hours=2),
+        )
+        canceled.refresh_from_db()
+        Reservation.objects.create(
+            user=self.member,
+            coach=self.coaches[0],
+            court=self.court,
+            availability=canceled,
+            lesson_type=Reservation.LESSON_GENERAL,
+            start_at=self.start,
+            end_at=self.start + timedelta(hours=2),
+            status=Reservation.STATUS_RAIN_CANCELED,
+            cancellation_reason="雨天中止",
+        )
+        settlement, _created = MonthlySettlement.objects.get_or_create(
+            year=self.start.year,
+            month=self.start.month,
+        )
+        save_status(
+            settlement,
+            f"availability:{canceled.pk}",
+            "refund_pending",
+            self.coaches[0],
+            cancellation_type="rain",
+        )
+        refund_expense = CoachExpense.objects.create(
+            expense_date=self.start.date(),
+            category=CoachExpense.CATEGORY_COURT,
+            amount=1800,
+            created_by=self.coaches[0],
+        )
+        RainRefund.objects.create(
+            expense=refund_expense,
+            availability=canceled,
+            lesson_date=self.start.date(),
+            amount=1800,
+            status=RainRefund.STATUS_VOIDED,
+            booking_account_kind=RainRefund.ACCOUNT_COACH,
+            booking_account_coach=self.coaches[0],
+            debit_coach=self.coaches[0],
+        )
+
+        self._post(court_fee_amount="2400", court_payer_choice="company_wallet")
+        self._post(
+            court_fee_amount="2600",
+            court_payer_choice=f"coach:{self.coaches[1].pk}",
+        )
+
+        self.availability.refresh_from_db()
+        transfers = [
+            expense
+            for expense in CoachExpense.objects.all()
+            if parse_expense_note(expense.note).get("record_kind") == "court_transfer"
+            and parse_expense_note(expense.note).get("availability_id") == self.availability.pk
+        ]
+        self.assertEqual(self.availability.court_fee_amount, 2600)
+        self.assertEqual(self.availability.court_payer_coach, self.coaches[1])
+        self.assertEqual(len(transfers), 1)
+        self.assertEqual(transfers[0].amount, 2600)
 
     def test_zero_is_registered_without_wallet_cash_out(self):
         self._post(court_fee_amount="0", court_payer_choice="company_wallet")
