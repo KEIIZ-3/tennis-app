@@ -112,6 +112,17 @@ class CourtFeeServiceTests(SimpleTestCase):
         self.assertEqual(sunday_two_courts["total"], 6400)
         self.assertEqual(holiday["total"], 3200)
 
+    def test_sono_october_sunday_19_to_21_is_3200(self):
+        quote = calculate_court_fee(
+            DummyCourt("Nishi-Ina Park", "sono"),
+            self.aware(2026, 10, 11, 19),
+            self.aware(2026, 10, 11, 21),
+            1,
+        )
+        self.assertEqual(quote["base_amount"], 2400)
+        self.assertEqual(quote["lighting_amount"], 800)
+        self.assertEqual(quote["total"], 3200)
+
     def test_unknown_court_returns_none(self):
         quote = calculate_court_fee(
             DummyCourt("その他", "other"),
