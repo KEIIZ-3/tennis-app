@@ -214,6 +214,7 @@ def save_court_transfer(
     payer_coach,
     actor,
     plain_note="",
+    court_cost_not_required=None,
 ):
     """Create or update the one canonical paid court transfer for an occurrence.
 
@@ -223,12 +224,17 @@ def save_court_transfer(
     amount = int(amount)
     if amount < 0:
         raise ValidationError("コート代は0円以上で入力してください。")
-    if amount > 0 and payer_kind not in (
+    is_not_required = (
+        amount == 0
+        if court_cost_not_required is None
+        else bool(court_cost_not_required)
+    )
+    if not is_not_required and payer_kind not in (
         PAYER_KIND_COMPANY_WALLET,
         PAYER_KIND_COACH,
     ):
         raise ValidationError("コート支払元を選択してください。")
-    if amount > 0 and payer_kind == PAYER_KIND_COACH and payer_coach is None:
+    if not is_not_required and payer_kind == PAYER_KIND_COACH and payer_coach is None:
         raise ValidationError("コート支払元のコーチを選択してください。")
 
     with transaction.atomic():
@@ -250,7 +256,6 @@ def save_court_transfer(
         using_coaches = _using_coaches(availability)
         if not using_coaches:
             raise ValidationError("このレッスンの利用コーチを特定できませんでした。")
-        is_not_required = amount == 0
         is_company_wallet = payer_kind == PAYER_KIND_COMPANY_WALLET
         effective_payer = (
             None if is_not_required or is_company_wallet else payer_coach
