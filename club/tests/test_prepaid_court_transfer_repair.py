@@ -6,7 +6,11 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
 
-from club.court_expense_transfer import court_transfer_summary_for_availability
+from club.court_expense_transfer import (
+    _availability_for_update,
+    court_transfer_summary_for_availability,
+    save_court_transfer,
+)
 from club.expense_metadata import build_expense_note, parse_expense_note
 from club.models import (
     MAIN_COACH_NAMES,
@@ -75,6 +79,42 @@ class PrepaidCourtTransferRepairTests(TestCase):
         )
         self.assertEqual(settlement.cash_out_total, 3200)
         self.assertEqual(settlement.closing_balance, -3200)
+
+    def test_repair_lock_targets_only_availability_with_nullable_relations(self):
+        availability = self.availability(
+            substitute_coach=None,
+            court_payer_coach=None,
+        )
+
+        queryset = _availability_for_update(
+            "coach", "substitute_coach", "court", "court_payer_coach"
+        ).filter(pk=availability.pk)
+
+        self.assertTrue(queryset.query.select_for_update)
+        self.assertEqual(queryset.query.select_for_update_of, ("self",))
+        self.assertIn("substitute_coach", queryset.query.select_related)
+        self.assertIn("court_payer_coach", queryset.query.select_related)
+        self.assertEqual(repair_prepaid_court_transfer(availability.pk).status, "created")
+
+    def test_save_lock_targets_only_availability_with_nullable_substitute(self):
+        availability = self.availability(substitute_coach=None)
+        queryset = _availability_for_update(
+            "coach", "substitute_coach", "court"
+        ).filter(pk=availability.pk)
+
+        self.assertTrue(queryset.query.select_for_update)
+        self.assertEqual(queryset.query.select_for_update_of, ("self",))
+        self.assertIn("substitute_coach", queryset.query.select_related)
+
+        expense, created = save_court_transfer(
+            availability.pk,
+            amount=3200,
+            payer_kind="company_wallet",
+            payer_coach=None,
+            actor=self.coach,
+        )
+        self.assertTrue(created)
+        self.assertEqual(expense.amount, 3200)
 
     def test_coach_payer_automatic_fee_is_created(self):
         availability = self.availability(
