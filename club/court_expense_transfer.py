@@ -206,6 +206,107 @@ def _using_coaches(availability):
     return coaches
 
 
+def save_court_transfer(
+    availability_id,
+    *,
+    amount,
+    payer_kind,
+    payer_coach,
+    actor,
+    plain_note="",
+):
+    """Create or update the one canonical paid court transfer for an occurrence.
+
+    The availability row is locked before selecting the transfer so concurrent
+    saves cannot both observe an unregistered occurrence.
+    """
+    amount = int(amount)
+    if amount < 0:
+        raise ValidationError("コート代は0円以上で入力してください。")
+    if amount > 0 and payer_kind not in (
+        PAYER_KIND_COMPANY_WALLET,
+        PAYER_KIND_COACH,
+    ):
+        raise ValidationError("コート支払元を選択してください。")
+    if amount > 0 and payer_kind == PAYER_KIND_COACH and payer_coach is None:
+        raise ValidationError("コート支払元のコーチを選択してください。")
+
+    with transaction.atomic():
+        availability = (
+            CoachAvailability.objects.select_for_update()
+            .select_related("coach", "substitute_coach", "court")
+            .get(pk=availability_id)
+        )
+        start = _local(availability.start_at)
+        ensure_accounting_month_is_open(start)
+        active_refunds = RainRefund.objects.select_for_update().filter(
+            availability=availability,
+        ).exclude(status=RainRefund.STATUS_VOIDED)
+        if active_refunds.exists():
+            raise ValidationError(
+                "雨天中止精算が登録済みのため、先に中止情報を確認してください。"
+            )
+
+        using_coaches = _using_coaches(availability)
+        if not using_coaches:
+            raise ValidationError("このレッスンの利用コーチを特定できませんでした。")
+        is_not_required = amount == 0
+        is_company_wallet = payer_kind == PAYER_KIND_COMPANY_WALLET
+        effective_payer = (
+            None if is_not_required or is_company_wallet else payer_coach
+        )
+        meta = {
+            "expense_type": EXPENSE_TYPE_COURT_TRANSFER,
+            "receipt_status": "none",
+            "receipt_check_status": "checked",
+            "approval_status": APPROVAL_APPROVED,
+            "record_kind": RECORD_KIND,
+            "availability_id": availability.pk,
+            "court_refund_slot_key": _slot_key(availability),
+            "court_refund_lesson_label": _lesson_label(availability),
+            "court_refund_facility_label": _facility_label(availability.court),
+            "payer_kind": (
+                None if is_not_required else payer_kind
+            ),
+            "payer_coach_id": getattr(effective_payer, "pk", None),
+            "payer_coach_name": (
+                "登録不要" if is_not_required else
+                "会社の財布" if is_company_wallet else
+                _display_name(effective_payer)
+            ),
+            "using_coach_ids": [coach.pk for coach in using_coaches],
+            "using_coach_names": [
+                _display_name(coach) for coach in using_coaches
+            ],
+            "recorded_by_id": actor.pk,
+            "recorded_by_name": _display_name(actor),
+            "court_cost_not_required": is_not_required,
+        }
+        expense = _existing_transfer_for_availability(availability.pk)
+        created = expense is None
+        if created:
+            expense = CoachExpense(category=CoachExpense.CATEGORY_COURT)
+        expense.expense_date = start.date()
+        expense.amount = amount
+        expense.note = build_expense_note(
+            meta,
+            plain_note or ("コート代なし" if is_not_required else ""),
+        )
+        expense.created_by = actor
+        expense.full_clean()
+        expense.save()
+
+        availability.court_payer_kind = "" if is_not_required else payer_kind
+        availability.court_payer_coach = effective_payer
+        availability.save(update_fields=[
+            "court_payer_kind",
+            "court_payer_coach",
+        ])
+        from .settlement_service import recalculate_monthly_settlement_chain
+        recalculate_monthly_settlement_chain(start.year, start.month, force=True)
+        return expense, created
+
+
 @login_required
 @require_http_methods(["GET", "POST"])
 def coach_expense_manage(request):
@@ -292,62 +393,7 @@ def coach_expense_manage(request):
                 messages.error(request, exc.messages[0])
                 return redirect("club:coach_admin_settlement")
             is_not_required = amount == 0
-            meta = {
-                "expense_type": EXPENSE_TYPE_COURT_TRANSFER,
-                "receipt_status": "none",
-                "receipt_check_status": "checked",
-                "approval_status": APPROVAL_APPROVED,
-                "record_kind": RECORD_KIND,
-                "availability_id": availability.pk,
-                "court_refund_slot_key": _slot_key(availability),
-                "court_refund_lesson_label": _lesson_label(availability),
-                "court_refund_facility_label": _facility_label(availability.court),
-                "payer_kind": (
-                    None if is_not_required else
-                    PAYER_KIND_COMPANY_WALLET if is_company_wallet else
-                    PAYER_KIND_COACH
-                ),
-                "payer_coach_id": (
-                    None if is_not_required or is_company_wallet else payer.pk
-                ),
-                "payer_coach_name": (
-                    "登録不要" if is_not_required else
-                    "会社の財布" if is_company_wallet else _display_name(payer)
-                ),
-                "using_coach_ids": [coach.pk for coach in using_coaches],
-                "using_coach_names": [_display_name(coach) for coach in using_coaches],
-                "recorded_by_id": request.user.pk,
-                "recorded_by_name": _display_name(request.user),
-                "court_cost_not_required": is_not_required,
-            }
             with transaction.atomic():
-                locked_availability = CoachAvailability.objects.select_for_update().get(pk=availability.pk)
-                expense = _existing_transfer_for_availability(availability.pk)
-                created = expense is None
-                if created:
-                    expense = CoachExpense(
-                        category=CoachExpense.CATEGORY_COURT,
-                    )
-                expense.expense_date = start.date()
-                expense.amount = amount
-                expense.note = build_expense_note(
-                    meta,
-                    plain_note or ("コート代なし" if is_not_required else ""),
-                )
-                expense.created_by = request.user
-                expense.full_clean()
-                expense.save()
-                locked_availability.court_payer_kind = (
-                    "" if is_not_required else
-                    PAYER_KIND_COMPANY_WALLET if is_company_wallet else
-                    PAYER_KIND_COACH
-                )
-                locked_availability.court_payer_coach = (
-                    None if is_not_required or is_company_wallet else payer
-                )
-                locked_availability.save(update_fields=[
-                    "court_payer_kind", "court_payer_coach",
-                ])
                 if is_not_required:
                     from .rain_refund_service import void_rain_refund
                     for refund in active_refunds:
@@ -356,11 +402,16 @@ def coach_expense_manage(request):
                             voided_by=request.user,
                             reason=void_reason,
                         )
-                from .settlement_service import recalculate_monthly_settlement_chain
-                recalculate_monthly_settlement_chain(
-                    start.year,
-                    start.month,
-                    force=True,
+                expense, created = save_court_transfer(
+                    availability.pk,
+                    amount=amount,
+                    payer_kind=(
+                        PAYER_KIND_COMPANY_WALLET
+                        if is_company_wallet else PAYER_KIND_COACH
+                    ),
+                    payer_coach=payer,
+                    actor=request.user,
+                    plain_note=plain_note,
                 )
 
             messages.success(

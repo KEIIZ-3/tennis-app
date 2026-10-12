@@ -41,6 +41,14 @@ def _overlap_minutes(start_at, end_at, range_start, range_end):
     return max(int((overlap_end - overlap_start).total_seconds() // 60), 0)
 
 
+def _sono_lighting_start_hour(target_date):
+    if target_date.month in (5, 6, 7, 8):
+        return 19
+    if target_date.month in (3, 4, 9):
+        return 18
+    return 17
+
+
 def calculate_court_fee(court, start_at, end_at, court_count=1):
     start_at = _local(start_at)
     end_at = _local(end_at)
@@ -57,7 +65,10 @@ def calculate_court_fee(court, start_at, end_at, court_count=1):
     is_saturday = target_date.weekday() == 5
     is_sunday = target_date.weekday() == 6
 
-    lighting_start = datetime.combine(target_date, time(19, 0))
+    lighting_start_hour = (
+        _sono_lighting_start_hour(target_date) if kind == "sono" else 19
+    )
+    lighting_start = datetime.combine(target_date, time(lighting_start_hour, 0))
     lighting_end = datetime.combine(target_date, time(21, 0))
     if timezone.is_aware(start_at):
         lighting_start = timezone.make_aware(lighting_start, timezone.get_current_timezone())

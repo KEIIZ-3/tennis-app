@@ -442,9 +442,9 @@ def _materialize_fixed_lesson_occurrence(*, fixed_lesson, start_at, end_at):
     )
 
 
-def _update_court_accounting(availability, post_data):
+def _update_court_accounting(availability, post_data, *, actor):
     from .court_accounting import validate_booking_account, validate_court_payer
-    from .court_expense_transfer import court_transfer_summary_for_availability
+    from .court_expense_transfer import save_court_transfer
     from .settlement_balance_policy import main_coaches
 
     coaches = {str(item.pk): item for item in main_coaches()}
@@ -483,10 +483,6 @@ def _update_court_accounting(availability, post_data):
     )
     ensure_accounting_month_is_open(availability.start_at)
 
-    # court transfer is the actual record and remains authoritative over advance data.
-    transfer_exists = (
-        court_transfer_summary_for_availability(availability)["status"] == "registered"
-    )
     from .court_fee_service import calculate_availability_court_fee
 
     if court_fee_submitted:
@@ -498,9 +494,6 @@ def _update_court_accounting(availability, post_data):
         availability.court_fee_amount = (
             court_fee_amount if availability.court_fee_overridden else None
         )
-    if not transfer_exists:
-        availability.court_payer_kind = payer_kind
-        availability.court_payer_coach = payer_coach
     availability.court_booking_account_kind = booking_kind
     availability.court_booking_account_coach = booking_coach
     availability.court_booking_account_other = booking_other
@@ -511,9 +504,22 @@ def _update_court_accounting(availability, post_data):
     ]
     if court_fee_submitted:
         update_fields.extend(["court_fee_amount", "court_fee_overridden"])
-    if not transfer_exists:
-        update_fields.extend(["court_payer_kind", "court_payer_coach"])
     availability.save(update_fields=update_fields)
+
+    if court_fee_submitted and court_fee_amount is not None:
+        save_court_transfer(
+            availability.pk,
+            amount=court_fee_amount,
+            payer_kind=payer_kind,
+            payer_coach=payer_coach,
+            actor=actor,
+        )
+    else:
+        availability.court_payer_kind = payer_kind
+        availability.court_payer_coach = payer_coach
+        availability.save(update_fields=[
+            "court_payer_kind", "court_payer_coach",
+        ])
 
 
 @login_required
@@ -648,7 +654,11 @@ def lesson_calendar_member_list(request):
                                 start_at=start_at,
                                 end_at=end_at,
                             )
-                    _update_court_accounting(availability, request.POST)
+                    _update_court_accounting(
+                        availability,
+                        request.POST,
+                        actor=request.user,
+                    )
                 messages.success(request, "コート情報を更新しました。")
             except (ValidationError, CoachAvailability.DoesNotExist) as exc:
                 messages.error(request, "; ".join(getattr(exc, "messages", [str(exc)])))
