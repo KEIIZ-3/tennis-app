@@ -4,7 +4,16 @@ from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.utils import timezone
 
-from club.models import CoachAvailability, Court, User
+from club.lesson_execution_storage import save_status
+from club.models import (
+    CoachAvailability,
+    CoachExpense,
+    Court,
+    RainRefund,
+    Reservation,
+    User,
+)
+from club.settlement_models import MonthlySettlement
 
 
 class CoachAvailabilityOverlapValidationTests(TestCase):
@@ -14,6 +23,9 @@ class CoachAvailabilityOverlapValidationTests(TestCase):
         )
         self.other_coach = User.objects.create_user(
             username="availability-overlap-other-coach", role=User.ROLE_COACH
+        )
+        self.member = User.objects.create_user(
+            username="availability-overlap-member", role=User.ROLE_MEMBER
         )
         self.court = Court.objects.create(
             name="Availability validation court", available_court_count=12
@@ -41,6 +53,48 @@ class CoachAvailabilityOverlapValidationTests(TestCase):
         CoachAvailability.objects.filter(pk=availability.pk).update(court_count=court_count)
         availability.refresh_from_db()
         return availability
+
+    def cancel_availability(self, availability, *, execution_status, refund_status=None):
+        Reservation.objects.create(
+            user=self.member,
+            coach=availability.coach,
+            court=availability.court,
+            availability=availability,
+            lesson_type=availability.lesson_type,
+            target_level=availability.target_level,
+            start_at=availability.start_at,
+            end_at=availability.end_at,
+            status=Reservation.STATUS_RAIN_CANCELED,
+            cancellation_reason="雨天中止",
+        )
+        settlement, _created = MonthlySettlement.objects.get_or_create(
+            year=availability.start_at.year,
+            month=availability.start_at.month,
+        )
+        save_status(
+            settlement,
+            f"availability:{availability.pk}",
+            execution_status,
+            self.coach,
+            cancellation_type="rain",
+        )
+        if refund_status:
+            expense = CoachExpense.objects.create(
+                expense_date=availability.start_at.date(),
+                category=CoachExpense.CATEGORY_COURT,
+                amount=1000,
+                created_by=self.coach,
+            )
+            RainRefund.objects.create(
+                expense=expense,
+                availability=availability,
+                lesson_date=availability.start_at.date(),
+                amount=1000,
+                status=refund_status,
+                booking_account_kind=RainRefund.ACCOUNT_COACH,
+                booking_account_coach=self.coach,
+                debit_coach=self.coach,
+            )
 
     def test_same_coach_overlapping_time_raises_validation_error(self):
         self.create_availability()
@@ -138,3 +192,54 @@ class CoachAvailabilityOverlapValidationTests(TestCase):
             )
             with self.assertRaisesMessage(ValidationError, "利用可能コート面数を超えています"):
                 self.create_availability(coach=self.other_coach, start_at=start_at)
+
+    def test_canceled_execution_statuses_do_not_block_same_coach(self):
+        cases = (
+            ("rain_canceled", None),
+            ("refund_pending", RainRefund.STATUS_PENDING),
+            ("refunded", RainRefund.STATUS_REFUNDED),
+            ("refund_pending", RainRefund.STATUS_VOIDED),
+        )
+        for index, (execution_status, refund_status) in enumerate(cases):
+            start_at = self.start_at + timedelta(days=index)
+            canceled = self.create_availability(start_at=start_at)
+            self.cancel_availability(
+                canceled,
+                execution_status=execution_status,
+                refund_status=refund_status,
+            )
+            replacement = self.create_availability(start_at=start_at)
+            self.assertIsNotNone(replacement.pk)
+
+    def test_canceled_availability_does_not_consume_court_capacity(self):
+        canceled = self.set_court_count(self.create_availability(), 12)
+        self.cancel_availability(canceled, execution_status="rain_canceled")
+
+        replacement = self.create_availability(coach=self.other_coach)
+
+        self.assertIsNotNone(replacement.pk)
+
+    def test_rain_refund_record_alone_does_not_disable_overlap_validation(self):
+        existing = self.create_availability()
+        expense = CoachExpense.objects.create(
+            expense_date=existing.start_at.date(),
+            category=CoachExpense.CATEGORY_COURT,
+            amount=1000,
+            created_by=self.coach,
+        )
+        RainRefund.objects.create(
+            expense=expense,
+            availability=existing,
+            lesson_date=existing.start_at.date(),
+            amount=1000,
+            status=RainRefund.STATUS_VOIDED,
+            booking_account_kind=RainRefund.ACCOUNT_COACH,
+            booking_account_coach=self.coach,
+            debit_coach=self.coach,
+        )
+
+        with self.assertRaisesMessage(
+            ValidationError,
+            "同じコーチで重複する空き時間があります。",
+        ):
+            self.create_availability()

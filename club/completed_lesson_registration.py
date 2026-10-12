@@ -38,51 +38,22 @@ def can_manage_completed_lessons(user, coach=None):
 
 
 def _canceled_conflict_ids(*, coach, court, custom_court_name, start_at, end_at):
-    """Return only overlapping occurrences with canonical non-held evidence.
-
-    This is deliberately scoped to completed-lesson registration. Normal
-    CoachAvailability validation remains strict.
-    """
-    candidates = list(
-        CoachAvailability.objects.filter(
-            start_at__lt=end_at,
-            end_at__gt=start_at,
-        ).filter(
-            Q(coach=coach)
-            | Q(coach_2=coach)
-            | (Q(court=court) if court else Q(court__isnull=True, custom_court_name=custom_court_name))
-        ).prefetch_related("reservations", "rain_refunds")
+    """Return overlapping occurrences with canonical cancellation evidence."""
+    candidates = CoachAvailability.objects.filter(
+        start_at__lt=end_at,
+        end_at__gt=start_at,
     )
-    settlements = {
-        (row.year, row.month): read_status_map(row)
-        for row in MonthlySettlement.objects.filter(
-            year__in={row.start_at.year for row in candidates},
-            month__in={row.start_at.month for row in candidates},
+    conflict_filter = Q(coach=coach) | Q(coach_2=coach)
+    if court:
+        conflict_filter |= Q(court=court)
+    else:
+        conflict_filter |= Q(
+            court__isnull=True,
+            custom_court_name=custom_court_name,
         )
-    }
-    excluded = []
-    cancellation_statuses = {
-        lesson_execution.STATUS_RAIN_CANCELED,
-        lesson_execution.STATUS_REFUND_PENDING,
-        lesson_execution.STATUS_REFUNDED,
-    }
-    for candidate in candidates:
-        reservations = list(candidate.reservations.all())
-        if any(row.status in (Reservation.STATUS_ACTIVE, Reservation.STATUS_PENDING) for row in reservations):
-            continue
-        entry = settlements.get((candidate.start_at.year, candidate.start_at.month), {}).get(
-            f"availability:{candidate.pk}", {}
-        )
-        status, cancellation_type = lesson_execution.effective_status(
-            entry, reservations, end_at=candidate.end_at
-        )
-        has_explicit_cancellation = bool(
-            status in cancellation_statuses
-            and (cancellation_type in ("rain", "other") or candidate.rain_refunds.exists())
-        )
-        if has_explicit_cancellation:
-            excluded.append(candidate.pk)
-    return excluded
+    return lesson_execution.non_occupying_availability_ids(
+        candidates.filter(conflict_filter)
+    )
 
 
 def _court_transfer_note(*, registration, availability, payer, amount, actor, canceled=False):

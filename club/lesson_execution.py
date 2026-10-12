@@ -141,6 +141,66 @@ def effective_status(entry, reservations, *, end_at, now=None):
     return _effective_status(entry or {}, reservations, end_at=end_at, now=now)
 
 
+def non_occupying_availability_ids(availabilities):
+    """Return occurrences that canonical execution evidence says were canceled."""
+    availabilities = list(availabilities)
+    if not availabilities:
+        return []
+
+    availability_ids = [availability.pk for availability in availabilities]
+    reservations_by_availability = {
+        availability_id: [] for availability_id in availability_ids
+    }
+    for reservation in Reservation.objects.filter(
+        availability_id__in=availability_ids
+    ).order_by("pk"):
+        reservations_by_availability[reservation.availability_id].append(reservation)
+
+    local_starts = [_local(availability.start_at) for availability in availabilities]
+    settlements = {
+        (settlement.year, settlement.month): read_status_map(settlement)
+        for settlement in MonthlySettlement.objects.filter(
+            year__in={value.year for value in local_starts},
+            month__in={value.month for value in local_starts},
+        )
+    }
+    refund_availability_ids = set(
+        RainRefund.objects.filter(
+            availability_id__in=availability_ids,
+        ).values_list("availability_id", flat=True)
+    )
+    cancellation_statuses = {
+        STATUS_RAIN_CANCELED,
+        STATUS_REFUND_PENDING,
+        STATUS_REFUNDED,
+    }
+    excluded = []
+    for availability, local_start in zip(availabilities, local_starts):
+        reservations = reservations_by_availability[availability.pk]
+        if any(
+            reservation.status in (
+                Reservation.STATUS_ACTIVE,
+                Reservation.STATUS_PENDING,
+            )
+            for reservation in reservations
+        ):
+            continue
+        entry = settlements.get((local_start.year, local_start.month), {}).get(
+            f"availability:{availability.pk}", {}
+        )
+        status, cancellation_type = effective_status(
+            entry,
+            reservations,
+            end_at=availability.end_at,
+        )
+        if status in cancellation_statuses and (
+            cancellation_type in (CANCELLATION_TYPE_RAIN, CANCELLATION_TYPE_OTHER)
+            or availability.pk in refund_availability_ids
+        ):
+            excluded.append(availability.pk)
+    return excluded
+
+
 def can_manage_occurrence(user, availability, fixed_lesson=None):
     """Use the lesson-execution permission boundary for calendar entry points."""
     if not _is_allowed(user):

@@ -556,13 +556,25 @@ class CoachAvailability(models.Model, LessonTypeMixin):
                 })
 
         selected_coach_ids = [coach.pk for coach in self.all_coaches()]
-        overlap_qs = CoachAvailability.objects.filter(
-            Q(coach_id__in=selected_coach_ids) | Q(coach_2_id__in=selected_coach_ids),
+        overlapping_time_qs = CoachAvailability.objects.filter(
             start_at__lt=self.end_at,
             end_at__gt=self.start_at,
         )
         if self.pk:
-            overlap_qs = overlap_qs.exclude(pk=self.pk)
+            overlapping_time_qs = overlapping_time_qs.exclude(pk=self.pk)
+        overlap_qs = overlapping_time_qs.filter(
+            Q(coach_id__in=selected_coach_ids) | Q(coach_2_id__in=selected_coach_ids),
+        )
+        from .lesson_execution import non_occupying_availability_ids
+
+        conflict_candidates = overlap_qs
+        if self.court_id:
+            conflict_candidates = overlapping_time_qs.filter(
+                Q(pk__in=overlap_qs.values("pk")) | Q(court_id=self.court_id)
+            )
+        non_occupying_ids = non_occupying_availability_ids(conflict_candidates)
+        if non_occupying_ids:
+            overlap_qs = overlap_qs.exclude(pk__in=non_occupying_ids)
         conflict_exclusion_ids = getattr(self, "_validated_conflict_exclusion_ids", ())
         if conflict_exclusion_ids:
             overlap_qs = overlap_qs.exclude(pk__in=conflict_exclusion_ids)
@@ -570,13 +582,9 @@ class CoachAvailability(models.Model, LessonTypeMixin):
             raise ValidationError("同じコーチで重複する空き時間があります。")
 
         if self.court_id:
-            court_overlap_qs = CoachAvailability.objects.filter(
-                court=self.court,
-                start_at__lt=self.end_at,
-                end_at__gt=self.start_at,
-            )
-            if self.pk:
-                court_overlap_qs = court_overlap_qs.exclude(pk=self.pk)
+            court_overlap_qs = overlapping_time_qs.filter(court=self.court)
+            if non_occupying_ids:
+                court_overlap_qs = court_overlap_qs.exclude(pk__in=non_occupying_ids)
             if conflict_exclusion_ids:
                 court_overlap_qs = court_overlap_qs.exclude(pk__in=conflict_exclusion_ids)
             used_court_count = court_overlap_qs.aggregate(total=Sum("court_count"))["total"] or 0
