@@ -4,7 +4,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from club.expense_metadata import build_expense_note
+from club.expense_metadata import build_expense_note, parse_expense_note
 from club.models import (
     MAIN_COACH_NAMES,
     CoachAvailability,
@@ -122,11 +122,9 @@ class LessonMemberListCourtAccountingTests(TestCase):
         self.assertEqual(self.availability.court_fee_amount, 0)
         self.assertTrue(self.availability.court_fee_overridden)
         self.assertContains(self._get(), "0円")
-        self.assertContains(self._get(), "手動設定")
+        self.assertContains(self._get(), "実績")
 
-    def test_manual_fee_saves_with_accounts_without_creating_accounting(self):
-        settlement_count = MonthlySettlement.objects.count()
-        expense_count = CoachExpense.objects.count()
+    def test_manual_fee_saves_as_canonical_paid_transfer(self):
         self._post(
             court_fee_amount="2200",
             court_booking_account_choice=f"coach:{self.coaches[1].pk}",
@@ -137,17 +135,74 @@ class LessonMemberListCourtAccountingTests(TestCase):
         self.assertTrue(self.availability.court_fee_overridden)
         self.assertEqual(self.availability.court_booking_account_coach, self.coaches[1])
         self.assertEqual(self.availability.court_payer_kind, "company_wallet")
-        self.assertEqual(CoachExpense.objects.count(), expense_count)
-        self.assertEqual(MonthlySettlement.objects.count(), settlement_count)
+        expense = CoachExpense.objects.get()
+        meta = parse_expense_note(expense.note)
+        self.assertEqual(expense.amount, 2200)
+        self.assertEqual(meta["record_kind"], "court_transfer")
+        self.assertEqual(meta["availability_id"], self.availability.pk)
+        self.assertEqual(meta["payer_kind"], "company_wallet")
+        settlement = MonthlySettlement.objects.get()
+        self.assertEqual(
+            settlement.calculation_snapshot["company_paid_court_total"], 2200
+        )
+        self.assertEqual(settlement.cash_out_total, 2200)
+        self.assertEqual(settlement.closing_balance, -2200)
+
+        response = self._get()
+        self.assertContains(response, "登録済み")
+        self.assertContains(response, "2,200円")
+
+    def test_resave_updates_one_transfer_and_latest_payer_only(self):
+        self._post(court_fee_amount="3200", court_payer_choice="company_wallet")
+        expense = CoachExpense.objects.get()
+        self._post(
+            court_fee_amount="3000",
+            court_payer_choice=f"coach:{self.coaches[1].pk}",
+        )
+        self.assertEqual(CoachExpense.objects.count(), 1)
+        expense.refresh_from_db()
+        meta = parse_expense_note(expense.note)
+        self.assertEqual(expense.amount, 3000)
+        self.assertEqual(meta["payer_kind"], "coach")
+        self.assertEqual(meta["payer_coach_id"], self.coaches[1].pk)
+        settlement = MonthlySettlement.objects.get()
+        self.assertEqual(
+            settlement.calculation_snapshot["company_paid_court_total"], 0
+        )
+        self.coaches[0].is_staff = True
+        self.coaches[0].save(update_fields=["is_staff"])
+        response = self.client.get(reverse("club:coach_admin_settlement"), {
+            "year": self.start.year,
+            "month": self.start.month,
+        })
+        self.assertContains(response, "会社支払コート代")
+        self.assertContains(
+            response,
+            '<div class="summary-value">0円</div><div class="summary-note">'
+            "会社財布から直接支払った当月のコート代</div>",
+            html=True,
+        )
+
+    def test_zero_is_registered_without_wallet_cash_out(self):
+        self._post(court_fee_amount="0", court_payer_choice="company_wallet")
+        expense = CoachExpense.objects.get()
+        meta = parse_expense_note(expense.note)
+        self.assertEqual(expense.amount, 0)
+        self.assertTrue(meta["court_cost_not_required"])
+        settlement = MonthlySettlement.objects.get()
+        self.assertEqual(
+            settlement.calculation_snapshot["company_paid_court_total"], 0
+        )
 
     def test_unknown_court_accepts_manual_fee(self):
         self.court.name = "その他"
         self.court.court_type = Court.COURT_OTHER
         self.court.save(update_fields=["name", "court_type"])
-        self._post(court_fee_amount="900")
+        self._post(court_fee_amount="900", court_payer_choice="company_wallet")
         self.availability.refresh_from_db()
         self.assertEqual(self.availability.court_fee_amount, 900)
         self.assertTrue(self.availability.court_fee_overridden)
+        self.assertEqual(CoachExpense.objects.get().amount, 900)
 
     def test_other_requires_name_and_invalid_coach_is_rejected(self):
         response = self._post(court_booking_account_choice="other")
@@ -160,7 +215,7 @@ class LessonMemberListCourtAccountingTests(TestCase):
         self.availability.refresh_from_db()
         self.assertEqual(self.availability.court_payer_kind, "")
 
-    def test_actual_court_transfer_payer_is_displayed_and_not_overwritten(self):
+    def test_actual_court_transfer_payer_is_displayed_and_updated_canonically(self):
         CoachExpense.objects.create(
             expense_date=self.start.date(),
             category=CoachExpense.CATEGORY_COURT,
@@ -179,9 +234,14 @@ class LessonMemberListCourtAccountingTests(TestCase):
         self.assertContains(response, "実績支払元")
         self.assertContains(response, self.coaches[1].display_name())
 
-        self._post(court_payer_choice="company_wallet")
+        self._post(court_fee_amount="2400", court_payer_choice="company_wallet")
         self.availability.refresh_from_db()
-        self.assertEqual(self.availability.court_payer_kind, "")
+        self.assertEqual(self.availability.court_payer_kind, "company_wallet")
+        self.assertEqual(CoachExpense.objects.count(), 1)
+        self.assertEqual(
+            parse_expense_note(CoachExpense.objects.get().note)["payer_kind"],
+            "company_wallet",
+        )
 
     def test_member_cannot_see_or_post_edit_ui(self):
         member = User.objects.create_user(username="court-info-member", role=User.ROLE_MEMBER)
