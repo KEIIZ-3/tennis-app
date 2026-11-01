@@ -312,6 +312,7 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         related_name="coach_availabilities",
     )
     custom_court_name = models.CharField(max_length=255, blank=True, default="")
+    court_reservation_number = models.CharField(max_length=10, blank=True, default="")
     court_fee_amount = models.PositiveIntegerField(null=True, blank=True)
     court_fee_overridden = models.BooleanField(default=False)
     court_payer_kind = models.CharField(
