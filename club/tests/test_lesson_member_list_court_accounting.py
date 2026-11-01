@@ -118,6 +118,62 @@ class LessonMemberListCourtAccountingTests(TestCase):
         self.assertEqual(self.availability.court_booking_account_kind, "")
         self.assertIsNone(self.availability.court_booking_account_coach)
 
+    def test_reservation_number_is_optional_and_preserves_leading_zero(self):
+        response = self._post(court_reservation_number="")
+        self.assertEqual(response.status_code, 302)
+        self.availability.refresh_from_db()
+        self.assertEqual(self.availability.court_reservation_number, "")
+
+        self._post(court_reservation_number="1234567890")
+        self.availability.refresh_from_db()
+        self.assertEqual(self.availability.court_reservation_number, "1234567890")
+        self.assertContains(self._get(), "1234567890")
+
+        self._post(court_reservation_number="0123456789")
+        self.availability.refresh_from_db()
+        self.assertEqual(self.availability.court_reservation_number, "0123456789")
+
+        self._post(court_reservation_number="")
+        self.availability.refresh_from_db()
+        self.assertEqual(self.availability.court_reservation_number, "")
+
+    def test_invalid_reservation_numbers_are_rejected(self):
+        for value in ("123456789", "12345678901", "12345abcde"):
+            with self.subTest(value=value):
+                response = self._post(court_reservation_number=value)
+                self.assertEqual(response.status_code, 302)
+                self.availability.refresh_from_db()
+                self.assertEqual(self.availability.court_reservation_number, "")
+                self.assertContains(
+                    self._get(), "予約番号は10桁の数字で入力してください。"
+                )
+
+    def test_reservation_number_only_change_does_not_affect_accounting(self):
+        self.availability.court_fee_amount = 2200
+        self.availability.court_fee_overridden = True
+        self.availability.court_payer_kind = "coach"
+        self.availability.court_payer_coach = self.coaches[1]
+        self.availability.save(update_fields=[
+            "court_fee_amount",
+            "court_fee_overridden",
+            "court_payer_kind",
+            "court_payer_coach",
+        ])
+        transfer_count = CoachExpense.objects.count()
+
+        self._post(
+            court_reservation_number="1234567890",
+            court_payer_choice=f"coach:{self.coaches[1].pk}",
+        )
+
+        self.availability.refresh_from_db()
+        self.assertEqual(self.availability.court_reservation_number, "1234567890")
+        self.assertEqual(self.availability.court_fee_amount, 2200)
+        self.assertTrue(self.availability.court_fee_overridden)
+        self.assertEqual(self.availability.court_payer_kind, "coach")
+        self.assertEqual(self.availability.court_payer_coach, self.coaches[1])
+        self.assertEqual(CoachExpense.objects.count(), transfer_count)
+
     def test_automatic_fee_is_displayed_and_manual_zero_is_preserved(self):
         response = self._get()
         self.assertContains(response, "1,800円")

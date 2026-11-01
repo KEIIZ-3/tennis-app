@@ -146,6 +146,7 @@
         <div class="court-info-row"><dt>コート</dt><dd>{{ court_name }}</dd></div>
         <div class="court-info-row"><dt>コート代</dt><dd>{% if court_fee.amount != None %}{{ court_fee.formatted_amount }}円{% else %}未設定{% endif %}{% if court_fee.source == 'actual' %}（実績）{% elif court_fee.source == 'advance' %}（手動設定）{% endif %}</dd></div>
         <div class="court-info-row"><dt>コート予約アカウント</dt><dd>{{ court_booking_account_display }}</dd></div>
+        <div class="court-info-row"><dt>予約番号</dt><dd>{% if availability and availability.court_reservation_number %}{{ availability.court_reservation_number }}{% else %}未設定{% endif %}</dd></div>
         <div class="court-info-row"><dt>{% if court_payer_is_actual %}実績支払元{% else %}コート支払元{% endif %}</dt><dd>{{ court_payer_display }}</dd></div>
       </dl>
       {% if court_payer_is_actual %}<p class="court-info-note">登録済みのコート代実績を正本として表示しています。事前情報の変更では実績支払元を変更しません。</p>{% endif %}
@@ -167,6 +168,9 @@
           </label>
           <label data-booking-account-other{% if not availability or availability.court_booking_account_kind != 'other' %} hidden{% endif %}>その他の予約アカウント名
             <input type="text" name="court_booking_account_other" value="{% if availability %}{{ availability.court_booking_account_other }}{% endif %}" maxlength="255">
+          </label>
+          <label>予約番号
+            <input type="text" name="court_reservation_number" value="{% if availability %}{{ availability.court_reservation_number }}{% endif %}" maxlength="10" inputmode="numeric">
           </label>
           <label>コート支払元
             <select name="court_payer_choice">

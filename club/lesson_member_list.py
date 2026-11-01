@@ -455,6 +455,9 @@ def _update_court_accounting(availability, post_data, *, actor):
     booking_kind = "coach" if booking_choice.startswith("coach:") else booking_choice
     booking_coach = coaches.get(booking_choice.removeprefix("coach:"))
     booking_other = (post_data.get("court_booking_account_other") or "").strip()
+    court_reservation_number = (
+        post_data.get("court_reservation_number") or ""
+    ).strip()
     court_fee_submitted = "court_fee_amount" in post_data
     raw_court_fee = (post_data.get("court_fee_amount") or "").strip()
 
@@ -476,6 +479,12 @@ def _update_court_accounting(availability, post_data, *, actor):
         raise ValidationError("コート支払元のコーチを選択してください。")
     if booking_kind == "coach" and booking_coach is None:
         raise ValidationError("予約アカウントのコーチを選択してください。")
+    if court_reservation_number and (
+        len(court_reservation_number) != 10
+        or not court_reservation_number.isascii()
+        or not court_reservation_number.isdigit()
+    ):
+        raise ValidationError("予約番号は10桁の数字で入力してください。")
 
     validate_court_payer(payer_kind, getattr(payer_coach, "pk", None))
     validate_booking_account(
@@ -497,10 +506,12 @@ def _update_court_accounting(availability, post_data, *, actor):
     availability.court_booking_account_kind = booking_kind
     availability.court_booking_account_coach = booking_coach
     availability.court_booking_account_other = booking_other
+    availability.court_reservation_number = court_reservation_number
     update_fields = [
         "court_booking_account_kind",
         "court_booking_account_coach",
         "court_booking_account_other",
+        "court_reservation_number",
     ]
     if court_fee_submitted:
         update_fields.extend(["court_fee_amount", "court_fee_overridden"])
