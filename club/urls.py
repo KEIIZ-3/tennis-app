@@ -17,6 +17,7 @@ from . import reservation_cancellation
 from . import ticket_purchase_reservation_views
 from . import shop_views
 from . import completed_lesson_views
+from . import court_payment_list
 
 app_name = "club"
 
@@ -74,6 +75,8 @@ urlpatterns = [
     path("coach/today-lessons/", views.coach_today_lessons, name="coach_today_lessons"),
     path("coach/lesson-quick-action/", today_lesson_actions.lesson_quick_action, name="lesson_quick_action"),
     path("coach/court-number-line/", court_number_line_notice.court_number_line_notice, name="court_number_line_notice"),
+    path("coach/court-payment-list/", court_payment_list.court_payment_list, name="court_payment_list"),
+    path("coach/court-payment-list/pdf/", court_payment_list.court_payment_list_pdf, name="court_payment_list_pdf"),
     path("coach/availability/", views.coach_availability_list, name="coach_availability_list"),
     path("coach/availability/new/", views.coach_availability_create, name="coach_availability_create"),
     path("coach/availability/<int:pk>/edit/", views.coach_availability_create, name="coach_availability_edit"),
