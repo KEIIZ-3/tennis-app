@@ -12,7 +12,7 @@ from pypdf import PdfReader
 from club import lesson_execution
 from club.court_payment_list import payment_rows
 from club.lesson_execution_storage import save_status
-from club.models import CoachAvailability, Court
+from club.models import CoachAvailability, Court, CourtBookingInfo
 from club.settlement_models import MonthlySettlement
 
 
@@ -56,20 +56,25 @@ class CourtPaymentListTests(TestCase):
         coach=None,
     ):
         start = timezone.make_aware(datetime(2026, 11, day, hour))
-        return CoachAvailability.objects.create(
+        availability = CoachAvailability.objects.create(
             coach=coach or self.coach,
             court=court or self.sono,
-            court_reservation_number=number,
-            court_booking_account_kind=account_kind,
-            court_booking_account_coach=(
-                self.other_coach if account_coach is None and account_kind == "coach" else account_coach
-            ),
-            court_booking_account_other=account_other,
             start_at=start,
             end_at=start + timedelta(hours=2),
             capacity=4,
             status=CoachAvailability.STATUS_OPEN,
         )
+        CourtBookingInfo.objects.create(
+            availability=availability,
+            position=1,
+            reservation_number=number,
+            booking_account_kind=account_kind,
+            booking_account_coach=(
+                self.other_coach if account_coach is None and account_kind == "coach" else account_coach
+            ),
+            booking_account_other=account_other,
+        )
+        return availability
 
     def _cancel(self, availability, cancellation_type):
         settlement, _ = MonthlySettlement.objects.get_or_create(year=2026, month=11)
@@ -106,6 +111,32 @@ class CourtPaymentListTests(TestCase):
             [row["availability_id"] for row in rows],
             [early.pk, same_time_first.pk, same_time_second.pk, late_day.pk],
         )
+
+    def test_two_courts_are_separate_rows_sorted_by_position(self):
+        availability = self._availability(1, 19, number="1000000001")
+        CoachAvailability.objects.filter(pk=availability.pk).update(court_count=2)
+        CourtBookingInfo.objects.create(
+            availability=availability,
+            position=2,
+            reservation_number="1000000002",
+            booking_account_kind="other",
+            booking_account_other="コート2予約者",
+        )
+
+        rows = payment_rows(2026, 11)
+
+        self.assertEqual([row["position"] for row in rows], [1, 2])
+        self.assertEqual([row["reservation_number"] for row in rows], ["1000000001", "1000000002"])
+
+    def test_missing_second_court_is_shown_without_creating_a_record(self):
+        availability = self._availability(1, 19)
+        CoachAvailability.objects.filter(pk=availability.pk).update(court_count=2)
+
+        rows = payment_rows(2026, 11)
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[1]["reservation_number"], "未設定")
+        self.assertEqual(availability.court_booking_infos.count(), 1)
 
     def test_only_sono_is_shown_without_court_name_or_fee(self):
         self._availability(1, 19, number="0123456789")

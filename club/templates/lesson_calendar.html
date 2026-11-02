@@ -1362,6 +1362,11 @@
         <span class="month-current">{{ month_title }}</span>
         <a class="btn" href="{% url 'club:lesson_calendar' %}?year={{ next_year }}&month={{ next_month }}">次月 →</a>
       </div>
+      {% if can_view_court_payment_list %}
+        <div class="calendar-month-nav">
+          <a class="btn" href="{% url 'club:court_payment_list' %}?year={{ target_year }}&amp;month={{ target_month }}">コート支払一覧</a>
+        </div>
+      {% endif %}
     </div>
 
     <section class="private-lesson-panel" aria-label="個別レッスン相談">

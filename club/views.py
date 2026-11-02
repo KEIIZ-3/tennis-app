@@ -2461,6 +2461,10 @@ def lesson_calendar_view(request):
             "calendar_weeks": calendar_weeks,
             "schedule_rows": schedule_rows,
             "display_range_days": 45,
+            "can_view_court_payment_list": (
+                request.user.is_authenticated
+                and (_is_coach_user(request.user) or _is_staff_like(request.user))
+            ),
         },
     )
 
@@ -7053,7 +7057,19 @@ def coach_availability_create(request, pk=None):
                 availability.coach = request.user
             try:
                 with transaction.atomic():
+                    locked_instance = None
+                    if instance is not None:
+                        locked_instance = CoachAvailability.objects.select_for_update().get(pk=instance.pk)
                     availability.save()
+                    selected_booking = form.cleaned_data.get("delete_court_booking_info")
+                    if selected_booking is not None:
+                        selected_id = selected_booking.pk
+                        booking_infos = availability.court_booking_infos.select_for_update()
+                        booking_infos.filter(pk=selected_id).delete()
+                        remaining = booking_infos.order_by("position", "id").first()
+                        if remaining and remaining.position != 1:
+                            remaining.position = 1
+                            remaining.save(update_fields=["position"])
                     if is_calendar_source and availability.lesson_type in (
                         Reservation.LESSON_PRIVATE,
                         Reservation.LESSON_GROUP,

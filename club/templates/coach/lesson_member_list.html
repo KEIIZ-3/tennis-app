@@ -145,13 +145,14 @@
       <dl class="court-info-grid">
         <div class="court-info-row"><dt>コート</dt><dd>{{ court_name }}</dd></div>
         <div class="court-info-row"><dt>コート代</dt><dd>{% if court_fee.amount != None %}{{ court_fee.formatted_amount }}円{% else %}未設定{% endif %}{% if court_fee.source == 'actual' %}（実績）{% elif court_fee.source == 'advance' %}（手動設定）{% endif %}</dd></div>
-        <div class="court-info-row"><dt>コート予約アカウント</dt><dd>{{ court_booking_account_display }}</dd></div>
-        <div class="court-info-row"><dt>予約番号</dt><dd>{% if availability and availability.court_reservation_number %}{{ availability.court_reservation_number }}{% else %}未設定{% endif %}</dd></div>
+        {% for slot in court_booking_infos %}
+          <div class="court-info-row"><dt>コート{{ slot.position }}</dt><dd>予約番号：{% if slot.info and slot.info.reservation_number %}{{ slot.info.reservation_number }}{% else %}未設定{% endif %}<br>予約者：{% if slot.info %}{{ slot.info.booking_account_display }}{% else %}未設定{% endif %}</dd></div>
+        {% endfor %}
         <div class="court-info-row"><dt>{% if court_payer_is_actual %}実績支払元{% else %}コート支払元{% endif %}</dt><dd>{{ court_payer_display }}</dd></div>
       </dl>
       {% if court_payer_is_actual %}<p class="court-info-note">登録済みのコート代実績を正本として表示しています。事前情報の変更では実績支払元を変更しません。</p>{% endif %}
       <details class="court-info-edit">
-        <summary>{% if availability and availability.court_payer_kind or availability and availability.court_booking_account_kind %}コート情報を変更{% else %}コート情報を登録{% endif %}</summary>
+        <summary>{% if availability and availability.court_payer_kind or court_booking_infos %}コート情報を変更{% else %}コート情報を登録{% endif %}</summary>
         <form method="post" class="court-info-form">
           {% csrf_token %}
           <input type="hidden" name="action" value="update_court_accounting">
@@ -159,19 +160,23 @@
             <input type="number" name="court_fee_amount" min="0" step="1" inputmode="numeric" value="{% if court_fee.amount != None %}{{ court_fee.amount }}{% endif %}" placeholder="金額を入力">
             {% if court_fee.automatic_quote %}<span class="court-info-note">自動計算：{{ court_fee.formatted_automatic_amount }}円{% if court_fee.source == 'advance' %} / 手動設定{% endif %}</span>{% elif court_fee.source == 'advance' %}<span class="court-info-note">手動設定</span>{% endif %}
           </label>
-          <label>コート予約アカウント
-            <select name="court_booking_account_choice" data-booking-account-select>
-              <option value=""{% if not availability or not availability.court_booking_account_kind %} selected{% endif %}>未設定</option>
-              {% for option in court_accounting_coaches %}<option value="coach:{{ option.pk }}"{% if availability.court_booking_account_kind == 'coach' and availability.court_booking_account_coach_id == option.pk %} selected{% endif %}>{{ option.display_name }}</option>{% endfor %}
-              <option value="other"{% if availability.court_booking_account_kind == 'other' %} selected{% endif %}>その他</option>
-            </select>
-          </label>
-          <label data-booking-account-other{% if not availability or availability.court_booking_account_kind != 'other' %} hidden{% endif %}>その他の予約アカウント名
-            <input type="text" name="court_booking_account_other" value="{% if availability %}{{ availability.court_booking_account_other }}{% endif %}" maxlength="255">
-          </label>
-          <label>予約番号
-            <input type="text" name="court_reservation_number" value="{% if availability %}{{ availability.court_reservation_number }}{% endif %}" maxlength="10" inputmode="numeric">
-          </label>
+          {% for slot in court_booking_infos %}
+            <fieldset><legend>コート{{ slot.position }}</legend>
+              <label>予約番号
+                <input type="text" name="court_reservation_number_{{ slot.position }}" value="{% if slot.info %}{{ slot.info.reservation_number }}{% endif %}" maxlength="10" inputmode="numeric">
+              </label>
+              <label>コート予約アカウント
+                <select name="court_booking_account_choice_{{ slot.position }}" data-booking-account-select>
+                  <option value=""{% if not slot.info or not slot.info.booking_account_kind %} selected{% endif %}>未設定</option>
+                  {% for option in court_accounting_coaches %}<option value="coach:{{ option.pk }}"{% if slot.info.booking_account_kind == 'coach' and slot.info.booking_account_coach_id == option.pk %} selected{% endif %}>{{ option.display_name }}</option>{% endfor %}
+                  <option value="other"{% if slot.info.booking_account_kind == 'other' %} selected{% endif %}>その他</option>
+                </select>
+              </label>
+              <label data-booking-account-other{% if not slot.info or slot.info.booking_account_kind != 'other' %} hidden{% endif %}>その他の予約アカウント名
+                <input type="text" name="court_booking_account_other_{{ slot.position }}" value="{% if slot.info %}{{ slot.info.booking_account_other }}{% endif %}" maxlength="255">
+              </label>
+            </fieldset>
+          {% endfor %}
           <label>コート支払元
             <select name="court_payer_choice">
               <option value=""{% if not availability or not availability.court_payer_kind %} selected{% endif %}>未設定</option>

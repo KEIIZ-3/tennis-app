@@ -312,7 +312,6 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         related_name="coach_availabilities",
     )
     custom_court_name = models.CharField(max_length=255, blank=True, default="")
-    court_reservation_number = models.CharField(max_length=10, blank=True, default="")
     court_fee_amount = models.PositiveIntegerField(null=True, blank=True)
     court_fee_overridden = models.BooleanField(default=False)
     court_payer_kind = models.CharField(
@@ -325,17 +324,6 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         related_name="court_payer_availabilities",
         limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
     )
-    court_booking_account_kind = models.CharField(
-        max_length=20, blank=True, default="", choices=(
-            ("", "未設定"), ("coach", "コーチ"), ("other", "その他"),
-        ),
-    )
-    court_booking_account_coach = models.ForeignKey(
-        User, on_delete=models.PROTECT, null=True, blank=True,
-        related_name="court_booking_account_availabilities",
-        limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
-    )
-    court_booking_account_other = models.CharField(max_length=255, blank=True, default="")
     lesson_type = models.CharField(
         max_length=20,
         choices=LessonTypeMixin.LESSON_TYPE_CHOICES,
@@ -383,14 +371,6 @@ class CoachAvailability(models.Model, LessonTypeMixin):
     def court_payer_display(self):
         from .court_accounting import payer_display
         return payer_display(self.court_payer_kind, self.court_payer_coach)
-
-    def court_booking_account_display(self):
-        from .court_accounting import booking_account_display
-        return booking_account_display(
-            self.court_booking_account_kind,
-            self.court_booking_account_coach,
-            self.court_booking_account_other,
-        )
 
     def duration_hours(self):
         if not self.start_at or not self.end_at:
@@ -453,14 +433,9 @@ class CoachAvailability(models.Model, LessonTypeMixin):
             reservation.save(update_fields=["substitute_coach"])
 
     def clean(self):
-        from .court_accounting import validate_booking_account, validate_court_payer
+        from .court_accounting import validate_court_payer
 
         validate_court_payer(self.court_payer_kind, self.court_payer_coach_id)
-        validate_booking_account(
-            self.court_booking_account_kind,
-            self.court_booking_account_coach_id,
-            self.court_booking_account_other,
-        )
         if not self.start_at or not self.end_at:
             return
 
@@ -618,6 +593,71 @@ class CoachAvailability(models.Model, LessonTypeMixin):
             self.apply_substitute_to_reservations()
 
         return result
+
+
+class CourtBookingInfo(models.Model):
+    availability = models.ForeignKey(
+        CoachAvailability,
+        on_delete=models.CASCADE,
+        related_name="court_booking_infos",
+    )
+    position = models.PositiveIntegerField()
+    reservation_number = models.CharField(max_length=10, blank=True, default="")
+    booking_account_kind = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        choices=(("", "未設定"), ("coach", "コーチ"), ("other", "その他")),
+    )
+    booking_account_coach = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="court_booking_infos",
+        limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
+    )
+    booking_account_other = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        ordering = ["position", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["availability", "position"],
+                name="unique_court_booking_position",
+            ),
+            models.CheckConstraint(
+                condition=Q(position__gte=1),
+                name="court_booking_position_gte_1",
+            ),
+        ]
+
+    def clean(self):
+        from .court_accounting import validate_booking_account
+
+        if self.reservation_number and (
+            len(self.reservation_number) != 10
+            or not self.reservation_number.isascii()
+            or not self.reservation_number.isdigit()
+        ):
+            raise ValidationError({
+                "reservation_number": "予約番号は10桁の数字で入力してください。"
+            })
+        validate_booking_account(
+            self.booking_account_kind,
+            self.booking_account_coach_id,
+            self.booking_account_other,
+            field_prefix="booking_account",
+        )
+
+    def booking_account_display(self):
+        from .court_accounting import booking_account_display
+
+        return booking_account_display(
+            self.booking_account_kind,
+            self.booking_account_coach,
+            self.booking_account_other,
+        )
 
 
 class FixedLesson(models.Model, LessonTypeMixin):
