@@ -47,7 +47,7 @@
 
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px;">
       {% for field in form %}
-        <div class="availability-field{% if field.name|slice:':7' == 'member_' %} group-member-field{% endif %}" data-field-name="{{ field.name }}"{% if field.name|slice:':7' == 'member_' %} data-member-index="{{ field.name|slice:'7:' }}"{% endif %}>
+        <div class="availability-field{% if field.name|slice:':7' == 'member_' %} group-member-field{% endif %}" data-field-name="{{ field.name }}"{% if field.name|slice:':7' == 'member_' %} data-member-index="{{ field.name|slice:'7:' }}"{% endif %}{% if field.name == 'delete_court_booking_info' and not field.field.queryset.exists %} hidden{% endif %}>
           <label for="{{ field.id_for_label }}">
             {{ field.label }}
             {% if field.field.required %}
@@ -56,6 +56,7 @@
           </label>
 
           {{ field }}
+          {% if field.name == "delete_court_booking_info" %}<div class="muted">利用コートが2面から1面になります。削除するコート情報を選択してください。</div>{% endif %}
 
           {% if field.help_text %}
             <div class="muted" style="margin-top:6px; font-size:13px;">
@@ -113,6 +114,7 @@
       const customerCount = document.getElementById("id_customer_count");
       const court = document.getElementById("id_court_selection");
       const wrappers = Array.from(document.querySelectorAll(".availability-field"));
+      const deleteBookingWrapper = wrappers.find(function (wrapper) { return wrapper.dataset.fieldName === "delete_court_booking_info"; });
       const generalFields = new Set(["coach_2", "coach_count", "court_count", "capacity"]);
       const privateFields = new Set(["private_member"]);
       const groupFields = new Set(["customer_count"]);
@@ -144,6 +146,9 @@
         if (coachCount) coachCount.value = count;
         if (courtCount) courtCount.value = count;
         if (capacity && coach2) capacity.value = count === 2 ? coach2.dataset.capacityTwo : coach2.dataset.capacityOne;
+        if (deleteBookingWrapper && deleteBookingWrapper.querySelector("input")) {
+          deleteBookingWrapper.hidden = count !== 1;
+        }
       }
       if (coach2) coach2.addEventListener("change", updateGeneralLessonTotals);
       if (lessonType) lessonType.addEventListener("change", refreshFields);

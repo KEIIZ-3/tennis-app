@@ -11,6 +11,7 @@ from club.models import (
     CoachAvailability,
     CoachExpense,
     Court,
+    CourtBookingInfo,
     FixedLesson,
     RainRefund,
     Reservation,
@@ -59,7 +60,17 @@ class LessonMemberListCourtAccountingTests(TestCase):
             "court_payer_choice": "",
         }
         values.update(data)
+        for old_name, new_name in (
+            ("court_booking_account_choice", "court_booking_account_choice_1"),
+            ("court_booking_account_other", "court_booking_account_other_1"),
+            ("court_reservation_number", "court_reservation_number_1"),
+        ):
+            if old_name in values:
+                values[new_name] = values.pop(old_name)
         return self.client.post(f"{self.url}?availability_id={self.availability.pk}", values)
+
+    def _booking(self):
+        return self.availability.court_booking_infos.filter(position=1).first()
 
     def test_section_displays_unset_coach_company_and_other_values(self):
         response = self._get()
@@ -68,12 +79,11 @@ class LessonMemberListCourtAccountingTests(TestCase):
         self.assertContains(response, "未設定", count=None)
 
         self.availability.court_payer_kind = "company_wallet"
-        self.availability.court_booking_account_kind = "coach"
-        self.availability.court_booking_account_coach = self.coaches[1]
-        self.availability.save(update_fields=[
-            "court_payer_kind", "court_booking_account_kind",
-            "court_booking_account_coach",
-        ])
+        self.availability.save(update_fields=["court_payer_kind"])
+        CourtBookingInfo.objects.create(
+            availability=self.availability, position=1,
+            booking_account_kind="coach", booking_account_coach=self.coaches[1],
+        )
         response = self._get()
         self.assertContains(response, "会社の財布")
         self.assertContains(response, self.coaches[1].display_name())
@@ -85,13 +95,11 @@ class LessonMemberListCourtAccountingTests(TestCase):
         ])
         self.assertContains(self._get(), self.coaches[2].display_name())
 
-        self.availability.court_booking_account_kind = "other"
-        self.availability.court_booking_account_coach = None
-        self.availability.court_booking_account_other = "公園共通アカウント"
-        self.availability.save(update_fields=[
-            "court_booking_account_kind", "court_booking_account_coach",
-            "court_booking_account_other",
-        ])
+        info = self._booking()
+        info.booking_account_kind = "other"
+        info.booking_account_coach = None
+        info.booking_account_other = "公園共通アカウント"
+        info.save()
         self.assertContains(self._get(), "公園共通アカウント")
 
     def test_same_page_saves_and_can_return_both_values_to_unset(self):
@@ -107,7 +115,7 @@ class LessonMemberListCourtAccountingTests(TestCase):
         )
         self.availability.refresh_from_db()
         self.assertEqual(self.availability.court_payer_kind, "company_wallet")
-        self.assertEqual(self.availability.court_booking_account_coach, self.coaches[1])
+        self.assertEqual(self._booking().booking_account_coach, self.coaches[1])
         self.assertEqual(MonthlySettlement.objects.count(), settlement_count)
         self.assertEqual(CoachExpense.objects.count(), expense_count)
 
@@ -115,35 +123,30 @@ class LessonMemberListCourtAccountingTests(TestCase):
         self.availability.refresh_from_db()
         self.assertEqual(self.availability.court_payer_kind, "")
         self.assertIsNone(self.availability.court_payer_coach)
-        self.assertEqual(self.availability.court_booking_account_kind, "")
-        self.assertIsNone(self.availability.court_booking_account_coach)
+        self.assertEqual(self._booking().booking_account_kind, "")
+        self.assertIsNone(self._booking().booking_account_coach)
 
     def test_reservation_number_is_optional_and_preserves_leading_zero(self):
         response = self._post(court_reservation_number="")
         self.assertEqual(response.status_code, 302)
-        self.availability.refresh_from_db()
-        self.assertEqual(self.availability.court_reservation_number, "")
+        self.assertIsNone(self._booking())
 
         self._post(court_reservation_number="1234567890")
-        self.availability.refresh_from_db()
-        self.assertEqual(self.availability.court_reservation_number, "1234567890")
+        self.assertEqual(self._booking().reservation_number, "1234567890")
         self.assertContains(self._get(), "1234567890")
 
         self._post(court_reservation_number="0123456789")
-        self.availability.refresh_from_db()
-        self.assertEqual(self.availability.court_reservation_number, "0123456789")
+        self.assertEqual(self._booking().reservation_number, "0123456789")
 
         self._post(court_reservation_number="")
-        self.availability.refresh_from_db()
-        self.assertEqual(self.availability.court_reservation_number, "")
+        self.assertEqual(self._booking().reservation_number, "")
 
     def test_invalid_reservation_numbers_are_rejected(self):
         for value in ("123456789", "12345678901", "12345abcde"):
             with self.subTest(value=value):
                 response = self._post(court_reservation_number=value)
                 self.assertEqual(response.status_code, 302)
-                self.availability.refresh_from_db()
-                self.assertEqual(self.availability.court_reservation_number, "")
+                self.assertIsNone(self._booking())
                 self.assertContains(
                     self._get(), "予約番号は10桁の数字で入力してください。"
                 )
@@ -166,8 +169,7 @@ class LessonMemberListCourtAccountingTests(TestCase):
             court_payer_choice=f"coach:{self.coaches[1].pk}",
         )
 
-        self.availability.refresh_from_db()
-        self.assertEqual(self.availability.court_reservation_number, "1234567890")
+        self.assertEqual(self._booking().reservation_number, "1234567890")
         self.assertEqual(self.availability.court_fee_amount, 2200)
         self.assertTrue(self.availability.court_fee_overridden)
         self.assertEqual(self.availability.court_payer_kind, "coach")
@@ -195,7 +197,7 @@ class LessonMemberListCourtAccountingTests(TestCase):
         self.availability.refresh_from_db()
         self.assertEqual(self.availability.court_fee_amount, 2200)
         self.assertTrue(self.availability.court_fee_overridden)
-        self.assertEqual(self.availability.court_booking_account_coach, self.coaches[1])
+        self.assertEqual(self._booking().booking_account_coach, self.coaches[1])
         self.assertEqual(self.availability.court_payer_kind, "company_wallet")
         expense = CoachExpense.objects.get()
         meta = parse_expense_note(expense.note)
@@ -341,7 +343,7 @@ class LessonMemberListCourtAccountingTests(TestCase):
         response = self._post(court_booking_account_choice="other")
         self.assertEqual(response.status_code, 302)
         self.availability.refresh_from_db()
-        self.assertEqual(self.availability.court_booking_account_kind, "")
+        self.assertIsNone(self._booking())
 
         response = self._post(court_payer_choice="coach:999999")
         self.assertEqual(response.status_code, 302)
@@ -418,14 +420,14 @@ class LessonMemberListCourtAccountingTests(TestCase):
         response = self.client.post(fixed_url, {
             "action": "update_court_accounting",
             "court_fee_amount": "2200",
-            "court_booking_account_choice": "other",
-            "court_booking_account_other": "当日専用",
+            "court_booking_account_choice_1": "other",
+            "court_booking_account_other_1": "当日専用",
             "court_payer_choice": "company_wallet",
         })
         self.assertEqual(response.status_code, 302)
         occurrence = CoachAvailability.objects.get(fixed_lesson_source=fixed)
         self.assertEqual(occurrence.start_at, self.start)
-        self.assertEqual(occurrence.court_booking_account_other, "当日専用")
+        self.assertEqual(occurrence.court_booking_infos.get(position=1).booking_account_other, "当日専用")
         self.assertEqual(occurrence.court_payer_kind, "company_wallet")
         self.assertEqual(occurrence.court_fee_amount, 2200)
         self.assertFalse(

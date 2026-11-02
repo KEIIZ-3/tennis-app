@@ -89,15 +89,20 @@ def update_pending_rain_refund(availability_id, *, refund_input):
         ]
     )
     availability = CoachAvailability.objects.select_for_update().get(pk=availability_id)
-    availability.court_booking_account_kind = refund_input["account_kind"]
-    availability.court_booking_account_coach = account_coach
-    availability.court_booking_account_other = refund_input["account_other"]
     availability.court_payer_kind = payer_kind
     availability.court_payer_coach = payer_coach
     availability.save(update_fields=[
-        "court_booking_account_kind", "court_booking_account_coach",
-        "court_booking_account_other", "court_payer_kind", "court_payer_coach",
+        "court_payer_kind", "court_payer_coach",
     ])
+    from .models import CourtBookingInfo
+    booking_info, _ = CourtBookingInfo.objects.get_or_create(
+        availability=availability, position=1
+    )
+    booking_info.booking_account_kind = refund_input["account_kind"]
+    booking_info.booking_account_coach = account_coach
+    booking_info.booking_account_other = refund_input["account_other"]
+    booking_info.full_clean()
+    booking_info.save()
     return refund
 
 

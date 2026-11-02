@@ -7,7 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from club.expense_metadata import build_expense_note
-from club.models import CoachAvailability, CoachExpense, Court, Reservation, User
+from club.models import CoachAvailability, CoachExpense, Court, CourtBookingInfo, Reservation, User
 
 
 class AvailabilityCourtAccountingTests(TestCase):
@@ -40,17 +40,21 @@ class AvailabilityCourtAccountingTests(TestCase):
         self.availability.full_clean()
         self.availability.court_payer_kind = "coach"
         self.availability.court_payer_coach = self.coach
-        self.availability.court_booking_account_kind = "coach"
-        self.availability.court_booking_account_coach = self.coach
         self.availability.full_clean()
+        CourtBookingInfo(
+            availability=self.availability, position=1,
+            booking_account_kind="coach", booking_account_coach=self.coach,
+        ).full_clean()
 
     def test_booking_other_and_invalid_combinations(self):
-        self.availability.court_booking_account_kind = "other"
-        self.availability.court_booking_account_other = "共通予約アカウント"
-        self.availability.full_clean()
-        self.availability.court_booking_account_coach = self.coach
+        info = CourtBookingInfo(
+            availability=self.availability, position=1,
+            booking_account_kind="other", booking_account_other="共通予約アカウント",
+        )
+        info.full_clean()
+        info.booking_account_coach = self.coach
         with self.assertRaises(ValidationError):
-            self.availability.full_clean()
+            info.full_clean()
 
     def test_new_transfer_uses_advance_payer_but_existing_actual_wins(self):
         self.availability.court_payer_kind = "company_wallet"

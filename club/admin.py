@@ -833,7 +833,6 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
         "coach",
         "coach_2",
         "court",
-        "court_booking_account_admin",
         "court_payer_admin",
         "lesson_type",
         "target_level_admin",
@@ -856,7 +855,6 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
     ordering = ("-start_at", "-id")
     list_select_related = (
         "coach", "coach_2", "court", "court_payer_coach",
-        "court_booking_account_coach",
     )
     readonly_fields = (
         "fixed_lesson_source", "coach_assignment_status_admin",
@@ -876,10 +874,6 @@ class CoachAvailabilityAdmin(admin.ModelAdmin):
         if obj.coach_assignment_overridden:
             return "この開催回のみ個別変更"
         return "固定設定を継承中"
-
-    @admin.display(description="予約アカウント")
-    def court_booking_account_admin(self, obj):
-        return obj.court_booking_account_display()
 
     @admin.display(description="コート支払元")
     def court_payer_admin(self, obj):

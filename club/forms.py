@@ -12,6 +12,7 @@ from .models import (
     STRINGING_BASE_PRICE,
     STRINGING_DELIVERY_FEE,
     CoachAvailability,
+    CourtBookingInfo,
     Court,
     LineAccountLink,
     Reservation,
@@ -220,6 +221,13 @@ class CoachAvailabilityForm(forms.ModelForm):
     )
     court_selection = forms.ChoiceField(label="コート")
     custom_court_name = forms.CharField(label="その他のコート名", max_length=255, required=False)
+    delete_court_booking_info = forms.ModelChoiceField(
+        label="削除するコート情報を選択",
+        queryset=CourtBookingInfo.objects.none(),
+        required=False,
+        widget=forms.RadioSelect,
+        empty_label=None,
+    )
 
     class Meta:
         model = CoachAvailability
@@ -230,9 +238,6 @@ class CoachAvailabilityForm(forms.ModelForm):
             "lesson_type",
             "court_payer_kind",
             "court_payer_coach",
-            "court_booking_account_kind",
-            "court_booking_account_coach",
-            "court_booking_account_other",
             "target_level",
             "target_level_2",
             "coach_count",
@@ -269,14 +274,17 @@ class CoachAvailabilityForm(forms.ModelForm):
         self.fields["coach"].queryset = coach_queryset
         self.fields["coach_2"].queryset = coach_queryset
         self.fields["coach_2"].required = False
-        for field_name in ("court_payer_coach", "court_booking_account_coach"):
+        for field_name in ("court_payer_coach",):
             self.fields[field_name].queryset = coach_queryset
             self.fields[field_name].required = False
         self.fields["court_payer_kind"].label = "コート支払元"
         self.fields["court_payer_coach"].label = "支払コーチ"
-        self.fields["court_booking_account_kind"].label = "コート予約アカウント"
-        self.fields["court_booking_account_coach"].label = "予約アカウントのコーチ"
-        self.fields["court_booking_account_other"].label = "その他の予約アカウント名"
+        booking_infos = self.instance.court_booking_infos.all() if self.instance.pk else CourtBookingInfo.objects.none()
+        self.fields["delete_court_booking_info"].queryset = booking_infos
+        self.fields["delete_court_booking_info"].label_from_instance = lambda item: (
+            f"コート{item.position}（予約番号：{item.reservation_number or '未設定'} / "
+            f"予約者：{item.booking_account_display()}）"
+        )
         self.fields["coach_2"].label = "担当コーチ2"
         for field_name in ("coach_count", "court_count", "capacity"):
             self.fields[field_name].widget.attrs["readonly"] = True
@@ -454,6 +462,17 @@ class CoachAvailabilityForm(forms.ModelForm):
         elif lesson_type == Reservation.LESSON_PRIVATE:
             cleaned_data["coach_count"] = 1
             cleaned_data["court_count"] = 1
+
+        previous_court_count = int(self.instance.court_count or 1) if self.instance.pk else 1
+        next_court_count = int(cleaned_data.get("court_count") or 1)
+        booking_infos = list(self.instance.court_booking_infos.all()) if self.instance.pk else []
+        if previous_court_count == 2 and next_court_count == 1 and len(booking_infos) > 1:
+            selected = cleaned_data.get("delete_court_booking_info")
+            if selected is None or selected not in booking_infos:
+                self.add_error(
+                    "delete_court_booking_info",
+                    "利用コートが2面から1面になります。削除するコート情報を選択してください。",
+                )
             cleaned_data["capacity"] = 1
             cleaned_data["coach_2"] = None
         elif lesson_type == Reservation.LESSON_GROUP:

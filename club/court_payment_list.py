@@ -75,7 +75,7 @@ def payment_rows(year, month):
             start_at__gte=start,
             start_at__lt=end,
         )
-        .select_related("court_booking_account_coach")
+        .prefetch_related("court_booking_infos__booking_account_coach")
         .order_by("start_at", "id")
     )
     excluded_ids = set(lesson_execution.non_occupying_availability_ids(availabilities))
@@ -85,19 +85,23 @@ def payment_rows(year, month):
             continue
         local_start = timezone.localtime(availability.start_at)
         local_end = timezone.localtime(availability.end_at)
-        rows.append(
-            {
+        booking_infos = {item.position: item for item in availability.court_booking_infos.all()}
+        for position in range(1, max(int(availability.court_count or 1), 1) + 1):
+            booking_info = booking_infos.get(position)
+            rows.append({
                 "availability_id": availability.pk,
+                "position": position,
                 "date_time": (
                     f"{local_start.month}/{local_start.day}"
                     f"（{WEEKDAYS[local_start.weekday()]}） "
                     f"{local_start:%H:%M}〜{local_end:%H:%M}"
                 ),
-                "reservation_number": availability.court_reservation_number or "未設定",
-                "reservation_number_missing": not bool(availability.court_reservation_number),
-                "booker": availability.court_booking_account_display(),
-            }
-        )
+                "reservation_number": (
+                    booking_info.reservation_number if booking_info and booking_info.reservation_number else "未設定"
+                ),
+                "reservation_number_missing": not bool(booking_info and booking_info.reservation_number),
+                "booker": booking_info.booking_account_display() if booking_info else "未設定",
+            })
     return rows
 
 
