@@ -179,7 +179,8 @@
           {% endfor %}
           <label>コート支払元
             <select name="court_payer_choice">
-              <option value=""{% if not availability or not availability.court_payer_kind %} selected{% endif %}>未設定</option>
+              <option value=""{% if not availability or not availability.court_payer_kind and availability.court_payment_status != 'unpaid' %} selected{% endif %}>未設定</option>
+              <option value="unpaid"{% if availability.court_payment_status == 'unpaid' %} selected{% endif %}>未払い</option>
               <option value="company_wallet"{% if availability.court_payer_kind == 'company_wallet' %} selected{% endif %}>会社の財布</option>
               {% for option in court_accounting_coaches %}<option value="coach:{{ option.pk }}"{% if availability.court_payer_kind == 'coach' and availability.court_payer_coach_id == option.pk %} selected{% endif %}>{{ option.display_name }}</option>{% endfor %}
             </select>

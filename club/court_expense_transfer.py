@@ -310,9 +310,11 @@ def save_court_transfer(
 
         availability.court_payer_kind = "" if is_not_required else payer_kind
         availability.court_payer_coach = effective_payer
+        availability.court_payment_status = availability.COURT_PAYMENT_UNSET
         availability.save(update_fields=[
             "court_payer_kind",
             "court_payer_coach",
+            "court_payment_status",
         ])
         from .settlement_service import recalculate_monthly_settlement_chain
         recalculate_monthly_settlement_chain(start.year, start.month, force=True)

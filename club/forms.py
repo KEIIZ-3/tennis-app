@@ -216,6 +216,15 @@ class CoachAvailabilityForm(forms.ModelForm):
     private_member = forms.ModelChoiceField(
         label="参加者", queryset=User.objects.none(), required=False
     )
+    private_participant_type = forms.ChoiceField(
+        label="参加者種別",
+        choices=(("member", "会員"), ("guest", "ゲスト")),
+        required=False,
+    )
+    private_guest_name = forms.CharField(label="ゲスト名", max_length=120, required=False)
+    private_guest_amount = forms.IntegerField(
+        label="ゲスト料金（円）", min_value=0, required=False,
+    )
     customer_count = forms.TypedChoiceField(
         label="顧客人数", choices=CUSTOMER_COUNT_CHOICES, coerce=int, required=False
     )
@@ -332,6 +341,9 @@ class CoachAvailabilityForm(forms.ModelForm):
         else:
             for field_name in (
                 "private_member",
+                "private_participant_type",
+                "private_guest_name",
+                "private_guest_amount",
                 "customer_count",
             ):
                 self.fields.pop(field_name)
@@ -503,10 +515,21 @@ class CoachAvailabilityForm(forms.ModelForm):
         cleaned_data["start_at"] = start_at
         cleaned_data["end_at"] = end_at
         if self.calendar_creation and lesson_type == Reservation.LESSON_PRIVATE:
-            private_member = cleaned_data.get("private_member")
-            if private_member is None:
-                self.add_error("private_member", "参加者を選択してください。")
-            cleaned_data["members"] = [private_member] if private_member else []
+            participant_type = cleaned_data.get("private_participant_type") or "member"
+            if participant_type == "guest":
+                guest_name = (cleaned_data.get("private_guest_name") or "").strip()
+                if not guest_name:
+                    self.add_error("private_guest_name", "ゲスト名を入力してください。")
+                amount = cleaned_data.get("private_guest_amount")
+                if amount is None:
+                    self.add_error("private_guest_amount", "ゲスト料金を入力してください。")
+                cleaned_data["private_guest_name"] = guest_name
+                cleaned_data["members"] = []
+            else:
+                private_member = cleaned_data.get("private_member")
+                if private_member is None:
+                    self.add_error("private_member", "参加者を選択してください。")
+                cleaned_data["members"] = [private_member] if private_member else []
         return cleaned_data
 
     def save(self, commit=True):

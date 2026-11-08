@@ -116,7 +116,7 @@
       const wrappers = Array.from(document.querySelectorAll(".availability-field"));
       const deleteBookingWrapper = wrappers.find(function (wrapper) { return wrapper.dataset.fieldName === "delete_court_booking_info"; });
       const generalFields = new Set(["coach_2", "coach_count", "court_count", "capacity"]);
-      const privateFields = new Set(["private_member"]);
+      const privateFields = new Set(["private_participant_type", "private_member", "private_guest_name", "private_guest_amount"]);
       const groupFields = new Set(["customer_count"]);
       const calendarHiddenFields = new Set(["custom_ticket_price", "custom_duration_hours"]);
       function refreshFields() {
@@ -127,6 +127,8 @@
           let visible = !calendarHiddenFields.has(name);
           if (generalFields.has(name)) visible = selectedType === "general";
           if (privateFields.has(name)) visible = selectedType === "private";
+          if (name === "private_member") visible = selectedType === "private" && document.getElementById("id_private_participant_type").value !== "guest";
+          if (name === "private_guest_name" || name === "private_guest_amount") visible = selectedType === "private" && document.getElementById("id_private_participant_type").value === "guest";
           if (groupFields.has(name)) visible = selectedType === "group";
           if (name === "custom_court_name") visible = court && court.value === "other";
           if (name.startsWith("member_")) {
@@ -134,7 +136,7 @@
           }
           wrapper.hidden = !visible;
           const control = wrapper.querySelector("select, input, textarea");
-          if (control && (name === "private_member" || name === "custom_court_name" || name.startsWith("member_"))) {
+          if (control && (name === "private_member" || name === "private_guest_name" || name === "private_guest_amount" || name === "custom_court_name" || name.startsWith("member_"))) {
             control.required = visible;
           }
         });
@@ -152,6 +154,8 @@
       }
       if (coach2) coach2.addEventListener("change", updateGeneralLessonTotals);
       if (lessonType) lessonType.addEventListener("change", refreshFields);
+      const privateParticipantType = document.getElementById("id_private_participant_type");
+      if (privateParticipantType) privateParticipantType.addEventListener("change", refreshFields);
       if (customerCount) customerCount.addEventListener("change", refreshFields);
       if (court) court.addEventListener("change", refreshFields);
       refreshFields();

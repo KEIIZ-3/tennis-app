@@ -445,6 +445,7 @@ def _materialize_fixed_lesson_occurrence(*, fixed_lesson, start_at, end_at):
 def _update_court_accounting(availability, post_data, *, actor):
     from .court_accounting import validate_booking_account, validate_court_payer
     from .court_expense_transfer import save_court_transfer
+    from .court_transfer_service import get_current_court_transfer_for_availability
     from .settlement_balance_policy import main_coaches
 
     coaches = {str(item.pk): item for item in main_coaches()}
@@ -464,12 +465,14 @@ def _update_court_accounting(availability, post_data, *, actor):
     else:
         court_fee_amount = None
 
-    if payer_kind not in ("", "company_wallet", "coach"):
+    is_unpaid = payer_choice == "unpaid"
+    if payer_kind not in ("", "unpaid", "company_wallet", "coach"):
         raise ValidationError("コート支払元が正しくありません。")
     if payer_kind == "coach" and payer_coach is None:
         raise ValidationError("コート支払元のコーチを選択してください。")
 
-    validate_court_payer(payer_kind, getattr(payer_coach, "pk", None))
+    if not is_unpaid:
+        validate_court_payer(payer_kind, getattr(payer_coach, "pk", None))
     booking_values = []
     for position in range(1, max(int(availability.court_count or 1), 1) + 1):
         booking_choice = (post_data.get(f"court_booking_account_choice_{position}") or "").strip()
@@ -516,7 +519,21 @@ def _update_court_accounting(availability, post_data, *, actor):
         info.full_clean()
         info.save()
 
-    if court_fee_submitted and court_fee_amount is not None:
+    existing_transfer = get_current_court_transfer_for_availability(
+        availability.pk, for_update=True
+    )
+    if is_unpaid and existing_transfer is not None:
+        raise ValidationError(
+            "支払済みのコート代は、このフォームから未払いへ戻せません。既存のコート代修正・取消フローを使用してください。"
+        )
+    if is_unpaid and court_fee_amount not in (None, 0):
+        availability.court_payment_status = availability.COURT_PAYMENT_UNPAID
+        availability.court_payer_kind = ""
+        availability.court_payer_coach = None
+        availability.save(update_fields=[
+            "court_payment_status", "court_payer_kind", "court_payer_coach",
+        ])
+    elif court_fee_submitted and court_fee_amount is not None:
         save_court_transfer(
             availability.pk,
             amount=court_fee_amount,
@@ -527,8 +544,10 @@ def _update_court_accounting(availability, post_data, *, actor):
     else:
         availability.court_payer_kind = payer_kind
         availability.court_payer_coach = payer_coach
+        if payer_kind:
+            availability.court_payment_status = availability.COURT_PAYMENT_UNSET
         availability.save(update_fields=[
-            "court_payer_kind", "court_payer_coach",
+            "court_payer_kind", "court_payer_coach", "court_payment_status",
         ])
 
 
