@@ -178,6 +178,40 @@ class CalendarSingleLessonCreationTests(TestCase):
         self.assertEqual(FixedLesson.objects.count(), 0)
         self.assertEqual(Reservation.objects.count(), 0)
 
+    def test_private_guest_creation_uses_guest_reservation_without_ticket_consumption(self):
+        self.client.force_login(self.coach)
+        data = self._post_data(end_hour=10)
+        data.update({
+            "lesson_type": Reservation.LESSON_PRIVATE,
+            "private_participant_type": "guest",
+            "private_member": "",
+            "private_guest_name": " 山田 太郎 ",
+            "private_guest_amount": "0",
+        })
+        response = self.client.post(reverse("club:coach_availability_create"), data)
+        self.assertEqual(response.status_code, 302)
+        reservation = Reservation.objects.get()
+        self.assertIsNone(reservation.user)
+        self.assertEqual(reservation.guest_name, "山田 太郎")
+        self.assertEqual(reservation.participant_ticket_price_snapshot, 0)
+        self.assertIsNone(reservation.ticket_consumed_at)
+
+    def test_private_guest_requires_name_and_rejects_negative_amount(self):
+        self.client.force_login(self.coach)
+        for name, amount in (("", "0"), ("山田 太郎", "-1")):
+            with self.subTest(name=name, amount=amount):
+                data = self._post_data(end_hour=10)
+                data.update({
+                    "lesson_type": Reservation.LESSON_PRIVATE,
+                    "private_participant_type": "guest",
+                    "private_member": "",
+                    "private_guest_name": name,
+                    "private_guest_amount": amount,
+                })
+                response = self.client.post(reverse("club:coach_availability_create"), data)
+                self.assertEqual(response.status_code, 200)
+        self.assertFalse(Reservation.objects.exists())
+
     def test_non_calendar_creation_keeps_existing_redirect(self):
         self.client.force_login(self.coach)
         data = self._post_data()

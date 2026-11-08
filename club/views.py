@@ -7074,6 +7074,25 @@ def coach_availability_create(request, pk=None):
                         Reservation.LESSON_PRIVATE,
                         Reservation.LESSON_GROUP,
                     ):
+                        if (
+                            availability.lesson_type == Reservation.LESSON_PRIVATE
+                            and form.cleaned_data.get("private_participant_type") == "guest"
+                        ):
+                            from .participant_accounting import add_guest
+
+                            add_guest(
+                                actor=request.user,
+                                guest_name=form.cleaned_data["private_guest_name"],
+                                coach=availability.coach,
+                                court=availability.court,
+                                start_at=availability.start_at,
+                                end_at=availability.end_at,
+                                lesson_type=availability.lesson_type,
+                                amount=form.cleaned_data["private_guest_amount"],
+                                capacity=availability.capacity,
+                                availability=availability,
+                                target_level=availability.target_level,
+                            )
                         for member in form.cleaned_data["members"]:
                             reservation = create_reservation(
                                 user=member,

@@ -137,9 +137,32 @@ class LessonMemberListCourtAccountingTests(TestCase):
 
         self._post(court_reservation_number="0123456789")
         self.assertEqual(self._booking().reservation_number, "0123456789")
-
         self._post(court_reservation_number="")
         self.assertEqual(self._booking().reservation_number, "")
+
+    def test_unpaid_saves_booking_without_creating_court_expense(self):
+        before = CoachExpense.objects.count()
+        self._post(
+            court_fee_amount="3200",
+            court_payer_choice="unpaid",
+            court_reservation_number="0123456789",
+            court_booking_account_choice=f"coach:{self.coaches[1].pk}",
+        )
+        self.availability.refresh_from_db()
+        self.assertEqual(self.availability.court_payment_status, "unpaid")
+        self.assertEqual(self.availability.court_payer_kind, "")
+        self.assertEqual(CoachExpense.objects.count(), before)
+        self.assertEqual(self._booking().reservation_number, "0123456789")
+        self.assertEqual(self._booking().booking_account_coach, self.coaches[1])
+
+    def test_paid_transfer_cannot_be_changed_to_unpaid(self):
+        self._post(court_fee_amount="3200", court_payer_choice="company_wallet")
+        self.assertEqual(CoachExpense.objects.count(), 1)
+        self._post(court_fee_amount="3200", court_payer_choice="unpaid")
+        self.availability.refresh_from_db()
+        self.assertEqual(self.availability.court_payment_status, "")
+        self.assertEqual(self.availability.court_payer_kind, "company_wallet")
+        self.assertEqual(CoachExpense.objects.count(), 1)
 
     def test_invalid_reservation_numbers_are_rejected(self):
         for value in ("123456789", "12345678901", "12345abcde"):

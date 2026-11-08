@@ -255,6 +255,8 @@ class LessonTypeMixin:
 
 
 class CoachAvailability(models.Model, LessonTypeMixin):
+    COURT_PAYMENT_UNSET = ""
+    COURT_PAYMENT_UNPAID = "unpaid"
     STATUS_OPEN = "open"
     STATUS_REQUESTED = "requested"
     STATUS_APPROVED = "approved"
@@ -323,6 +325,12 @@ class CoachAvailability(models.Model, LessonTypeMixin):
         User, on_delete=models.PROTECT, null=True, blank=True,
         related_name="court_payer_availabilities",
         limit_choices_to={"role__in": User.COACH_ROLE_VALUES},
+    )
+    court_payment_status = models.CharField(
+        max_length=20,
+        blank=True,
+        default=COURT_PAYMENT_UNSET,
+        choices=((COURT_PAYMENT_UNSET, "未設定"), (COURT_PAYMENT_UNPAID, "未払い")),
     )
     lesson_type = models.CharField(
         max_length=20,
@@ -3004,6 +3012,25 @@ class CourtNumberNoticeHistory(models.Model):
         indexes = [
             models.Index(fields=("fixed_lesson", "start_at", "end_at")),
             models.Index(fields=("availability", "start_at", "end_at")),
+        ]
+
+
+class CourtPaymentReminderLog(models.Model):
+    target_date = models.DateField()
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="court_payment_reminder_logs",
+    )
+    sent_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ("-target_date", "recipient_id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("target_date", "recipient"),
+                name="unique_court_payment_reminder_recipient",
+            ),
         ]
 
 
