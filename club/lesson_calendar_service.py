@@ -147,6 +147,7 @@ def build_lesson_calendar_display_data(*, user, target_year, target_month, month
     user_slot_status_map = {}
     user_fixed_lesson_status_map = {}
     reservations_by_availability = {}
+    user_status_by_availability = {}
     reservations_by_fixed_occurrence = {}
     availabilities_by_fixed_occurrence = {}
     for reservation in reservation_list:
@@ -171,17 +172,25 @@ def build_lesson_calendar_display_data(*, user, target_year, target_month, month
                     reservation.availability
                 )
 
+        is_legacy_reservation = not reservation.availability_id and not reservation.fixed_lesson_id
         if reservation.status == Reservation.STATUS_ACTIVE:
-            active_slot_counts[slot_key] = active_slot_counts.get(slot_key, 0) + 1
+            if is_legacy_reservation:
+                active_slot_counts[slot_key] = active_slot_counts.get(slot_key, 0) + 1
             if fixed_key:
                 fixed_lesson_active_counts[fixed_key] = fixed_lesson_active_counts.get(fixed_key, 0) + 1
         elif reservation.status == Reservation.STATUS_PENDING:
-            pending_slot_counts[slot_key] = pending_slot_counts.get(slot_key, 0) + 1
+            if is_legacy_reservation:
+                pending_slot_counts[slot_key] = pending_slot_counts.get(slot_key, 0) + 1
             if fixed_key:
                 fixed_lesson_pending_counts[fixed_key] = fixed_lesson_pending_counts.get(fixed_key, 0) + 1
 
         if user.is_authenticated and reservation.user_id == user.pk:
-            user_slot_status_map[slot_key] = reservation.status
+            if reservation.availability_id:
+                current_status = user_status_by_availability.get(reservation.availability_id, "")
+                if reservation.status == Reservation.STATUS_ACTIVE or not current_status:
+                    user_status_by_availability[reservation.availability_id] = reservation.status
+            elif not reservation.fixed_lesson_id:
+                user_slot_status_map[slot_key] = reservation.status
             if fixed_key:
                 current_status = user_fixed_lesson_status_map.get(fixed_key, "")
                 if reservation.status == Reservation.STATUS_ACTIVE or not current_status:
@@ -191,6 +200,8 @@ def build_lesson_calendar_display_data(*, user, target_year, target_month, month
     fixed_lesson_waitlist_counts = {}
     user_waitlist_map = {}
     user_fixed_lesson_waitlist_map = {}
+    waitlists_by_availability = {}
+    user_waitlist_by_availability = {}
     waitlists = (
         LessonWaitlist.objects.filter(
             status=LessonWaitlist.STATUS_WAITING,
@@ -208,14 +219,20 @@ def build_lesson_calendar_display_data(*, user, target_year, target_month, month
             start_at=waitlist.start_at,
             end_at=waitlist.end_at,
         )
-        waitlist_counts[slot_key] = waitlist_counts.get(slot_key, 0) + 1
+        if waitlist.availability_id:
+            waitlists_by_availability.setdefault(waitlist.availability_id, []).append(waitlist)
+        elif not waitlist.fixed_lesson_id:
+            waitlist_counts[slot_key] = waitlist_counts.get(slot_key, 0) + 1
         fixed_key = None
         if waitlist.fixed_lesson_id:
             local_date = _local_datetime(waitlist.start_at).date().isoformat()
             fixed_key = (str(waitlist.fixed_lesson_id), local_date)
             fixed_lesson_waitlist_counts[fixed_key] = fixed_lesson_waitlist_counts.get(fixed_key, 0) + 1
         if user.is_authenticated and waitlist.user_id == user.pk:
-            user_waitlist_map[slot_key] = waitlist.pk
+            if waitlist.availability_id:
+                user_waitlist_by_availability[waitlist.availability_id] = waitlist.pk
+            elif not waitlist.fixed_lesson_id:
+                user_waitlist_map[slot_key] = waitlist.pk
             if fixed_key:
                 user_fixed_lesson_waitlist_map[fixed_key] = waitlist.pk
 
@@ -261,10 +278,13 @@ def build_lesson_calendar_display_data(*, user, target_year, target_month, month
         "fixed_lesson_active_counts": fixed_lesson_active_counts,
         "fixed_lesson_pending_counts": fixed_lesson_pending_counts,
         "user_slot_status_map": user_slot_status_map,
+        "user_status_by_availability": user_status_by_availability,
         "user_fixed_lesson_status_map": user_fixed_lesson_status_map,
         "waitlist_counts": waitlist_counts,
         "fixed_lesson_waitlist_counts": fixed_lesson_waitlist_counts,
         "user_waitlist_map": user_waitlist_map,
+        "waitlists_by_availability": waitlists_by_availability,
+        "user_waitlist_by_availability": user_waitlist_by_availability,
         "user_fixed_lesson_waitlist_map": user_fixed_lesson_waitlist_map,
         "fixed_lesson_list": fixed_lesson_list,
         "availability_list": availability_list,
