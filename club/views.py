@@ -1521,15 +1521,16 @@ def lesson_calendar_view(request):
                 start_at=availability.start_at,
             )
 
-            participant_reservations = Reservation.objects.filter(
-                user=request.user,
+            participant_reservations = reservations_for_lesson(
+                fixed_lesson=fixed_lesson,
+                availability=availability,
                 coach=availability.coach,
                 court=availability.court,
                 lesson_type=availability.lesson_type,
                 start_at=availability.start_at,
                 end_at=availability.end_at,
-                status__in=CAPACITY_CONSUMING_STATUSES,
-            )
+                statuses=CAPACITY_CONSUMING_STATUSES,
+            ).filter(user=request.user)
             snapshots = ReservationParticipant.objects.filter(
                 reservation__in=participant_reservations,
             )
@@ -1565,11 +1566,7 @@ def lesson_calendar_view(request):
 
             existing_waitlist = LessonWaitlist.objects.filter(
                 user=request.user,
-                coach=availability.coach,
-                court=availability.court,
-                lesson_type=availability.lesson_type,
-                start_at=availability.start_at,
-                end_at=availability.end_at,
+                availability=availability,
                 status=LessonWaitlist.STATUS_WAITING,
             ).first()
 
@@ -1611,11 +1608,7 @@ def lesson_calendar_view(request):
 
                         existing_waitlist = LessonWaitlist.objects.filter(
                             user=request.user,
-                            coach=availability.coach,
-                            court=availability.court,
-                            lesson_type=availability.lesson_type,
-                            start_at=availability.start_at,
-                            end_at=availability.end_at,
+                            availability=availability,
                             status=LessonWaitlist.STATUS_WAITING,
                         ).first()
                         if existing_waitlist:
@@ -1773,10 +1766,13 @@ def lesson_calendar_view(request):
     fixed_lesson_active_counts = display_data["fixed_lesson_active_counts"]
     fixed_lesson_pending_counts = display_data["fixed_lesson_pending_counts"]
     user_slot_status_map = display_data["user_slot_status_map"]
+    user_status_by_availability = display_data["user_status_by_availability"]
     user_fixed_lesson_status_map = display_data["user_fixed_lesson_status_map"]
     waitlist_counts = display_data["waitlist_counts"]
     fixed_lesson_waitlist_counts = display_data["fixed_lesson_waitlist_counts"]
     user_waitlist_map = display_data["user_waitlist_map"]
+    waitlists_by_availability = display_data["waitlists_by_availability"]
+    user_waitlist_by_availability = display_data["user_waitlist_by_availability"]
     user_fixed_lesson_waitlist_map = display_data["user_fixed_lesson_waitlist_map"]
 
     weekday_short = ["月", "火", "水", "木", "金", "土", "日"]
@@ -1991,6 +1987,9 @@ def lesson_calendar_view(request):
             and not user_has_active_family_members
         ):
             disabled_reason = "承認待ちの申請があります。"
+        elif user_waitlist_id:
+            disabled_reason = "キャンセル待ち中です。"
+            can_cancel_waitlist = True
         elif not _slot_level_allowed(
             request.user,
             target_level,
@@ -2000,12 +1999,8 @@ def lesson_calendar_view(request):
         ):
             disabled_reason = "ご自身のレベルでは予約できません。"
         elif capacity_consuming_count >= int(capacity or 0):
-            if user_waitlist_id:
-                disabled_reason = "キャンセル待ち中です。"
-                can_cancel_waitlist = True
-            else:
-                disabled_reason = "満員です。"
-                can_join_waitlist = True
+            disabled_reason = "満員です。"
+            can_join_waitlist = True
         elif source_kind == "availability" and availability_id:
             can_book = True
         elif source_kind == "fixed_lesson" and fixed_lesson_id and lesson_date and allow_fixed_booking:
@@ -2245,6 +2240,15 @@ def lesson_calendar_view(request):
                 pending_count = int(fixed_lesson_pending_counts.get(fixed_key, 0))
             fixed_user_status = user_fixed_lesson_status_map.get(fixed_key, "")
             fixed_user_waitlist_id = user_fixed_lesson_waitlist_map.get(fixed_key, "")
+            if matching_availability:
+                fixed_user_status = user_status_by_availability.get(
+                    matching_availability.pk,
+                    fixed_user_status,
+                )
+                fixed_user_waitlist_id = user_waitlist_by_availability.get(
+                    matching_availability.pk,
+                    fixed_user_waitlist_id,
+                )
 
             # 固定メンバーであっても、個別開催回をキャンセルした場合は
             # 有効予約がないため「予約済み」へ強制変換しない。
@@ -2272,9 +2276,10 @@ def lesson_calendar_view(request):
                 capacity=occurrence_display["capacity"],
                 member_count=member_count,
                 pending_count=pending_count,
-                waitlist_count=max(
-                    int(waitlist_counts.get(slot_key, 0)),
-                    int(fixed_lesson_waitlist_counts.get(fixed_key, 0)),
+                waitlist_count=(
+                    len(waitlists_by_availability.get(matching_availability.pk, []))
+                    if matching_availability
+                    else int(fixed_lesson_waitlist_counts.get(fixed_key, 0))
                 ),
                 status=occurrence_display["status"],
                 color_class=_coach_color_from_names(coach_names, getattr(primary_coach, "pk", None)),
@@ -2303,16 +2308,15 @@ def lesson_calendar_view(request):
         start_local = _local_dt(availability.start_at)
         target_date = start_local.date()
 
-        slot_key = _slot_key(
-            lesson_type=availability.lesson_type,
-            coach_id=availability.coach_id,
-            court_id=availability.court_id,
-            start_at=availability.start_at,
-            end_at=availability.end_at,
+        occurrence_reservations = reservations_by_availability.get(availability.pk, [])
+        member_count = sum(
+            reservation.status == Reservation.STATUS_ACTIVE
+            for reservation in occurrence_reservations
         )
-
-        member_count = int(active_slot_counts.get(slot_key, 0))
-        pending_count = int(pending_slot_counts.get(slot_key, 0))
+        pending_count = sum(
+            reservation.status == Reservation.STATUS_PENDING
+            for reservation in occurrence_reservations
+        )
         capacity = _capacity_for_availability(availability)
         assigned_coach = availability.assigned_coach() if hasattr(availability, "assigned_coach") else (availability.substitute_coach or availability.coach)
 
@@ -2336,14 +2340,16 @@ def lesson_calendar_view(request):
             capacity=capacity,
             member_count=member_count,
             pending_count=pending_count,
-            waitlist_count=int(waitlist_counts.get(slot_key, 0)),
+            waitlist_count=len(waitlists_by_availability.get(availability.pk, [])),
             status=availability.status,
             is_recruitment_closed=availability.is_recruitment_closed,
             color_class=_coach_color_class(availability),
             color_combo_class=_coach_combo_class_from_names(availability.coach_display_names()),
+            user_slot_status_override=user_status_by_availability.get(availability.pk, ""),
+            user_waitlist_id_override=user_waitlist_by_availability.get(availability.pk, ""),
             participant_user_ids=[
                 reservation.user_id
-                for reservation in reservations_by_availability.get(availability.pk, [])
+                for reservation in occurrence_reservations
                 if reservation.status == Reservation.STATUS_ACTIVE and reservation.user_id
             ],
         )
